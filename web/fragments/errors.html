@@ -1,0 +1,207 @@
+<section
+  class="error-reports-page"
+  aria-labelledby="error-reports-title"
+  :aria-busy="loading"
+  id="error-reports"
+  x-data="citeloomErrorsPage"
+  x-init="initialize()"
+>
+  <header class="error-reports-header">
+    <div>
+      <h1 id="error-reports-title">Error reports</h1>
+      <p>Review sanitized operational failures recorded by CiteLoom. Times are shown in your local time zone.</p>
+    </div>
+    <button
+      class="button secondary error-reports-refresh"
+      type="button"
+      :aria-busy="loading"
+      :disabled="loading"
+      @click="refresh()"
+    >
+      <svg
+        aria-hidden="true"
+        class="citeloom-icon citeloom-small-icon"
+        :class="{ spin: loading }"
+      >
+        <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
+      </svg>
+      <span x-text="loading ? 'Refreshing' : 'Refresh'">Refresh</span>
+    </button>
+  </header>
+
+  <nav class="error-area-filters" aria-label="Error categories">
+    <template x-for="area in areaOptions" :key="area.id">
+      <button
+        class="error-area-filter"
+        type="button"
+        :aria-current="activeArea === area.id ? 'page' : null"
+        :class="{ active: activeArea === area.id }"
+        :disabled="loading"
+        @click="selectArea(area.id)"
+      >
+        <span x-text="area.label"></span>
+        <strong x-text="area.count">0</strong>
+      </button>
+    </template>
+  </nav>
+
+  <div
+    class="notice error error-reports-message"
+    role="alert"
+    x-cloak
+    x-show="errorMessage !== ''"
+  >
+    <svg aria-hidden="true" class="citeloom-icon status-icon error">
+      <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
+    </svg>
+    <span x-text="errorMessage"></span>
+    <button class="text-button" type="button" @click="loadErrors(errorPage.page)">Try again</button>
+  </div>
+
+  <div
+    class="error-reports-loading"
+    role="status"
+    x-cloak
+    x-show="loading &amp;&amp; !hasLoaded"
+  >
+    <svg aria-hidden="true" class="citeloom-icon spin">
+      <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
+    </svg>
+    <span>Loading error reports</span>
+  </div>
+
+  <section
+    class="error-reports-empty"
+    x-cloak
+    x-show="hasLoaded &amp;&amp; !loading &amp;&amp; errorPage.errors.length === 0 &amp;&amp; errorMessage === ''"
+  >
+    <svg aria-hidden="true" class="citeloom-icon">
+      <use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use>
+    </svg>
+    <div>
+      <h2>No recorded errors</h2>
+      <p>No sanitized operational failures match this category.</p>
+    </div>
+  </section>
+
+  <div
+    class="error-report-list"
+    x-cloak
+    x-show="errorPage.errors.length > 0"
+  >
+    <template x-for="error in errorPage.errors" :key="error.id">
+      <article class="error-report-card" :class="`severity-${error.severity}`">
+        <header class="error-report-card-header">
+          <div class="error-report-badges">
+            <span
+              class="error-report-severity"
+              :class="`severity-${error.severity}`"
+              x-text="error.severity"
+            ></span>
+            <span class="error-report-area" x-text="formatArea(error.area)"></span>
+          </div>
+          <time class="error-report-time" :datetime="error.occurredAt">
+            <strong x-text="formatDay(error.occurredAt)"></strong>
+            <span x-text="formatTime(error.occurredAt)"></span>
+          </time>
+        </header>
+
+        <div class="error-report-summary">
+          <div>
+            <h2 x-text="`${error.service} / ${error.operation}`"></h2>
+            <p class="error-report-code">
+              <span x-text="error.category"></span>
+              <span aria-hidden="true">/</span>
+              <code x-text="error.code"></code>
+            </p>
+          </div>
+          <p class="error-report-message" x-text="error.message"></p>
+          <p
+            class="error-report-source"
+            x-show="error.sourceFile !== null"
+          >
+            <span>Source</span>
+            <code x-text="filename(error.sourceFile)"></code>
+          </p>
+        </div>
+
+        <details class="error-report-context">
+          <summary>Diagnostic context</summary>
+          <dl>
+            <template x-for="row in contextRows(error)" :key="row.label">
+              <div>
+                <dt x-text="row.label"></dt>
+                <dd><code x-text="row.value"></code></dd>
+              </div>
+            </template>
+          </dl>
+        </details>
+
+        <details
+          class="error-report-docling"
+          x-show="error.doclingErrors.length > 0"
+        >
+          <summary>
+            <span>Docling details</span>
+            <strong x-text="error.doclingErrors.length"></strong>
+          </summary>
+          <div class="error-report-docling-list">
+            <template x-for="detail in error.doclingErrors" :key="detail.sequence">
+              <section class="error-report-docling-detail">
+                <header>
+                  <strong x-text="detail.componentType"></strong>
+                  <span x-text="formatDoclingLocation(detail)"></span>
+                </header>
+                <p x-text="detail.message"></p>
+                <dl>
+                  <div>
+                    <dt>Module</dt>
+                    <dd><code x-text="detail.moduleName"></code></dd>
+                  </div>
+                  <div>
+                    <dt>Category</dt>
+                    <dd><code x-text="detail.category"></code></dd>
+                  </div>
+                  <div>
+                    <dt>Element</dt>
+                    <dd x-text="formatDoclingElement(detail)"></dd>
+                  </div>
+                  <div x-show="detail.sourceRef !== null">
+                    <dt>Source reference</dt>
+                    <dd><code x-text="detail.sourceRef"></code></dd>
+                  </div>
+                </dl>
+              </section>
+            </template>
+          </div>
+        </details>
+      </article>
+    </template>
+  </div>
+
+  <footer
+    class="error-reports-pagination"
+    x-cloak
+    x-show="errorPage.total > 0"
+  >
+    <p>
+      <span x-text="`${errorPage.total} ${errorPage.total === 1 ? 'error' : 'errors'}`"></span>
+      <span aria-hidden="true">·</span>
+      <span x-text="`Page ${errorPage.page} of ${errorPage.pageCount}`"></span>
+    </p>
+    <div>
+      <button
+        class="button secondary"
+        type="button"
+        :disabled="!canLoadNewer || loading"
+        @click="loadNewer()"
+      >Newer</button>
+      <button
+        class="button secondary"
+        type="button"
+        :disabled="!canLoadOlder || loading"
+        @click="loadOlder()"
+      >Older</button>
+    </div>
+  </footer>
+</section>

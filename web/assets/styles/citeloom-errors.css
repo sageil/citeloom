@@ -1,0 +1,445 @@
+/* Error report route styles are loaded only when the administrator view is requested. */
+
+.error-reports-page {
+  display: grid;
+  width: min(1120px, 100%);
+  gap: 16px;
+  margin: 0 auto;
+  padding: 8px 0 40px;
+}
+
+.error-reports-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 8px 8px 2px;
+}
+
+.error-reports-header h1 {
+  margin-bottom: 6px;
+  color: var(--cyan);
+  font-family: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(31px, 3.2vw, 38px);
+  font-weight: 610;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.error-reports-header p {
+  max-width: 660px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.error-reports-refresh {
+  min-height: 46px;
+  margin-top: 20px;
+  border-color: rgba(6, 182, 212, 0.58);
+  background: rgba(11, 16, 32, 0.74);
+}
+
+.error-area-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: rgba(11, 16, 32, 0.72);
+}
+
+.error-area-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  gap: 12px;
+  padding: 0 16px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.error-area-filter:last-child {
+  border-right: 0;
+}
+
+.error-area-filter strong {
+  min-width: 30px;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 11px;
+  text-align: center;
+}
+
+.error-area-filter:hover,
+.error-area-filter:focus-visible,
+.error-area-filter.active {
+  background: rgba(6, 182, 212, 0.09);
+  color: var(--text);
+}
+
+.error-area-filter.active {
+  box-shadow: inset 0 -2px var(--cyan);
+}
+
+.error-area-filter:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.error-reports-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.error-reports-message .text-button {
+  margin-left: auto;
+}
+
+.error-reports-loading,
+.error-reports-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  gap: 14px;
+  padding: 36px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(11, 16, 32, 0.72);
+  color: var(--muted);
+}
+
+.error-reports-empty {
+  justify-content: flex-start;
+}
+
+.error-reports-empty > svg {
+  width: 34px;
+  height: 34px;
+  color: var(--success);
+}
+
+.error-reports-empty h2 {
+  margin-bottom: 4px;
+  font-size: 17px;
+}
+
+.error-reports-empty p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.error-report-list {
+  display: grid;
+  gap: 12px;
+}
+
+.error-report-card {
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--warning);
+  border-radius: 10px;
+  background: rgba(11, 16, 32, 0.76);
+}
+
+.error-report-card.severity-error {
+  border-left-color: var(--danger);
+}
+
+.error-report-card.severity-critical {
+  border-left-color: #fb7185;
+  box-shadow: 0 0 24px rgba(251, 113, 133, 0.08);
+}
+
+.error-report-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(19, 27, 46, 0.54);
+}
+
+.error-report-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.error-report-severity,
+.error-report-area {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 680;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.error-report-severity.severity-warning {
+  border-color: rgba(251, 191, 36, 0.48);
+  color: var(--warning);
+}
+
+.error-report-severity.severity-error,
+.error-report-severity.severity-critical {
+  border-color: rgba(248, 113, 113, 0.52);
+  color: var(--danger);
+}
+
+.error-report-time {
+  display: grid;
+  gap: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: right;
+}
+
+.error-report-time strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.error-report-summary {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.error-report-summary h2 {
+  margin: 0 0 5px;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+.error-report-code,
+.error-report-message,
+.error-report-source {
+  margin: 0;
+}
+
+.error-report-code {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.error-report-message {
+  color: #dbeafe;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.error-report-source {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.error-report-source code {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error-report-context,
+.error-report-docling {
+  border-top: 1px solid var(--border);
+}
+
+.error-report-context summary,
+.error-report-docling summary {
+  padding: 11px 16px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.error-report-docling summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.error-report-docling summary strong {
+  min-width: 24px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  text-align: center;
+}
+
+.error-report-context dl,
+.error-report-docling-detail dl {
+  margin: 0;
+}
+
+.error-report-context dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0 16px 14px;
+}
+
+.error-report-context dl > div,
+.error-report-docling-detail dl > div {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.36fr) minmax(0, 1fr);
+  min-width: 0;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+}
+
+.error-report-context dl > div:nth-child(odd) {
+  padding-right: 18px;
+}
+
+.error-report-context dl > div:nth-child(even) {
+  padding-left: 18px;
+  border-left: 1px solid var(--border);
+}
+
+.error-report-context dt,
+.error-report-docling-detail dt {
+  color: var(--muted);
+}
+
+.error-report-context dd,
+.error-report-docling-detail dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.error-report-docling-list {
+  display: grid;
+  gap: 10px;
+  padding: 0 16px 16px;
+}
+
+.error-report-docling-detail {
+  padding: 12px;
+  border: 1px solid var(--border);
+  background: rgba(19, 27, 46, 0.48);
+}
+
+.error-report-docling-detail > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--cyan);
+  font-size: 11px;
+}
+
+.error-report-docling-detail > header span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.error-report-docling-detail > p {
+  margin: 10px 0;
+  color: #dbeafe;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.error-reports-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 8px;
+}
+
+.error-reports-pagination p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.error-reports-pagination > div {
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .error-reports-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .error-reports-refresh {
+    align-self: flex-start;
+    margin-top: 0;
+  }
+
+  .error-area-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .error-area-filter:nth-child(2) {
+    border-right: 0;
+  }
+
+  .error-area-filter:nth-child(n + 3) {
+    border-top: 1px solid var(--border);
+  }
+
+  .error-report-context dl {
+    grid-template-columns: 1fr;
+  }
+
+  .error-report-context dl > div:nth-child(odd),
+  .error-report-context dl > div:nth-child(even) {
+    padding-right: 0;
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .error-report-card-header,
+  .error-reports-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .error-report-time {
+    text-align: left;
+  }
+
+  .error-report-context dl > div,
+  .error-report-docling-detail dl > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+}
