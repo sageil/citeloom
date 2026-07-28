@@ -298,8 +298,8 @@
                     <label class="provider-form-field">
                       <span x-text="field.label"></span>
                       <template x-if="field.input === 'select'">
-                        <select x-model="drafts[field.key]" @change="writeFieldDraft(field, $event.target.value)">
-                          <template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template>
+                        <select @change="writeFieldDraft(field, $event.target.value)">
+                          <template x-for="option in field.options" :key="String(option.value)"><option :selected="String(option.value) === String(drafts[field.key])" :value="String(option.value)" x-text="option.label"></option></template>
                         </select>
                       </template>
                       <template x-if="field.input !== 'select'">
@@ -343,13 +343,22 @@
                 </template>
                 <template x-if="inputFormatDraft !== null">
                   <form class="settings-input-format-editor" @submit.prevent="submitEmbeddingInputFormat()">
-                    <header><h4 x-text="embeddingInputFormatEditorTitle()"></h4><p>Saving creates a new format. The original remains unchanged.</p></header>
-                    <label><span>Name</span><input maxlength="100" required type="text" x-model="inputFormatDraft.name" /></label>
-                    <label><span>Schema version</span><input min="1" required type="number" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.schemaVersion" /></label>
-                    <label class="settings-input-format-template-field"><span>Document template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.documentTemplate"></textarea></label>
-                    <label class="settings-input-format-template-field"><span>Query template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.queryTemplate"></textarea></label>
-                    <p>Each template must contain exactly one <code>{{text}}</code> placeholder.</p>
-                    <div><button class="settings-input-format-action" type="button" :disabled="inputFormatBusy" @click="cancelEmbeddingInputFormatEditor()">Cancel</button><button class="settings-input-format-action settings-input-format-action-primary" type="submit" :disabled="inputFormatBusy" x-text="inputFormatBusy ? 'Saving' : 'Save format'"></button></div>
+                    <header>
+                      <h4 x-text="embeddingInputFormatEditorTitle()"></h4>
+                      <p>Saving creates a new format. The original remains unchanged.</p>
+                    </header>
+                    <div class="settings-input-format-guidance">
+                      <strong>Match the embedding model's instructions</strong>
+                      <span>The document template prepares each indexed passage. The query template prepares each question or semantic search.</span>
+                      <span>Use the exact prefixes required by the model and place one <code>{{text}}</code> where CiteLoom should insert the passage or question.</span>
+                      <a class="text-action inline-help" data-view="help" href="./index.html?view=help#embedding-input-formats" hx-get="./fragments/help.html" hx-push-url="./index.html?view=help#embedding-input-formats">View examples and step-by-step guidance</a>
+                    </div>
+                    <label><span>Name</span><input maxlength="100" required type="text" x-model="inputFormatDraft.name" /><small>Use a recognizable name such as Acme Embed v2.</small></label>
+                    <label><span>Schema version</span><input min="1" required type="number" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.schemaVersion" /><small>Use 1 for a new format. Increase it only for a deliberately versioned template contract.</small></label>
+                    <label class="settings-input-format-template-field"><span>Document template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.documentTemplate"></textarea><small>Applied to every passage during indexing. Plain example: <code>{{text}}</code></small></label>
+                    <label class="settings-input-format-template-field"><span>Query template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.queryTemplate"></textarea><small>Applied to every question or semantic search. Snowflake example: <code>Represent this sentence for searching relevant passages: {{text}}</code></small></label>
+                    <p>Both templates must contain exactly one <code>{{text}}</code> placeholder.</p>
+                    <div class="settings-input-format-editor-actions"><button class="settings-input-format-action" type="button" :disabled="inputFormatBusy" @click="cancelEmbeddingInputFormatEditor()">Cancel</button><button class="settings-input-format-action settings-input-format-action-primary" type="submit" :disabled="inputFormatBusy" x-text="inputFormatBusy ? 'Saving' : 'Save format'"></button></div>
                   </form>
                 </template>
               </div>

@@ -1891,7 +1891,7 @@
 }
 
 .settings-input-format-actions,
-.settings-input-format-editor > div {
+.settings-input-format-editor-actions {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2022,12 +2022,41 @@
   font-size: 11px;
 }
 
+.settings-input-format-guidance {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid rgba(6, 182, 212, 0.24);
+  border-radius: 6px;
+  background: rgba(6, 182, 212, 0.05);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.5;
+}
+
+.settings-input-format-guidance strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.settings-input-format-guidance .inline-help {
+  justify-self: start;
+  margin-top: 3px;
+}
+
 .settings-input-format-editor label {
   display: grid;
   gap: 6px;
   color: var(--text);
   font-size: 11px;
   font-weight: 650;
+}
+
+.settings-input-format-editor label small {
+  color: var(--muted);
+  font-weight: 450;
+  line-height: 1.45;
 }
 
 .settings-input-format-editor textarea {
@@ -2042,7 +2071,7 @@
   cursor: not-allowed;
 }
 
-.settings-input-format-editor > div {
+.settings-input-format-editor-actions {
   justify-content: flex-end;
   margin-left: 0;
 }
@@ -2259,7 +2288,7 @@
   }
 
   .settings-input-format-actions,
-  .settings-input-format-editor > div {
+  .settings-input-format-editor-actions {
     align-items: stretch;
     flex-direction: column;
   }
