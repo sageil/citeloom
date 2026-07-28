@@ -109,7 +109,8 @@ Settings and answer requests report that reindexing is required until the select
 docker logs --follow citeloom-worker-1
 ```
 
-Confirm that the selected embedding model, input format and hash, dimensions, retrieval-window policy, and target space are intentional before scheduling broad reindexing.
+Review the selected embedding model, input format and templates, dimensions, retrieval-window policy, and target space before scheduling broad reindexing.
+CiteLoom derives, verifies, and reports the input-format hash automatically.
 
 ## Embedding-space retention
 
