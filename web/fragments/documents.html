@@ -1,0 +1,923 @@
+<section
+  class="feature-page documents-feature-page"
+  aria-label="Documents page"
+  x-data="citeloomDocumentsPage"
+>
+  <section class="documents-section" id="documents" aria-label="Documents">
+    <div
+      class="document-explorer"
+      :class="{ 'low-document-count': lowDocumentCount }"
+    >
+      <nav class="collections-rail" aria-label="Document collections">
+        <p>Collections</p>
+        <div class="collection-links">
+          <template x-for="item in collections" :key="item.key">
+            <button
+              type="button"
+              :class="{ active: collectionActive(item.key) }"
+              @click="chooseCollection(item.key)"
+            >
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use :href="collectionIcon(item.key)"></use>
+              </svg>
+              <span x-text="item.label"></span>
+              <small x-text="displayCount(item.count)"></small>
+            </button>
+          </template>
+        </div>
+
+        <p class="saved-view-label">Saved views</p>
+        <div class="collection-links">
+          <button
+            type="button"
+            :class="{ active: statusFilterActive('processing') }"
+            @click="chooseStatus('processing')"
+          >
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use>
+            </svg>
+            <span>Processing</span>
+            <small x-text="displayCount(facets.processing)"></small>
+          </button>
+          <button
+            type="button"
+            :class="{ active: statusFilterActive('failed'), danger: statusFilterActive('failed') }"
+            @click="chooseStatus('failed')"
+          >
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
+            </svg>
+            <span>Failed</span>
+            <small x-text="displayCount(facets.failed)"></small>
+          </button>
+        </div>
+      </nav>
+
+      <div class="document-browser-main">
+        <div class="catalog-toolbar">
+          <label class="catalog-search">
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
+            </svg>
+            <span class="visually-hidden">Search documents</span>
+            <input
+              placeholder="Search documents by name"
+              type="search"
+              x-model="searchInput"
+              @input="scheduleSearch()"
+            />
+          </label>
+          <label>
+            <span class="visually-hidden">Filter by status</span>
+            <select :value="status" @change="chooseStatus($event.target.value)">
+              <option value="all">Status: All</option>
+              <option value="ready">Ready</option>
+              <option value="processing">Processing</option>
+              <option value="failed">Failed</option>
+              <option value="reindex-required">Reindex required</option>
+            </select>
+          </label>
+          <label>
+            <span class="visually-hidden">Filter by tag</span>
+            <select :value="tagFilter" @change="chooseTag($event.target.value)">
+              <option value="">Tags: All</option>
+              <template x-for="facet in facets.tags" :key="facet.tag">
+                <option
+                  :value="facet.tag"
+                  x-text="`${facet.tag} (${facet.count})`"
+                ></option>
+              </template>
+            </select>
+          </label>
+          <label>
+            <span class="visually-hidden">Sort documents</span>
+            <select :value="sort" @change="chooseSort($event.target.value)">
+              <option value="updated-desc">Updated: newest</option>
+              <option value="updated-asc">Updated: oldest</option>
+              <option value="name-asc">Name: A-Z</option>
+              <option value="name-desc">Name: Z-A</option>
+            </select>
+          </label>
+        </div>
+
+        <div
+          class="catalog-error"
+          role="alert"
+          x-cloak
+          x-show="loadErrorMessage !== ''"
+        >
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
+          </svg>
+          <span x-text="loadErrorMessage"></span>
+          <button class="text-button" type="button" @click="loadCatalog()">Try again</button>
+        </div>
+
+        <section
+          aria-labelledby="attention-title"
+          x-cloak
+          x-show="attentionTotal > 0"
+          :class="attentionClass()"
+        >
+          <button
+            class="attention-heading"
+            type="button"
+            :aria-expanded="attentionOpen"
+            @click="attentionOpen = !attentionOpen"
+          >
+            <span id="attention-title" x-text="attentionLabel()"></span>
+            <strong x-text="attentionTotal"></strong>
+            <span class="attention-spacer"></span>
+            <span aria-hidden="true" x-text="attentionOpen ? '⌃' : '⌄'"></span>
+          </button>
+          <div x-show="attentionOpen">
+            <template x-for="document in attentionDocuments" :key="document.sourceFile">
+              <div
+                class="attention-row"
+                :class="{ selected: selectedDocument?.sourceFile === document.sourceFile }"
+              >
+                <button
+                  class="attention-select"
+                  type="button"
+                  @click="selectDocument(document)"
+                >
+                  <span
+                    aria-hidden="true"
+                    class="attention-state"
+                    :class="document.displayStatus"
+                  >
+                    <svg class="citeloom-icon citeloom-small-icon">
+                      <use :href="document.displayStatus === 'failed' ? './assets/images/citeloom-icons.svg#citeloom-warning-circle' : './assets/images/citeloom-icons.svg#citeloom-clock'"></use>
+                    </svg>
+                  </span>
+                  <span class="mini-document-icon" aria-hidden="true">
+                    <svg class="citeloom-icon citeloom-small-icon">
+                      <use :href="documentIcon(document)"></use>
+                    </svg>
+                  </span>
+                  <span class="attention-name">
+                    <strong x-text="document.filename"></strong>
+                    <small x-text="document.tags[0] ?? document.fileType"></small>
+                  </span>
+                  <span class="attention-status" :class="document.displayStatus">
+                    <strong x-text="document.statusLabel"></strong>
+                    <small
+                      x-cloak
+                      x-show="document.statusDetail !== null"
+                      x-text="document.statusDetail"
+                    ></small>
+                    <span
+                      aria-hidden="true"
+                      class="phase-progress"
+                      :class="{ indeterminate: !embeddingProgressDeterminate(document) }"
+                      x-show="attentionProcessing(document)"
+                    >
+                      <span :style="embeddingProgressStyle(document)"></span>
+                    </span>
+                  </span>
+                  <time
+                    :aria-label="attentionRunning(document) ? `${document.statusLabel} elapsed time: ${elapsedDuration(document)}` : null"
+                    :datetime="document.updatedAt"
+                    :title="attentionRunning(document) ? 'Elapsed time in the current phase' : null"
+                    x-text="attentionRunning(document) ? elapsedDuration(document) : documentUpdated(document)"
+                  ></time>
+                </button>
+              </div>
+            </template>
+          </div>
+        </section>
+
+        <section class="catalog-table" aria-labelledby="catalog-table-title">
+          <header class="catalog-table-title">
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+            </svg>
+            <h3 id="catalog-table-title" x-text="collectionLabel"></h3>
+            <span x-text="displayCount(total)"></span>
+            <svg
+              aria-hidden="true"
+              class="citeloom-icon citeloom-small-icon spin"
+              x-cloak
+              x-show="loading"
+            >
+              <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
+            </svg>
+          </header>
+
+          <div class="catalog-columns">
+            <label class="catalog-question-checkbox catalog-page-checkbox">
+              <input
+                aria-label="Select all ready documents on this page"
+                type="checkbox"
+                :checked="pageSelectionState(questionDocuments).all"
+                :disabled="readyPageDocuments.length === 0"
+                x-effect="$el.indeterminate = pageSelectionState(questionDocuments).some"
+                @change="setQuestionDocumentsSelected(readyPageDocuments, !pageSelectionState(questionDocuments).all)"
+              />
+              <span
+                aria-hidden="true"
+                class="catalog-checkbox-control"
+                x-text="pageSelectionState(questionDocuments).some ? '−' : '✓'"
+              ></span>
+            </label>
+            <span class="catalog-column-name">Name</span>
+            <span class="catalog-column-tags">Tags</span>
+            <span class="catalog-column-status">Status</span>
+            <span class="catalog-column-stat">Locations</span>
+            <span class="catalog-column-stat">Tables</span>
+            <span class="catalog-column-stat">Images</span>
+            <span class="catalog-column-updated">Updated</span>
+          </div>
+
+          <div class="catalog-rows">
+            <template x-for="document in catalogDocuments" :key="document.sourceFile">
+              <div
+                class="catalog-row"
+                :class="{ selected: selectedDocument?.sourceFile === document.sourceFile }"
+              >
+                <label class="catalog-question-checkbox">
+                  <input
+                    type="checkbox"
+                    :aria-label="`Include ${document.filename} in the question`"
+                    :checked="isQuestionDocumentSelected(document.sourceFile)"
+                    :disabled="document.queryStatus !== 'ready'"
+                    @change="toggleQuestionDocument(document)"
+                  />
+                  <span aria-hidden="true" class="catalog-checkbox-control">✓</span>
+                </label>
+                <button
+                  class="catalog-row-details"
+                  type="button"
+                  :aria-label="`View details for ${document.filename}`"
+                  :aria-pressed="selectedDocument?.sourceFile === document.sourceFile"
+                  @click="selectDocument(document)"
+                ></button>
+                <span class="catalog-document-name">
+                  <span class="row-document-icon" aria-hidden="true">
+                    <svg class="citeloom-icon citeloom-small-icon">
+                      <use :href="documentIcon(document)"></use>
+                    </svg>
+                  </span>
+                  <strong
+                    :title="document.filename"
+                    x-text="document.filename"
+                  ></strong>
+                </span>
+                <span class="catalog-row-tags">
+                  <template x-for="tag in document.tags.slice(0, 2)" :key="tag">
+                    <small x-text="tag"></small>
+                  </template>
+                  <small
+                    x-cloak
+                    x-show="document.tags.length > 2"
+                    x-text="`+${document.tags.length - 2}`"
+                  ></small>
+                </span>
+                <span class="catalog-status" :class="document.displayStatus">
+                  <span aria-hidden="true"></span>
+                  <span
+                    class="citeloom-catalog-status-label"
+                    :title="document.statusLabel"
+                    x-text="document.compactStatusLabel"
+                  ></span>
+                </span>
+                <span class="catalog-row-stat" x-text="document.pageCountLabel"></span>
+                <span class="catalog-row-stat" x-text="document.tablesLabel"></span>
+                <span class="catalog-row-stat" x-text="document.imagesLabel"></span>
+                <time
+                  class="catalog-row-updated"
+                  :datetime="document.updatedAt"
+                  x-text="documentUpdated(document)"
+                ></time>
+              </div>
+            </template>
+
+            <div
+              class="catalog-empty"
+              x-cloak
+              x-show="!loading &amp;&amp; catalogDocuments.length === 0"
+            >
+              <svg aria-hidden="true" class="citeloom-icon citeloom-large-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+              </svg>
+              <strong>No matching documents</strong>
+              <span>Try a different search, collection, status, or tag.</span>
+            </div>
+          </div>
+
+          <footer class="catalog-pagination">
+            <span x-text="`Showing ${firstResult}-${lastResult} of ${displayCount(total)}`"></span>
+            <label>
+              <span class="visually-hidden">Documents per page</span>
+              <select :value="pageSize" @change="choosePageSize($event.target.value)">
+                <option value="25">25 per page</option>
+                <option value="50">50 per page</option>
+                <option value="100">100 per page</option>
+              </select>
+            </label>
+            <div class="page-buttons" aria-label="Document pages">
+              <button
+                aria-label="Previous page"
+                type="button"
+                :disabled="page &lt;= 1"
+                @click="choosePage(page - 1)"
+              >←</button>
+              <template x-for="pageNumber in pageNumbers" :key="pageNumber">
+                <button
+                  type="button"
+                  :aria-current="pageNumber === page ? 'page' : null"
+                  :class="{ active: pageNumber === page }"
+                  x-text="pageNumber"
+                  @click="choosePage(pageNumber)"
+                ></button>
+              </template>
+              <button
+                aria-label="Next page"
+                type="button"
+                :disabled="page >= totalPages"
+                @click="choosePage(page + 1)"
+              >→</button>
+            </div>
+          </footer>
+        </section>
+      </div>
+
+      <aside class="document-inspector empty-inspector" x-show="selectedDocument === null">
+        <svg aria-hidden="true" class="citeloom-icon citeloom-large-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+        </svg>
+        <strong>Select a document</strong>
+        <span>Details and actions will appear here.</span>
+      </aside>
+
+      <template x-if="selectedDocument !== null">
+        <aside
+          class="document-inspector"
+          :aria-label="`Details for ${selectedDocument.filename}`"
+        >
+          <header class="inspector-heading">
+            <span class="inspector-document-icon" aria-hidden="true">
+              <svg class="citeloom-icon">
+                <use :href="documentIcon(selectedDocument)"></use>
+              </svg>
+            </span>
+            <div class="inspector-title-copy">
+              <h3 x-text="selectedDocument.filename"></h3>
+              <span class="catalog-status" :class="selectedDocument.displayStatus">
+                <span aria-hidden="true"></span>
+                <span
+                  class="citeloom-catalog-status-label"
+                  x-text="selectedDocument.statusLabel"
+                ></span>
+              </span>
+              <span
+                class="inspector-status-detail"
+                x-cloak
+                x-show="selectedDocument.statusDetail !== null"
+                x-text="selectedDocument.statusDetail"
+              ></span>
+            </div>
+          </header>
+
+          <section class="inspector-section inspector-progress-section">
+            <div class="inspector-section-heading">
+              <h4>Ingestion progress</h4>
+              <span x-text="`${completedPhaseCount(selectedDocument)} of ${phaseStages(selectedDocument).length}`"></span>
+            </div>
+            <ol class="phase-progress-rail">
+              <template x-for="stage in phaseStages(selectedDocument)" :key="stage.label">
+                <li :class="stage.state">
+                  <span aria-hidden="true"></span>
+                  <strong x-text="stage.label"></strong>
+                </li>
+              </template>
+            </ol>
+            <div
+              class="ingestion-activity-list"
+              x-cloak
+              x-show="embeddingProgressVisible(selectedDocument)"
+            >
+              <div class="ingestion-activity">
+                <div>
+                  <strong>Embedding content</strong>
+                  <span x-text="embeddingProgressDetail(selectedDocument)"></span>
+                </div>
+                <span
+                  aria-hidden="true"
+                  class="phase-progress"
+                  :class="{ indeterminate: !embeddingProgressDeterminate(selectedDocument) }"
+                >
+                  <span :style="embeddingProgressStyle(selectedDocument)"></span>
+                </span>
+              </div>
+            </div>
+
+            <div
+              class="inspector-notification-action"
+              x-cloak
+              x-show="documentNotificationAvailable(selectedDocument)"
+            >
+              <p>Add to question becomes available when indexing is complete.</p>
+              <button
+                class="button primary"
+                type="button"
+                :aria-pressed="documentNotificationEnabled(selectedDocument)"
+                :class="{ selected: documentNotificationEnabled(selectedDocument) }"
+                @click="toggleDocumentNotification(selectedDocument)"
+              >
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use :href="documentNotificationEnabled(selectedDocument) ? './assets/images/citeloom-icons.svg#citeloom-status-check' : './assets/images/citeloom-icons.svg#citeloom-envelope'"></use>
+                </svg>
+                <span x-text="documentNotificationLabel(selectedDocument)"></span>
+              </button>
+              <div class="inspector-notification-helper">
+                <span>We’ll notify you while CiteLoom is open.</span>
+                <button
+                  class="text-button"
+                  type="button"
+                  x-show="documentNotificationEnabled(selectedDocument)"
+                  @click="setDocumentNotification(selectedDocument, false)"
+                >Turn off</button>
+              </div>
+            </div>
+
+            <div class="inspector-ready-action" x-show="selectedDocument.queryStatus === 'ready'">
+              <button
+                class="button primary"
+                type="button"
+                :aria-pressed="isQuestionDocumentSelected(selectedDocument.sourceFile)"
+                :class="{ selected: isQuestionDocumentSelected(selectedDocument.sourceFile) }"
+                :disabled="actionKind === 'reindex'"
+                @click="toggleQuestionDocument(selectedDocument)"
+              >
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use>
+                </svg>
+                <span x-text="isQuestionDocumentSelected(selectedDocument.sourceFile) ? 'Added to question' : 'Add to question'"></span>
+              </button>
+            </div>
+
+            <div class="inspector-retry-action" x-show="selectedDocument.status === 'failed'">
+              <button
+                class="button primary"
+                type="button"
+                :disabled="actionKind !== null"
+                @click="retryDocument(selectedDocument)"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="citeloom-icon citeloom-small-icon"
+                  :class="{ spin: actionKind === 'retry' &amp;&amp; actionSourceFile === selectedDocument.sourceFile }"
+                >
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
+                </svg>
+                <span x-text="retryLabel(selectedDocument)"></span>
+              </button>
+            </div>
+          </section>
+
+          <details
+            class="inspector-disclosure"
+            :open="inspectorDisclosures.source"
+            @toggle="inspectorDisclosures.source = $event.currentTarget.open"
+          >
+            <summary>
+              <span>
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+                </svg>
+                <strong>Source</strong>
+              </span>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon inspector-disclosure-caret">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+              </svg>
+            </summary>
+            <div class="inspector-disclosure-content">
+              <div class="inspector-source">
+                <span x-text="selectedDocument.sourceFile"></span>
+                <button aria-label="Copy source path" type="button" @click="copySource()">
+                  <span aria-hidden="true" x-text="copyState === 'copied' ? '✓' : '⧉'"></span>
+                </button>
+              </div>
+            </div>
+          </details>
+
+          <details
+            class="inspector-disclosure"
+            :open="inspectorDisclosures.tags"
+            @toggle="inspectorDisclosures.tags = $event.currentTarget.open"
+          >
+            <summary>
+              <span>
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+                </svg>
+                <strong>Tags</strong>
+                <span class="inspector-disclosure-preview">
+                  <small x-show="selectedDocument.tags.length === 0">Untagged</small>
+                  <template x-for="tag in selectedDocument.tags.slice(0, 2)" :key="tag">
+                    <small x-text="tag"></small>
+                  </template>
+                  <small
+                    x-show="selectedDocument.tags.length > 2"
+                    x-text="`+${selectedDocument.tags.length - 2}`"
+                  ></small>
+                </span>
+              </span>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon inspector-disclosure-caret">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+              </svg>
+            </summary>
+            <div class="inspector-disclosure-content inspector-tag-editor">
+              <div class="inspector-tags">
+                <span x-show="tagDrafts.length === 0">Untagged</span>
+                <template x-for="tag in tagDrafts" :key="tag">
+                  <span class="inspector-tag-chip">
+                    <span x-text="tag"></span>
+                    <button
+                      type="button"
+                      :aria-label="`Remove ${tag} tag`"
+                      x-show="selectedDocument.activeDocumentId !== null"
+                      :disabled="actionKind !== null"
+                      @click="removeTagDraft(tag)"
+                    >×</button>
+                  </span>
+                </template>
+              </div>
+              <div class="inspector-tag-entry" x-show="selectedDocument.activeDocumentId !== null">
+                <input
+                  aria-label="Add a document tag"
+                  autocomplete="off"
+                  maxlength="64"
+                  placeholder="Add a tag"
+                  type="text"
+                  x-model="tagDraft"
+                  :disabled="actionKind !== null"
+                  @keydown.enter.prevent="addTagDraft()"
+                >
+                <button
+                  class="button secondary"
+                  type="button"
+                  :disabled="actionKind !== null || (!tagsChanged(selectedDocument) &amp;&amp; tagDraft.trim() === '')"
+                  @click="saveDocumentTags(selectedDocument)"
+                  x-text="actionKind === 'tags' ? 'Saving…' : 'Save tags'"
+                ></button>
+              </div>
+              <p
+                class="inspector-error"
+                role="alert"
+                x-cloak
+                x-show="tagErrorMessage !== ''"
+                x-text="tagErrorMessage"
+              ></p>
+              <small x-show="selectedDocument.activeDocumentId !== null">Press Enter to add each tag, then save your changes.</small>
+              <small x-show="selectedDocument.activeDocumentId === null">Tags can be changed after this document is indexed.</small>
+            </div>
+          </details>
+
+          <details
+            class="inspector-disclosure"
+            :open="inspectorDisclosures.indexedContent"
+            @toggle="inspectorDisclosures.indexedContent = $event.currentTarget.open"
+          >
+            <summary>
+              <span>
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+                </svg>
+                <strong>Indexed content</strong>
+              </span>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon inspector-disclosure-caret">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+              </svg>
+            </summary>
+            <dl class="inspector-counts">
+              <div><dd x-text="selectedDocument.textChunksLabel"></dd><dt>Text</dt></div>
+              <div><dd x-text="selectedDocument.tablesLabel"></dd><dt>Tables</dt></div>
+              <div><dd x-text="selectedDocument.imagesLabel"></dd><dt>Images</dt></div>
+            </dl>
+          </details>
+
+          <section class="inspector-details-action">
+            <button
+              aria-controls="inspector-full-details"
+              class="button secondary"
+              type="button"
+              :aria-expanded="detailsOpen"
+              @click="detailsOpen = !detailsOpen"
+              x-text="detailsOpen ? 'Hide details' : 'View details'"
+            ></button>
+          </section>
+
+          <section
+            class="inspector-section"
+            x-cloak
+            x-show="selectedDocument.errorMessage !== null"
+          >
+            <h4 x-text="selectedDocument.failureHeading"></h4>
+            <p x-text="selectedDocument.failureContext"></p>
+            <p class="inspector-error" x-text="selectedDocument.errorMessage"></p>
+          </section>
+
+          <details
+            class="inspector-disclosure inspector-version-section"
+            :open="inspectorDisclosures.version"
+            @toggle="inspectorDisclosures.version = $event.currentTarget.open"
+            x-cloak
+            x-show="versionLoading || versions.length > 0 || versionErrorMessage !== ''"
+          >
+            <summary>
+              <span>
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use>
+                </svg>
+                <strong>Current version</strong>
+              </span>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon inspector-disclosure-caret">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+              </svg>
+            </summary>
+            <div class="inspector-disclosure-content inspector-version-content">
+              <p
+                class="inspector-error"
+                role="alert"
+                x-show="versionErrorMessage !== ''"
+                x-text="versionErrorMessage"
+              ></p>
+              <p class="citeloom-inline-status" x-show="versionLoading">Loading version history</p>
+              <ol class="document-version-list compact-version-list">
+                <template x-for="version in versions" :key="version.id">
+                  <li x-show="version.id === selectedDocument.activeVersionId">
+                    <div>
+                      <strong x-text="`Version ${version.version}`"></strong>
+                      <span
+                        x-show="version.id === selectedDocument.activeVersionId"
+                      >Current</span>
+                    </div>
+                    <small x-text="`${formatExactDate(version.createdAt)} · ${version.elementCount} elements`"></small>
+                    <a
+                      rel="noopener noreferrer"
+                      target="_blank"
+                      :href="versionFileUrl(version.id)"
+                    >View saved version</a>
+                  </li>
+                </template>
+              </ol>
+              <dl
+                class="document-version-diff"
+                x-cloak
+                x-show="versionDifference !== null"
+              >
+                <div><dt>Added evidence</dt><dd x-text="versionDifference?.added ?? 0"></dd></div>
+                <div><dt>Modified evidence</dt><dd x-text="versionDifference?.modified ?? 0"></dd></div>
+                <div><dt>Removed evidence</dt><dd x-text="versionDifference?.removed ?? 0"></dd></div>
+              </dl>
+            </div>
+          </details>
+
+          <dl class="inspector-metadata" id="inspector-full-details" x-show="detailsOpen">
+            <div><dt>Last updated</dt><dd x-text="formatExactDate(selectedDocument.updatedAt)"></dd></div>
+            <div><dt>Document ID</dt><dd :title="selectedDocument.documentId" x-text="selectedDocument.documentId"></dd></div>
+            <div><dt>File size</dt><dd x-text="formatByteLength(selectedDocument.byteLength)"></dd></div>
+            <div><dt>File type</dt><dd x-text="selectedDocument.fileType.toUpperCase()"></dd></div>
+          </dl>
+
+          <section
+            class="inspector-document-controls inspector-ingestion-controls"
+            x-cloak
+            x-show="selectedDocument.uploadedByUserId !== null &amp;&amp; (selectedDocument.status === 'pending' || selectedDocument.status === 'running' || selectedDocument.status === 'failed')"
+          >
+            <div class="inspector-management-actions inspector-control-actions">
+              <button
+                class="button secondary"
+                type="button"
+                x-show="selectedDocument.fileType === 'pdf' &amp;&amp; (selectedDocument.status === 'pending' || selectedDocument.status === 'running') &amp;&amp; selectedDocument.controlState === 'active'"
+                :disabled="actionKind !== null"
+                @click="controlIngestion(selectedDocument, 'pause')"
+              >
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-pause"></use>
+                </svg>
+                <span x-text="actionKind === 'pause' ? 'Requesting pause…' : 'Pause ingestion'"></span>
+              </button>
+              <button
+                class="button secondary"
+                type="button"
+                x-show="selectedDocument.fileType === 'pdf' &amp;&amp; selectedDocument.status === 'pending' &amp;&amp; selectedDocument.controlState === 'paused'"
+                :disabled="actionKind !== null"
+                @click="controlIngestion(selectedDocument, 'resume')"
+                x-text="actionKind === 'resume' ? 'Resuming…' : 'Resume ingestion'"
+              ></button>
+              <button
+                class="button danger"
+                type="button"
+                x-show="selectedDocument.controlState === 'active' || selectedDocument.controlState === 'pause_requested' || selectedDocument.controlState === 'paused' || selectedDocument.controlState === 'cleanup_failed'"
+                :disabled="actionKind !== null"
+                @click="actionConfirmation = 'cancel-ingestion'"
+              >
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use>
+                </svg>
+                <span x-text="selectedDocument.controlState === 'cleanup_failed' ? 'Retry cancellation' : 'Cancel ingestion'"></span>
+              </button>
+            </div>
+            <div class="inspector-confirmation danger" x-show="actionConfirmation === 'cancel-ingestion'">
+              <strong>Cancel this ingestion?</strong>
+              <span>This removes the uploaded file and any partial index data.</span>
+              <div>
+                <button class="button secondary" type="button" @click="actionConfirmation = null">Keep ingestion</button>
+                <button
+                  class="button danger"
+                  type="button"
+                  :disabled="actionKind !== null"
+                  @click="controlIngestion(selectedDocument, 'cancel')"
+                  x-text="actionKind === 'cancel' ? 'Canceling…' : 'Cancel ingestion'"
+                ></button>
+              </div>
+            </div>
+          </section>
+
+          <section
+            class="inspector-document-controls"
+            x-show="selectedDocument.status === 'ready' || (currentRole === 'admin' &amp;&amp; selectedDocument.status !== 'pending' &amp;&amp; selectedDocument.status !== 'running')"
+          >
+            <div
+              class="inspector-management-actions inspector-control-actions"
+              x-show="actionConfirmation === null"
+            >
+              <button
+                class="button secondary"
+                type="button"
+                x-show="selectedDocument.status === 'ready'"
+                :disabled="actionKind !== null"
+                @click="actionConfirmation = 'reindex'"
+              >
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
+                </svg>
+                <span>Reindex</span>
+              </button>
+              <button
+                class="button danger"
+                type="button"
+                x-show="currentRole === 'admin' &amp;&amp; selectedDocument.status !== 'pending' &amp;&amp; selectedDocument.status !== 'running'"
+                :disabled="actionKind !== null"
+                @click="actionConfirmation = 'delete'"
+              >
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use>
+                </svg>
+                <span>Delete document</span>
+              </button>
+            </div>
+            <div class="inspector-confirmation" x-show="actionConfirmation === 'reindex'">
+              <strong>Reindex this document?</strong>
+              <span>It stays available while a fresh index is built.</span>
+              <div>
+                <button class="button secondary" type="button" @click="actionConfirmation = null">Cancel</button>
+                <button class="button primary" type="button" :disabled="actionKind !== null" @click="reindexDocument(selectedDocument)">
+                  <span x-text="reindexLabel(selectedDocument)"></span>
+                </button>
+              </div>
+            </div>
+            <div class="inspector-confirmation danger" x-show="actionConfirmation === 'delete'">
+              <strong>Delete this document permanently?</strong>
+              <span>This removes its indexed content and cannot be undone.</span>
+              <div>
+                <button class="button secondary" type="button" @click="actionConfirmation = null">Cancel</button>
+                <button
+                  class="button danger"
+                  type="button"
+                  :disabled="actionKind !== null"
+                  @click="deleteDocument(selectedDocument)"
+                  x-text="actionKind === 'delete' ? 'Deleting…' : 'Delete permanently'"
+                ></button>
+              </div>
+            </div>
+          </section>
+        </aside>
+      </template>
+    </div>
+  </section>
+
+  <section
+    class="question-selection-bar"
+    aria-label="Documents selected for a question"
+    x-cloak
+    x-show="questionDocuments.length > 0"
+  >
+    <div class="question-selection-summary">
+      <span class="question-selection-count">
+        <strong x-text="`${questionDocuments.length} ${questionDocuments.length === 1 ? 'document' : 'documents'} selected`"></strong>
+      </span>
+      <div class="question-selection-preview" aria-label="Selection preview">
+        <template x-for="document in questionSelectionPreview" :key="document.sourceFile">
+          <span class="question-selection-chip">
+            <span
+              :title="questionDocumentName(document.sourceFile)"
+              x-text="questionDocumentName(document.sourceFile)"
+            ></span>
+            <button
+              type="button"
+              :aria-label="`Remove ${questionDocumentName(document.sourceFile)} from the question`"
+              @click="removeQuestionDocument(document.sourceFile)"
+            >×</button>
+          </span>
+        </template>
+        <button
+          class="question-selection-overflow"
+          type="button"
+          x-show="questionSelectionOverflow > 0"
+          x-text="`+${questionSelectionOverflow} more`"
+          @click="openQuestionSelection()"
+        ></button>
+      </div>
+    </div>
+    <div class="question-selection-actions">
+      <button class="text-action" type="button" @click="openQuestionSelection()">Manage selection</button>
+      <button class="text-action question-selection-clear" type="button" @click="clearQuestionDocuments()">Clear</button>
+      <button class="button primary" type="button" @click="navigateToView('ask')">
+        <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use>
+        </svg>
+        <span x-text="`Ask about ${questionDocuments.length} ${questionDocuments.length === 1 ? 'document' : 'documents'}`"></span>
+      </button>
+    </div>
+  </section>
+
+  <div
+    class="question-selection-dialog-backdrop"
+    role="presentation"
+    x-cloak
+    x-show="questionSelectionOpen"
+    x-effect="if (questionSelectionOpen) $nextTick(() => $refs.selectionSearch?.focus())"
+    @keydown.escape.window="selectionSearch = ''; closeQuestionSelection()"
+    @mousedown.self="selectionSearch = ''; closeQuestionSelection()"
+  >
+    <section
+      aria-labelledby="question-selection-dialog-title"
+      aria-modal="true"
+      class="question-selection-dialog"
+      role="dialog"
+    >
+      <header>
+        <span aria-hidden="true">
+          <svg class="citeloom-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+          </svg>
+        </span>
+        <div>
+          <h2 id="question-selection-dialog-title">Manage question documents</h2>
+          <p x-text="`${questionDocuments.length} selected`"></p>
+        </div>
+        <button
+          aria-label="Close selection manager"
+          type="button"
+          @click="selectionSearch = ''; closeQuestionSelection()"
+        >×</button>
+      </header>
+      <label class="question-selection-search">
+        <span class="visually-hidden">Search selected documents</span>
+        <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
+        </svg>
+        <input
+          placeholder="Search selected documents"
+          type="search"
+          x-ref="selectionSearch"
+          x-model="selectionSearch"
+        />
+      </label>
+      <ul class="question-selection-list">
+        <template
+          x-for="document in filteredQuestionDocuments(questionDocuments)"
+          :key="document.sourceFile"
+        >
+          <li>
+            <span
+              :title="questionDocumentName(document.sourceFile)"
+              x-text="questionDocumentName(document.sourceFile)"
+            ></span>
+            <button type="button" @click="removeQuestionDocument(document.sourceFile)">Remove</button>
+          </li>
+        </template>
+        <li
+          class="question-selection-empty"
+          x-show="filteredQuestionDocuments(questionDocuments).length === 0"
+        >No selected documents match this search.</li>
+      </ul>
+      <footer>
+        <button
+          class="text-action"
+          type="button"
+          @click="selectionSearch = ''; clearQuestionDocuments()"
+        >Clear all</button>
+        <button
+          class="button secondary"
+          type="button"
+          @click="selectionSearch = ''; closeQuestionSelection()"
+        >Done</button>
+      </footer>
+    </section>
+  </div>
+</section>
