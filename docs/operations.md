@@ -109,9 +109,6 @@ Settings and answer requests report that reindexing is required until the select
 docker logs --follow citeloom-worker-1
 ```
 
-Review the selected embedding model, input format and templates, dimensions, retrieval-window policy, and target space before scheduling broad reindexing.
-CiteLoom derives, verifies, and reports the input-format hash automatically.
-
 ## Embedding-space retention
 
 Before removing old embedding spaces, pin every space you may need for rollback.
@@ -138,7 +135,6 @@ pnpm dev embedding-spaces gc --resume <run-id> --apply
 
 The estimated size covers stored table rows.
 It excludes PostgreSQL index overhead because that space cannot be assigned exactly to one embedding space.
-Each retention report records the human-readable input-format name and hash for every embedding space.
 
 ## Routine checks
 

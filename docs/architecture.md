@@ -116,18 +116,6 @@ Routing is capability-specific, but concurrency is provider-specific.
 If answer generation, summarization, and embeddings all use one provider, they share that provider's configured request limit.
 See [Provider reference](configuration.md#provider-reference) for the complete capability matrix and endpoint conventions.
 
-## Embedding input contracts
-
-PostgreSQL stores immutable embedding input-format records independently from provider and model configuration.
-The selected record supplies one document template and one query template, each with exactly one `{{text}}` placeholder.
-Document indexing renders the document template before token counting, retrieval-window splitting, and provider submission.
-Query retrieval renders the query template before provider submission.
-For document inputs, this keeps the text used for budgeting identical to the text sent to the embedding provider.
-
-Embedding-space identity includes the format reference and deterministic hash alongside the model, dimensions, and retrieval-window policy.
-Each space also stores the schema version and both templates as a self-contained snapshot.
-The application validates that snapshot and recomputes its hash before reusing a space.
-
 ## Document ingestion
 
 An ingestion job discovers document structure, divides content into searchable sections, creates summaries and embeddings, and publishes the finished index.
