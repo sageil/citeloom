@@ -1,0 +1,196 @@
+<section
+  class="login-page"
+  id="login"
+  aria-labelledby="login-title"
+  x-data="citeloomLoginPage"
+  x-init="initialize()"
+>
+  <header class="login-header">
+    <div class="login-brand" aria-label="CiteLoom">
+      <img
+        alt=""
+        aria-hidden="true"
+        class="login-brand-mark"
+        src="./assets/images/citeloom-mark.png"
+      />
+      <span>CiteLoom</span>
+    </div>
+  </header>
+
+  <section class="login-card" aria-labelledby="login-title">
+    <div class="login-card-body">
+      <section class="login-intro">
+        <div class="login-intro-copy">
+          <p class="login-kicker">Secure access</p>
+          <h1 id="login-title" tabindex="-1" x-text="pageTitle()"></h1>
+          <p x-text="pageDescription()"></p>
+        </div>
+        <div class="login-security-mark" aria-hidden="true">
+          <svg class="citeloom-icon login-shield">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-shield"></use>
+          </svg>
+          <svg class="citeloom-icon login-lock">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use>
+          </svg>
+        </div>
+      </section>
+
+      <form
+        class="login-form"
+        aria-describedby="login-authentication-scope"
+        @submit.prevent="submit()"
+      >
+        <p class="visually-hidden" id="login-authentication-scope">
+          Sign in with your CiteLoom username and password.
+        </p>
+        <label class="login-field" for="login-username" x-show="!setupMode">
+          <span>Username</span>
+          <span class="login-input-control">
+            <svg aria-hidden="true" class="citeloom-icon login-input-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-envelope"></use>
+            </svg>
+            <input
+              autocomplete="username"
+              id="login-username"
+              name="username"
+              placeholder="Your username"
+              type="text"
+              :required="!setupMode"
+              x-model="username"
+            />
+          </span>
+        </label>
+
+        <label class="login-field" for="login-password">
+          <span>Password</span>
+          <span class="login-input-control">
+            <svg aria-hidden="true" class="citeloom-icon login-input-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use>
+            </svg>
+            <input
+              :autocomplete="setupMode ? 'new-password' : 'current-password'"
+              id="login-password"
+              name="password"
+              placeholder="Enter your password"
+              required
+              :type="passwordType()"
+              x-model="password"
+            />
+            <button
+              class="login-password-toggle"
+              type="button"
+              :aria-label="passwordToggleLabel()"
+              :aria-pressed="passwordVisible"
+              @click="togglePasswordVisibility()"
+            >
+              <svg
+                aria-hidden="true"
+                class="citeloom-icon login-password-icon"
+                x-show="!passwordVisible"
+              >
+                <use href="./assets/images/citeloom-icons.svg#citeloom-eye"></use>
+              </svg>
+              <svg
+                aria-hidden="true"
+                class="citeloom-icon login-password-icon"
+                x-cloak
+                x-show="passwordVisible"
+              >
+                <use href="./assets/images/citeloom-icons.svg#citeloom-eye-slash"></use>
+              </svg>
+            </button>
+          </span>
+        </label>
+
+        <label class="login-field" for="login-confirm-password" x-show="setupMode">
+          <span>Confirm password</span>
+          <span class="login-input-control">
+            <svg aria-hidden="true" class="citeloom-icon login-input-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use>
+            </svg>
+            <input
+              autocomplete="new-password"
+              id="login-confirm-password"
+              name="confirm-password"
+              placeholder="Enter the password again"
+              :required="setupMode"
+              :type="passwordType()"
+              x-model="confirmPassword"
+            />
+          </span>
+        </label>
+
+        <div class="login-form-options" x-show="!setupMode">
+          <label class="login-remember">
+            <span class="login-checkbox-control">
+              <input name="remember" type="checkbox" x-model="remembered" />
+              <svg
+                aria-hidden="true"
+                class="citeloom-icon login-check-icon"
+                x-cloak
+                x-show="remembered"
+              >
+                <use href="./assets/images/citeloom-icons.svg#citeloom-check"></use>
+              </svg>
+            </span>
+            <span>Remember me</span>
+          </label>
+          <button
+            class="login-link-button"
+            disabled
+            title="Password recovery is not connected yet"
+            type="button"
+          >Forgot password?</button>
+        </div>
+
+        <p
+          class="login-error"
+          role="alert"
+          x-cloak
+          x-show="errorMessage !== ''"
+          x-text="errorMessage"
+        ></p>
+
+        <button
+          class="login-submit"
+          :disabled="busy"
+          type="submit"
+          x-text="busy ? 'Please wait…' : (setupMode ? 'Activate account' : 'Sign in')"
+        ></button>
+
+        <p class="login-access-copy">
+          Need access?
+          <button
+            class="login-link-button"
+            disabled
+            title="Administrator contact is not connected yet"
+            type="button"
+          >Contact your administrator.</button>
+        </p>
+      </form>
+    </div>
+
+    <footer class="login-card-footer" aria-label="Workspace assurances">
+      <span class="login-assurance">
+        <svg aria-hidden="true" class="citeloom-icon login-assurance-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-shield-check"></use>
+        </svg>
+        Private by design
+      </span>
+      <span class="login-assurance-divider" aria-hidden="true"></span>
+      <span class="login-assurance">
+        <svg aria-hidden="true" class="citeloom-icon login-assurance-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-database"></use>
+        </svg>
+        Configured workspace
+      </span>
+      <span class="login-assurance-divider" aria-hidden="true"></span>
+      <span class="login-assurance">
+        <svg aria-hidden="true" class="citeloom-icon login-assurance-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-quotes"></use>
+        </svg>
+        Cited answers
+      </span>
+    </footer>
+  </section>
+</section>
