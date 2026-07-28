@@ -98,14 +98,16 @@
 .citeloom-notice {
   position: fixed;
   z-index: 90;
-  top: 18px;
-  right: 18px;
+  top: 24px;
+  right: auto;
+  left: 50%;
   align-items: start;
   width: min(420px, calc(100vw - 36px));
   max-height: calc(100vh - 36px);
   margin: 0;
   overflow: hidden;
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+  transform: translateX(-50%);
 }
 
 .citeloom-notice > span {
@@ -117,9 +119,6 @@
 }
 
 .citeloom-notice.error {
-  top: 24px;
-  right: auto;
-  left: 50%;
   width: min(480px, calc(100vw - 32px));
   min-height: 72px;
   max-height: calc(100vh - 48px);
@@ -135,7 +134,6 @@
   font-size: 18px;
   font-weight: 600;
   line-height: 1.45;
-  transform: translateX(-50%);
 }
 
 .citeloom-notice.error > .citeloom-icon {
