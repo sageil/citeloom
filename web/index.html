@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#060914" />
+    <meta
+      name="description"
+      content="CiteLoom private document research workspace."
+    />
+    <title>CiteLoom</title>
+    <link rel="stylesheet" href="./assets/styles/citeloom-base.css" />
+    <link rel="stylesheet" href="./assets/styles/citeloom-navigation.css" />
+    <link rel="stylesheet" href="./assets/styles/citeloom-shell.css" />
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"
+      integrity="sha384-H5SrcfygHmAuTDZphMHqBJLc3FhssKjG7w/CeCpFReSfwBWDTKpkzPP8c+cLsK+V"
+      crossorigin="anonymous"
+    ></script>
+    <script type="module" src="./assets/scripts/citeloom-app.js"></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"
+      integrity="sha384-pb6hrQvo4s23cEUFtj0CZkzGE3jyK3pj26RIupXXxhSrrcUA/Cn0lZgcCrGH0t6L"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <main
+      class="app-shell"
+      :class="{ 'login-surface': activeView === 'login' }"
+      hx-indicator="#navigation-progress"
+      hx-swap="innerHTML"
+      hx-sync="#workspace:replace"
+      hx-target="#workspace"
+      x-data="citeloomShell"
+      x-init="initialize()"
+      @hashchange.window="focusLocationAnchor()"
+      @popstate.window="synchronizeHistory()"
+    >
+      <img
+        alt=""
+        aria-hidden="true"
+        class="ambient-network"
+        src="./assets/images/citeloom-particle-flow.svg"
+      />
+
+      <div class="task-navigation-shell">
+        <header
+          class="task-navigation-header"
+          x-cloak
+          x-show="activeView !== 'login'"
+        >
+          <div class="task-navigation-primary-cluster">
+            <a
+              class="brand citeloom-brand-link"
+              data-view="overview"
+              href="./index.html?view=overview"
+              hx-get="./fragments/overview.html"
+              hx-push-url="./index.html?view=overview"
+            >
+              <img
+                alt=""
+                aria-hidden="true"
+                class="brand-mark"
+                src="./assets/images/citeloom-mark.png"
+              />
+              <span>CiteLoom</span>
+            </a>
+
+            <nav class="task-navigation-primary-nav" aria-label="Primary workspace">
+              <a
+                class="primary-navigation-button citeloom-navigation-link"
+                data-view="documents"
+                href="./index.html?view=documents"
+                hx-get="./fragments/documents.html"
+                hx-push-url="./index.html?view=documents"
+                :aria-current="currentPage('documents')"
+              >
+                <span class="primary-navigation-icon">
+                  <svg aria-hidden="true" class="citeloom-icon">
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+                  </svg>
+                </span>
+                <span>Documents</span>
+              </a>
+              <a
+                class="primary-navigation-button citeloom-navigation-link"
+                data-view="ask"
+                href="./index.html?view=ask"
+                hx-get="./fragments/ask.html"
+                hx-push-url="./index.html?view=ask"
+                :aria-current="currentPage('ask')"
+              >
+                <span class="primary-navigation-icon">
+                  <svg aria-hidden="true" class="citeloom-icon">
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use>
+                  </svg>
+                </span>
+                <span>Ask</span>
+              </a>
+            </nav>
+          </div>
+
+          <nav class="task-navigation-utility-nav" aria-label="Workspace utilities">
+            <div
+              class="account-navigation-menu"
+              @click.outside="closeAccountMenu()"
+              @keydown.escape.window="closeAccountMenu({ restoreFocus: true })"
+            >
+              <button
+                aria-controls="account-navigation-dropdown"
+                class="utility-navigation-button account-navigation-trigger"
+                type="button"
+                x-ref="accountMenuTrigger"
+                :aria-expanded="accountMenuOpen.toString()"
+                :aria-current="accountSectionIsCurrent ? 'page' : null"
+                @click="toggleAccountMenu()"
+              >
+                <span x-text="currentDisplayName"></span>
+                <svg aria-hidden="true" class="account-navigation-caret citeloom-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+                </svg>
+              </button>
+
+              <div
+                id="account-navigation-dropdown"
+                aria-label="Account menu"
+                class="account-navigation-dropdown"
+                role="navigation"
+                x-cloak
+                x-show="accountMenuOpen"
+                x-transition.opacity.duration.120ms
+              >
+                <p class="account-navigation-section-label">Personal</p>
+                <a
+                  class="account-navigation-item citeloom-navigation-link"
+                  data-view="account"
+                  href="./index.html?view=account"
+                  hx-get="./fragments/account.html"
+                  hx-push-url="./index.html?view=account"
+                  :aria-current="currentPage('account')"
+                  @click="closeAccountMenu()"
+                >
+                  <span>My account</span>
+                </a>
+
+                <div class="account-navigation-admin">
+                  <p class="account-navigation-section-label">Administration</p>
+                  <a
+                    class="account-navigation-item citeloom-navigation-link"
+                    data-view="users"
+                    href="./index.html?view=users"
+                    hx-get="./fragments/users.html"
+                    hx-push-url="./index.html?view=users"
+                    :aria-current="currentPage('users')"
+                    x-show="currentRole === 'admin'"
+                    @click="closeAccountMenu()"
+                  >
+                    <span>Users</span>
+                  </a>
+                  <a
+                    class="account-navigation-item citeloom-navigation-link"
+                    data-view="errors"
+                    href="./index.html?view=errors"
+                    hx-get="./fragments/errors.html"
+                    hx-push-url="./index.html?view=errors"
+                    :aria-current="currentPage('errors')"
+                    x-show="currentRole === 'admin'"
+                    @click="closeAccountMenu()"
+                  >
+                    <span>Error reports</span>
+                  </a>
+                  <a
+                    class="account-navigation-item citeloom-navigation-link"
+                    data-view="settings"
+                    href="./index.html?view=settings"
+                    hx-get="./fragments/settings.html"
+                    hx-push-url="./index.html?view=settings"
+                    :aria-current="currentPage('settings')"
+                    @click="closeAccountMenu()"
+                  >
+                    <span>Settings</span>
+                  </a>
+                  <a
+                    class="account-navigation-item citeloom-navigation-link"
+                    data-view="system-health"
+                    href="./index.html?view=system-health"
+                    hx-get="./fragments/system-health.html"
+                    hx-push-url="./index.html?view=system-health"
+                    :aria-current="currentPage('system-health')"
+                    @click="closeAccountMenu()"
+                  >
+                    <span>System health</span>
+                  </a>
+                </div>
+
+                <div class="account-navigation-session">
+                  <button
+                    class="account-navigation-item account-navigation-sign-out"
+                    type="button"
+                    @click="signOut()"
+                  >
+                    <span>Sign out</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <a
+              class="utility-navigation-button citeloom-navigation-link"
+              data-view="help"
+              href="./index.html?view=help"
+              hx-get="./fragments/help.html"
+              hx-push-url="./index.html?view=help"
+              :aria-current="currentPage('help')"
+            >
+              <span class="utility-navigation-icon">
+                <svg aria-hidden="true" class="citeloom-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-help"></use>
+                </svg>
+              </span>
+              <span>Help</span>
+            </a>
+          </nav>
+        </header>
+
+        <div
+          class="task-navigation-stage"
+          x-cloak
+          x-show="showTaskLaunchpad"
+        >
+          <div class="task-navigation-intro" x-show="activeView === 'overview'">
+            <p class="section-kicker">Private by design</p>
+            <h1>Your documents, woven into <span>cited answers.</span></h1>
+          </div>
+          <nav class="task-launchpad" aria-label="Primary tasks">
+            <a
+              class="task-button citeloom-task-link"
+              data-view="overview"
+              href="./index.html?view=overview"
+              hx-get="./fragments/overview.html"
+              hx-push-url="./index.html?view=overview"
+              :class="{ active: activeView === 'overview' }"
+              :aria-current="currentPage('overview')"
+            >
+              <span class="task-button-icon">
+                <svg aria-hidden="true" class="citeloom-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-upload"></use>
+                </svg>
+              </span>
+              <span class="task-button-copy">
+                <strong>Add knowledge</strong>
+                <small>Upload and process source material</small>
+              </span>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+              </svg>
+            </a>
+            <a
+              class="task-button citeloom-task-link"
+              data-view="documents"
+              href="./index.html?view=documents"
+              hx-get="./fragments/documents.html"
+              hx-push-url="./index.html?view=documents"
+              :class="{ active: activeView === 'documents' }"
+              :aria-current="currentPage('documents')"
+            >
+              <span class="task-button-icon">
+                <svg aria-hidden="true" class="citeloom-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+                </svg>
+              </span>
+              <span class="task-button-copy">
+                <strong>Organize library</strong>
+                <small>Search, filter, and inspect documents</small>
+              </span>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+              </svg>
+            </a>
+            <a
+              class="task-button citeloom-task-link"
+              data-view="ask"
+              href="./index.html?view=ask"
+              hx-get="./fragments/ask.html"
+              hx-push-url="./index.html?view=ask"
+              :class="{ active: activeView === 'ask' }"
+              :aria-current="currentPage('ask')"
+            >
+              <span class="task-button-icon">
+                <svg aria-hidden="true" class="citeloom-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use>
+                </svg>
+              </span>
+              <span class="task-button-copy">
+                <strong>Ask and verify</strong>
+                <small>Ask questions and review evidence</small>
+              </span>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+              </svg>
+            </a>
+          </nav>
+        </div>
+
+        <div
+          class="workspace-page task-navigation-workspace-page"
+          :class="{
+            'login-workspace-page': activeView === 'login',
+            'with-task-launchpad': showTaskLaunchpad,
+          }"
+        >
+          <div
+            class="workflow-progress"
+            x-cloak
+            x-show="showWorkflowProgress"
+          >
+            <ol aria-label="Document workflow">
+              <li
+                :aria-current="workflowStepCurrent(0)"
+                :class="workflowStepClass(0)"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="citeloom-icon citeloom-workflow-done-icon"
+                  x-show="workflowStepComplete(0)"
+                >
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+                </svg>
+                <span>Upload</span>
+              </li>
+              <li
+                :aria-current="workflowStepCurrent(1)"
+                :class="workflowStepClass(1)"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="citeloom-icon citeloom-workflow-done-icon"
+                  x-show="workflowStepComplete(1)"
+                >
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+                </svg>
+                <span>Normalize</span>
+              </li>
+              <li
+                :aria-current="workflowStepCurrent(2)"
+                :class="workflowStepClass(2)"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="citeloom-icon citeloom-workflow-done-icon"
+                  x-show="workflowStepComplete(2)"
+                >
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+                </svg>
+                <span>Embed</span>
+              </li>
+              <li
+                :aria-current="workflowStepCurrent(3)"
+                :class="workflowStepClass(3)"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="citeloom-icon citeloom-workflow-done-icon"
+                  x-show="workflowStepComplete(3)"
+                >
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+                </svg>
+                <span>Publish</span>
+              </li>
+              <li
+                :aria-current="workflowStepCurrent(4)"
+                :class="workflowStepClass(4)"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="citeloom-icon citeloom-workflow-done-icon"
+                  x-show="workflowStepComplete(4)"
+                >
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+                </svg>
+                <span>Ask</span>
+              </li>
+            </ol>
+            <span class="live-label">
+              <span class="status-dot" aria-hidden="true"></span>
+              <span x-text="workflowStatusLabel()"></span>
+            </span>
+          </div>
+
+          <div
+            class="notice citeloom-notice"
+            :class="{ error: noticeKind === 'error' }"
+            :role="noticeRole()"
+            x-cloak
+            x-show="noticeKind !== null"
+          >
+            <svg aria-hidden="true" class="citeloom-icon">
+              <use :href="noticeKind === 'error' ? './assets/images/citeloom-icons.svg#citeloom-warning-circle' : './assets/images/citeloom-icons.svg#citeloom-status-check'"></use>
+            </svg>
+            <span x-text="noticeMessage"></span>
+            <button
+              aria-label="Dismiss notification"
+              class="icon-button"
+              type="button"
+              @click="dismissNotice()"
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+
+          <div
+            class="citeloom-loading htmx-indicator"
+            id="navigation-progress"
+            role="status"
+          >
+            Loading workspace
+          </div>
+
+          <div
+            aria-live="polite"
+            hx-get="./fragments/overview.html"
+            hx-trigger="load"
+            id="workspace"
+          >
+            <noscript>
+              <section class="panel citeloom-noscript">
+                <h1>JavaScript is required for this CiteLoom frontend.</h1>
+                <p>The production migration will provide normal page navigation as a fallback.</p>
+              </section>
+            </noscript>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script src="./assets/scripts/citeloom-bootstrap.js"></script>
+  </body>
+</html>
