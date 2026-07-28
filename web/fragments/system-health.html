@@ -1,0 +1,376 @@
+<section
+  class="system-health-page"
+  aria-labelledby="system-health-title"
+  id="system-health"
+  :aria-busy="dashboardRefreshing || !systemHealthHasData"
+  x-data="citeloomSystemHealthPage"
+  x-init="initialize()"
+>
+  <header class="system-health-header">
+    <div>
+      <h1 id="system-health-title">System health</h1>
+      <p>Inspect runtime performance and configured service capacity. Run diagnostics sends small test requests to configured services, including active AI providers.</p>
+    </div>
+    <button
+      class="button secondary system-health-run-button"
+      type="button"
+      :aria-busy="diagnosticsRunning"
+      :disabled="diagnosticsRunning"
+      @click="runDiagnostics()"
+    >
+      <svg
+        aria-hidden="true"
+        class="citeloom-icon citeloom-small-icon"
+        :class="{ spin: diagnosticsRunning }"
+      >
+        <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
+      </svg>
+      <span x-text="diagnosticsRunning ? 'Running' : 'Run diagnostics'">Run diagnostics</span>
+    </button>
+  </header>
+
+  <section
+    class="workspace-unavailable-banner citeloom-system-health-unavailable"
+    role="alert"
+    x-cloak
+    x-show="dashboardStatus === 'error'"
+  >
+    <svg aria-hidden="true" class="citeloom-icon workspace-unavailable-icon citeloom-large-icon">
+      <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
+    </svg>
+    <div class="workspace-unavailable-copy">
+      <h2>Runtime status unavailable</h2>
+      <p x-text="dashboardErrorMessage">Runtime capacity and telemetry could not be refreshed.</p>
+    </div>
+    <div class="workspace-unavailable-actions">
+      <button
+        class="button workspace-retry-button"
+        type="button"
+        :aria-busy="dashboardRefreshing"
+        :disabled="dashboardRefreshing"
+        @click="refreshDashboard()"
+        x-text="dashboardRefreshing ? 'Retrying...' : 'Retry now'"
+      >Retry now</button>
+    </div>
+  </section>
+
+  <div
+    class="notice error citeloom-diagnostics-error"
+    role="alert"
+    x-cloak
+    x-show="diagnosticsErrorMessage !== ''"
+  >
+    <svg aria-hidden="true" class="citeloom-icon status-icon error">
+      <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
+    </svg>
+    <span x-text="diagnosticsErrorMessage"></span>
+    <button class="text-button" type="button" @click="dismissDiagnosticsError()">Dismiss</button>
+  </div>
+
+  <section class="system-health-summary" aria-label="Diagnostics and capacity snapshot">
+    <div class="system-health-diagnostics">
+      <div class="system-health-status-list" aria-live="polite">
+        <template x-if="diagnosticsRunning">
+          <div class="status-row">
+            <svg aria-hidden="true" class="citeloom-icon status-icon spin">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
+            </svg>
+            <div>
+              <strong>Running diagnostics</strong>
+              <span>Checking configured services</span>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="!diagnosticsRunning &amp;&amp; diagnosticsChecks.length === 0">
+          <div class="status-row">
+            <svg aria-hidden="true" class="citeloom-icon status-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use>
+            </svg>
+            <div>
+              <strong>Diagnostics not run</strong>
+              <span>Run diagnostics to test configured services</span>
+            </div>
+          </div>
+        </template>
+
+        <template x-for="check in diagnosticsChecks" :key="check.id">
+          <div class="status-row" x-show="!diagnosticsRunning">
+            <template x-if="check.ok">
+              <svg aria-hidden="true" class="citeloom-icon status-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use>
+              </svg>
+            </template>
+            <template x-if="!check.ok">
+              <svg aria-hidden="true" class="citeloom-icon status-icon error">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
+              </svg>
+            </template>
+            <div>
+              <strong x-text="check.name"></strong>
+              <span x-text="check.detail"></span>
+            </div>
+          </div>
+        </template>
+      </div>
+      <p
+        class="system-health-last-checked"
+        x-cloak
+        x-show="diagnosticsGeneratedAt !== null &amp;&amp; !diagnosticsRunning"
+      >Last checked <span x-text="formatRelativeTime(diagnosticsGeneratedAt)"></span>.</p>
+    </div>
+
+    <div class="system-health-capacity-snapshot">
+      <h2>Capacity snapshot</h2>
+      <div class="capacity-snapshot-grid">
+        <div class="capacity-snapshot-item">
+          <span aria-hidden="true">
+            <svg class="citeloom-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-queue"></use>
+            </svg>
+          </span>
+          <div>
+            <small>Queue</small>
+            <strong x-text="systemHealth.queueLength">0</strong>
+            <span>active jobs</span>
+          </div>
+        </div>
+        <div class="capacity-snapshot-item">
+          <span aria-hidden="true">
+            <svg class="citeloom-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+            </svg>
+          </span>
+          <div>
+            <small>Workers</small>
+            <strong x-text="systemHealth.workerCount">0</strong>
+            <span x-text="systemHealth.workerState">available</span>
+          </div>
+        </div>
+        <template x-for="resource in systemHealth.inference" :key="resource.providerId">
+          <div class="capacity-snapshot-item">
+            <span aria-hidden="true">
+              <svg class="citeloom-icon">
+                <use :href="providerIconHref(resource.providerId)"></use>
+              </svg>
+            </span>
+            <div>
+              <small x-text="resource.name"></small>
+              <strong x-text="`${resource.activeSlots}/${resource.capacity}`"></strong>
+              <span>active</span>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </section>
+
+  <section class="system-health-telemetry" aria-labelledby="telemetry-title">
+    <h2 id="telemetry-title">24 hour telemetry</h2>
+    <p x-cloak x-show="!systemHealthHasData &amp;&amp; dashboardRefreshing">Loading telemetry...</p>
+    <p x-cloak x-show="!systemHealthHasData &amp;&amp; !dashboardRefreshing">Telemetry is unavailable.</p>
+    <p x-cloak x-show="systemHealthHasData &amp;&amp; !systemHealth.telemetry.enabled">Privacy-safe telemetry is disabled.</p>
+    <p
+      x-cloak
+      x-show="systemHealthHasData &amp;&amp; systemHealth.telemetry.enabled &amp;&amp; telemetryTables.length === 0"
+    >No completed retrieval or answer traces are available.</p>
+    <div
+      class="telemetry-tables"
+      x-cloak
+      x-show="systemHealthHasData &amp;&amp; systemHealth.telemetry.enabled &amp;&amp; telemetryTables.length > 0"
+    >
+      <template x-for="table in telemetryTables" :key="table.id">
+        <div
+          class="telemetry-table-wrap"
+          :class="{ 'telemetry-table-scrollable': table.scrollable }"
+        >
+          <table class="telemetry-table">
+            <caption x-text="table.caption"></caption>
+            <thead>
+              <tr>
+                <th scope="col">Stage</th>
+                <th scope="col">Model</th>
+                <th scope="col">p50</th>
+                <th scope="col">p95</th>
+                <th scope="col">p99</th>
+                <th scope="col">Queue p95</th>
+                <th scope="col">Provider p95</th>
+                <th scope="col">Error</th>
+                <th scope="col">Abort</th>
+                <th scope="col">Fallback</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="row in table.rows" :key="`${table.id}:${row.label}:${row.model}`">
+                <tr>
+                  <th scope="row">
+                    <span x-text="row.label"></span>
+                    <small x-text="`${row.samples} samples`"></small>
+                  </th>
+                  <td x-text="row.model"></td>
+                  <td x-text="formatTelemetryDuration(row.p50)"></td>
+                  <td x-text="formatTelemetryDuration(row.p95)"></td>
+                  <td x-text="formatTelemetryDuration(row.p99)"></td>
+                  <td x-text="formatTelemetryDuration(row.queueP95)"></td>
+                  <td x-text="formatTelemetryDuration(row.providerP95)"></td>
+                  <td x-text="formatTelemetryRate(row.errorRate)"></td>
+                  <td x-text="formatTelemetryRate(row.abortRate)"></td>
+                  <td x-text="formatTelemetryRate(row.fallbackRate)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </template>
+    </div>
+  </section>
+
+  <div class="system-health-detail-grid">
+    <section class="system-health-detail-panel" aria-labelledby="capacity-details-title">
+      <h2 id="capacity-details-title">Capacity details</h2>
+      <dl class="system-health-detail-list">
+        <div class="system-health-detail-row">
+          <span aria-hidden="true">
+            <svg class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-queue"></use>
+            </svg>
+          </span>
+          <dt>Queue</dt>
+          <dd x-text="`${systemHealth.queueLength} active jobs`">0 active jobs</dd>
+        </div>
+        <div class="system-health-detail-row">
+          <span aria-hidden="true">
+            <svg class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+            </svg>
+          </span>
+          <dt>Workers</dt>
+          <dd x-text="`${systemHealth.workerCount} ${systemHealth.workerState}`">0 available</dd>
+        </div>
+        <template x-for="resource in systemHealth.inference" :key="resource.providerId">
+          <div class="system-health-detail-row">
+            <span aria-hidden="true">
+              <svg class="citeloom-icon citeloom-small-icon">
+                <use :href="providerIconHref(resource.providerId)"></use>
+              </svg>
+            </span>
+            <dt x-text="resource.name"></dt>
+            <dd
+              :title="`${resource.activeSlots} active / ${resource.capacity} configured`"
+              x-text="`${resource.activeSlots} active / ${resource.capacity} configured`"
+            ></dd>
+          </div>
+        </template>
+      </dl>
+    </section>
+
+    <section class="system-health-detail-panel" aria-labelledby="configured-models-title">
+      <h2 id="configured-models-title">Configured models</h2>
+      <dl class="system-health-detail-list">
+        <div class="system-health-detail-row">
+          <span aria-hidden="true">
+            <svg class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+            </svg>
+          </span>
+          <dt>Answer</dt>
+          <dd :title="systemHealth.models.answer" x-text="systemHealth.models.answer">Unavailable</dd>
+        </div>
+        <div class="system-health-detail-row">
+          <span aria-hidden="true">
+            <svg class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+            </svg>
+          </span>
+          <dt>Summary</dt>
+          <dd :title="systemHealth.models.summary" x-text="systemHealth.models.summary">Unavailable</dd>
+        </div>
+        <div class="system-health-detail-row">
+          <span aria-hidden="true">
+            <svg class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+            </svg>
+          </span>
+          <dt>Query expansion</dt>
+          <dd :title="systemHealth.models.queryExpansion" x-text="systemHealth.models.queryExpansion">Unavailable</dd>
+        </div>
+        <div class="system-health-detail-row">
+          <span aria-hidden="true">
+            <svg class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+            </svg>
+          </span>
+          <dt>Claim verifier</dt>
+          <dd :title="systemHealth.models.claimVerifier" x-text="systemHealth.models.claimVerifier">Unavailable</dd>
+        </div>
+        <div class="system-health-detail-row">
+          <span aria-hidden="true">
+            <svg class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-brain"></use>
+            </svg>
+          </span>
+          <dt>Embedding</dt>
+          <dd :title="systemHealth.models.embedding" x-text="systemHealth.models.embedding">Unavailable</dd>
+        </div>
+        <div class="system-health-detail-row">
+          <span aria-hidden="true">
+            <svg class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-brain"></use>
+            </svg>
+          </span>
+          <dt>Reranker</dt>
+          <dd :title="systemHealth.models.reranker" x-text="systemHealth.models.reranker">Disabled</dd>
+        </div>
+      </dl>
+    </section>
+  </div>
+
+  <section
+    class="system-health-telemetry system-health-scheduling"
+    aria-labelledby="scheduling-telemetry-title"
+    x-cloak
+    x-show="systemHealthHasData &amp;&amp; systemHealth.telemetry.enabled &amp;&amp; systemHealth.telemetry.scheduling.length > 0"
+  >
+    <h2 id="scheduling-telemetry-title">Scheduling telemetry</h2>
+    <div class="telemetry-tables">
+      <div class="telemetry-table-wrap">
+        <table class="telemetry-table">
+          <caption>Scheduling by workload and provider</caption>
+          <thead>
+            <tr>
+              <th scope="col">Stage</th>
+              <th scope="col">Model</th>
+              <th scope="col">p50</th>
+              <th scope="col">p95</th>
+              <th scope="col">p99</th>
+              <th scope="col">Queue p95</th>
+              <th scope="col">Provider p95</th>
+              <th scope="col">Error</th>
+              <th scope="col">Abort</th>
+              <th scope="col">Fallback</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="row in systemHealth.telemetry.scheduling" :key="`${row.label}:${row.model}`">
+              <tr>
+                <th scope="row">
+                  <span x-text="row.label"></span>
+                  <small x-text="`${row.samples} samples`"></small>
+                </th>
+                <td x-text="row.model"></td>
+                <td x-text="formatTelemetryDuration(row.p50)"></td>
+                <td x-text="formatTelemetryDuration(row.p95)"></td>
+                <td x-text="formatTelemetryDuration(row.p99)"></td>
+                <td x-text="formatTelemetryDuration(row.queueP95)"></td>
+                <td x-text="formatTelemetryDuration(row.providerP95)"></td>
+                <td x-text="formatTelemetryRate(row.errorRate)"></td>
+                <td x-text="formatTelemetryRate(row.abortRate)"></td>
+                <td x-text="formatTelemetryRate(row.fallbackRate)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</section>
