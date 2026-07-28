@@ -1,0 +1,715 @@
+<section
+  class="settings-page settings-search-page"
+  id="settings"
+  aria-labelledby="settings-title"
+  x-data="citeloomSettingsPage"
+  x-init="initialize()"
+>
+  <header class="settings-search-header">
+    <div class="settings-search-heading">
+      <h1 id="settings-title">Settings</h1>
+      <p>Configure AI providers and feature behavior across your application.</p>
+    </div>
+    <div class="settings-header-actions">
+      <label class="settings-search-input settings-header-search">
+        <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
+        </svg>
+        <span class="visually-hidden">Search settings</span>
+        <input
+          autocomplete="off"
+          name="settings-search"
+          placeholder="Search settings, features, providers..."
+          type="search"
+          x-model.debounce.150ms="query"
+          @input="changeSearchQuery()"
+        />
+      </label>
+      <label class="settings-header-source">
+        <span class="visually-hidden">Filter setting source</span>
+        <select
+          aria-label="Filter setting source"
+          :value="sourceFilter"
+          @change="changeSourceFilter($event.target.value)"
+        >
+          <option value="all">All sources</option>
+          <option value="database">Database overrides</option>
+          <option value="database-default">Database defaults</option>
+          <option value="modified">Unsaved changes</option>
+        </select>
+      </label>
+      <button
+        class="button secondary settings-all-areas"
+        type="button"
+        x-show="settings !== null &amp;&amp; !browsingAreas"
+        @click="clearSearch()"
+      >
+        <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+        </svg>
+        <span>All areas</span>
+      </button>
+      <button
+        class="button secondary"
+        type="button"
+        :disabled="saving || settings === null"
+        @click="resetAll()"
+      >
+        <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-reset"></use>
+        </svg>
+        <span>Reset</span>
+      </button>
+      <button
+        class="button primary"
+        type="button"
+        :aria-busy="saving"
+        :disabled="!canSave"
+        @click="saveChanges()"
+      >
+        <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-save"></use>
+        </svg>
+        <span x-text="saveLabel()">Save changes</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="settings-message error" role="alert" x-cloak x-show="errorMessage !== ''">
+    <svg aria-hidden="true" class="citeloom-icon status-icon error">
+      <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
+    </svg>
+    <span x-text="errorMessage"></span>
+    <button
+      class="text-button citeloom-settings-retry"
+      type="button"
+      x-show="settings === null &amp;&amp; !loading"
+      @click="loadSettings()"
+    >Retry</button>
+  </div>
+
+  <div class="settings-message success" role="status" x-cloak x-show="saved">
+    <svg aria-hidden="true" class="citeloom-icon status-icon">
+      <use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use>
+    </svg>
+    <span>Settings saved. New web operations use this configuration immediately.</span>
+  </div>
+
+  <template x-if="settings !== null &amp;&amp; settings.warnings.length > 0">
+    <div class="settings-message warning" role="status">
+      <svg aria-hidden="true" class="citeloom-icon status-icon">
+        <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
+      </svg>
+      <div>
+        <template x-for="warning in settings.warnings" :key="warning">
+          <p x-text="warning"></p>
+        </template>
+      </div>
+    </div>
+  </template>
+
+  <p class="settings-loading" x-show="loading">Loading effective configuration.</p>
+
+  <template x-if="settings !== null">
+  <div class="settings-search-layout">
+    <datalist id="openai-codex-models">
+      <template x-for="model in openAICodexModels" :key="model.id">
+        <option :value="model.id" x-text="model.name"></option>
+      </template>
+    </datalist>
+    <template x-if="browsingAreas">
+    <section
+      class="settings-area-browser"
+      aria-labelledby="settings-area-browser-title"
+    >
+      <header>
+        <h2 id="settings-area-browser-title">Browse by area</h2>
+        <span x-text="`${areaCount} areas`"></span>
+      </header>
+      <div class="settings-area-grid">
+        <button type="button" @click="selectArea('Application Features')">
+          <svg aria-hidden="true" class="citeloom-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+          </svg>
+          <span>
+            <strong>Application Features</strong>
+            <small>7 provider-backed features</small>
+          </span>
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+          </svg>
+        </button>
+        <button type="button" @click="selectArea('Providers')">
+          <svg aria-hidden="true" class="citeloom-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+          </svg>
+          <span>
+            <strong>Providers</strong>
+            <small>Connections and defaults</small>
+          </span>
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+          </svg>
+        </button>
+        <template x-for="group in groups" :key="group.name">
+          <button type="button" @click="selectArea(group.name)">
+            <svg aria-hidden="true" class="citeloom-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+            </svg>
+            <span>
+              <strong x-text="group.name"></strong>
+              <small x-text="formatSettingCount(group.fields.length)"></small>
+            </span>
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+            </svg>
+          </button>
+        </template>
+        <button type="button" @click="selectArea('Startup and deployment')">
+          <svg aria-hidden="true" class="citeloom-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use>
+          </svg>
+          <span>
+            <strong>Startup and deployment</strong>
+            <small x-text="`${settings.startupSettings.length} read-only values`"></small>
+          </span>
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+          </svg>
+        </button>
+      </div>
+    </section>
+    </template>
+
+    <template x-if="selectedArea === 'Application Features'">
+    <section class="settings-search-results settings-feature-workbench">
+      <div class="settings-feature-health" aria-label="Configuration health">
+        <div>
+          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg>
+          <span><strong x-text="`${featureCapabilities.length} application features`"></strong><small>Provider-backed capabilities</small></span>
+        </div>
+        <div>
+          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-database"></use></svg>
+          <span><strong x-text="`${settings.providers.catalog.length} providers available`"></strong><small>Configured provider profiles</small></span>
+        </div>
+        <div :class="{ warning: featureWithoutCredentialCount() > 0 }">
+          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use></svg>
+          <span><strong x-text="`${featureWithoutCredentialCount()} features without tokens`"></strong><small>Local providers may not require one</small></span>
+        </div>
+      </div>
+
+      <div class="settings-feature-workspace">
+        <aside class="settings-feature-sidebar">
+          <header>
+            <h2>Application Features</h2>
+            <p>Select a feature to configure its provider and behavior.</p>
+          </header>
+          <nav aria-label="Application features">
+            <template x-for="capability in featureCapabilities" :key="capability">
+              <button
+                type="button"
+                :aria-current="capability === selectedFeatureCapability ? 'page' : null"
+                :class="{ active: capability === selectedFeatureCapability }"
+                @click="selectFeature(capability)"
+              >
+                <span class="settings-feature-icon">
+                  <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg>
+                </span>
+                <span class="settings-feature-nav-copy">
+                  <span><strong x-text="capabilityLabel(capability)"></strong><small x-text="featureStateLabel(capability)"></small></span>
+                  <span x-text="`${featureProviderLabel(capability)} · ${valueOrFallback(featureEffectiveModel(capability))}`"></span>
+                </span>
+              </button>
+            </template>
+          </nav>
+        </aside>
+
+        <section class="settings-feature-editor">
+          <header class="settings-feature-editor-heading">
+            <div>
+              <span><h2 x-text="capabilityLabel(selectedFeatureCapability)"></h2><small x-text="featureStateLabel(selectedFeatureCapability)"></small></span>
+              <p x-text="selectedFeatureDescription()"></p>
+            </div>
+            <span class="setting-source" x-text="`Authentication: ${featureCredentialConfigured(selectedFeatureCapability) ? 'Configured' : 'Not configured'}`"></span>
+          </header>
+
+          <section class="settings-feature-step">
+            <header><span>1</span><h3>Provider</h3></header>
+            <div class="settings-feature-form-grid">
+              <label class="provider-form-field">
+                <span>Provider</span>
+                <select
+                  :aria-label="`${capabilityLabel(selectedFeatureCapability)} provider`"
+                  :value="featureProviderId(selectedFeatureCapability) ?? ''"
+                  @change="writeFeatureProvider(selectedFeatureCapability, $event.target.value)"
+                >
+                  <template x-if="capabilityIsOptional(selectedFeatureCapability)"><option value="">Disabled</option></template>
+                  <template x-if="!capabilityIsOptional(selectedFeatureCapability)"><option disabled value="">Select a provider</option></template>
+                  <template x-for="provider in compatibleProviders(selectedFeatureCapability)" :key="provider.id">
+                    <option
+                      :selected="provider.id === featureProviderId(selectedFeatureCapability)"
+                      :value="provider.id"
+                      x-text="provider.displayName"
+                    ></option>
+                  </template>
+                </select>
+              </label>
+              <div class="application-feature-value settings-feature-url">
+                <span>Provider URL</span>
+                <code x-text="valueOrFallback(featureBaseUrl(selectedFeatureCapability))"></code>
+              </div>
+            </div>
+            <div class="settings-credential-warning" x-show="featureProviderId(selectedFeatureCapability) !== null &amp;&amp; !featureCredentialConfigured(selectedFeatureCapability)">
+              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use></svg>
+              <span>No credential is configured for this feature. Local providers may not require one.</span>
+              <button class="button secondary" type="button" @click="selectArea('Providers')">Configure credentials</button>
+            </div>
+          </section>
+
+          <section class="settings-feature-step" x-show="featureConnection(selectedFeatureCapability) !== null">
+            <header><span>2</span><h3>Model behavior</h3><p>Control how this feature selects and uses a model.</p></header>
+            <div class="settings-feature-form-grid">
+              <label class="provider-form-field">
+                <span>Feature model override</span>
+                <input
+                  placeholder="Use provider default"
+                  type="text"
+                  :list="featureProviderId(selectedFeatureCapability) === 'openai-codex' ? 'openai-codex-models' : null"
+                  :value="featureModelOverride(selectedFeatureCapability) ?? ''"
+                  @input="writeFeatureModelOverride(selectedFeatureCapability, $event.target.value)"
+                />
+                <small x-text="featureModelOverride(selectedFeatureCapability) === null ? 'No override. The provider default is used.' : 'Overrides the provider default for this feature only.'"></small>
+              </label>
+              <label class="provider-form-field" x-show="capabilityHasModelContext(selectedFeatureCapability)">
+                <span>Feature context override</span>
+                <input
+                  min="1"
+                  placeholder="Use provider model default"
+                  step="1"
+                  type="number"
+                  :value="featureContextCapacityTokensOverride(selectedFeatureCapability) ?? ''"
+                  @change="writeFeatureContextCapacityTokensOverride(selectedFeatureCapability, $event.target.value)"
+                />
+                <small x-text="featureContextCapacityTokensOverride(selectedFeatureCapability) === null ? 'No override. The provider model context is used.' : 'Overrides the provider model context for this feature only.'"></small>
+              </label>
+              <template x-if="featureFieldsFor(selectedFeatureCapability).length > 0">
+                <div class="settings-feature-primary-field">
+                  <template x-for="field in featureFieldsFor(selectedFeatureCapability).slice(0, 1)" :key="field.key">
+                    <label class="provider-form-field">
+                      <span x-text="field.label"></span>
+                      <template x-if="field.input === 'select'">
+                        <select :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)">
+                          <template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template>
+                        </select>
+                      </template>
+                      <template x-if="field.input !== 'select'">
+                        <input :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" />
+                      </template>
+                      <small x-text="field.description"></small>
+                    </label>
+                  </template>
+                </div>
+              </template>
+            </div>
+            <template x-if="selectedFeatureCapability === 'textToSpeech'">
+              <label class="provider-form-field settings-feature-voice">
+                <span>Feature voice override</span>
+                <input placeholder="Use provider default" type="text" :value="featureVoiceOverride() ?? ''" @input="writeFeatureVoiceOverride($event.target.value)" />
+                <small x-text="featureVoiceOverride() === null ? 'No override. The provider default voice is used.' : 'Overrides the provider default voice.'"></small>
+              </label>
+            </template>
+          </section>
+
+          <section class="settings-feature-step" x-show="featureConnection(selectedFeatureCapability) !== null">
+            <header><span>3</span><h3>Resolved result</h3><p>These are the effective values used at runtime.</p></header>
+            <div class="settings-resolved-result">
+              <div><span>Effective model</span><code x-text="valueOrFallback(featureEffectiveModel(selectedFeatureCapability))"></code></div>
+              <div><span>Model source</span><strong x-text="featureModelSourceLabel(selectedFeatureCapability)"></strong></div>
+              <template x-if="capabilityHasModelContext(selectedFeatureCapability)">
+                <div><span>Effective context</span><strong x-text="`${valueOrFallback(featureEffectiveContextCapacityTokens(selectedFeatureCapability))} tokens`"></strong></div>
+              </template>
+              <template x-if="selectedFeatureCapability === 'textToSpeech'">
+                <div><span>Effective voice</span><code x-text="valueOrFallback(featureEffectiveVoice())"></code></div>
+              </template>
+            </div>
+          </section>
+
+          <section class="settings-feature-advanced" x-show="featureFieldsFor(selectedFeatureCapability).length > 1">
+            <button type="button" :aria-expanded="featureAdvancedOpen" @click="featureAdvancedOpen = !featureAdvancedOpen">
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use></svg>
+              <strong x-text="featureAdvancedOpen ? 'Hide advanced settings' : 'Show advanced settings'"></strong>
+              <span>Timeouts, retries, limits, and more.</span>
+            </button>
+            <div class="application-feature-settings" x-show="featureAdvancedOpen">
+              <template x-for="field in featureFieldsFor(selectedFeatureCapability).slice(1)" :key="field.key">
+                <div class="settings-field">
+                  <div class="settings-field-heading"><label :for="`setting-${field.key}`" x-text="field.label"></label><span class="setting-source" :class="fieldSourceClass(field)" x-text="fieldSourceLabel(field)"></span></div>
+                  <p x-text="field.description"></p>
+                  <div class="settings-control-row">
+                    <template x-if="field.input === 'boolean'"><select :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value === 'true')"><option value="true">Enabled</option><option value="false">Disabled</option></select></template>
+                    <template x-if="field.input === 'select'"><select :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template></select></template>
+                    <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input :id="`setting-${field.key}`" :max="field.max" :min="field.min" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
+                    <span class="setting-unit" x-show="field.unit !== null" x-text="field.unit"></span>
+                    <button class="text-button" type="button" :disabled="fieldResetDisabled(field)" @click="resetField(field)">Reset</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </section>
+
+          <footer class="settings-feature-footer">
+            <span :class="{ changed: changeCount > 0 }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><strong x-text="changeSummaryLabel()"></strong></span>
+            <div><button class="button secondary" type="button" :disabled="saving" @click="resetAll()">Reset</button><button class="button primary" type="button" :disabled="!canSave" @click="saveChanges()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="saveLabel()"></span></button></div>
+          </footer>
+        </section>
+      </div>
+    </section>
+    </template>
+
+    <template x-if="selectedArea === 'Providers'">
+    <section class="settings-search-results settings-feature-workbench settings-provider-workbench">
+      <div class="settings-feature-workspace settings-provider-workspace">
+        <aside class="settings-feature-sidebar settings-provider-sidebar">
+          <header><h2>Providers</h2><p>Select a provider to configure its connection and capability defaults.</p></header>
+          <nav aria-label="Provider connections">
+            <template x-for="profile in providerDrafts.catalog" :key="profile.id">
+              <button
+                type="button"
+                :aria-current="profile.id === selectedProviderId ? 'page' : null"
+                :class="{ active: profile.id === selectedProviderId }"
+                @click="selectProvider(profile.id)"
+              >
+                <span class="settings-feature-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-database"></use></svg></span>
+                <span class="settings-feature-nav-copy"><span><strong x-text="profile.displayName"></strong><small x-text="`${profile.capabilities.length} features`"></small></span><span x-text="valueOrFallback(providerConnectionsById[profile.id]?.configuration.baseUrl, 'No base URL')"></span></span>
+              </button>
+            </template>
+          </nav>
+        </aside>
+
+        <template x-if="selectedProviderProfile !== null &amp;&amp; selectedProviderConnection !== null">
+        <section class="settings-feature-editor settings-provider-editor">
+          <header class="settings-feature-editor-heading settings-provider-editor-heading">
+            <div class="settings-provider-heading-copy">
+              <span class="settings-provider-heading-title">
+                <svg aria-hidden="true" class="citeloom-icon citeloom-large-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-database"></use>
+                </svg>
+                <h2 x-text="selectedProviderProfile?.displayName ?? ''"></h2>
+              </span>
+              <p class="settings-provider-heading-metadata">
+                <span x-text="`${selectedProviderProfile?.capabilities.length ?? 0} capabilities`"></span>
+                <span aria-hidden="true">•</span>
+                <span x-text="providerUsesDeviceAuth() ? `Device sign-in: ${openAICodexConnectionLabel()}` : `API token: ${selectedProviderConnection?.apiTokenConfigured ? 'Configured' : 'Not configured'}`"></span>
+                <span aria-hidden="true">•</span>
+                <code x-text="valueOrFallback(selectedProviderConnection?.configuration.baseUrl, 'No base URL')"></code>
+              </p>
+            </div>
+            <button
+              class="button secondary settings-provider-edit-connection"
+              type="button"
+              x-show="providerEditorSection === 'capabilities'"
+              @click="selectProviderEditorSection('connection')"
+            >Edit connection</button>
+          </header>
+
+          <nav
+            class="settings-provider-tabs"
+            aria-label="Provider settings sections"
+            role="tablist"
+          >
+            <button
+              type="button"
+              role="tab"
+              :class="{ active: providerEditorSection === 'connection' }"
+              :aria-selected="providerEditorSection === 'connection'"
+              @click="selectProviderEditorSection('connection')"
+            >Connection</button>
+            <button
+              type="button"
+              role="tab"
+              :class="{ active: providerEditorSection === 'capabilities' }"
+              :aria-selected="providerEditorSection === 'capabilities'"
+              @click="selectProviderEditorSection('capabilities')"
+            >Capability defaults</button>
+          </nav>
+
+          <section
+            class="settings-provider-connection-editor"
+            role="tabpanel"
+            x-show="providerEditorSection === 'connection'"
+          >
+            <header>
+              <h3>Connection</h3>
+              <p>Set the shared endpoint and optional credential inherited by this provider's capabilities.</p>
+            </header>
+            <div class="provider-form-grid settings-provider-connection-grid">
+              <label class="provider-form-field">
+                <span>Provider base URL</span>
+                <input placeholder="Enter the provider base URL" type="url" :disabled="providerUsesDeviceAuth()" :value="selectedProviderConnection?.configuration.baseUrl ?? ''" @input="writeProviderBaseUrl($event.target.value)" />
+                <small x-show="selectedProviderConnection?.configuration.baseUrl === null">No base URL configured.</small>
+                <small x-show="providerUsesDeviceAuth()">Fixed to the ChatGPT Codex subscription endpoint.</small>
+              </label>
+              <label class="provider-form-field">
+                <span>Maximum parallel requests</span>
+                <input max="16" min="1" step="1" type="number" :value="providerMaximumParallelRequests() ?? 1" @change="writeProviderMaximumParallelRequests($event.target.value)" />
+                <small>The deployment-wide request limit for this provider.</small>
+              </label>
+              <div class="provider-form-field" x-show="providerUsesDeviceAuth()">
+                <span>OpenAI device sign-in</span>
+                <div class="provider-secret-control">
+                  <strong x-text="openAICodexConnectionLabel()"></strong>
+                  <button class="button secondary" type="button" :disabled="openAICodexBusy" x-show="openAICodexAuth?.connection.state !== 'connected'" @click="startOpenAICodexSignIn()">Sign in</button>
+                  <button class="button secondary" type="button" :disabled="openAICodexBusy" x-show="openAICodexAuth?.connection.state === 'connected'" @click="loadOpenAICodexModels()">Load models</button>
+                  <button class="text-button" type="button" :disabled="openAICodexBusy" x-show="openAICodexAuth?.connection.state === 'connected'" @click="disconnectOpenAICodex()">Disconnect</button>
+                </div>
+                <small x-show="openAICodexAuth?.connection.state === 'connected'">Loading models contacts the Codex subscription endpoint and fills the model selectors.</small>
+                <div x-show="openAICodexAuth?.flow?.state === 'pending' || openAICodexAuth?.flow?.state === 'exchanging'">
+                  <p>Open <a :href="openAICodexAuth?.flow?.verificationUrl ?? '#'" target="_blank" rel="noopener noreferrer">the OpenAI device page</a> and enter:</p>
+                  <code x-text="openAICodexAuth?.flow?.userCode ?? ''"></code>
+                  <button class="text-button" type="button" :disabled="openAICodexBusy" @click="cancelOpenAICodexSignIn()">Cancel sign-in</button>
+                </div>
+                <small x-show="openAICodexAuth?.flow?.error !== null" x-text="openAICodexAuth?.flow?.error"></small>
+              </div>
+              <label class="provider-form-field" x-show="!providerUsesDeviceAuth()">
+                <span>API token</span>
+                <div class="provider-secret-control">
+                  <input autocomplete="new-password" data-1p-ignore="true" data-bwignore="true" data-lpignore="true" name="provider-credential-replacement" type="password" :placeholder="selectedProviderCredentialPlaceholder()" :value="credentialDrafts[selectedProviderId] ?? ''" @input="writeProviderCredential($event.target.value)" />
+                  <button class="text-button" type="button" :disabled="providerCredentialClearDisabled()" @click="clearProviderCredential()">Clear</button>
+                </div>
+              </label>
+            </div>
+            <p class="provider-no-probe-note settings-provider-diagnostic-note">Saving does not contact providers or discover models. Use <a data-view="system-health" href="./index.html?view=system-health" hx-get="./fragments/system-health.html" hx-push-url="./index.html?view=system-health">System health</a> to run diagnostic requests.</p>
+          </section>
+
+          <section
+            class="settings-provider-capability-editor"
+            role="tabpanel"
+            x-show="providerEditorSection === 'capabilities'"
+          >
+            <div class="settings-provider-connection-summary">
+              <div>
+                <span>Base URL</span>
+                <code x-text="valueOrFallback(selectedProviderConnection?.configuration.baseUrl, 'Not configured')"></code>
+              </div>
+              <div>
+                <span>Maximum parallel requests</span>
+                <strong x-text="providerMaximumParallelRequests() ?? 'Not configured'"></strong>
+              </div>
+              <div>
+                <span>Authentication</span>
+                <strong x-text="providerUsesDeviceAuth() ? openAICodexConnectionLabel() : (selectedProviderConnection?.apiTokenConfigured ? 'Configured' : 'Not configured')"></strong>
+              </div>
+              <div>
+                <span>System health</span>
+                <a data-view="system-health" href="./index.html?view=system-health" hx-get="./fragments/system-health.html" hx-push-url="./index.html?view=system-health">Run diagnostic</a>
+              </div>
+            </div>
+
+            <div class="settings-provider-capability-matrix">
+              <div class="settings-provider-matrix-header" aria-hidden="true">
+                <span>Capability</span>
+                <span>Effective URL</span>
+                <span>Authentication</span>
+                <span>Default model</span>
+                <span>Context</span>
+                <span>Override</span>
+              </div>
+              <template x-for="entry in selectedProviderProfile?.capabilities ?? []" :key="entry.capability">
+                <div class="settings-provider-matrix-entry">
+                  <button
+                    class="settings-provider-matrix-row"
+                    type="button"
+                    :class="{ active: selectedProviderCapability === entry.capability }"
+                    :aria-controls="`provider-${selectedProviderId}-${entry.capability}-editor`"
+                    :aria-expanded="selectedProviderCapability === entry.capability"
+                    @click="selectProviderCapability(entry.capability)"
+                  >
+                    <span class="settings-provider-matrix-capability">
+                      <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                        <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+                      </svg>
+                      <strong x-text="capabilityLabel(entry.capability)"></strong>
+                    </span>
+                    <code x-text="valueOrFallback(providerEffectiveUrl(entry.capability), 'Not configured')"></code>
+                    <span x-text="providerCredentialStatus(entry.capability)"></span>
+                    <strong x-text="valueOrFallback(providerCapabilityModel(entry.capability))"></strong>
+                    <span x-text="capabilityHasModelContext(entry.capability) ? valueOrFallback(providerCapabilityContextCapacityTokens(entry.capability)) : '—'"></span>
+                    <span
+                      class="settings-provider-override-status"
+                      :class="{ custom: providerCapabilityBaseUrl(entry.capability) !== null }"
+                      :title="providerCapabilityBaseUrl(entry.capability) ?? 'Uses the provider base URL'"
+                      x-text="providerCapabilityOverrideLabel(entry.capability)"
+                    ></span>
+                  </button>
+
+                  <section
+                    class="settings-provider-inline-editor"
+                    :id="`provider-${selectedProviderId}-${entry.capability}-editor`"
+                    x-show="selectedProviderCapability === entry.capability"
+                    :aria-label="`Edit ${capabilityLabel(entry.capability)} defaults`"
+                  >
+                    <header>
+                      <h3 x-text="`Edit ${capabilityLabel(entry.capability)} defaults`"></h3>
+                      <p>Update the default model, context, or base URL override for this capability.</p>
+                    </header>
+
+                    <div class="settings-provider-inheritance-summary">
+                      <div>
+                        <span>Provider base URL</span>
+                        <code x-text="valueOrFallback(selectedProviderConnection?.configuration.baseUrl, 'Not configured')"></code>
+                      </div>
+                      <div>
+                        <span>Effective URL</span>
+                        <code x-text="valueOrFallback(providerEffectiveUrl(entry.capability), 'Not configured')"></code>
+                      </div>
+                      <div>
+                        <span>Authentication</span>
+                        <strong x-text="providerCredentialStatus(entry.capability)"></strong>
+                      </div>
+                    </div>
+
+                    <div class="settings-provider-inline-fields">
+                      <label class="provider-form-field">
+                        <span>Default model</span>
+                        <input placeholder="Enter a provider model ID" type="text" :list="selectedProviderId === 'openai-codex' ? 'openai-codex-models' : null" :value="providerCapabilityModel(entry.capability) ?? ''" @input="writeProviderCapabilityModel(entry.capability, $event.target.value)" />
+                        <small x-show="providerCapabilityModel(entry.capability) === null">No default model configured.</small>
+                      </label>
+                      <label class="provider-form-field" x-show="capabilityHasModelContext(entry.capability)">
+                        <span>Default model context</span>
+                        <input min="1" placeholder="Enter the model context" step="1" type="number" :value="providerCapabilityContextCapacityTokens(entry.capability) ?? ''" @change="writeProviderCapabilityContextCapacityTokens(entry.capability, $event.target.value)" />
+                        <small>The model's maximum context in tokens.</small>
+                      </label>
+                      <label class="provider-form-field" x-show="entry.capability === 'textToSpeech'">
+                        <span>Default voice</span>
+                        <input placeholder="Enter a provider voice" type="text" :value="providerDefaultVoice() ?? ''" @input="writeProviderDefaultVoice($event.target.value)" />
+                        <small x-show="providerDefaultVoice() === null">No default voice configured.</small>
+                      </label>
+                      <label class="provider-form-field" x-show="selectedProviderId === 'custom'">
+                        <span>Protocol</span>
+                        <select :disabled="entry.capability === 'reranking'" :value="providerAdapter(entry.capability)" @change="writeProviderAdapter(entry.capability, $event.target.value)">
+                          <template x-for="option in adapterOptions(entry.capability)" :key="option.value">
+                            <option :value="option.value" x-text="option.label"></option>
+                          </template>
+                        </select>
+                      </label>
+                      <div class="provider-form-field settings-provider-override-field" x-show="!providerUsesDeviceAuth()">
+                        <span class="settings-provider-field-heading">
+                          <label :for="`provider-${selectedProviderId}-${entry.capability}-base-url`">Capability base URL override</label>
+                          <button
+                            class="text-button"
+                            type="button"
+                            x-show="providerCapabilityBaseUrl(entry.capability) !== null"
+                            @click="clearProviderCapabilityBaseUrl(entry.capability)"
+                          >Clear override</button>
+                        </span>
+                        <input :id="`provider-${selectedProviderId}-${entry.capability}-base-url`" placeholder="Use the provider base URL" type="url" :value="providerCapabilityBaseUrl(entry.capability) ?? ''" @input="writeProviderCapabilityBaseUrl(entry.capability, $event.target.value)" />
+                        <small x-text="providerCapabilityBaseUrl(entry.capability) === null ? 'Uses the provider base URL.' : 'Overrides the provider base URL for this capability.'"></small>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </template>
+            </div>
+          </section>
+
+          <footer class="settings-feature-footer">
+            <span :class="{ changed: changeCount > 0 }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><strong x-text="changeSummaryLabel()"></strong></span>
+            <div><button class="button secondary" type="button" :disabled="saving" @click="resetAll()">Reset</button><button class="button primary" type="button" :disabled="!canSave" @click="saveChanges()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="saveLabel()"></span></button></div>
+          </footer>
+        </section>
+        </template>
+      </div>
+    </section>
+    </template>
+
+    <template x-if="selectedArea === 'Startup and deployment'">
+    <section class="settings-search-results settings-feature-workbench settings-startup-workbench">
+      <div class="settings-feature-health" aria-label="Startup configuration summary">
+        <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><span><strong x-text="`${settings.startupSettings.length} startup values`"></strong><small>Environment-owned configuration</small></span></div>
+        <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><span><strong>Read-only at runtime</strong><small>Validated before database settings load</small></span></div>
+        <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-database"></use></svg><span><strong>Environment source</strong><small>Change through deployment configuration</small></span></div>
+      </div>
+
+      <div class="settings-feature-workspace">
+        <aside class="settings-feature-sidebar settings-startup-sidebar">
+          <header><h2>Startup and deployment</h2><p>Select a value to inspect its effective runtime configuration.</p></header>
+          <nav aria-label="Startup and deployment settings">
+          <template x-for="field in settings.startupSettings" :key="field.key">
+            <button type="button" :aria-current="field.key === activeStartupSetting()?.key ? 'page' : null" :class="{ active: field.key === activeStartupSetting()?.key }" @click="selectStartupSetting(field.key)">
+              <span class="settings-feature-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg></span>
+              <span class="settings-feature-nav-copy"><span><strong x-text="field.label"></strong><small>Read-only</small></span><span x-text="field.value"></span></span>
+            </button>
+          </template>
+          </nav>
+        </aside>
+
+        <template x-if="activeStartupSetting() !== null">
+        <section class="settings-feature-editor settings-startup-editor">
+          <template x-for="field in [activeStartupSetting()]" :key="field.key">
+          <div>
+            <header class="settings-feature-editor-heading"><div><span><h2 x-text="field.label"></h2><small>Startup and deployment</small></span><p x-text="field.description"></p></div><span class="setting-source">Environment</span></header>
+            <section class="settings-feature-step"><header><span>1</span><h3>Effective value</h3><p>This value is loaded before saved application settings are available.</p></header><div class="settings-startup-value"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><div><span>Current value</span><code :title="field.value" x-text="field.value"></code></div></div></section>
+            <section class="settings-feature-step"><header><span>2</span><h3>How to change it</h3></header><p class="settings-startup-guidance">Update this value in the deployment environment, then restart CiteLoom so startup validation can load the new configuration.</p></section>
+            <footer class="settings-readonly-footer"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><strong>Read-only in the application</strong><span>Saved Settings changes do not modify deployment values.</span></footer>
+          </div>
+          </template>
+        </section>
+        </template>
+      </div>
+    </section>
+    </template>
+
+    <template x-if="!browsingAreas &amp;&amp; selectedArea !== 'Application Features' &amp;&amp; selectedArea !== 'Providers' &amp;&amp; selectedArea !== 'Startup and deployment'">
+    <section class="settings-search-results settings-feature-workbench settings-runtime-workbench" aria-live="polite">
+      <div class="settings-empty-results" x-show="filteredFields.length === 0">
+        <svg aria-hidden="true" class="citeloom-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
+        </svg>
+        <strong>No settings match</strong>
+        <span>Try a broader term or clear the source filter.</span>
+      </div>
+
+      <div class="settings-runtime-content" x-show="filteredFields.length > 0">
+        <div class="settings-feature-health" aria-label="Runtime setting summary">
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg><span><strong x-text="formatSettingCount(filteredFields.length)"></strong><small x-text="resultLabel()"></small></span></div>
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-database"></use></svg><span><strong x-text="`${filteredFieldSourceCount('database')} database overrides`"></strong><small x-text="`${filteredFieldSourceCount('database-default')} database defaults`"></small></span></div>
+          <div :class="{ warning: filteredPendingCount() > 0 }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><span><strong x-text="`${filteredPendingCount()} pending changes`"></strong><small>Changes in this area</small></span></div>
+        </div>
+
+        <div class="settings-feature-workspace">
+          <aside class="settings-feature-sidebar settings-runtime-sidebar">
+            <header><h2 x-text="resultLabel()"></h2><p x-text="areaDescription()"></p></header>
+            <nav aria-label="Runtime settings">
+              <template x-for="field in filteredFields" :key="field.key">
+                <button type="button" :aria-current="field.key === activeRuntimeField()?.key ? 'page' : null" :class="{ active: field.key === activeRuntimeField()?.key }" @click="selectRuntimeField(field.key)">
+                  <span class="settings-feature-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg></span>
+                  <span class="settings-feature-nav-copy"><span><strong x-text="field.label"></strong><small x-text="fieldSourceLabel(field)"></small></span><span x-text="field.description"></span></span>
+                </button>
+              </template>
+            </nav>
+          </aside>
+
+          <template x-if="activeRuntimeField() !== null">
+          <section class="settings-feature-editor settings-runtime-editor">
+            <template x-for="field in [activeRuntimeField()]" :key="field.key">
+            <div>
+              <header class="settings-feature-editor-heading"><div><span><h2 x-text="field.label"></h2><small x-text="field.group"></small></span><p x-text="field.description"></p></div><span class="setting-source" :class="fieldSourceClass(field)" x-text="fieldSourceLabel(field)"></span></header>
+              <section class="settings-feature-step"><header><span>1</span><h3>Effective setting</h3><p>Change the value used by new application operations.</p></header><div class="settings-runtime-control">
+                <template x-if="field.input === 'boolean'"><select :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value === 'true')"><option value="true">Enabled</option><option value="false">Disabled</option></select></template>
+                <template x-if="field.input === 'select'"><select :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template></select></template>
+                <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input :autocomplete="field.sensitive ? 'new-password' : 'off'" :data-1p-ignore="field.sensitive ? 'true' : null" :data-bwignore="field.sensitive ? 'true' : null" :data-lpignore="field.sensitive ? 'true' : null" :id="`setting-${field.key}`" :max="field.max" :min="field.min" :name="`setting-${field.key}`" :placeholder="field.sensitive &amp;&amp; field.configured ? 'Configured' : ''" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
+                <span class="setting-unit" x-show="field.unit !== null" x-text="field.unit"></span><button class="text-button" type="button" :disabled="fieldResetDisabled(field)" @click="resetField(field)">Reset to default</button>
+              </div><small class="settings-runtime-credential-note" x-show="fieldCredentialMessageVisible(field)">A credential is configured. Enter a new value to replace it.</small></section>
+              <section class="settings-feature-step"><header><span>2</span><h3>Source and effect</h3><p>Understand where this value comes from and what changing it affects.</p></header><div class="settings-resolved-result"><div><span>Current source</span><strong x-text="fieldSourceLabel(field)"></strong></div><div><span>Example change and effect</span><strong x-text="field.changeExample"></strong></div></div></section>
+              <footer class="settings-feature-footer"><span :class="{ changed: changeCount > 0 }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><strong x-text="changeSummaryLabel()"></strong></span><div><button class="button secondary" type="button" :disabled="saving" @click="resetAll()">Reset</button><button class="button primary" type="button" :disabled="!canSave" @click="saveChanges()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="saveLabel()"></span></button></div></footer>
+            </div>
+            </template>
+          </section>
+          </template>
+        </div>
+      </div>
+    </section>
+    </template>
+  </div>
+  </template>
+</section>
