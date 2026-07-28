@@ -15,6 +15,11 @@ import type {
   StreamedAnswer,
 } from "../answers/stream.js";
 import {
+  applyVerifiedAnswerPublication,
+  answerQuestion,
+  createNoRelevantAnswer,
+  InvalidAnswerDraftError,
+  streamAnswerQuestion,
   UnexpectedAnswerFinishReasonError,
   type AnswerResult,
   type GeneratedAnswerResult,
@@ -51,12 +56,6 @@ import {
 import { InferenceFeatureTimeoutError } from "../inference/request.js";
 import { HhemClientError } from "../verification/hhem-client.js";
 import { RerankingTimeoutError } from "./ranking/reranker.js";
-import {
-  applyVerifiedAnswerPublication,
-  answerQuestion,
-  createNoRelevantAnswer,
-  streamAnswerQuestion,
-} from "../answers/inference.js";
 import { embedQuestions } from "../embedding/inference.js";
 import { expandRetrievalQuery } from "./query-expansion.js";
 import type { QueryExpansionGenerationSettings } from "./query-expansion.js";
@@ -155,6 +154,7 @@ const maximumLoggedAnswerErrorMessageCharacters = 500;
 type AnswerStreamFailure =
   | { kind: "answer-capacity" }
   | { kind: "answer-finish" }
+  | { kind: "answer-invalid" }
   | { kind: "answer-timeout"; message: string }
   | { kind: "claim-verification"; category: HhemClientError["category"] }
   | { kind: "provider"; error: Error; failure: InferenceApiFailure }
@@ -886,6 +886,8 @@ function readDirectAnswerStreamFailure(
       return { kind: "reranking-timeout", message: error.message };
     case error instanceof AnswerCapacityError:
       return { kind: "answer-capacity" };
+    case error instanceof InvalidAnswerDraftError:
+      return { kind: "answer-invalid" };
     case error instanceof UnexpectedAnswerFinishReasonError:
       return { kind: "answer-finish" };
     case error instanceof StaleInferenceSettingsError:
@@ -910,6 +912,8 @@ function formatAnswerStreamFailure(failure: AnswerStreamFailure): string {
       return "The selected answer model cannot fit the answer instructions and retrieved evidence. Increase its configured context capacity or select a model with a larger context window.";
     case "answer-finish":
       return "The answer provider stopped before producing a complete answer. Try again or select another answer model.";
+    case "answer-invalid":
+      return "The answer model returned an invalid response twice. Try again or select another answer model.";
     case "settings-changed":
       return "Inference settings changed before answer generation started. Try the question again.";
     case "scheduler-lease":
@@ -1001,6 +1005,7 @@ function readAnswerFailureOrigin(failure: AnswerStreamFailure) {
     case "provider":
     case "answer-timeout":
     case "answer-finish":
+    case "answer-invalid":
     case "claim-verification":
     case "reranking-timeout":
       return "inference-provider" as const;
@@ -1027,6 +1032,7 @@ function readAnswerFailureRetryability(
     case "answer-capacity":
       return false;
     case "answer-finish":
+    case "answer-invalid":
     case "unexpected":
       return null;
   }
@@ -1064,6 +1070,8 @@ function readAnswerFailureCategory(failure: AnswerStreamFailure): string {
       return "answer-capacity";
     case "answer-finish":
       return "inference-provider-finish";
+    case "answer-invalid":
+      return "inference-provider-response";
     case "unexpected":
       return "unexpected";
   }
@@ -1090,6 +1098,8 @@ function readAnswerFailureCode(
       return "answer_context_capacity_exceeded";
     case "answer-finish":
       return "answer_provider_incomplete";
+    case "answer-invalid":
+      return "answer_provider_invalid_response";
     case "unexpected":
       return readSqlStateCode(error);
   }
@@ -1122,6 +1132,7 @@ function readSafeAnswerFailureMessage(
       return "Claim verification failed before the answer could be published.";
     case "answer-capacity":
     case "answer-finish":
+    case "answer-invalid":
     case "scheduler-lease":
     case "settings-changed":
       return truncateAnswerFailureMessage(readErrorMessage(error));

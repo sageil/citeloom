@@ -71,12 +71,17 @@ export interface AnswerRunDetails {
 }
 
 type GeneratedAnswerFallbackReason =
-  | "invalid-draft"
   | "model-no-answer"
   | "unsupported-claims";
 
 const ANSWER_OUTPUT_DESCRIPTION = "A private CiteLoom answer draft containing only plain-text statements and request-local source numbers.";
 const ANSWER_OUTPUT_NAME = "answer_draft";
+const ANSWER_REPAIR_INSTRUCTION = [
+  "RETRY INSTRUCTION:",
+  "The previous response could not be decoded as the required structured answer.",
+  "Use the same user request and every retrieved source supplied below.",
+  "Return only one object matching the required output schema.",
+].join("\n");
 
 export interface AnsweredGeneratedAnswerResult extends AnswerResult {
   claims: AnswerClaim[];
@@ -140,14 +145,14 @@ interface AnswerCompletion {
 type AnswerMetricOperation = "answer" | "answer-stream";
 type AnswerContentPart = TextPart;
 
-interface RecoveredAnswerDraft {
-  draft: AnswerDraft;
-  retrieved: RetrievedElement[];
-}
-
-const MAX_ANSWER_RECOVERY_ATTEMPTS = 8;
-
 const passiveAbortSignal = new AbortController().signal;
+
+export class InvalidAnswerDraftError extends Error {
+  public constructor() {
+    super("The answer model returned an invalid structured response twice.");
+    this.name = "InvalidAnswerDraftError";
+  }
+}
 
 export class UnexpectedAnswerFinishReasonError extends Error {
   public constructor(finishReason: string | null) {
@@ -223,6 +228,7 @@ async function generateAnswer(
         { text: createAnswerSystemPrompt(), type: "text" },
         { text: outputContract, type: "text" },
         ...fixedContent,
+        { text: ANSWER_REPAIR_INSTRUCTION, type: "text" },
       ],
       sourceContents,
       retrieved,
@@ -275,10 +281,18 @@ async function generateAnswer(
     models.answer.provider,
     models.answer.modelId,
   );
+  let metricFinished = false;
+  const finishMetricOnce = (value: AnswerCompletion): void => {
+    if (metricFinished) {
+      return;
+    }
+    metricFinished = true;
+    finishMetric(value);
+  };
   let completion: AnswerCompletion | null = null;
   const recordCompletion = (value: AnswerCompletion): void => {
     completion = value;
-    finishMetric(value);
+    finishMetricOnce(value);
   };
   try {
     const runGeneration = (requestSignal: AbortSignal) => {
@@ -310,17 +324,31 @@ async function generateAnswer(
       normalizedCompletion,
       runTelemetry.runId,
     );
-    if (result.finishReason === "length") {
-      const fallback = createGeneratedFallback(
-        retrieved,
-        runDetails,
-        "invalid-draft",
-      );
-      await finishAnswerStage(stage, fallback, selectedRetrieved.length, normalizedCompletion);
-      return fallback;
-    }
     if (result.finishReason !== "stop") {
-      throw new UnexpectedAnswerFinishReasonError(result.finishReason);
+      if (result.finishReason !== "length") {
+        throw new UnexpectedAnswerFinishReasonError(result.finishReason);
+      }
+      const repairedDraft = await repairAnswerDraft(
+        models,
+        question,
+        selectedRetrieved,
+        scheduler,
+        abortSignal,
+        generationSettings,
+        budget,
+        runTelemetry,
+        stage.timingObserver,
+      );
+      if (repairedDraft === null) {
+        throw new InvalidAnswerDraftError();
+      }
+      const finalized = finalizeAnswerDraft(
+        repairedDraft,
+        selectedRetrieved,
+        runDetails,
+      );
+      await finishAnswerStage(stage, finalized, selectedRetrieved.length, normalizedCompletion);
+      return finalized;
     }
     let draft: AnswerDraft | null = null;
     try {
@@ -330,12 +358,12 @@ async function generateAnswer(
         throw error;
       }
     }
-    if (draft !== null && draft.status === "answered") {
+    if (draft !== null) {
       const finalized = finalizeAnswerDraft(draft, selectedRetrieved, runDetails);
       await finishAnswerStage(stage, finalized, selectedRetrieved.length, normalizedCompletion);
       return finalized;
     }
-    const recovered = await recoverAnswerDraft(
+    const repairedDraft = await repairAnswerDraft(
       models,
       question,
       selectedRetrieved,
@@ -346,32 +374,19 @@ async function generateAnswer(
       runTelemetry,
       stage.timingObserver,
     );
-    if (recovered !== null) {
-      const remappedDraft = remapRecoveredDraft(
-        recovered,
-        selectedRetrieved,
-      );
-      const finalized = finalizeAnswerDraft(
-        remappedDraft,
-        selectedRetrieved,
-        runDetails,
-      );
-      await finishAnswerStage(stage, finalized, selectedRetrieved.length, normalizedCompletion);
-      return finalized;
+    if (repairedDraft === null) {
+      throw new InvalidAnswerDraftError();
     }
-    const fallbackReason: GeneratedAnswerFallbackReason = draft === null
-      ? "invalid-draft"
-      : "model-no-answer";
-    const fallback = createGeneratedFallback(
-      retrieved,
+    const finalized = finalizeAnswerDraft(
+      repairedDraft,
+      selectedRetrieved,
       runDetails,
-      fallbackReason,
     );
-    await finishAnswerStage(stage, fallback, selectedRetrieved.length, normalizedCompletion);
-    return fallback;
+    await finishAnswerStage(stage, finalized, selectedRetrieved.length, normalizedCompletion);
+    return finalized;
   } catch (error: unknown) {
     if (abortSignal.aborted) {
-      finishMetric({
+      finishMetricOnce({
         finishReason: "aborted",
         inputTokens: null,
         outputTokens: null,
@@ -384,7 +399,7 @@ async function generateAnswer(
     }
     if (NoObjectGeneratedError.isInstance(error)) {
       const errorCompletion = readAnswerCompletion(error, completion);
-      finishMetric(errorCompletion);
+      finishMetricOnce(errorCompletion);
       if (!isExpectedContractFinishReason(errorCompletion.finishReason)) {
         await stage.finish(createTelemetryStageResult(
           readTelemetryFailureOutcome(abortSignal),
@@ -398,24 +413,29 @@ async function generateAnswer(
         errorCompletion,
         runTelemetry.runId,
       );
-      const recovered = await recoverAnswerDraft(
-        models,
-        question,
-        selectedRetrieved,
-        scheduler,
-        abortSignal,
-        generationSettings,
-        budget,
-        runTelemetry,
-        stage.timingObserver,
-      );
-      if (recovered !== null) {
-        const remappedDraft = remapRecoveredDraft(
-          recovered,
+      let repairedDraft: AnswerDraft | null;
+      try {
+        repairedDraft = await repairAnswerDraft(
+          models,
+          question,
           selectedRetrieved,
+          scheduler,
+          abortSignal,
+          generationSettings,
+          budget,
+          runTelemetry,
+          stage.timingObserver,
         );
+      } catch (repairError: unknown) {
+        await stage.finish(createTelemetryStageResult(
+          readTelemetryFailureOutcome(abortSignal),
+          { inputCount: selectedRetrieved.length },
+        ));
+        throw repairError;
+      }
+      if (repairedDraft !== null) {
         const finalized = finalizeAnswerDraft(
-          remappedDraft,
+          repairedDraft,
           selectedRetrieved,
           runDetails,
         );
@@ -427,15 +447,20 @@ async function generateAnswer(
         );
         return finalized;
       }
-      const fallback = createGeneratedFallback(
-        retrieved,
-        runDetails,
-        "invalid-draft",
-      );
-      await finishAnswerStage(stage, fallback, selectedRetrieved.length, errorCompletion);
-      return fallback;
+      await stage.finish(createTelemetryStageResult(
+        "error",
+        { inputCount: selectedRetrieved.length },
+      ));
+      throw new InvalidAnswerDraftError();
     }
-    finishMetric({
+    if (error instanceof InvalidAnswerDraftError) {
+      await stage.finish(createTelemetryStageResult(
+        "error",
+        { inputCount: selectedRetrieved.length },
+      ));
+      throw error;
+    }
+    finishMetricOnce({
       finishReason: "error",
       inputTokens: null,
       outputTokens: null,
@@ -448,7 +473,7 @@ async function generateAnswer(
   }
 }
 
-async function recoverAnswerDraft(
+async function repairAnswerDraft(
   models: InferenceModelRegistry,
   question: string,
   retrieved: RetrievedElement[],
@@ -458,61 +483,59 @@ async function recoverAnswerDraft(
   budget: AnswerRequestBudget,
   runTelemetry: RunTelemetry,
   timingObserver: Parameters<TaskScheduler["run"]>[2],
-): Promise<RecoveredAnswerDraft | null> {
-  const candidates = createAnswerRecoveryCandidates(retrieved, question);
-  for (const candidateRetrieved of candidates) {
-    abortSignal.throwIfAborted();
-    const content = buildAnswerContent(
-      question,
-      candidateRetrieved,
-      new Set(budget.expandedRetrievalWindowIds),
+): Promise<AnswerDraft | null> {
+  abortSignal.throwIfAborted();
+  const content = buildAnswerRepairContent(
+    question,
+    retrieved,
+    new Set(budget.expandedRetrievalWindowIds),
+  );
+  const runGeneration = (requestSignal: AbortSignal) => {
+    recordAnswerRequest(runTelemetry, "recovery", retrieved);
+    return requestAnswerDraft(
+      models,
+      content,
+      retrieved.length,
+      requestSignal,
+      generationSettings,
+      () => undefined,
+      budget,
     );
-    const runGeneration = (requestSignal: AbortSignal) => {
-      recordAnswerRequest(runTelemetry, "recovery", candidateRetrieved);
-      return requestAnswerDraft(
-        models,
-        content,
-        candidateRetrieved.length,
-        requestSignal,
-        generationSettings,
-        () => undefined,
-        budget,
-      );
-    };
-    let result: Awaited<ReturnType<typeof requestAnswerDraft>>;
-    try {
-      result = await scheduler.run(
-        runGeneration,
-        abortSignal,
-        timingObserver,
-      );
-    } catch (error: unknown) {
-      if (NoObjectGeneratedError.isInstance(error)) {
-        continue;
+  };
+  let result: Awaited<ReturnType<typeof requestAnswerDraft>>;
+  try {
+    result = await scheduler.run(
+      runGeneration,
+      abortSignal,
+      timingObserver,
+    );
+  } catch (error: unknown) {
+    if (NoObjectGeneratedError.isInstance(error)) {
+      const completion = readAnswerCompletion(error, null);
+      if (isExpectedContractFinishReason(completion.finishReason)) {
+        return null;
       }
-      throw error;
+      throw new UnexpectedAnswerFinishReasonError(completion.finishReason);
     }
-    if (result.finishReason !== "stop") {
-      continue;
-    }
-    let draft: AnswerDraft;
-    try {
-      draft = decodeAnswerModelResponse(
-        result.output,
-        candidateRetrieved.length,
-      );
-    } catch (error: unknown) {
-      if (error instanceof AnswerDraftDecodeError) {
-        continue;
-      }
-      throw error;
-    }
-    if (draft.status === "no_answer") {
-      continue;
-    }
-    return { draft, retrieved: candidateRetrieved };
+    throw error;
   }
-  return null;
+  if (result.finishReason === "length") {
+    return null;
+  }
+  if (result.finishReason !== "stop") {
+    throw new UnexpectedAnswerFinishReasonError(result.finishReason);
+  }
+  try {
+    return decodeAnswerModelResponse(
+      result.output,
+      retrieved.length,
+    );
+  } catch (error: unknown) {
+    if (error instanceof AnswerDraftDecodeError) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 function recordAnswerRequest(
@@ -529,154 +552,6 @@ function recordAnswerRequest(
     });
   }
   runTelemetry.recordAnswerRequest({ evidence, phase });
-}
-
-function createAnswerRecoveryCandidates(
-  retrieved: RetrievedElement[],
-  question: string,
-): RetrievedElement[][] {
-  const groups = rankRetrievedDocumentGroups(
-    groupRetrievedByDocument(retrieved),
-    question,
-  );
-  const candidates: RetrievedElement[][] = [];
-  for (const group of groups) {
-    candidates.push(group);
-    if (candidates.length === MAX_ANSWER_RECOVERY_ATTEMPTS) {
-      return candidates;
-    }
-    for (const item of group) {
-      if (group.length === 1) {
-        continue;
-      }
-      candidates.push([item]);
-      if (candidates.length === MAX_ANSWER_RECOVERY_ATTEMPTS) {
-        return candidates;
-      }
-    }
-  }
-  return candidates;
-}
-
-function rankRetrievedDocumentGroups(
-  groups: RetrievedElement[][],
-  question: string,
-): RetrievedElement[][] {
-  const questionTokens = readIdentityTokens(question);
-  const ranked = groups.map((group, index) => ({
-    group,
-    index,
-    score: scoreDocumentIdentityMatch(group, questionTokens),
-  }));
-  ranked.sort((left, right) => {
-    const scoreDifference = right.score - left.score;
-    if (scoreDifference !== 0) {
-      return scoreDifference;
-    }
-    return left.index - right.index;
-  });
-  return ranked.map((item) => item.group);
-}
-
-function scoreDocumentIdentityMatch(
-  group: readonly RetrievedElement[],
-  questionTokens: ReadonlySet<string>,
-): number {
-  const first = group[0];
-  if (first === undefined) {
-    return 0;
-  }
-  const sourceFile = first.element.sourceFile;
-  const pathParts = sourceFile.split(/[\\/]/u);
-  const basename = pathParts.at(-1) ?? sourceFile;
-  const identityTokens = readIdentityTokens(basename);
-  let score = 0;
-  for (const token of identityTokens) {
-    if (questionTokens.has(token)) {
-      score += 1;
-    }
-  }
-  return score;
-}
-
-function readIdentityTokens(value: string): Set<string> {
-  const tokens = value.toLocaleLowerCase().split(/[^\p{L}\p{N}]+/u);
-  const meaningful = new Set<string>();
-  for (const token of tokens) {
-    if (token.length < 3) {
-      continue;
-    }
-    meaningful.add(token);
-  }
-  return meaningful;
-}
-
-function groupRetrievedByDocument(
-  retrieved: RetrievedElement[],
-): RetrievedElement[][] {
-  const groupsByKey = new Map<string, RetrievedElement[]>();
-  for (const item of retrieved) {
-    const key = `${item.element.documentId}\u0000${item.element.sourceFile}`;
-    const group = groupsByKey.get(key);
-    if (group === undefined) {
-      groupsByKey.set(key, [item]);
-      continue;
-    }
-    group.push(item);
-  }
-  return [...groupsByKey.values()];
-}
-
-function remapRecoveredDraft(
-  recovered: RecoveredAnswerDraft,
-  originalRetrieved: RetrievedElement[],
-): AnswerDraft {
-  const sourceNumberMap = new Map<number, number>();
-  for (let index = 0; index < recovered.retrieved.length; index += 1) {
-    const recoveredItem = recovered.retrieved[index];
-    if (recoveredItem === undefined) {
-      throw new Error(`Missing recovered source at index ${index}.`);
-    }
-    const originalIndex = originalRetrieved.indexOf(recoveredItem);
-    if (originalIndex < 0) {
-      throw new Error("Recovered answer source is absent from original retrieval context.");
-    }
-    sourceNumberMap.set(index + 1, originalIndex + 1);
-  }
-  const draft = structuredClone(recovered.draft);
-  if (draft.status === "no_answer") {
-    return draft;
-  }
-  for (const statement of draft.statements) {
-    statement.sourceNumbers = remapSourceNumbers(
-      statement.sourceNumbers,
-      sourceNumberMap,
-    );
-  }
-  for (const group of draft.conflictGroups) {
-    for (const position of group.positions) {
-      position.sourceNumbers = remapSourceNumbers(
-        position.sourceNumbers,
-        sourceNumberMap,
-      );
-    }
-  }
-  return draft;
-}
-
-function remapSourceNumbers(
-  sourceNumbers: number[],
-  sourceNumberMap: ReadonlyMap<number, number>,
-): number[] {
-  const remapped: number[] = [];
-  for (const sourceNumber of sourceNumbers) {
-    const originalSourceNumber = sourceNumberMap.get(sourceNumber);
-    if (originalSourceNumber === undefined) {
-      throw new Error(`Missing original source number for recovered source ${sourceNumber}.`);
-    }
-    remapped.push(originalSourceNumber);
-  }
-  return remapped;
 }
 
 async function requestAnswerDraft(
@@ -752,6 +627,19 @@ export function buildAnswerContent(
       .flatMap((source) => source.primary),
   ];
   return content;
+}
+
+function buildAnswerRepairContent(
+  question: string,
+  retrieved: RetrievedElement[],
+  expandedRetrievalWindowIds: ReadonlySet<string>,
+): UserContent {
+  return [
+    ...buildAnswerFixedContent(question),
+    { text: ANSWER_REPAIR_INSTRUCTION, type: "text" },
+    ...buildAnswerSourceContents(retrieved, expandedRetrievalWindowIds)
+      .flatMap((source) => source.primary),
+  ];
 }
 
 function buildAnswerFixedContent(question: string): AnswerContentPart[] {
