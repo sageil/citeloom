@@ -1,0 +1,9 @@
+/* Overview route styles are loaded only when the Overview workspace is requested. */
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.07fr) minmax(0, 0.93fr);
+  gap: 22px;
+  padding: 34px 0 48px;
+  scroll-margin-top: 20px;
+}

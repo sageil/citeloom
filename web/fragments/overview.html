@@ -1,0 +1,251 @@
+<section
+  class="feature-page overview-feature-page"
+  aria-label="Overview page"
+  id="overview"
+  x-data="citeloomOverviewPage"
+  x-init="$watch('dashboardStatus', value => { if (value === 'ready') dashboardWarningDismissed = false })"
+>
+  <section
+    aria-labelledby="workspace-unavailable-title"
+    class="workspace-unavailable-banner"
+    role="alert"
+    x-cloak
+    x-show="dashboardStatus === 'error' &amp;&amp; !dashboardWarningDismissed"
+  >
+    <svg aria-hidden="true" class="citeloom-icon workspace-unavailable-icon citeloom-large-icon">
+      <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
+    </svg>
+    <div class="workspace-unavailable-copy">
+      <h2 id="workspace-unavailable-title">Workspace status unavailable</h2>
+      <p>Document counts and feature status could not be refreshed. Your documents remain accessible.</p>
+    </div>
+    <div class="workspace-unavailable-actions">
+      <button
+        class="button workspace-retry-button"
+        type="button"
+        :aria-busy="dashboardRefreshing"
+        :disabled="dashboardRefreshing"
+        @click="refreshDashboard()"
+      >
+        <span x-text="dashboardRefreshing ? 'Retrying...' : 'Retry now'">Retry now</span>
+      </button>
+      <a
+        class="button secondary"
+        data-view="system-health"
+        href="./index.html?view=system-health"
+        hx-get="./fragments/system-health.html"
+        hx-push-url="./index.html?view=system-health"
+      >Open system health</a>
+    </div>
+    <button
+      aria-label="Dismiss workspace status warning"
+      class="icon-button workspace-unavailable-dismiss"
+      type="button"
+      @click="dismissDashboardWarning()"
+    >
+      <span aria-hidden="true">×</span>
+    </button>
+  </section>
+
+  <header class="workspace-header workspace-status-header">
+    <dl class="workspace-facts" aria-label="Workspace status">
+      <div>
+        <dt>Ready</dt>
+        <dd x-text="workspaceFact(overviewSummary.readyDocuments, dashboardStatus)">-</dd>
+      </div>
+      <div>
+        <dt>Processing</dt>
+        <dd x-text="workspaceFact(overviewSummary.processingDocuments, dashboardStatus)">-</dd>
+      </div>
+      <div>
+        <dt>Needs attention</dt>
+        <dd x-text="workspaceFact(overviewSummary.needsAttention, dashboardStatus)">-</dd>
+      </div>
+    </dl>
+  </header>
+
+  <div class="workflow-progress">
+    <ol aria-label="Document workflow">
+      <li :aria-current="stepCurrent(workflow.activeStep, 0)" :class="stepClass(workflow.activeStep, 0)">
+        <svg aria-hidden="true" class="citeloom-icon citeloom-workflow-done-icon" x-show="stepComplete(workflow.activeStep, 0)">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+        </svg>
+        <span>Upload</span>
+      </li>
+      <li :aria-current="stepCurrent(workflow.activeStep, 1)" :class="stepClass(workflow.activeStep, 1)">
+        <svg aria-hidden="true" class="citeloom-icon citeloom-workflow-done-icon" x-show="stepComplete(workflow.activeStep, 1)">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+        </svg>
+        <span>Normalize</span>
+      </li>
+      <li :aria-current="stepCurrent(workflow.activeStep, 2)" :class="stepClass(workflow.activeStep, 2)">
+        <svg aria-hidden="true" class="citeloom-icon citeloom-workflow-done-icon" x-show="stepComplete(workflow.activeStep, 2)">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+        </svg>
+        <span>Embed</span>
+      </li>
+      <li :aria-current="stepCurrent(workflow.activeStep, 3)" :class="stepClass(workflow.activeStep, 3)">
+        <svg aria-hidden="true" class="citeloom-icon citeloom-workflow-done-icon" x-show="stepComplete(workflow.activeStep, 3)">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+        </svg>
+        <span>Publish</span>
+      </li>
+      <li :aria-current="stepCurrent(workflow.activeStep, 4)" :class="stepClass(workflow.activeStep, 4)">
+        <svg aria-hidden="true" class="citeloom-icon citeloom-workflow-done-icon" x-show="stepComplete(workflow.activeStep, 4)">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+        </svg>
+        <span>Ask</span>
+      </li>
+    </ol>
+    <span class="live-label">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span x-text="workflowStatusLabel()"></span>
+    </span>
+  </div>
+
+  <section class="overview-grid" aria-label="Workspace overview">
+    <section class="panel ingestion-panel" aria-labelledby="ingestion-title">
+      <header class="panel-header">
+        <span class="panel-icon" aria-hidden="true">
+          <svg class="citeloom-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-upload"></use>
+          </svg>
+        </span>
+        <div>
+          <p class="section-kicker">Knowledge intake</p>
+          <h2 id="ingestion-title">Ingest documents</h2>
+        </div>
+      </header>
+
+      <label
+        class="drop-zone"
+        @dragover.prevent
+        @drop.prevent="chooseFiles($event.dataTransfer?.files ?? null)"
+      >
+        <input
+          multiple
+          type="file"
+          x-ref="fileInput"
+          @change="chooseFiles($event.target.files)"
+        />
+        <span class="drop-icon" aria-hidden="true">
+          <svg class="citeloom-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-upload"></use>
+          </svg>
+        </span>
+        <strong>Drop documents here or browse</strong>
+        <span
+          x-text="`${overviewSummary.supportedExtensions.join(', ')}, or another readable UTF-8 text file, up to ${documentSizeLimitLabel()}`"
+        ></span>
+      </label>
+
+      <div class="selected-files" x-cloak x-show="files.length > 0">
+        <div>
+          <strong x-text="selectedFileCountLabel"></strong>
+          <span x-text="selectedFileSizeLabel"></span>
+        </div>
+        <button class="text-button" type="button" @click="clearFiles()">Clear</button>
+      </div>
+
+      <div class="field-label tag-field">
+        <label for="ingestion-tags">Tags</label>
+        <div class="tag-entry">
+          <template x-for="tag in tags" :key="tag.toLocaleLowerCase()">
+            <span class="tag-chip">
+              <span x-text="tag"></span>
+              <button type="button" :aria-label="`Remove ${tag} tag`" @click="removeTag(tag)">
+                <span aria-hidden="true">×</span>
+              </button>
+            </span>
+          </template>
+          <input
+            aria-describedby="ingestion-tags-help"
+            id="ingestion-tags"
+            type="text"
+            x-model="tagDraft"
+            :placeholder="tags.length === 0 ? 'legal or veterinary' : 'Add another tag'"
+            @keydown.enter.prevent="commitTagDraft()"
+          />
+        </div>
+        <span id="ingestion-tags-help">Type a tag and press Enter. Try legal or veterinary.</span>
+      </div>
+
+      <div class="toggle-row">
+        <label class="toggle-control">
+          <input type="checkbox" x-model="force" />
+          <span class="toggle-track" aria-hidden="true"><span></span></span>
+          <span>
+            <strong>Force re-index</strong>
+            <small>Rebuild existing checkpoints.</small>
+          </span>
+        </label>
+      </div>
+
+      <p class="field-error" role="alert" x-cloak x-show="errorMessage !== ''" x-text="errorMessage"></p>
+      <button
+        class="button primary submit-button"
+        type="button"
+        :aria-busy="submitting"
+        :disabled="submitting"
+        @click="submit()"
+      >
+        <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon" :class="{ spin: submitting }">
+          <use :href="submitting ? './assets/images/citeloom-icons.svg#citeloom-refresh' : './assets/images/citeloom-icons.svg#citeloom-upload'"></use>
+        </svg>
+        <span x-text="submitLabel()">Queue documents</span>
+      </button>
+    </section>
+
+    <section class="panel pipeline-panel" aria-labelledby="pipeline-title">
+      <div class="panel-title-row">
+        <header class="panel-header">
+          <span class="panel-icon" aria-hidden="true">
+            <svg class="citeloom-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-health"></use>
+            </svg>
+          </span>
+          <div>
+            <p class="section-kicker">Local operations</p>
+            <h2 id="pipeline-title">Pipeline status</h2>
+          </div>
+        </header>
+        <button
+          aria-label="Run pipeline diagnostics"
+          class="icon-button"
+          type="button"
+          :aria-busy="diagnosticsRunning"
+          :disabled="diagnosticsRunning"
+          @click="runDiagnostics()"
+        >
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon" :class="{ spin: diagnosticsRunning }">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
+          </svg>
+        </button>
+      </div>
+
+      <p class="field-error" role="alert" x-cloak x-show="diagnosticsErrorMessage !== ''" x-text="diagnosticsErrorMessage"></p>
+      <div class="service-list">
+        <div class="status-row" x-show="diagnosticsChecks.length === 0">
+          <svg aria-hidden="true" class="citeloom-icon status-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use>
+          </svg>
+          <div>
+            <strong x-text="diagnosticsRunning ? 'Running diagnostics' : 'Diagnostics not run'"></strong>
+            <span x-text="diagnosticsRunning ? 'Checking configured services' : 'Run diagnostics to test configured services'"></span>
+          </div>
+        </div>
+        <template x-for="check in diagnosticsChecks" :key="check.id">
+          <div class="status-row">
+            <svg aria-hidden="true" class="citeloom-icon status-icon" :class="{ error: !check.ok }">
+              <use :href="check.ok ? './assets/images/citeloom-icons.svg#citeloom-status-check' : './assets/images/citeloom-icons.svg#citeloom-warning-circle'"></use>
+            </svg>
+            <div>
+              <strong x-text="check.name"></strong>
+              <span x-text="check.detail"></span>
+            </div>
+          </div>
+        </template>
+      </div>
+    </section>
+  </section>
+</section>
