@@ -1,4 +1,4 @@
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, count, eq, isNotNull } from "drizzle-orm";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 
@@ -34,6 +34,8 @@ import {
 import type { CiteLoomDatabase } from "../database/client.js";
 import {
   applicationSettings,
+  indexedDocuments,
+  indexedDocumentSpaces,
   ingestionJobs,
   providerOAuthCredentials,
 } from "../database/schema.js";
@@ -161,9 +163,11 @@ export interface EffectiveApplicationSettings {
   config: AppConfig;
   defaults: RuntimeSettings;
   embeddingInputFormats: EmbeddingInputFormatRecordWithUsage[];
+  indexedDocumentCount: number;
   overrides: RuntimeSettingsOverrides;
   providerSettings: ProviderSettings;
   runtimeSettings: RuntimeSettings;
+  selectedEmbeddingSpaceDocumentCount: number;
   updatedAt: string | null;
   version: number;
 }
@@ -409,12 +413,17 @@ export class ApplicationSettingsRepository {
     const inputFormats = await new EmbeddingInputFormatStore(
       this.database,
     ).listWithEmbeddingSpaceCounts();
-    return buildEffectiveSettings(
+    const settings = buildEffectiveSettings(
       databaseConfig,
       stored,
       doclingTopology,
       inputFormats,
     );
+    const availability = await readEmbeddingSpaceAvailability(
+      this.database,
+      settings.config.embeddingSpace.id,
+    );
+    return { ...settings, ...availability };
   }
 
   public async update(
@@ -453,12 +462,17 @@ export class ApplicationSettingsRepository {
       });
       await validateDefaultDoclingUrlChange(transaction, resolved);
       await validateOpenAICodexRouteChange(transaction, providerChanges);
+      const availability = await readEmbeddingSpaceAvailability(
+        transaction,
+        resolved.effectiveConfig.embeddingSpace.id,
+      );
       if (!resolved.requiresPersistence) {
         return buildApplicationSettingsUpdateResult(
           stored.defaults.runtime,
           resolved,
           stored.updatedAt,
           stored.version,
+          availability,
         );
       }
 
@@ -476,6 +490,7 @@ export class ApplicationSettingsRepository {
         resolved,
         updatedAt,
         nextVersion,
+        availability,
       );
     });
     return settings;
@@ -761,8 +776,10 @@ function buildApplicationSettingsUpdateResult(
   update: ResolvedApplicationSettingsUpdate,
   updatedAt: Date | null,
   version: number,
+  availability: EmbeddingSpaceAvailability,
 ): EffectiveApplicationSettings {
   return {
+    ...availability,
     config: update.effectiveConfig,
     defaults,
     embeddingInputFormats: update.inputFormats,
@@ -813,12 +830,17 @@ export function isProviderManagedRuntimeSetting(key: RuntimeSettingKey): boolean
   return definition?.providerManagedSetting === true;
 }
 
+type EffectiveApplicationSettingsWithoutAvailability = Omit<
+  EffectiveApplicationSettings,
+  "indexedDocumentCount" | "selectedEmbeddingSpaceDocumentCount"
+>;
+
 function buildEffectiveSettings(
   databaseConfig: DatabaseConfig,
   stored: StoredSettings,
   doclingTopology: DoclingServiceTopology,
   inputFormats: EmbeddingInputFormatRecordWithUsage[],
-): EffectiveApplicationSettings {
+): EffectiveApplicationSettingsWithoutAvailability {
   const defaults = stored.defaults.runtime;
   const runtimeSettings = stored.settings.runtime;
   const providerSettings = stored.settings.providers;
@@ -844,6 +866,49 @@ function buildEffectiveSettings(
     updatedAt: stored.updatedAt.toISOString(),
     version: stored.version,
   };
+}
+
+interface EmbeddingSpaceAvailability {
+  indexedDocumentCount: number;
+  selectedEmbeddingSpaceDocumentCount: number;
+}
+
+type EmbeddingSpaceAvailabilityDatabase = Pick<CiteLoomDatabase, "select">;
+
+async function readEmbeddingSpaceAvailability(
+  database: EmbeddingSpaceAvailabilityDatabase,
+  embeddingSpaceId: string,
+): Promise<EmbeddingSpaceAvailability> {
+  const [indexedRows, selectedSpaceRows] = await Promise.all([
+    database
+      .select({ value: count() })
+      .from(indexedDocuments),
+    database
+      .select({ value: count() })
+      .from(indexedDocumentSpaces)
+      .where(eq(indexedDocumentSpaces.embeddingSpaceId, embeddingSpaceId)),
+  ]);
+  return {
+    indexedDocumentCount: readSettingsCount(
+      indexedRows,
+      "indexed document",
+    ),
+    selectedEmbeddingSpaceDocumentCount: readSettingsCount(
+      selectedSpaceRows,
+      "selected embedding-space document",
+    ),
+  };
+}
+
+function readSettingsCount(
+  rows: Array<{ value: number }>,
+  label: string,
+): number {
+  const row = rows[0];
+  if (row === undefined || !Number.isInteger(row.value) || row.value < 0) {
+    throw new Error(`Database returned an invalid ${label} count.`);
+  }
+  return row.value;
 }
 
 function readSelectedInputFormat(

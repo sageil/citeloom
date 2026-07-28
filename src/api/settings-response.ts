@@ -170,13 +170,32 @@ export function buildApplicationSettingsResponse(
     startupSettings: buildStartupSettings(startupConfig, webConfig),
     updatedAt: settings.updatedAt,
     version: settings.version,
-    warnings: readEmbeddingConfigurationWarnings({
-      embeddingContextCapacityTokens:
-        settings.config.inference.embedding.maximumInputTokens,
-      retrievalChunkTargetTokens:
-        settings.runtimeSettings.retrievalChunkTargetTokens,
-    }),
+    warnings: buildApplicationSettingsWarnings(settings),
   };
+}
+
+function buildApplicationSettingsWarnings(
+  settings: EffectiveApplicationSettings,
+): string[] {
+  const warnings = readEmbeddingConfigurationWarnings({
+    embeddingContextCapacityTokens:
+      settings.config.inference.embedding.maximumInputTokens,
+    retrievalChunkTargetTokens:
+      settings.runtimeSettings.retrievalChunkTargetTokens,
+  });
+  if (settings.selectedEmbeddingSpaceDocumentCount > 0) {
+    return warnings;
+  }
+  if (settings.indexedDocumentCount > 0) {
+    warnings.push(
+      "The selected embedding configuration has no indexed documents. Reindex documents before asking questions.",
+    );
+    return warnings;
+  }
+  warnings.push(
+    "The selected embedding configuration has no indexed documents. Index a document before asking questions.",
+  );
+  return warnings;
 }
 
 function buildEmbeddingInputFormatResponses(

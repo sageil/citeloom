@@ -8,10 +8,11 @@ import {
   decodeIngestionJob,
   decodePublishedDocument,
 } from "./records.js";
-import type {
-  CatalogEntry,
-  IndexedDocument,
-  PublishedDocument,
+import {
+  QueryScopeNotResolvedError,
+  type CatalogEntry,
+  type IndexedDocument,
+  type PublishedDocument,
 } from "./model.js";
 import type { CiteLoomDatabase } from "../../database/client.js";
 import {
@@ -123,6 +124,20 @@ export class CatalogDocumentStore {
     embeddingSpaceId: string,
   ): Promise<ResolvedQueryScopeTarget[]> {
     const availableDocuments = await this.listAvailableDocuments(embeddingSpaceId);
+    if (availableDocuments.length === 0) {
+      const rows = await this.database
+        .select({ value: count() })
+        .from(indexedDocuments);
+      const indexedDocumentCount = readCount(rows);
+      if (indexedDocumentCount > 0) {
+        throw new QueryScopeNotResolvedError(
+          "The selected embedding configuration has no indexed documents. Reindex documents before asking a question.",
+        );
+      }
+      throw new QueryScopeNotResolvedError(
+        "No documents are indexed. Index a document before asking a question.",
+      );
+    }
     return resolveDocumentQueryScope(scope, embeddingSpaceId, availableDocuments);
   }
 
