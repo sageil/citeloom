@@ -298,7 +298,7 @@
                     <label class="provider-form-field">
                       <span x-text="field.label"></span>
                       <template x-if="field.input === 'select'">
-                        <select :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)">
+                        <select x-model="drafts[field.key]" @change="writeFieldDraft(field, $event.target.value)">
                           <template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template>
                         </select>
                       </template>
