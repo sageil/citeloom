@@ -136,17 +136,17 @@ Confirm current details in the official documentation for [oMLX](https://github.
 
 ### Fresh-install routes and models
 
-Fresh installs use LM Studio for answers, query expansion, summaries, and embeddings.
+Fresh installs use Ollama for answers, query expansion, summaries, and embeddings.
 Reranking and both speech capabilities start unassigned.
 The saved oMLX models are ready to use if an administrator selects oMLX for one of those capabilities.
 The saved oMLX URL uses port 9000 and can be changed in Settings.
 
 | Capability | Bootstrap provider | Bootstrap model |
 | --- | --- | --- |
-| Answers | LM Studio | `google/gemma-4-e4b` |
-| Query expansion | LM Studio | `google/gemma-4-e4b` |
-| Summaries | LM Studio | `google/gemma-4-e4b` |
-| Embeddings | LM Studio | `text-embedding-embeddinggemma-300m-qat` |
+| Answers | Ollama | `gemma4:e4b-mlx` |
+| Query expansion | Ollama | `gemma4:e4b-mlx` |
+| Summaries | Ollama | `gemma4:e4b-mlx` |
+| Embeddings | Ollama | `snowflake-arctic-embed:137m` |
 | Reranking | Not selected | oMLX default `Qwen3-Reranker-4B-mxfp8` is available |
 | Speech-to-text | Not selected | oMLX default `Qwen3-ASR-1.7B-8bit` is available |
 | Text-to-speech | Not selected | oMLX default `Kokoro-82M-bf16`, voice `af_heart`, is available |
@@ -167,6 +167,10 @@ A fresh database includes these formats:
 | Snowflake | `{{text}}` | `Represent this sentence for searching relevant passages: {{text}}` |
 
 Custom templates must contain exactly one `{{text}}` placeholder.
+The document template is applied to each passage during indexing.
+The query template is applied to each question or semantic search.
+Use the prefixes required by the embedding model, and use Copy when a built-in format is a useful starting point.
+Use schema version 1 for a new format and increase it only when defining a deliberately versioned template contract.
 Use Settings to select, create, copy, revise, or retire formats.
 Revising a format creates a new format, and only unused formats can be retired.
 Changing the selected format requires reindexing.

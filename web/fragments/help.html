@@ -101,6 +101,17 @@
           </a>
         </li>
         <li>
+          <a href="#embedding-input-formats">
+            <svg aria-hidden="true" class="citeloom-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-book"></use>
+            </svg>
+            <strong>Embedding input formats</strong>
+            <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+            </svg>
+          </a>
+        </li>
+        <li>
           <a href="#troubleshooting">
             <svg aria-hidden="true" class="citeloom-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-book"></use>
@@ -241,6 +252,32 @@
               <li>Select useful discovery results and then write a complete question about them.</li>
               <li>Rephrase a question when the indexed documents use different terminology.</li>
             </ul>
+          </div>
+        </section>
+
+        <section aria-labelledby="embedding-input-formats" class="help-section">
+          <h2 id="embedding-input-formats" tabindex="-1">Embedding input formats</h2>
+          <div>
+            <p>An input format controls the text sent to the embedding model.</p>
+            <p>The document template prepares each passage while documents are indexed, and the query template prepares each question or semantic search.</p>
+            <p>Use the format specified by the embedding model or provider. Incorrect instructions can reduce search quality even when indexing completes successfully.</p>
+            <h3>Built-in examples</h3>
+            <ul class="help-examples">
+              <li><strong>Plain:</strong> document <code>{{text}}</code>; query <code>{{text}}</code>.</li>
+              <li><strong>EmbeddingGemma:</strong> document <code>title: none | text: {{text}}</code>; query <code>task: search result | query: {{text}}</code>.</li>
+              <li><strong>Snowflake:</strong> document <code>{{text}}</code>; query <code>Represent this sentence for searching relevant passages: {{text}}</code>.</li>
+            </ul>
+            <h3>Create a format</h3>
+            <ol>
+              <li>Check the embedding model's instructions for document and query prefixes.</li>
+              <li>Use Copy when a built-in format is a useful starting point, or choose New format to start with plain templates.</li>
+              <li>Enter a recognizable name that identifies the model or purpose.</li>
+              <li>Use schema version 1 for a new format. Increase it only when you intentionally define a new version of the template contract.</li>
+              <li>Enter one document template and one query template. Each must contain exactly one <code>{{text}}</code> placeholder.</li>
+              <li>Save the format, then save the Embedding settings to select it.</li>
+              <li>Reindex documents before using semantic search or answers with the new format.</li>
+            </ol>
+            <p>Use Create revision when changing a format that has already been used. CiteLoom keeps the original format unchanged so existing embedding spaces remain identifiable.</p>
           </div>
         </section>
 
