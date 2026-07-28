@@ -558,7 +558,7 @@ WITH canonical_settings AS (
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": 131072,
-            "model": "gemma4:e4b"
+            "model": "gemma4:e4b-mlx"
           },
           "baseUrl": "http://host.docker.internal:11434",
           "customAdapters": {
@@ -574,13 +574,13 @@ WITH canonical_settings AS (
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": 2048,
-            "model": "embeddinggemma"
+            "model": "snowflake-arctic-embed:137m"
           },
           "queryExpansion": {
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": 131072,
-            "model": "gemma4:e4b"
+            "model": "gemma4:e4b-mlx"
           },
           "maximumParallelRequests": 1,
           "name": null,
@@ -598,7 +598,7 @@ WITH canonical_settings AS (
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": 131072,
-            "model": "gemma4:e4b"
+            "model": "gemma4:e4b-mlx"
           },
           "textToSpeech": {
             "apiToken": null,
@@ -802,12 +802,12 @@ WITH canonical_settings AS (
         }
       },
       "routing": {
-        "answer": "lmstudio",
-        "embedding": "lmstudio",
-        "queryExpansion": "lmstudio",
+        "answer": "ollama",
+        "embedding": "ollama",
+        "queryExpansion": "ollama",
         "reranking": null,
         "speechToText": null,
-        "summarization": "lmstudio",
+        "summarization": "ollama",
         "textToSpeech": null
       }
     },
@@ -840,7 +840,7 @@ WITH canonical_settings AS (
       "doclingTableStructureEnabled": true,
       "doclingTimeoutSeconds": 1800,
       "embeddingDimensions": 768,
-      "embeddingInputFormatId": "00000000-0000-4000-8000-000000000002",
+      "embeddingInputFormatId": "00000000-0000-4000-8000-000000000003",
       "embeddingSpaceId": null,
       "embeddingTimeoutSeconds": 21600,
       "expansionDecay": 1,
@@ -898,7 +898,22 @@ FROM canonical_settings
 ON CONFLICT ("id") DO UPDATE
 SET
   "defaults" = jsonb_set(
-    "application_settings"."defaults",
+    jsonb_set(
+      jsonb_set(
+        jsonb_set(
+          "application_settings"."defaults",
+          '{providers,routing}',
+          EXCLUDED."defaults"#>'{providers,routing}',
+          true
+        ),
+        '{providers,connections,ollama}',
+        EXCLUDED."defaults"#>'{providers,connections,ollama}',
+        true
+      ),
+      '{runtime,embeddingInputFormatId}',
+      EXCLUDED."defaults"#>'{runtime,embeddingInputFormatId}',
+      true
+    ),
     '{sourceContent}',
     EXCLUDED."defaults"->'sourceContent',
     true
@@ -912,7 +927,13 @@ SET
   "updated_at" = now(),
   "version" = "application_settings"."version" + 1
 WHERE
-  "application_settings"."defaults"->'sourceContent'
+  "application_settings"."defaults"#>'{providers,routing}'
+    IS DISTINCT FROM EXCLUDED."defaults"#>'{providers,routing}'
+  OR "application_settings"."defaults"#>'{providers,connections,ollama}'
+    IS DISTINCT FROM EXCLUDED."defaults"#>'{providers,connections,ollama}'
+  OR "application_settings"."defaults"#>'{runtime,embeddingInputFormatId}'
+    IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,embeddingInputFormatId}'
+  OR "application_settings"."defaults"->'sourceContent'
     IS DISTINCT FROM EXCLUDED."defaults"->'sourceContent'
   OR "application_settings"."settings"->'sourceContent'
     IS DISTINCT FROM EXCLUDED."settings"->'sourceContent';
