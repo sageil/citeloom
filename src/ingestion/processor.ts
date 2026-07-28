@@ -936,7 +936,7 @@ export class IngestionProcessor {
         position,
       );
       const windows = createRetrievalWindows(batch.elements, {
-        embeddingProfile: this.config.embeddingSpace.profile,
+        embeddingInputFormat: this.config.embeddingSpace.inputFormat,
         policy: this.config.embeddingSpace.retrievalWindow,
       });
       const baseRepresentations = createRetrievalRepresentations(
@@ -953,17 +953,17 @@ export class IngestionProcessor {
       const boundedRepresentations = splitRetrievalRepresentationsAtTokenLimit(
         representations,
         batch.elements,
-        this.config.embeddingSpace.profile,
+        this.config.embeddingSpace.inputFormat,
         this.config.inference.embedding.maximumInputTokens,
       );
       const embeddingInputs = buildRetrievalEmbeddingInputs(
         boundedRepresentations,
         batch.elements,
-        this.config.embeddingSpace.profile,
+        this.config.embeddingSpace.inputFormat,
       );
       const splitRejectedInput = createRejectedEmbeddingInputSplitter(
         batch.elements,
-        this.config.embeddingSpace.profile,
+        this.config.embeddingSpace.inputFormat,
       );
       const embedded = await embedDocumentInputs(
         this.models,
@@ -1662,7 +1662,7 @@ function isRequestedControlState(
 function buildRetrievalEmbeddingInputs(
   representations: readonly RetrievalRepresentation[],
   elements: readonly SourceElement[],
-  profile: AppConfig["embeddingSpace"]["profile"],
+  inputFormat: AppConfig["embeddingSpace"]["inputFormat"],
 ): Array<DocumentEmbeddingInput<RetrievalRepresentation>> {
   const elementsById = indexSourceElements(elements);
   const inputs: Array<DocumentEmbeddingInput<RetrievalRepresentation>> = [];
@@ -1677,7 +1677,7 @@ function buildRetrievalEmbeddingInputs(
       inputTokens: countRetrievalEmbeddingInputTokens(
         representation.embeddingContent,
         element,
-        profile,
+        inputFormat,
       ),
       source: representation,
       value: representation.embeddingText,
@@ -1688,7 +1688,7 @@ function buildRetrievalEmbeddingInputs(
 
 function createRejectedEmbeddingInputSplitter(
   elements: readonly SourceElement[],
-  profile: AppConfig["embeddingSpace"]["profile"],
+  inputFormat: AppConfig["embeddingSpace"]["inputFormat"],
 ): (
   input: DocumentEmbeddingInput<RetrievalRepresentation>,
   maximumInputTokens: number,
@@ -1704,10 +1704,10 @@ function createRejectedEmbeddingInputSplitter(
     const split = splitRetrievalRepresentationAtTokenLimit(
       input.source,
       element,
-      profile,
+      inputFormat,
       maximumInputTokens,
     );
-    return buildRetrievalEmbeddingInputs(split, [element], profile);
+    return buildRetrievalEmbeddingInputs(split, [element], inputFormat);
   };
 }
 

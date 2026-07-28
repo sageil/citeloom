@@ -18,8 +18,9 @@ export interface EmbeddingSpaceGcSpaceRecord {
   disposition: "deletable" | "protected";
   errorMessage: string | null;
   estimatedBytes: string;
+  inputFormatHash: string;
+  inputFormatName: string;
   model: string;
-  profile: "embeddinggemma" | "plain";
   protectionDetail: string | null;
   protectionKind: EmbeddingSpaceProtectionKind | null;
   rowCounts: EmbeddingSpaceRowCounts;

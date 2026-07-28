@@ -81,6 +81,113 @@ WHERE space."input_format_hash" IS NULL
       AND input_format."id" = '00000000-0000-4000-8000-000000000002')
   );
 
+DO $embedding_input_format_gc_backfill$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM "embedding_space_gc_spaces"
+    WHERE "input_format_hash" IS NULL
+      OR "input_format_name" IS NULL
+  ) THEN
+    RAISE EXCEPTION
+      'Embedding input-format backfill found an unmapped garbage-collection record.';
+  END IF;
+END
+$embedding_input_format_gc_backfill$;
+
+CREATE OR REPLACE FUNCTION "protect_embedding_input_format_records"()
+RETURNS trigger AS $embedding_input_format_immutability$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'Embedding input-format records cannot be deleted.';
+  END IF;
+  IF OLD."retired_at" IS NULL
+    AND NEW."retired_at" IS NOT NULL
+    AND OLD."created_at" = NEW."created_at"
+    AND OLD."document_template" = NEW."document_template"
+    AND OLD."id" = NEW."id"
+    AND OLD."input_format_hash" = NEW."input_format_hash"
+    AND OLD."name" = NEW."name"
+    AND OLD."query_template" = NEW."query_template"
+    AND OLD."schema_version" = NEW."schema_version"
+  THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION
+    'Embedding input-format records are immutable except for first retirement.';
+END
+$embedding_input_format_immutability$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS "embedding_input_formats_immutable"
+ON "embedding_input_formats";
+CREATE TRIGGER "embedding_input_formats_immutable"
+BEFORE UPDATE OR DELETE ON "embedding_input_formats"
+FOR EACH ROW EXECUTE FUNCTION "protect_embedding_input_format_records"();
+
+DROP TRIGGER IF EXISTS "embedding_input_formats_publish_settings_revision"
+ON "embedding_input_formats";
+CREATE TRIGGER "embedding_input_formats_publish_settings_revision"
+AFTER INSERT OR UPDATE ON "embedding_input_formats"
+FOR EACH ROW EXECUTE FUNCTION "publish_application_revision"('settings');
+
+DO $embedding_input_format_settings_validation$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM "application_settings"
+    WHERE (
+      "defaults"#>>'{runtime,embeddingInputFormatId}' IS NULL
+      AND COALESCE("defaults"#>>'{runtime,embeddingProfile}', '')
+        NOT IN ('plain', 'embeddinggemma')
+    ) OR (
+      "settings"#>>'{runtime,embeddingInputFormatId}' IS NULL
+      AND COALESCE("settings"#>>'{runtime,embeddingProfile}', '')
+        NOT IN ('plain', 'embeddinggemma')
+    )
+  ) THEN
+    RAISE EXCEPTION
+      'Application settings contain an unmapped legacy embedding profile.';
+  END IF;
+END
+$embedding_input_format_settings_validation$;
+
+UPDATE "application_settings"
+SET
+  "defaults" = CASE
+    WHEN "defaults"#>>'{runtime,embeddingInputFormatId}' IS NULL THEN jsonb_set(
+      "defaults" #- '{runtime,embeddingProfile}',
+      '{runtime,embeddingInputFormatId}',
+      to_jsonb(
+        CASE "defaults"#>>'{runtime,embeddingProfile}'
+          WHEN 'plain' THEN '00000000-0000-4000-8000-000000000001'
+          WHEN 'embeddinggemma' THEN '00000000-0000-4000-8000-000000000002'
+        END
+      ),
+      true
+    )
+    ELSE "defaults" #- '{runtime,embeddingProfile}'
+  END,
+  "settings" = CASE
+    WHEN "settings"#>>'{runtime,embeddingInputFormatId}' IS NULL THEN jsonb_set(
+      "settings" #- '{runtime,embeddingProfile}',
+      '{runtime,embeddingInputFormatId}',
+      to_jsonb(
+        CASE "settings"#>>'{runtime,embeddingProfile}'
+          WHEN 'plain' THEN '00000000-0000-4000-8000-000000000001'
+          WHEN 'embeddinggemma' THEN '00000000-0000-4000-8000-000000000002'
+        END
+      ),
+      true
+    )
+    ELSE "settings" #- '{runtime,embeddingProfile}'
+  END,
+  "updated_at" = now(),
+  "version" = "version" + 1
+WHERE "defaults"#>'{runtime,embeddingProfile}' IS NOT NULL
+  OR "settings"#>'{runtime,embeddingProfile}' IS NOT NULL
+  OR "defaults"#>>'{runtime,embeddingInputFormatId}' IS NULL
+  OR "settings"#>>'{runtime,embeddingInputFormatId}' IS NULL;
+
 WITH canonical_settings AS (
   SELECT jsonb_set(
     $settings$
@@ -705,7 +812,7 @@ WITH canonical_settings AS (
       "doclingTableStructureEnabled": true,
       "doclingTimeoutSeconds": 1800,
       "embeddingDimensions": 768,
-      "embeddingProfile": "embeddinggemma",
+      "embeddingInputFormatId": "00000000-0000-4000-8000-000000000002",
       "embeddingSpaceId": null,
       "embeddingTimeoutSeconds": 21600,
       "expansionDecay": 1,

@@ -15,7 +15,9 @@ import {
   splitRetrievalContentAtTokenLimit,
   type RetrievalWindow,
 } from "./windows.js";
-import type { EmbeddingProfile } from "../embedding/input-format.js";
+import type {
+  EmbeddingInputFormatContract,
+} from "../embedding/input-format.js";
 import type {
   RetrievalWindowPolicyContract,
 } from "./window-policy.js";
@@ -208,7 +210,7 @@ export function addContextToImageRetrievalRepresentations(
 export function splitRetrievalRepresentationsAtTokenLimit(
   representations: readonly RetrievalRepresentation[],
   elements: readonly SourceElement[],
-  embeddingProfile: EmbeddingProfile,
+  embeddingInputFormat: EmbeddingInputFormatContract,
   maximumInputTokens: number,
 ): RetrievalRepresentation[] {
   const elementsById = indexElements(elements);
@@ -223,7 +225,7 @@ export function splitRetrievalRepresentationsAtTokenLimit(
     split.push(...splitRetrievalRepresentationAtTokenLimit(
       representation,
       element,
-      embeddingProfile,
+      embeddingInputFormat,
       maximumInputTokens,
     ));
   }
@@ -233,7 +235,7 @@ export function splitRetrievalRepresentationsAtTokenLimit(
 export function splitRetrievalRepresentationAtTokenLimit(
   representation: RetrievalRepresentation,
   element: SourceElement,
-  embeddingProfile: EmbeddingProfile,
+  embeddingInputFormat: EmbeddingInputFormatContract,
   maximumInputTokens: number,
 ): RetrievalRepresentation[] {
   if (representation.parentId !== element.id) {
@@ -244,7 +246,7 @@ export function splitRetrievalRepresentationAtTokenLimit(
   const inputTokens = countRetrievalEmbeddingInputTokens(
     representation.embeddingContent,
     element,
-    embeddingProfile,
+    embeddingInputFormat,
   );
   if (inputTokens <= maximumInputTokens) {
     return [representation];
@@ -252,7 +254,7 @@ export function splitRetrievalRepresentationAtTokenLimit(
   const pieces = splitRetrievalContentAtTokenLimit(
     representation.embeddingContent,
     element,
-    embeddingProfile,
+    embeddingInputFormat,
     maximumInputTokens,
   );
   if (pieces.length < 2) {
@@ -271,7 +273,7 @@ export function splitRetrievalRepresentationAtTokenLimit(
     const pieceInputTokens = countRetrievalEmbeddingInputTokens(
       piece,
       element,
-      embeddingProfile,
+      embeddingInputFormat,
     );
     if (pieceInputTokens >= inputTokens) {
       throw new Error(

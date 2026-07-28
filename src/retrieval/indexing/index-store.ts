@@ -22,6 +22,10 @@ import type {
   RetrievalRepresentation,
 } from "../representations.js";
 import {
+  readEmbeddingInputFormatContract,
+  type EmbeddingInputFormatContract,
+} from "../../embedding/input-format-model.js";
+import {
   createStoredRetrievalWindowPolicyFingerprint,
   storedRetrievalWindowPolicySchema,
 } from "../window-policy.js";
@@ -31,8 +35,13 @@ export const RETRIEVAL_WRITE_BATCH_SIZE = 500;
 const embeddingSpaceRowSchema = z.object({
   dimensions: z.union([z.literal(384), z.literal(768), z.literal(1024)]),
   id: z.string().min(1),
+  inputFormatDocumentTemplate: z.string(),
+  inputFormatHash: z.string().regex(/^[a-f0-9]{64}$/u),
+  inputFormatId: z.uuid(),
+  inputFormatQueryTemplate: z.string(),
+  inputFormatSchemaVersion: z.number().int().positive(),
   model: z.string().min(1),
-  profile: z.enum(["embeddinggemma", "plain"]),
+  profile: z.string().trim().min(1),
   retrievalWindowPolicy: storedRetrievalWindowPolicySchema,
   retrievalWindowPolicyFingerprint: z.string().regex(/^[a-f0-9]{64}$/u),
 });
@@ -137,6 +146,12 @@ export async function ensureEmbeddingSpace(
     .select({
       dimensions: embeddingSpaces.dimensions,
       id: embeddingSpaces.id,
+      inputFormatDocumentTemplate:
+        embeddingSpaces.inputFormatDocumentTemplate,
+      inputFormatHash: embeddingSpaces.inputFormatHash,
+      inputFormatId: embeddingSpaces.inputFormatId,
+      inputFormatQueryTemplate: embeddingSpaces.inputFormatQueryTemplate,
+      inputFormatSchemaVersion: embeddingSpaces.inputFormatSchemaVersion,
       model: embeddingSpaces.model,
       profile: embeddingSpaces.profile,
       retrievalWindowPolicy: embeddingSpaces.retrievalWindowPolicy,
@@ -163,10 +178,18 @@ export async function ensureEmbeddingSpace(
         `Embedding space ${space.id} has an invalid retrieval-window fingerprint.`,
       );
     }
+    const storedInputFormat = readEmbeddingInputFormatContract({
+      documentTemplate: result.data.inputFormatDocumentTemplate,
+      id: result.data.inputFormatId,
+      inputFormatHash: result.data.inputFormatHash,
+      name: result.data.profile,
+      queryTemplate: result.data.inputFormatQueryTemplate,
+      schemaVersion: result.data.inputFormatSchemaVersion,
+    });
     if (
       result.data.dimensions !== space.dimensions
       || result.data.model !== space.model
-      || result.data.profile !== space.profile
+      || !embeddingInputFormatsMatch(storedInputFormat, space.inputFormat)
       || storedPolicyFingerprint !== space.retrievalWindow.fingerprint
     ) {
       throw new Error(
@@ -181,13 +204,29 @@ export async function ensureEmbeddingSpace(
     .values({
       dimensions: space.dimensions,
       id: space.id,
+      inputFormatDocumentTemplate: space.inputFormat.documentTemplate,
+      inputFormatHash: space.inputFormat.inputFormatHash,
+      inputFormatId: space.inputFormat.id,
+      inputFormatQueryTemplate: space.inputFormat.queryTemplate,
+      inputFormatSchemaVersion: space.inputFormat.schemaVersion,
       model: space.model,
-      profile: space.profile,
+      profile: space.inputFormat.name,
       retrievalWindowPolicy: space.retrievalWindow.policy,
       retrievalWindowPolicyFingerprint: space.retrievalWindow.fingerprint,
     })
     .onConflictDoNothing({ target: embeddingSpaces.id });
   await ensureEmbeddingSpace(database, space);
+}
+
+function embeddingInputFormatsMatch(
+  stored: EmbeddingInputFormatContract,
+  selected: EmbeddingInputFormatContract,
+): boolean {
+  return stored.id === selected.id
+    && stored.inputFormatHash === selected.inputFormatHash
+    && stored.schemaVersion === selected.schemaVersion
+    && stored.documentTemplate === selected.documentTemplate
+    && stored.queryTemplate === selected.queryTemplate;
 }
 
 export async function beginEmbeddingGeneration(

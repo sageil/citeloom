@@ -93,7 +93,7 @@ export const runtimeSettingsSchema = z.object({
   doclingRequestTimeoutSeconds: z.number().int().min(10).max(3_600),
   doclingTimeoutSeconds: z.number().int().min(60).max(604_800),
   embeddingDimensions: z.union([z.literal(384), z.literal(768), z.literal(1024)]),
-  embeddingProfile: z.enum(["embeddinggemma", "plain"]),
+  embeddingInputFormatId: z.uuid(),
   embeddingSpaceId: z.string().trim().min(1).max(200).nullable(),
   embeddingTimeoutSeconds: z.number().int().min(1).max(86_400),
   expansionDecay: z.number().positive().max(1),

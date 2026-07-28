@@ -1,4 +1,5 @@
 import type { RetrievalWindowPolicyContract } from "../retrieval/window-policy.js";
+import type { EmbeddingInputFormatContract } from "../embedding/input-format-model.js";
 
 export interface AppConfig {
   claimVerifier: ClaimVerifierConfig;
@@ -47,9 +48,9 @@ export interface LanguageInferenceConfig extends ProviderRuntimeConfig {
 
 export interface EmbeddingInferenceConfig extends ProviderRuntimeConfig {
   adapter: EmbeddingModelAdapter;
+  inputFormat: EmbeddingInputFormatContract;
   maximumInputTokens: number;
   model: string;
-  profile: "embeddinggemma" | "plain";
   timeoutMs: number;
 }
 
@@ -84,8 +85,8 @@ export type EmbeddingDimensions = 384 | 768 | 1024;
 export interface EmbeddingSpaceConfig {
   dimensions: EmbeddingDimensions;
   id: string;
+  inputFormat: EmbeddingInputFormatContract;
   model: string;
-  profile: "embeddinggemma" | "plain";
   retrievalWindow: RetrievalWindowPolicyContract;
 }
 
@@ -289,7 +290,7 @@ export interface RuntimeSettings {
   doclingRequestTimeoutSeconds: number;
   doclingTimeoutSeconds: number;
   embeddingDimensions: EmbeddingDimensions;
-  embeddingProfile: "embeddinggemma" | "plain";
+  embeddingInputFormatId: string;
   embeddingSpaceId: string | null;
   embeddingTimeoutSeconds: number;
   expansionDecay: number;

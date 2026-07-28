@@ -37,6 +37,10 @@ import {
   ingestionJobs,
   providerOAuthCredentials,
 } from "../database/schema.js";
+import {
+  EmbeddingInputFormatStore,
+  type EmbeddingInputFormatRecord,
+} from "../embedding/input-format-store.js";
 
 const SETTINGS_ID = "runtime";
 const runtimeSettingKeySchema = z.enum([
@@ -65,7 +69,7 @@ const runtimeSettingKeySchema = z.enum([
   "doclingRequestTimeoutSeconds",
   "doclingTimeoutSeconds",
   "embeddingDimensions",
-  "embeddingProfile",
+  "embeddingInputFormatId",
   "embeddingSpaceId",
   "embeddingTimeoutSeconds",
   "expansionDecay",
@@ -156,6 +160,7 @@ export type NormalizedRuntimeSettingChange =
 export interface EffectiveApplicationSettings {
   config: AppConfig;
   defaults: RuntimeSettings;
+  embeddingInputFormats: EmbeddingInputFormatRecord[];
   overrides: RuntimeSettingsOverrides;
   providerSettings: ProviderSettings;
   runtimeSettings: RuntimeSettings;
@@ -191,10 +196,7 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   featureSetting(numberSetting("answerMaximumOutputTokens", "Inference", "Maximum answer tokens", "The largest structured answer CiteLoom may request after budgeting the complete model context.", 1, 262_144, 1, "tokens"), "answer"),
   featureSetting(numberSetting("answerMinimumOutputTokens", "Inference", "Minimum answer reserve", "The minimum output space required before CiteLoom will attempt structured answer generation.", 1, 262_144, 1, "tokens"), "answer"),
   featureSetting(numberSetting("answerProviderSafetyMarginTokens", "Inference", "Provider safety margin", "Context reserved for provider chat templates and structured-output framing not exposed through the compatible API.", 0, 262_144, 1, "tokens"), "answer"),
-  featureSetting(selectSetting("embeddingProfile", "Models and embeddings", "Embedding profile", "How CiteLoom formats text before sending it to the embedding model.", [
-    { label: "EmbeddingGemma", value: "embeddinggemma" },
-    { label: "Plain", value: "plain" },
-  ]), "embedding"),
+  featureSetting(selectSetting("embeddingInputFormatId", "Models and embeddings", "Embedding input format", "The immutable document and query templates CiteLoom applies before sending text to the embedding model.", []), "embedding"),
   featureSetting(positiveIntegerSetting("retrievalChunkTargetTokens", "Models and embeddings", "Retrieval chunk target", "The soft token target used to group nearby content within one document section.", "tokens"), "embedding"),
   featureSetting(numberSetting("embeddingTimeoutSeconds", "Models and embeddings", "Embedding deadline", "How long CiteLoom waits for one embedding request after it receives a model slot.", 1, 86_400, 1, "seconds"), "embedding"),
   featureSetting(numberSetting("summaryTimeoutSeconds", "Models and embeddings", "Description deadline", "How long CiteLoom waits for one table or image description request after it receives a model slot.", 1, 86_400, 1, "seconds"), "summarization"),
@@ -327,7 +329,7 @@ export const runtimeSettingChangeExamples = {
   answerMaximumOutputTokens: "Set this to the largest answer your configured model and product requirements should permit.",
   answerMinimumOutputTokens: "Set this to the smallest output reserve that can hold a valid structured answer.",
   answerProviderSafetyMarginTokens: "Set this from measured provider chat-template and structured-output overhead.",
-  embeddingProfile: "Choose EmbeddingGemma when that model needs query and document prefixes.",
+  embeddingInputFormatId: "Select a compatible document and query template. Changing it creates a different embedding space and requires reindexing.",
   embeddingDimensions: "Change 768 to 1024 only when the model supports it. CiteLoom will use a different embedding space.",
   embeddingSpaceId: "Set a stable name such as legal-v2 to keep that index identity across restarts.",
   embeddingTimeoutSeconds: "Raise 21600 when a local embedding batch needs more than six hours, up to a maximum of 86400.",
@@ -404,10 +406,14 @@ export class ApplicationSettingsRepository {
       );
     }
     const stored = decodeStoredSettingsRow(row);
+    const inputFormats = await new EmbeddingInputFormatStore(
+      this.database,
+    ).list();
     return buildEffectiveSettings(
       databaseConfig,
       stored,
       doclingTopology,
+      inputFormats,
     );
   }
 
@@ -433,9 +439,13 @@ export class ApplicationSettingsRepository {
         stored,
         changes,
       );
+      const inputFormats = await new EmbeddingInputFormatStore(
+        transaction,
+      ).list();
       const resolved = resolveApplicationSettingsUpdate({
         databaseConfig,
         doclingTopology,
+        inputFormats,
         expectedVersion,
         providerChanges,
         runtimeSettings,
@@ -479,6 +489,7 @@ type ApplicationSettingsTransaction = Parameters<
 interface ApplicationSettingsUpdateRequest {
   databaseConfig: DatabaseConfig;
   doclingTopology: DoclingServiceTopology;
+  inputFormats: EmbeddingInputFormatRecord[];
   expectedVersion: number;
   providerChanges: NormalizedProviderSettingsChange[];
   runtimeSettings: RuntimeSettings;
@@ -488,6 +499,7 @@ interface ApplicationSettingsUpdateRequest {
 interface ResolvedApplicationSettingsUpdate {
   currentDefaultDoclingUrl: string;
   effectiveConfig: AppConfig;
+  inputFormats: EmbeddingInputFormatRecord[];
   overrides: RuntimeSettingsOverrides;
   providerSettings: ProviderSettings;
   requiresPersistence: boolean;
@@ -534,6 +546,14 @@ function resolveApplicationSettingsUpdate(
   try {
     const currentRuntimeSettings = request.stored.settings.runtime;
     const currentProviderSettings = request.stored.settings.providers;
+    const currentInputFormat = readSelectedInputFormat(
+      request.inputFormats,
+      currentRuntimeSettings.embeddingInputFormatId,
+    );
+    const selectedInputFormat = readSelectedInputFormat(
+      request.inputFormats,
+      request.runtimeSettings.embeddingInputFormatId,
+    );
     const providerSettings = applyProviderSettingsChanges(
       currentProviderSettings,
       request.stored.defaults.providers,
@@ -549,10 +569,17 @@ function resolveApplicationSettingsUpdate(
         currentRuntimeSettings,
       ),
       request.stored.settings.sourceContent,
+      currentInputFormat,
+    );
+    const runtimeSettings = normalizeEmbeddingSpaceIdAfterIdentityChange(
+      request,
+      currentConfig,
+      providerSettings,
+      selectedInputFormat,
     );
     const requiresPersistence = hasApplicationSettingsToPersist(
       request.stored,
-      request.runtimeSettings,
+      runtimeSettings,
       providerSettings,
     );
     const resultVersion = requiresPersistence
@@ -560,37 +587,89 @@ function resolveApplicationSettingsUpdate(
       : request.stored.version;
     const effectiveConfig = buildAppConfig(
       request.databaseConfig,
-      request.runtimeSettings,
+      runtimeSettings,
       resultVersion,
       providerSettings,
       buildDoclingServiceInstances(
         request.doclingTopology,
-        request.runtimeSettings,
+        runtimeSettings,
       ),
       request.stored.settings.sourceContent,
+      selectedInputFormat,
     );
     const storedSettings = parseStoredApplicationSettings({
       providers: providerSettings,
-      runtime: request.runtimeSettings,
+      runtime: runtimeSettings,
       schemaVersion: 1,
       sourceContent: request.stored.settings.sourceContent,
     });
     return {
       currentDefaultDoclingUrl: readDefaultDoclingServiceUrl(currentConfig),
       effectiveConfig,
+      inputFormats: request.inputFormats,
       overrides: calculateRuntimeOverrides(
         request.stored.defaults.runtime,
-        request.runtimeSettings,
+        runtimeSettings,
       ),
       providerSettings,
       requiresPersistence,
-      runtimeSettings: request.runtimeSettings,
+      runtimeSettings,
       storedSettings,
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Settings are invalid.";
     throw new SettingsValidationError(message);
   }
+}
+
+function normalizeEmbeddingSpaceIdAfterIdentityChange(
+  request: ApplicationSettingsUpdateRequest,
+  currentConfig: AppConfig,
+  providerSettings: ProviderSettings,
+  inputFormat: EmbeddingInputFormatRecord,
+): RuntimeSettings {
+  const currentSpaceIdOverride =
+    request.stored.settings.runtime.embeddingSpaceId;
+  if (
+    currentSpaceIdOverride === null
+    || request.runtimeSettings.embeddingSpaceId !== currentSpaceIdOverride
+  ) {
+    return request.runtimeSettings;
+  }
+  const automaticSettings: RuntimeSettings = {
+    ...request.runtimeSettings,
+    embeddingSpaceId: null,
+  };
+  const automaticConfig = buildAppConfig(
+    request.databaseConfig,
+    automaticSettings,
+    request.expectedVersion + 1,
+    providerSettings,
+    buildDoclingServiceInstances(
+      request.doclingTopology,
+      automaticSettings,
+    ),
+    request.stored.settings.sourceContent,
+    inputFormat,
+  );
+  if (embeddingSpaceIdentitiesMatch(
+    currentConfig.embeddingSpace,
+    automaticConfig.embeddingSpace,
+  )) {
+    return request.runtimeSettings;
+  }
+  return automaticSettings;
+}
+
+function embeddingSpaceIdentitiesMatch(
+  left: AppConfig["embeddingSpace"],
+  right: AppConfig["embeddingSpace"],
+): boolean {
+  return left.dimensions === right.dimensions
+    && left.inputFormat.id === right.inputFormat.id
+    && left.inputFormat.inputFormatHash === right.inputFormat.inputFormatHash
+    && left.model === right.model
+    && left.retrievalWindow.fingerprint === right.retrievalWindow.fingerprint;
 }
 
 function hasApplicationSettingsToPersist(
@@ -686,6 +765,7 @@ function buildApplicationSettingsUpdateResult(
   return {
     config: update.effectiveConfig,
     defaults,
+    embeddingInputFormats: update.inputFormats,
     overrides: update.overrides,
     providerSettings: update.providerSettings,
     runtimeSettings: update.runtimeSettings,
@@ -737,10 +817,15 @@ function buildEffectiveSettings(
   databaseConfig: DatabaseConfig,
   stored: StoredSettings,
   doclingTopology: DoclingServiceTopology,
+  inputFormats: EmbeddingInputFormatRecord[],
 ): EffectiveApplicationSettings {
   const defaults = stored.defaults.runtime;
   const runtimeSettings = stored.settings.runtime;
   const providerSettings = stored.settings.providers;
+  const inputFormat = readSelectedInputFormat(
+    inputFormats,
+    runtimeSettings.embeddingInputFormatId,
+  );
   return {
     config: buildAppConfig(
       databaseConfig,
@@ -749,14 +834,34 @@ function buildEffectiveSettings(
       providerSettings,
       buildDoclingServiceInstances(doclingTopology, runtimeSettings),
       stored.settings.sourceContent,
+      inputFormat,
     ),
     defaults,
+    embeddingInputFormats: inputFormats,
     overrides: calculateRuntimeOverrides(defaults, runtimeSettings),
     providerSettings,
     runtimeSettings,
     updatedAt: stored.updatedAt.toISOString(),
     version: stored.version,
   };
+}
+
+function readSelectedInputFormat(
+  inputFormats: readonly EmbeddingInputFormatRecord[],
+  id: string,
+): EmbeddingInputFormatRecord {
+  const inputFormat = inputFormats.find((candidate) => candidate.id === id);
+  if (inputFormat === undefined) {
+    throw new SettingsValidationError(
+      `The selected embedding input format does not exist: ${id}.`,
+    );
+  }
+  if (inputFormat.retiredAt !== null) {
+    throw new SettingsValidationError(
+      `The selected embedding input format is retired: ${inputFormat.name}.`,
+    );
+  }
+  return inputFormat;
 }
 
 function buildDoclingServiceInstances(

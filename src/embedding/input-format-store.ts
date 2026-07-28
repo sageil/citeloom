@@ -30,8 +30,13 @@ export interface EmbeddingInputFormatRecord
   retiredAt: Date | null;
 }
 
+type EmbeddingInputFormatDatabase = Pick<
+  CiteLoomDatabase,
+  "insert" | "select"
+>;
+
 export class EmbeddingInputFormatStore {
-  public constructor(private readonly database: CiteLoomDatabase) {}
+  public constructor(private readonly database: EmbeddingInputFormatDatabase) {}
 
   public async create(
     value: EmbeddingInputFormatDefinition,

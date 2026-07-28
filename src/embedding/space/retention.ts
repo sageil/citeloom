@@ -28,7 +28,6 @@ const embeddingDimensionsSchema = z.union([
   z.literal(768),
   z.literal(1024),
 ]);
-const embeddingProfileSchema = z.enum(["embeddinggemma", "plain"]);
 const protectionKindSchema = z.enum([
   "active",
   "job-reference",
@@ -71,10 +70,11 @@ const spaceStatisticsRowSchema = z.object({
   estimatedBytes: bigintBoundarySchema,
   hasJobReference: z.boolean(),
   indexedDocuments: bigintBoundarySchema,
+  inputFormatHash: z.string().regex(/^[a-f0-9]{64}$/u),
+  inputFormatName: z.string().trim().min(1),
   lexicalChunks: bigintBoundarySchema,
   model: z.string().min(1),
   pinReason: z.string().min(1).nullable(),
-  profile: embeddingProfileSchema,
   spaceId: z.string().min(1),
   vectorChunks1024: bigintBoundarySchema,
   vectorChunks384: bigintBoundarySchema,
@@ -96,8 +96,9 @@ const gcSpaceRowSchema = z.object({
   disposition: z.enum(["deletable", "protected"]),
   errorMessage: z.string().nullable(),
   estimatedBytes: bigintBoundarySchema,
+  inputFormatHash: z.string().regex(/^[a-f0-9]{64}$/u),
+  inputFormatName: z.string().trim().min(1),
   model: z.string().min(1),
-  profile: embeddingProfileSchema,
   protectionDetail: z.string().nullable(),
   protectionKind: protectionKindSchema.nullable(),
   rowCounts: rowCountsSchema,
@@ -122,9 +123,10 @@ interface SpaceStatistics {
   dimensions: 384 | 768 | 1024;
   estimatedBytes: bigint;
   hasJobReference: boolean;
+  inputFormatHash: string;
+  inputFormatName: string;
   model: string;
   pinReason: string | null;
-  profile: "embeddinggemma" | "plain";
   rowCounts: EmbeddingSpaceRowCounts;
   spaceId: string;
 }
@@ -260,8 +262,9 @@ export async function readEmbeddingSpaceGcReport(
       disposition: embeddingSpaceGcSpaces.disposition,
       errorMessage: embeddingSpaceGcSpaces.errorMessage,
       estimatedBytes: embeddingSpaceGcSpaces.estimatedBytes,
+      inputFormatHash: embeddingSpaceGcSpaces.inputFormatHash,
+      inputFormatName: embeddingSpaceGcSpaces.inputFormatName,
       model: embeddingSpaceGcSpaces.model,
-      profile: embeddingSpaceGcSpaces.profile,
       protectionDetail: embeddingSpaceGcSpaces.protectionDetail,
       protectionKind: embeddingSpaceGcSpaces.protectionKind,
       rowCounts: embeddingSpaceGcSpaces.rowCounts,
@@ -329,8 +332,10 @@ async function createGarbageCollectionRun(
         disposition: protection === null ? "deletable" : "protected",
         errorMessage: null,
         estimatedBytes: space.estimatedBytes,
+        inputFormatHash: space.inputFormatHash,
+        inputFormatName: space.inputFormatName,
         model: space.model,
-        profile: space.profile,
+        profile: space.inputFormatName,
         protectionDetail: protection?.detail ?? null,
         protectionKind: protection?.kind ?? null,
         rowCounts: space.rowCounts,
@@ -520,8 +525,9 @@ async function readSpaceStatistics(
       space."id" AS "spaceId",
       space."created_at" AS "createdAt",
       space."dimensions" AS "dimensions",
+      space."input_format_hash" AS "inputFormatHash",
+      input_format."name" AS "inputFormatName",
       space."model" AS "model",
-      space."profile" AS "profile",
       pin."reason" AS "pinReason",
       EXISTS (
         SELECT 1 FROM "ingestion_jobs" job
@@ -541,6 +547,8 @@ async function readSpaceStatistics(
         + COALESCE((SELECT sum(pg_column_size(document_space)) FROM "indexed_document_spaces" document_space WHERE document_space."embedding_space_id" = space."id"), 0)
       )::bigint AS "estimatedBytes"
     FROM "embedding_spaces" space
+    INNER JOIN "embedding_input_formats" input_format
+      ON input_format."id" = space."input_format_id"
     LEFT JOIN "embedding_space_pins" pin ON pin."space_id" = space."id"
     ORDER BY space."id"
   `);
@@ -562,9 +570,10 @@ function decodeSpaceStatisticsRow(row: unknown): SpaceStatistics {
     dimensions: result.data.dimensions,
     estimatedBytes: result.data.estimatedBytes,
     hasJobReference: result.data.hasJobReference,
+    inputFormatHash: result.data.inputFormatHash,
+    inputFormatName: result.data.inputFormatName,
     model: result.data.model,
     pinReason: result.data.pinReason,
-    profile: result.data.profile,
     rowCounts: {
       indexedDocuments: readSafeCount(result.data.indexedDocuments),
       lexicalChunks: readSafeCount(result.data.lexicalChunks),
@@ -640,8 +649,9 @@ function decodeGcSpaceRecord(row: unknown): EmbeddingSpaceGcSpaceRecord {
     disposition: result.data.disposition,
     errorMessage: result.data.errorMessage,
     estimatedBytes: result.data.estimatedBytes.toString(),
+    inputFormatHash: result.data.inputFormatHash,
+    inputFormatName: result.data.inputFormatName,
     model: result.data.model,
-    profile: result.data.profile,
     protectionDetail: result.data.protectionDetail,
     protectionKind: result.data.protectionKind,
     rowCounts: result.data.rowCounts,

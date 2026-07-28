@@ -52,7 +52,7 @@ const answerThresholdPreparationSchema = z.object({
     sha256: sha256Schema,
   }).strict(),
   provenance: evaluationProvenanceSchema,
-  version: z.literal(5),
+  version: z.literal(6),
 }).strict().superRefine((value, context) => {
   const familyIds = new Set<string>();
   for (let index = 0; index < value.cases.length; index += 1) {
@@ -173,7 +173,7 @@ const answerThresholdSelectionSchema = z.object({
   }).strict()),
   scoringConfiguration: scoringConfigurationSchema,
   selectedThreshold: z.number().finite(),
-  version: z.literal(3),
+  version: z.literal(4),
 }).strict().superRefine((value, context) => {
   const payload: Omit<typeof value, "fingerprintSha256"> & {
     fingerprintSha256?: string;
@@ -225,9 +225,9 @@ function rejectIncompatiblePreparationVersion(
     return;
   }
   const version = value.version;
-  if (version !== 5) {
+  if (version !== 6) {
     throw new Error(
-      `Incompatible answer-threshold preparation ${sourceLabel}: expected version 5, received ${String(version)}.`,
+      `Incompatible answer-threshold preparation ${sourceLabel}: expected version 6, received ${String(version)}.`,
     );
   }
 }
@@ -361,7 +361,7 @@ export function selectAnswerThreshold(
     })),
     scoringConfiguration: readScoringConfiguration(firstPreparation),
     selectedThreshold,
-    version: 3 as const,
+    version: 4 as const,
   };
   const selection = {
     ...selectionPayload,

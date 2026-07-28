@@ -6,7 +6,7 @@ import type {
 } from "../domain/source-elements.js";
 import {
   formatDocumentEmbeddingText,
-  type EmbeddingProfile,
+  type EmbeddingInputFormatContract,
 } from "../embedding/input-format.js";
 import { countEmbeddingInputTokens } from "../embedding/token-counter.js";
 import type {
@@ -39,7 +39,7 @@ export interface RetrievalWindow {
 }
 
 export interface RetrievalWindowConstructionConfig {
-  embeddingProfile: EmbeddingProfile;
+  embeddingInputFormat: EmbeddingInputFormatContract;
   policy: RetrievalWindowPolicyContract;
 }
 
@@ -100,33 +100,33 @@ export function buildRetrievalElementEmbeddingText(
 export function buildRetrievalWindowProviderInput(
   window: RetrievalWindow,
   element: SourceElement,
-  profile: EmbeddingProfile,
+  inputFormat: EmbeddingInputFormatContract,
 ): string {
   const embeddingText = buildRetrievalWindowEmbeddingText(window, element);
-  return formatDocumentEmbeddingText(profile, embeddingText);
+  return formatDocumentEmbeddingText(inputFormat, embeddingText);
 }
 
 export function countRetrievalEmbeddingInputTokens(
   content: string,
   element: SourceElement,
-  profile: EmbeddingProfile,
+  inputFormat: EmbeddingInputFormatContract,
 ): number {
   const embeddingText = buildRetrievalElementEmbeddingText(content, element);
-  const providerInput = formatDocumentEmbeddingText(profile, embeddingText);
+  const providerInput = formatDocumentEmbeddingText(inputFormat, embeddingText);
   return countEmbeddingInputTokens(providerInput);
 }
 
 export function splitRetrievalContentAtTokenLimit(
   content: string,
   element: SourceElement,
-  profile: EmbeddingProfile,
+  inputFormat: EmbeddingInputFormatContract,
   maximumInputTokens: number,
 ): string[] {
   if (!Number.isInteger(maximumInputTokens) || maximumInputTokens < 1) {
     throw new Error("The embedding input limit must be a positive integer.");
   }
   const countTokens = (candidate: string): number => (
-    countRetrievalEmbeddingInputTokens(candidate, element, profile)
+    countRetrievalEmbeddingInputTokens(candidate, element, inputFormat)
   );
   const units = readStructuredTextUnits(
     content,
@@ -164,7 +164,7 @@ function createRetrievalWindow(
   const effectiveInputTokens = countRetrievalEmbeddingInputTokens(
     windowContent.content,
     element,
-    config.embeddingProfile,
+    config.embeddingInputFormat,
   );
   const policy = config.policy.policy;
   if (effectiveInputTokens > policy.maximumInputTokens) {
@@ -226,7 +226,7 @@ function splitStructuredTextContent(
     countRetrievalEmbeddingInputTokens(
       candidate,
       element,
-      config.embeddingProfile,
+      config.embeddingInputFormat,
     )
   );
   const units = readStructuredTextUnits(
@@ -577,7 +577,7 @@ function splitStructuredTableContent(
     countRetrievalEmbeddingInputTokens(
       candidate,
       element,
-      config.embeddingProfile,
+      config.embeddingInputFormat,
     )
   );
   if (countTokens(table.prefix) > policy.maximumInputTokens) {
@@ -654,7 +654,7 @@ function createFallbackTableWindows(
   const contents = splitRetrievalContentAtTokenLimit(
     element.content,
     element,
-    config.embeddingProfile,
+    config.embeddingInputFormat,
     config.policy.policy.maximumInputTokens,
   );
   return contents.map((content) => ({

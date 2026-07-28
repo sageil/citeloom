@@ -11,7 +11,6 @@ import {
 import { hashPassword, readPassword } from "../auth/password.js";
 import type { SourceContentConfig } from "../config/index.js";
 import { SourceContentStore } from "../documents/storage/source-content-store.js";
-import { parseStoredApplicationSettings } from "../providers/settings-persistence.js";
 import type { CiteLoomDatabase } from "./client.js";
 import { applicationSettings } from "./schema.js";
 
@@ -25,6 +24,11 @@ const sourceContentBootstrapEnvironmentSchema = z.object({
     .min(1)
     .default("documents/blobs"),
 });
+const storedSourceContentSchema = z.object({
+  sourceContent: z.object({
+    directory: z.string().trim().min(1),
+  }).strict(),
+}).loose();
 const bootstrapSqlUrl = new URL("../../drizzle/bootstrap.sql", import.meta.url);
 const bootstrapSql = readFileSync(bootstrapSqlUrl, "utf8").trim();
 
@@ -144,6 +148,11 @@ async function readStoredSourceContentDirectory(
   if (row === undefined) {
     return null;
   }
-  const settings = parseStoredApplicationSettings(row.settings);
-  return settings.sourceContent.directory;
+  const result = storedSourceContentSchema.safeParse(row.settings);
+  if (!result.success) {
+    throw new Error(
+      `Invalid stored source-content configuration: ${result.error.message}`,
+    );
+  }
+  return result.data.sourceContent.directory;
 }

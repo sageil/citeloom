@@ -51,6 +51,9 @@ export function printEmbeddingSpaceGcReport(
       `  ${space.spaceId}: ${space.state}, ${protection}, estimated ${space.estimatedBytes} bytes`,
     );
     console.log(
+      `    input format: ${space.inputFormatName} (${space.inputFormatHash})`,
+    );
+    console.log(
       `    rows: ${rows.vectorChunks384} vector-384, ${rows.vectorChunks768} vector-768, ${rows.vectorChunks1024} vector-1024, ${rows.lexicalChunks} lexical, ${rows.indexedDocuments} document links`,
     );
     if (space.errorMessage !== null) {

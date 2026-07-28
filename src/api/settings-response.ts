@@ -116,6 +116,14 @@ export function buildApplicationSettingsResponse(
     const source = Object.hasOwn(settings.overrides, definition.key)
       ? "database"
       : "database-default";
+    const options = definition.key === "embeddingInputFormatId"
+      ? settings.embeddingInputFormats
+        .filter((inputFormat) => inputFormat.retiredAt === null)
+        .map((inputFormat) => ({
+          label: inputFormat.name,
+          value: inputFormat.id,
+        }))
+      : definition.options ?? [];
     fields.push({
       changeExample: runtimeSettingChangeExamples[definition.key],
       configured: sensitive ? effectiveValue !== null : true,
@@ -130,7 +138,7 @@ export function buildApplicationSettingsResponse(
       max: presentation.max,
       min: presentation.min,
       nullable: definition.nullable === true,
-      options: definition.options ?? [],
+      options,
       sensitive,
       source,
       step: presentation.step,

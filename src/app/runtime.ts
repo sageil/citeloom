@@ -457,7 +457,9 @@ function freezeApplicationConfig(config: AppConfig): AppConfig {
   const copy = structuredClone(config);
   Object.freeze(copy.database);
   Object.freeze(copy.docling);
+  Object.freeze(copy.embeddingSpace.inputFormat);
   Object.freeze(copy.embeddingSpace);
+  Object.freeze(copy.inference.embedding.inputFormat);
   Object.freeze(copy.inference);
   Object.freeze(copy.inferenceMetrics);
   Object.freeze(copy.retry);

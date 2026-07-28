@@ -188,6 +188,8 @@ export interface DashboardResponse {
   embeddingSpace: {
     dimensions: number;
     id: string;
+    inputFormatHash: string;
+    inputFormatName: string;
     model: string;
     retrievalWindowPolicyFingerprint: string;
     retrievalWindowPolicyId: string;
@@ -1472,6 +1474,9 @@ async function buildDashboardResponse(
     embeddingSpace: {
       dimensions: effectiveConfig.embeddingSpace.dimensions,
       id: effectiveConfig.embeddingSpace.id,
+      inputFormatHash:
+        effectiveConfig.embeddingSpace.inputFormat.inputFormatHash,
+      inputFormatName: effectiveConfig.embeddingSpace.inputFormat.name,
       model: effectiveConfig.embeddingSpace.model,
       retrievalWindowPolicyFingerprint:
         effectiveConfig.embeddingSpace.retrievalWindow.fingerprint,

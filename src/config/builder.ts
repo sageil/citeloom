@@ -35,6 +35,11 @@ import {
   type RetrievalWindowPolicyContract,
 } from "../retrieval/window-policy.js";
 import { HHEM_DISPLAY_MODEL } from "../verification/hhem-client.js";
+import {
+  BUILT_IN_EMBEDDING_INPUT_FORMAT_IDS,
+  readEmbeddingInputFormatContract,
+  type EmbeddingInputFormatContract,
+} from "../embedding/input-format-model.js";
 
 export function buildAppConfig(
   database: DatabaseConfig,
@@ -43,13 +48,21 @@ export function buildAppConfig(
   providerSettingsValue: ProviderSettings,
   doclingServiceValues: readonly DoclingServiceInstanceConfig[],
   sourceContent: SourceContentConfig,
+  embeddingInputFormatValue: EmbeddingInputFormatContract,
 ): AppConfig {
   const settings = parseRuntimeSettings(settingsValue);
   const providerSettings = parseProviderSettings(providerSettingsValue);
+  const embeddingInputFormat = readEmbeddingInputFormatContract(
+    embeddingInputFormatValue,
+  );
   if (!Number.isInteger(settingsVersion) || settingsVersion < 0) {
     throw new Error("Settings version must be a nonnegative integer.");
   }
-  const inference = buildInferenceConfig(settings, providerSettings);
+  const inference = buildInferenceConfig(
+    settings,
+    providerSettings,
+    embeddingInputFormat,
+  );
   const retrievalWindow = createRetrievalWindowPolicyContract(
     createRetrievalWindowPolicy(
       settings.retrievalWindowPolicy,
@@ -60,7 +73,7 @@ export function buildAppConfig(
   const embeddingSpaceId = settings.embeddingSpaceId
     ?? createEmbeddingSpaceId(
       inference.embedding.model,
-      settings.embeddingProfile,
+      embeddingInputFormat,
       settings.embeddingDimensions,
       retrievalWindow,
     );
@@ -96,8 +109,8 @@ export function buildAppConfig(
   const embeddingSpace: AppConfig["embeddingSpace"] = {
     dimensions: settings.embeddingDimensions,
     id: embeddingSpaceId,
+    inputFormat: embeddingInputFormat,
     model: inference.embedding.model,
-    profile: settings.embeddingProfile,
     retrievalWindow,
   };
   const retrieval: AppConfig["retrieval"] = {
@@ -327,6 +340,7 @@ function buildRerankerConfig(
 function buildInferenceConfig(
   settings: RuntimeSettings,
   providerSettings: ProviderSettings,
+  embeddingInputFormat: EmbeddingInputFormatContract,
 ): InferenceConfig {
   const answer = resolveLanguageProvider(providerSettings, "answer");
   const embedding = resolveEmbeddingProvider(providerSettings);
@@ -347,7 +361,7 @@ function buildInferenceConfig(
     },
     embedding: buildEmbeddingInferenceConfig(
       embedding,
-      settings.embeddingProfile,
+      embeddingInputFormat,
       secondsToMilliseconds(settings.embeddingTimeoutSeconds),
     ),
     queryExpansion: buildLanguageInferenceConfig(
@@ -380,16 +394,16 @@ function buildLanguageInferenceConfig(
 
 function buildEmbeddingInferenceConfig(
   provider: ReturnType<typeof resolveEmbeddingProvider>,
-  profile: EmbeddingInferenceConfig["profile"],
+  inputFormat: EmbeddingInputFormatContract,
   timeoutMs: number,
 ): EmbeddingInferenceConfig {
   return {
     adapter: provider.adapter,
     apiToken: provider.apiToken,
     baseUrl: provider.baseUrl,
+    inputFormat,
     maximumInputTokens: provider.contextCapacityTokens,
     model: provider.model,
-    profile,
     providerId: provider.providerId,
     runtimeName: provider.runtimeName,
     timeoutMs,
@@ -459,10 +473,23 @@ function secondsToMilliseconds(value: number): number {
 
 function createEmbeddingSpaceId(
   model: string,
-  profile: string,
+  inputFormat: EmbeddingInputFormatContract,
   dimensions: EmbeddingDimensions,
   retrievalWindow: RetrievalWindowPolicyContract,
 ): string {
-  const baseId = `${model}:${profile}:${dimensions}`;
+  const formatIdentity = readEmbeddingSpaceInputFormatIdentity(inputFormat);
+  const baseId = `${model}:${formatIdentity}:${dimensions}`;
   return `${baseId}:window-${retrievalWindow.fingerprint.slice(0, 16)}`;
+}
+
+function readEmbeddingSpaceInputFormatIdentity(
+  inputFormat: EmbeddingInputFormatContract,
+): string {
+  if (inputFormat.id === BUILT_IN_EMBEDDING_INPUT_FORMAT_IDS.plain) {
+    return "plain";
+  }
+  if (inputFormat.id === BUILT_IN_EMBEDDING_INPUT_FORMAT_IDS.embeddingGemma) {
+    return "embeddinggemma";
+  }
+  return `format-${inputFormat.id}-${inputFormat.inputFormatHash.slice(0, 16)}`;
 }

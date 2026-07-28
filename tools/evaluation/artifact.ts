@@ -24,6 +24,7 @@ import {
   type RetrievalCandidateRankings,
 } from "../../src/retrieval/indexing/query-store.js";
 import { contentIdSchema } from "../../src/domain/validation.js";
+import { embeddingInputFormatContractSchema } from "../../src/embedding/input-format-model.js";
 import { partitionCandidateWindowsByParentOccurrence } from "../../src/retrieval/document-retrieval.js";
 import { CHANNEL_ORDERING_POLICY } from "../../src/retrieval/ranking/channel-ordering.js";
 import { retrievalWindowPolicyContractSchema } from "../../src/retrieval/window-policy.js";
@@ -157,8 +158,8 @@ export const evaluationProvenanceSchema = z.object({
   embeddingSpace: z.object({
     dimensions: z.union([z.literal(384), z.literal(768), z.literal(1024)]),
     id: z.string().min(1),
+    inputFormat: embeddingInputFormatContractSchema,
     model: z.string().min(1),
-    profile: z.enum(["embeddinggemma", "plain"]),
     retrievalWindow: retrievalWindowPolicyContractSchema,
   }).strict(),
   hnsw: z.object({
@@ -224,7 +225,7 @@ const evaluationPreparationArtifactSchema = z.object({
   provenance: evaluationProvenanceSchema,
   skippedModes: z.array(retrievalModeSchema),
   telemetry: z.array(benchmarkTelemetrySchema).min(1),
-  version: z.literal(10),
+  version: z.literal(11),
 }).strict();
 
 export type EvaluationPreparationArtifact = z.output<
@@ -271,9 +272,9 @@ function rejectIncompatibleArtifactVersion(
     return;
   }
   const version = value.version;
-  if (version !== 10) {
+  if (version !== 11) {
     throw new Error(
-      `Incompatible evaluation preparation ${sourceLabel}: expected version 10, received ${String(version)}.`,
+      `Incompatible evaluation preparation ${sourceLabel}: expected version 11, received ${String(version)}.`,
     );
   }
 }

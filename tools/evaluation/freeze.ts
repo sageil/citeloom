@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import type { AppConfig } from "../../src/config/index.js";
 import { HNSW_QUERY_SETTINGS } from "../../src/database/client.js";
+import { embeddingInputFormatContractSchema } from "../../src/embedding/input-format-model.js";
 import { createInferenceModelRegistry } from "../../src/inference/registry.js";
 import { CHANNEL_ORDERING_POLICY } from "../../src/retrieval/ranking/channel-ordering.js";
 import { retrievalWindowPolicyContractSchema } from "../../src/retrieval/window-policy.js";
@@ -27,8 +28,8 @@ const freezePayloadSchema = z.object({
   embeddingSpace: z.object({
     dimensions: z.union([z.literal(384), z.literal(768), z.literal(1024)]),
     id: z.string().min(1),
+    inputFormat: embeddingInputFormatContractSchema,
     model: z.string().min(1),
-    profile: z.enum(["embeddinggemma", "plain"]),
     retrievalWindow: retrievalWindowPolicyContractSchema,
   }).strict(),
   hnsw: z.object({
@@ -54,7 +55,7 @@ const freezePayloadSchema = z.object({
 const evaluationConfigurationFreezeSchema = z.object({
   fingerprintSha256: sha256Schema,
   payload: freezePayloadSchema,
-  version: z.literal(5),
+  version: z.literal(6),
 }).strict();
 
 export type EvaluationConfigurationFreeze = z.output<
@@ -102,7 +103,7 @@ export function createEvaluationConfigurationFreeze(
   return {
     fingerprintSha256: calculateJsonSha256(payload),
     payload,
-    version: 5,
+    version: 6,
   };
 }
 
@@ -156,9 +157,9 @@ function rejectIncompatibleFreezeVersion(
     return;
   }
   const version = value.version;
-  if (version !== 5) {
+  if (version !== 6) {
     throw new Error(
-      `Incompatible frozen evaluation configuration ${sourceLabel}: expected version 5, received ${String(version)}.`,
+      `Incompatible frozen evaluation configuration ${sourceLabel}: expected version 6, received ${String(version)}.`,
     );
   }
 }

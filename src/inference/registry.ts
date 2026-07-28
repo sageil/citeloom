@@ -235,14 +235,14 @@ export function formatDocumentEmbeddingInput(
   config: EmbeddingInferenceConfig,
   content: string,
 ): string {
-  return formatDocumentEmbeddingText(config.profile, content);
+  return formatDocumentEmbeddingText(config.inputFormat, content);
 }
 
 export function formatQueryEmbeddingInput(
   config: EmbeddingInferenceConfig,
   query: string,
 ): string {
-  return formatQueryEmbeddingText(config.profile, query);
+  return formatQueryEmbeddingText(config.inputFormat, query);
 }
 
 export function formatEmbeddingInputs(

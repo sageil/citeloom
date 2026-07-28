@@ -229,7 +229,7 @@ export async function prepareComparativeEvaluation(
       provenance,
       skippedModes: modes.skipped,
       telemetry,
-      version: 10,
+      version: 11,
     }, "generated output");
   } finally {
     await runtime.session.close();
@@ -370,7 +370,7 @@ export async function prepareAnswerThresholdCalibration(
         }),
       },
       provenance,
-      version: 5,
+      version: 6,
     }, "generated output");
   } finally {
     await runtime.session.close();

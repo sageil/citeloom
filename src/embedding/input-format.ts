@@ -1,23 +1,34 @@
-import type { EmbeddingInferenceConfig } from "../config/index.js";
+import {
+  EMBEDDING_INPUT_TEXT_PLACEHOLDER,
+  type EmbeddingInputFormatContract,
+} from "./input-format-model.js";
 
-export type EmbeddingProfile = EmbeddingInferenceConfig["profile"];
+export {
+  BUILT_IN_EMBEDDING_INPUT_FORMAT_IDS,
+  createEmbeddingInputFormatContract,
+  createEmbeddingInputFormatHash,
+  EMBEDDING_INPUT_FORMAT_SCHEMA_VERSION,
+  EMBEDDING_INPUT_TEXT_PLACEHOLDER,
+  readEmbeddingInputFormatContract,
+  readEmbeddingInputFormatDefinition,
+  type EmbeddingInputFormatContract,
+  type EmbeddingInputFormatDefinition,
+} from "./input-format-model.js";
 
 export function formatDocumentEmbeddingText(
-  profile: EmbeddingProfile,
+  inputFormat: EmbeddingInputFormatContract,
   content: string,
 ): string {
-  if (profile === "embeddinggemma") {
-    return `title: none | text: ${content}`;
-  }
-  return content;
+  return renderEmbeddingInputTemplate(inputFormat.documentTemplate, content);
 }
 
 export function formatQueryEmbeddingText(
-  profile: EmbeddingProfile,
+  inputFormat: EmbeddingInputFormatContract,
   query: string,
 ): string {
-  if (profile === "embeddinggemma") {
-    return `task: search result | query: ${query}`;
-  }
-  return query;
+  return renderEmbeddingInputTemplate(inputFormat.queryTemplate, query);
+}
+
+function renderEmbeddingInputTemplate(template: string, text: string): string {
+  return template.replace(EMBEDDING_INPUT_TEXT_PLACEHOLDER, text);
 }

@@ -58,6 +58,10 @@ export type {
   WorkloadClass,
   WorkerConfig,
 } from "./types.js";
+export type {
+  EmbeddingInputFormatContract,
+  EmbeddingInputFormatDefinition,
+} from "../embedding/input-format-model.js";
 export {
   parseProviderSettings,
   providerCapabilitySchema,

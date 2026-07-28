@@ -27,7 +27,7 @@ const embeddingInputFormatDefinitionSchema = z.object({
   queryTemplate: inputFormatTemplateSchema,
   schemaVersion: z.number().int().positive(),
 }).strict();
-const embeddingInputFormatContractSchema =
+export const embeddingInputFormatContractSchema =
   embeddingInputFormatDefinitionSchema.extend({
     id: z.uuid(),
     inputFormatHash: z.string().regex(/^[a-f0-9]{64}$/u),
