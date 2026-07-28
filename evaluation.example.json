@@ -1,0 +1,20 @@
+{
+  "atK": 10,
+  "name": "legal-development",
+  "split": "development",
+  "version": 1,
+  "cases": [
+    {
+      "domain": "legal",
+      "id": "legal-development-example",
+      "origin": {
+        "kind": "manual"
+      },
+      "question": "Replace this with a question that has known relevant evidence.",
+      "relevantDocumentIds": [
+        "0000000000000000000000000000000000000000000000000000000000000000"
+      ],
+      "relevantElementIds": []
+    }
+  ]
+}

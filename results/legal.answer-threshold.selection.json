@@ -1,0 +1,147 @@
+{
+  "developmentPreparations": [
+    {
+      "datasetName": "legal-development",
+      "sha256": "50a47c4390881475fa4e73e06d5139ff8582460841b8fc474af2f7af00ef6efb"
+    }
+  ],
+  "fingerprintSha256": "91466072c66e5f53067924826efd830c146558275781666b06fcae0810696105",
+  "maximumFalseAcceptanceRate": 0.05,
+  "metrics": {
+    "answerablePassRate": {
+      "count": 15,
+      "rate": 1,
+      "total": 15,
+      "wilson95": {
+        "lower": 0.7961166989641515,
+        "upper": 1
+      }
+    },
+    "domains": [
+      {
+        "answerablePassRate": {
+          "count": 15,
+          "rate": 1,
+          "total": 15,
+          "wilson95": {
+            "lower": 0.7961166989641515,
+            "upper": 1
+          }
+        },
+        "domain": "legal",
+        "falseAcceptanceRate": {
+          "count": 0,
+          "rate": 0,
+          "total": 15,
+          "wilson95": {
+            "lower": 0,
+            "upper": 0.20388330103584862
+          }
+        }
+      }
+    ],
+    "excludedPositiveRetrievalMissCount": 0,
+    "falseAcceptanceRate": {
+      "count": 0,
+      "rate": 0,
+      "total": 15,
+      "wilson95": {
+        "lower": 0,
+        "upper": 0.20388330103584862
+      }
+    }
+  },
+  "regressionMetrics": {
+    "answerablePassRate": {
+      "count": 13,
+      "rate": 1,
+      "total": 13,
+      "wilson95": {
+        "lower": 0.7719046276458016,
+        "upper": 0.9999999999999999
+      }
+    },
+    "domains": [
+      {
+        "answerablePassRate": {
+          "count": 13,
+          "rate": 1,
+          "total": 13,
+          "wilson95": {
+            "lower": 0.7719046276458016,
+            "upper": 0.9999999999999999
+          }
+        },
+        "domain": "legal",
+        "falseAcceptanceRate": {
+          "count": 0,
+          "rate": 0,
+          "total": 13,
+          "wilson95": {
+            "lower": 0,
+            "upper": 0.22809537235419838
+          }
+        }
+      }
+    ],
+    "excludedPositiveRetrievalMissCount": 2,
+    "falseAcceptanceRate": {
+      "count": 0,
+      "rate": 0,
+      "total": 13,
+      "wilson95": {
+        "lower": 0,
+        "upper": 0.22809537235419838
+      }
+    }
+  },
+  "regressionPreparations": [
+    {
+      "datasetName": "legal-holdout",
+      "sha256": "b8e9eec75028f03c05cb90155babfcf40928810af775f9df09c6380ba877f2f4"
+    }
+  ],
+  "scoringConfiguration": {
+    "codeRevision": "17055a217ba7ade35e89b8b4bb4f2c7ce01ed7c1:5d156e1587a11570cf4eeab5b2f16ce846050026b9cc5f466544b9197345da0a",
+    "embeddingSpace": {
+      "dimensions": 768,
+      "id": "text-embedding-embeddinggemma-300m-qat:embeddinggemma:768",
+      "model": "text-embedding-embeddinggemma-300m-qat",
+      "profile": "embeddinggemma"
+    },
+    "hnsw": {
+      "efSearch": 100,
+      "iterativeScan": "strict_order"
+    },
+    "models": {
+      "queryEmbedding": {
+        "modelId": "text-embedding-embeddinggemma-300m-qat:query",
+        "provider": "citeloomInference.embedding"
+      },
+      "queryExpansion": {
+        "modelId": "qwen/qwen3-vl-4b:summary",
+        "provider": "citeloomInference.chat"
+      },
+      "reranker": {
+        "modelId": "Qwen3-Reranker-4B-mxfp8",
+        "provider": "oMLX"
+      }
+    },
+    "retrieval": {
+      "candidateK": 50,
+      "fusion": {
+        "denseWeight": 1,
+        "expansionDecay": 1,
+        "expansionQueryWeight": 1,
+        "lexicalWeight": 1,
+        "originalQueryWeight": 1
+      },
+      "queryExpansions": 2,
+      "rrfK": 60,
+      "topK": 10,
+      "variantConcurrency": 2
+    }
+  },
+  "selectedThreshold": 0.52978515625,
+  "version": 1
+}

@@ -1,0 +1,34 @@
+{
+  "constraints": {
+    "maximumDomainNdcgRegression": 0.02,
+    "maximumEstimatedP95LatencyMs": 2500,
+    "maximumEstimatedP95LatencyRegressionMs": 250
+  },
+  "objective": {
+    "metric": "domain-macro-mean-ndcg",
+    "minimumImprovement": 0.01
+  },
+  "referenceConfiguration": {
+    "fusion": {
+      "denseWeight": 1,
+      "expansionDecay": 1,
+      "expansionQueryWeight": 1,
+      "lexicalWeight": 1,
+      "originalQueryWeight": 1
+    },
+    "queryExpansions": 2,
+    "rerankerCandidateDepth": 50,
+    "rrfK": 60
+  },
+  "searchSpace": {
+    "denseWeights": [0.5, 1, 2],
+    "expansionCounts": [0, 1, 2],
+    "expansionDecays": [0.5, 0.75, 1],
+    "expansionWeights": [0.25, 0.5, 1],
+    "lexicalWeights": [0.5, 1, 2],
+    "originalQuestionWeights": [1, 2],
+    "rerankerCandidateDepths": [20, 35, 50],
+    "rrfConstants": [20, 60, 100]
+  },
+  "version": 1
+}
