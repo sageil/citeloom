@@ -702,7 +702,7 @@
               </div><small class="settings-runtime-credential-note" x-show="fieldCredentialMessageVisible(field)">A credential is configured. Enter a new value to replace it.</small></section>
               <template x-if="field.key === 'embeddingInputFormatId'">
                 <section class="settings-feature-step settings-input-format-library">
-                  <header><span>2</span><h3>Immutable format library</h3><p>Create, copy, revise, or retire database-backed templates.</p></header>
+                  <header><span>2</span><h3>Input formats</h3><p>Create a format or manage an existing one.</p></header>
                   <div class="settings-input-format-picker">
                     <label>
                       <span>Format to inspect</span>
@@ -743,13 +743,13 @@
                   </template>
                   <template x-if="inputFormatDraft !== null">
                     <form class="settings-input-format-editor" @submit.prevent="submitEmbeddingInputFormat()">
-                      <header><h4 x-text="embeddingInputFormatEditorTitle()"></h4><p>Saving inserts a new immutable record. It never changes the source format.</p></header>
+                      <header><h4 x-text="embeddingInputFormatEditorTitle()"></h4><p>Saving creates a new format. The original remains unchanged.</p></header>
                       <label><span>Name</span><input maxlength="100" required type="text" x-model="inputFormatDraft.name" /></label>
                       <label><span>Schema version</span><input min="1" required type="number" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.schemaVersion" /></label>
                       <label class="settings-input-format-template-field"><span>Document template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.documentTemplate"></textarea></label>
                       <label class="settings-input-format-template-field"><span>Query template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.queryTemplate"></textarea></label>
                       <p>Each template must contain exactly one <code>{{text}}</code> placeholder.</p>
-                      <div><button class="button secondary" type="button" :disabled="inputFormatBusy" @click="cancelEmbeddingInputFormatEditor()">Cancel</button><button class="button primary" type="submit" :disabled="inputFormatBusy" x-text="inputFormatBusy ? 'Saving' : 'Create immutable record'"></button></div>
+                      <div><button class="button secondary" type="button" :disabled="inputFormatBusy" @click="cancelEmbeddingInputFormatEditor()">Cancel</button><button class="button primary" type="submit" :disabled="inputFormatBusy" x-text="inputFormatBusy ? 'Saving' : 'Save format'"></button></div>
                     </form>
                   </template>
                 </section>

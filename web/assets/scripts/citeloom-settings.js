@@ -1491,7 +1491,7 @@ export function registerPage(alpine) {
         return "Copy input format";
       }
       if (this.inputFormatEditorMode === "revision") {
-        return "Create immutable revision";
+        return "Create revision";
       }
       return "Create input format";
     },
@@ -1559,7 +1559,7 @@ export function registerPage(alpine) {
         this.managedInputFormatId = created.id;
         dispatchNotice(
           "success",
-          "The immutable input format was created and is available to select.",
+          "The input format was created and is available to select.",
         );
       } catch (error) {
         dispatchNotice(
