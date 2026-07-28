@@ -700,7 +700,65 @@
                 <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input :autocomplete="field.sensitive ? 'new-password' : 'off'" :data-1p-ignore="field.sensitive ? 'true' : null" :data-bwignore="field.sensitive ? 'true' : null" :data-lpignore="field.sensitive ? 'true' : null" :id="`setting-${field.key}`" :max="field.max" :min="field.min" :name="`setting-${field.key}`" :placeholder="field.sensitive &amp;&amp; field.configured ? 'Configured' : ''" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
                 <span class="setting-unit" x-show="field.unit !== null" x-text="field.unit"></span><button class="text-button" type="button" :disabled="fieldResetDisabled(field)" @click="resetField(field)">Reset to default</button>
               </div><small class="settings-runtime-credential-note" x-show="fieldCredentialMessageVisible(field)">A credential is configured. Enter a new value to replace it.</small></section>
-              <section class="settings-feature-step"><header><span>2</span><h3>Source and effect</h3><p>Understand where this value comes from and what changing it affects.</p></header><div class="settings-resolved-result"><div><span>Current source</span><strong x-text="fieldSourceLabel(field)"></strong></div><div><span>Example change and effect</span><strong x-text="field.changeExample"></strong></div></div></section>
+              <template x-if="field.key === 'embeddingInputFormatId'">
+                <section class="settings-feature-step settings-input-format-library">
+                  <header><span>2</span><h3>Immutable format library</h3><p>Create, copy, revise, or retire database-backed templates.</p></header>
+                  <div class="settings-input-format-picker">
+                    <label>
+                      <span>Format to inspect</span>
+                      <select x-model="managedInputFormatId">
+                        <template x-for="format in settings.embeddingInputFormats" :key="format.id">
+                          <option :value="format.id" x-text="format.retiredAt === null ? format.name : `${format.name} (retired)`"></option>
+                        </template>
+                      </select>
+                    </label>
+                    <button class="button secondary" type="button" :disabled="inputFormatBusy" @click="beginEmbeddingInputFormatCreate()">Create format</button>
+                  </div>
+                  <template x-if="managedEmbeddingInputFormat() !== null">
+                    <div class="settings-input-format-record">
+                      <template x-for="format in [managedEmbeddingInputFormat()]" :key="format.id">
+                        <div>
+                          <div class="settings-input-format-heading">
+                            <div>
+                              <h4 x-text="format.name"></h4>
+                              <span x-text="`Schema ${format.schemaVersion}`"></span>
+                              <span x-show="format.selected">Selected</span>
+                              <span x-show="format.defaultSelected">Default</span>
+                              <span x-show="format.retiredAt !== null">Retired</span>
+                            </div>
+                            <small x-text="embeddingInputFormatUsage(format)"></small>
+                          </div>
+                          <div class="settings-input-format-templates">
+                            <div><span>Document template</span><code x-text="format.documentTemplate"></code></div>
+                            <div><span>Query template</span><code x-text="format.queryTemplate"></code></div>
+                          </div>
+                          <dl class="settings-input-format-metadata">
+                            <div><dt>Hash</dt><dd><code x-text="format.inputFormatHash"></code></dd></div>
+                            <div><dt>Created</dt><dd x-text="formatEmbeddingInputFormatTimestamp(format.createdAt)"></dd></div>
+                          </dl>
+                          <div class="settings-input-format-actions">
+                            <button class="button secondary" type="button" :disabled="inputFormatBusy" @click="beginEmbeddingInputFormatCopy(format)">Copy</button>
+                            <button class="button secondary" type="button" :disabled="inputFormatBusy" @click="beginEmbeddingInputFormatRevision(format)">Create revision</button>
+                            <button class="button settings-input-format-retire" type="button" :disabled="inputFormatBusy || !format.canRetire" :title="format.canRetire ? 'Retire this unused format' : embeddingInputFormatUsage(format)" @click="retireEmbeddingInputFormat(format)">Retire unused</button>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                  <template x-if="inputFormatDraft !== null">
+                    <form class="settings-input-format-editor" @submit.prevent="submitEmbeddingInputFormat()">
+                      <header><h4 x-text="embeddingInputFormatEditorTitle()"></h4><p>Saving inserts a new immutable record. It never changes the source format.</p></header>
+                      <label><span>Name</span><input maxlength="100" required type="text" x-model="inputFormatDraft.name" /></label>
+                      <label><span>Schema version</span><input min="1" required type="number" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.schemaVersion" /></label>
+                      <label class="settings-input-format-template-field"><span>Document template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.documentTemplate"></textarea></label>
+                      <label class="settings-input-format-template-field"><span>Query template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.queryTemplate"></textarea></label>
+                      <p>Each template must contain exactly one <code>{{text}}</code> placeholder.</p>
+                      <div><button class="button secondary" type="button" :disabled="inputFormatBusy" @click="cancelEmbeddingInputFormatEditor()">Cancel</button><button class="button primary" type="submit" :disabled="inputFormatBusy" x-text="inputFormatBusy ? 'Saving' : 'Create immutable record'"></button></div>
+                    </form>
+                  </template>
+                </section>
+              </template>
+              <section class="settings-feature-step"><header><span x-text="field.key === 'embeddingInputFormatId' ? '3' : '2'"></span><h3>Source and effect</h3><p>Understand where this value comes from and what changing it affects.</p></header><div class="settings-resolved-result"><div><span>Current source</span><strong x-text="fieldSourceLabel(field)"></strong></div><div><span>Example change and effect</span><strong x-text="field.changeExample"></strong></div></div></section>
               <footer class="settings-feature-footer"><span :class="{ changed: changeCount > 0 }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><strong x-text="changeSummaryLabel()"></strong></span><div><button class="button secondary" type="button" :disabled="saving" @click="resetAll()">Reset</button><button class="button primary" type="button" :disabled="!canSave" @click="saveChanges()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="saveLabel()"></span></button></div></footer>
             </div>
             </template>

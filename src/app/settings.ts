@@ -39,7 +39,7 @@ import {
 } from "../database/schema.js";
 import {
   EmbeddingInputFormatStore,
-  type EmbeddingInputFormatRecord,
+  type EmbeddingInputFormatRecordWithUsage,
 } from "../embedding/input-format-store.js";
 
 const SETTINGS_ID = "runtime";
@@ -160,7 +160,7 @@ export type NormalizedRuntimeSettingChange =
 export interface EffectiveApplicationSettings {
   config: AppConfig;
   defaults: RuntimeSettings;
-  embeddingInputFormats: EmbeddingInputFormatRecord[];
+  embeddingInputFormats: EmbeddingInputFormatRecordWithUsage[];
   overrides: RuntimeSettingsOverrides;
   providerSettings: ProviderSettings;
   runtimeSettings: RuntimeSettings;
@@ -408,7 +408,7 @@ export class ApplicationSettingsRepository {
     const stored = decodeStoredSettingsRow(row);
     const inputFormats = await new EmbeddingInputFormatStore(
       this.database,
-    ).list();
+    ).listWithEmbeddingSpaceCounts();
     return buildEffectiveSettings(
       databaseConfig,
       stored,
@@ -441,7 +441,7 @@ export class ApplicationSettingsRepository {
       );
       const inputFormats = await new EmbeddingInputFormatStore(
         transaction,
-      ).list();
+      ).listWithEmbeddingSpaceCounts();
       const resolved = resolveApplicationSettingsUpdate({
         databaseConfig,
         doclingTopology,
@@ -489,7 +489,7 @@ type ApplicationSettingsTransaction = Parameters<
 interface ApplicationSettingsUpdateRequest {
   databaseConfig: DatabaseConfig;
   doclingTopology: DoclingServiceTopology;
-  inputFormats: EmbeddingInputFormatRecord[];
+  inputFormats: EmbeddingInputFormatRecordWithUsage[];
   expectedVersion: number;
   providerChanges: NormalizedProviderSettingsChange[];
   runtimeSettings: RuntimeSettings;
@@ -499,7 +499,7 @@ interface ApplicationSettingsUpdateRequest {
 interface ResolvedApplicationSettingsUpdate {
   currentDefaultDoclingUrl: string;
   effectiveConfig: AppConfig;
-  inputFormats: EmbeddingInputFormatRecord[];
+  inputFormats: EmbeddingInputFormatRecordWithUsage[];
   overrides: RuntimeSettingsOverrides;
   providerSettings: ProviderSettings;
   requiresPersistence: boolean;
@@ -626,7 +626,7 @@ function normalizeEmbeddingSpaceIdAfterIdentityChange(
   request: ApplicationSettingsUpdateRequest,
   currentConfig: AppConfig,
   providerSettings: ProviderSettings,
-  inputFormat: EmbeddingInputFormatRecord,
+  inputFormat: EmbeddingInputFormatRecordWithUsage,
 ): RuntimeSettings {
   const currentSpaceIdOverride =
     request.stored.settings.runtime.embeddingSpaceId;
@@ -817,7 +817,7 @@ function buildEffectiveSettings(
   databaseConfig: DatabaseConfig,
   stored: StoredSettings,
   doclingTopology: DoclingServiceTopology,
-  inputFormats: EmbeddingInputFormatRecord[],
+  inputFormats: EmbeddingInputFormatRecordWithUsage[],
 ): EffectiveApplicationSettings {
   const defaults = stored.defaults.runtime;
   const runtimeSettings = stored.settings.runtime;
@@ -847,9 +847,9 @@ function buildEffectiveSettings(
 }
 
 function readSelectedInputFormat(
-  inputFormats: readonly EmbeddingInputFormatRecord[],
+  inputFormats: readonly EmbeddingInputFormatRecordWithUsage[],
   id: string,
-): EmbeddingInputFormatRecord {
+): EmbeddingInputFormatRecordWithUsage {
   const inputFormat = inputFormats.find((candidate) => candidate.id === id);
   if (inputFormat === undefined) {
     throw new SettingsValidationError(

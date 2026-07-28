@@ -55,7 +55,24 @@ export interface StartupSettingResponse {
   value: string;
 }
 
+export interface EmbeddingInputFormatResponse {
+  canRetire: boolean;
+  createdAt: string;
+  defaultSelected: boolean;
+  documentTemplate: string;
+  embeddingSpaceCount: number;
+  id: string;
+  inputFormatHash: string;
+  name: string;
+  queryTemplate: string;
+  retiredAt: string | null;
+  retirementBlockers: string[];
+  schemaVersion: number;
+  selected: boolean;
+}
+
 export interface ApplicationSettingsResponse {
+  embeddingInputFormats: EmbeddingInputFormatResponse[];
   fields: RuntimeSettingFieldResponse[];
   providers: ProviderSettingsResponse;
   startupSettings: StartupSettingResponse[];
@@ -147,6 +164,7 @@ export function buildApplicationSettingsResponse(
     });
   }
   return {
+    embeddingInputFormats: buildEmbeddingInputFormatResponses(settings),
     fields,
     providers: buildProviderSettingsResponse(settings),
     startupSettings: buildStartupSettings(startupConfig, webConfig),
@@ -159,6 +177,47 @@ export function buildApplicationSettingsResponse(
         settings.runtimeSettings.retrievalChunkTargetTokens,
     }),
   };
+}
+
+function buildEmbeddingInputFormatResponses(
+  settings: EffectiveApplicationSettings,
+): EmbeddingInputFormatResponse[] {
+  const responses: EmbeddingInputFormatResponse[] = [];
+  for (const format of settings.embeddingInputFormats) {
+    const defaultSelected =
+      settings.defaults.embeddingInputFormatId === format.id;
+    const selected =
+      settings.runtimeSettings.embeddingInputFormatId === format.id;
+    const retirementBlockers: string[] = [];
+    if (format.embeddingSpaceCount > 0) {
+      retirementBlockers.push(
+        `${format.embeddingSpaceCount} embedding ${format.embeddingSpaceCount === 1 ? "space" : "spaces"}`,
+      );
+    }
+    if (defaultSelected) {
+      retirementBlockers.push("the application default");
+    }
+    if (selected) {
+      retirementBlockers.push("the selected application setting");
+    }
+    responses.push({
+      canRetire:
+        format.retiredAt === null && retirementBlockers.length === 0,
+      createdAt: format.createdAt.toISOString(),
+      defaultSelected,
+      documentTemplate: format.documentTemplate,
+      embeddingSpaceCount: format.embeddingSpaceCount,
+      id: format.id,
+      inputFormatHash: format.inputFormatHash,
+      name: format.name,
+      queryTemplate: format.queryTemplate,
+      retiredAt: format.retiredAt?.toISOString() ?? null,
+      retirementBlockers,
+      schemaVersion: format.schemaVersion,
+      selected,
+    });
+  }
+  return responses;
 }
 
 function buildProviderSettingsResponse(

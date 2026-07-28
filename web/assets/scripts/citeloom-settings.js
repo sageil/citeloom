@@ -105,11 +105,15 @@ const startupGroupName = "Startup and deployment";
 
 function readApplicationSettings(value) {
   const response = readPlainObject(value, "application settings");
+  const embeddingInputFormats = readEmbeddingInputFormats(
+    response.embeddingInputFormats,
+  );
   const fields = readRuntimeSettingFields(response.fields);
   const providers = readProviderSettings(response.providers);
   const startupSettings = readStartupSettings(response.startupSettings);
   const warnings = readConfigurationWarnings(response.warnings);
   return {
+    embeddingInputFormats,
     fields,
     providers,
     startupSettings,
@@ -120,6 +124,76 @@ function readApplicationSettings(value) {
     version: readNonNegativeInteger(response.version, "settings version"),
     warnings,
   };
+}
+
+function readEmbeddingInputFormats(value) {
+  const values = readArray(value, "embedding input formats");
+  const formats = [];
+  const ids = new Set();
+  for (const value of values) {
+    const format = readPlainObject(value, "embedding input format");
+    const id = readNonEmptyString(format.id, "embedding input format ID");
+    if (ids.has(id)) {
+      throw new Error(`The embedding input format ${id} appears more than once.`);
+    }
+    ids.add(id);
+    const blockers = [];
+    for (const blocker of readArray(
+      format.retirementBlockers,
+      "embedding input format retirement blockers",
+    )) {
+      blockers.push(readNonEmptyString(
+        blocker,
+        "embedding input format retirement blocker",
+      ));
+    }
+    formats.push({
+      canRetire: readBoolean(
+        format.canRetire,
+        "embedding input format retirement state",
+      ),
+      createdAt: readNonEmptyString(
+        format.createdAt,
+        "embedding input format creation time",
+      ),
+      defaultSelected: readBoolean(
+        format.defaultSelected,
+        "embedding input format default state",
+      ),
+      documentTemplate: readString(
+        format.documentTemplate,
+        "embedding input format document template",
+      ),
+      embeddingSpaceCount: readNonNegativeInteger(
+        format.embeddingSpaceCount,
+        "embedding input format space count",
+      ),
+      id,
+      inputFormatHash: readNonEmptyString(
+        format.inputFormatHash,
+        "embedding input format hash",
+      ),
+      name: readNonEmptyString(format.name, "embedding input format name"),
+      queryTemplate: readString(
+        format.queryTemplate,
+        "embedding input format query template",
+      ),
+      retiredAt: readNullableNonEmptyString(
+        format.retiredAt,
+        "embedding input format retirement time",
+      ),
+      retirementBlockers: blockers,
+      schemaVersion: readPositiveInteger(
+        format.schemaVersion,
+        "embedding input format schema version",
+      ),
+      selected: readBoolean(
+        format.selected,
+        "embedding input format selected state",
+      ),
+    });
+  }
+  return formats;
 }
 
 function readConfigurationWarnings(value) {
@@ -806,6 +880,13 @@ function readSettingsResponse(response, label) {
   return readJsonResponse(response, label, readApplicationSettings);
 }
 
+function readEmbeddingInputFormatMutationResponse(value) {
+  const response = readPlainObject(value, "embedding input format mutation");
+  return {
+    id: readNonEmptyString(response.id, "embedding input format ID"),
+  };
+}
+
 function readOpenAICodexAuthResponse(value) {
   const response = readPlainObject(value, "OpenAI Codex authentication");
   const connection = readPlainObject(
@@ -885,6 +966,10 @@ export function registerPage(alpine) {
     featureAdvancedOpen: false,
     featureFieldsByCapability: {},
     groups: [],
+    inputFormatBusy: false,
+    inputFormatDraft: null,
+    inputFormatEditorMode: null,
+    managedInputFormatId: null,
     loading: true,
     openAICodexAuth: null,
     openAICodexBusy: false,
@@ -991,7 +1076,7 @@ export function registerPage(alpine) {
         if (this.settingsRevision === null) {
           this.settingsRevision = event.detail;
           if (this.settings !== null) {
-            if (this.saving) {
+            if (this.saving || this.inputFormatBusy) {
               this.reloadAfterSave = true;
             } else {
               void this.loadSettings();
@@ -1003,7 +1088,7 @@ export function registerPage(alpine) {
           return;
         }
         this.settingsRevision = event.detail;
-        if (this.saving) {
+        if (this.saving || this.inputFormatBusy) {
           this.reloadAfterSave = true;
         } else {
           void this.loadSettings();
@@ -1266,6 +1351,16 @@ export function registerPage(alpine) {
         this.selectedProviderCapability =
           this.selectedProviderProfile?.capabilities[0]?.capability ?? null;
       }
+      const managedFormatStillExists = settings.embeddingInputFormats.some(
+        (format) => format.id === this.managedInputFormatId,
+      );
+      if (!managedFormatStillExists) {
+        const selectedFormat = settings.embeddingInputFormats.find((format) => {
+          return format.selected;
+        });
+        this.managedInputFormatId =
+          selectedFormat?.id ?? settings.embeddingInputFormats[0]?.id ?? null;
+      }
       this.settings = settings;
     },
 
@@ -1339,6 +1434,204 @@ export function registerPage(alpine) {
         }
       }
       return this.filteredFields[0] ?? null;
+    },
+
+    managedEmbeddingInputFormat() {
+      if (this.settings === null || this.managedInputFormatId === null) {
+        return null;
+      }
+      return this.settings.embeddingInputFormats.find((format) => {
+        return format.id === this.managedInputFormatId;
+      }) ?? null;
+    },
+
+    beginEmbeddingInputFormatCreate() {
+      this.inputFormatEditorMode = "create";
+      this.inputFormatDraft = {
+        documentTemplate: "{{text}}",
+        name: "",
+        queryTemplate: "{{text}}",
+        schemaVersion: 1,
+        sourceId: null,
+      };
+    },
+
+    beginEmbeddingInputFormatCopy(format) {
+      this.inputFormatEditorMode = "copy";
+      this.inputFormatDraft = {
+        documentTemplate: format.documentTemplate,
+        name: `${format.name} copy`,
+        queryTemplate: format.queryTemplate,
+        schemaVersion: format.schemaVersion,
+        sourceId: format.id,
+      };
+    },
+
+    beginEmbeddingInputFormatRevision(format) {
+      this.inputFormatEditorMode = "revision";
+      this.inputFormatDraft = {
+        documentTemplate: format.documentTemplate,
+        name: `${format.name} revision`,
+        queryTemplate: format.queryTemplate,
+        schemaVersion: format.schemaVersion,
+        sourceId: format.id,
+      };
+    },
+
+    cancelEmbeddingInputFormatEditor() {
+      if (this.inputFormatBusy) {
+        return;
+      }
+      this.inputFormatDraft = null;
+      this.inputFormatEditorMode = null;
+    },
+
+    embeddingInputFormatEditorTitle() {
+      if (this.inputFormatEditorMode === "copy") {
+        return "Copy input format";
+      }
+      if (this.inputFormatEditorMode === "revision") {
+        return "Create immutable revision";
+      }
+      return "Create input format";
+    },
+
+    embeddingInputFormatUsage(format) {
+      if (format.retirementBlockers.length === 0) {
+        return "Unused";
+      }
+      return `Used by ${format.retirementBlockers.join(", ")}`;
+    },
+
+    formatEmbeddingInputFormatTimestamp(value) {
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) {
+        return value;
+      }
+      return parsed.toLocaleString();
+    },
+
+    async submitEmbeddingInputFormat() {
+      if (
+        this.inputFormatBusy
+        || this.inputFormatDraft === null
+        || this.inputFormatEditorMode === null
+      ) {
+        return;
+      }
+      const draft = this.inputFormatDraft;
+      const name = String(draft.name).trim();
+      if (name === "") {
+        dispatchNotice("error", "Enter a name for the embedding input format.");
+        return;
+      }
+      const schemaVersion = Number(draft.schemaVersion);
+      if (!Number.isInteger(schemaVersion) || schemaVersion < 1) {
+        dispatchNotice("error", "Schema version must be a positive integer.");
+        return;
+      }
+      let endpoint = "/api/embedding-input-formats";
+      let body = {
+        documentTemplate: String(draft.documentTemplate),
+        name,
+        queryTemplate: String(draft.queryTemplate),
+        schemaVersion,
+      };
+      if (this.inputFormatEditorMode === "copy") {
+        endpoint =
+          `/api/embedding-input-formats/${encodeURIComponent(draft.sourceId)}/copies`;
+        body = { name };
+      } else if (this.inputFormatEditorMode === "revision") {
+        endpoint =
+          `/api/embedding-input-formats/${encodeURIComponent(draft.sourceId)}/revisions`;
+      }
+      this.inputFormatBusy = true;
+      try {
+        const response = await fetch(endpoint, {
+          body: JSON.stringify(body),
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+          },
+          method: "POST",
+        });
+        const created = await readJsonResponse(
+          response,
+          "Embedding input format update",
+          readEmbeddingInputFormatMutationResponse,
+        );
+        this.inputFormatDraft = null;
+        this.inputFormatEditorMode = null;
+        this.reloadAfterSave = false;
+        await this.loadSettings();
+        this.managedInputFormatId = created.id;
+        const field = this.settings?.fields.find((candidate) => {
+          return candidate.key === "embeddingInputFormatId";
+        });
+        if (field !== undefined) {
+          this.writeFieldDraft(field, created.id);
+        }
+        dispatchNotice(
+          "success",
+          "The immutable input format was created. Save settings to select it.",
+        );
+      } catch (error) {
+        dispatchNotice(
+          "error",
+          error instanceof Error
+            ? error.message
+            : "The embedding input format could not be created.",
+        );
+      } finally {
+        this.inputFormatBusy = false;
+        if (this.reloadAfterSave) {
+          this.reloadAfterSave = false;
+          void this.loadSettings();
+        }
+      }
+    },
+
+    async retireEmbeddingInputFormat(format) {
+      if (this.inputFormatBusy || !format.canRetire) {
+        return;
+      }
+      const confirmed = window.confirm(
+        `Retire ${format.name}? Retired formats remain in history and cannot be selected.`,
+      );
+      if (!confirmed) {
+        return;
+      }
+      this.inputFormatBusy = true;
+      try {
+        const response = await fetch(
+          `/api/embedding-input-formats/${encodeURIComponent(format.id)}`,
+          {
+            headers: { accept: "application/json" },
+            method: "DELETE",
+          },
+        );
+        await readJsonResponse(
+          response,
+          "Embedding input format retirement",
+          readEmbeddingInputFormatMutationResponse,
+        );
+        this.reloadAfterSave = false;
+        await this.loadSettings();
+        dispatchNotice("success", `${format.name} was retired.`);
+      } catch (error) {
+        dispatchNotice(
+          "error",
+          error instanceof Error
+            ? error.message
+            : "The embedding input format could not be retired.",
+        );
+      } finally {
+        this.inputFormatBusy = false;
+        if (this.reloadAfterSave) {
+          this.reloadAfterSave = false;
+          void this.loadSettings();
+        }
+      }
     },
 
     filteredFieldSourceCount(source) {

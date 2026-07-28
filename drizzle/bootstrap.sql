@@ -130,6 +130,34 @@ CREATE TRIGGER "embedding_input_formats_publish_settings_revision"
 AFTER INSERT OR UPDATE ON "embedding_input_formats"
 FOR EACH ROW EXECUTE FUNCTION "publish_application_revision"('settings');
 
+CREATE OR REPLACE FUNCTION "require_active_embedding_space_input_format"()
+RETURNS trigger AS $embedding_space_input_format_active$
+DECLARE
+  input_format_retired_at timestamp with time zone;
+BEGIN
+  SELECT "retired_at"
+  INTO input_format_retired_at
+  FROM "embedding_input_formats"
+  WHERE "id" = NEW."input_format_id"
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Embedding space input format does not exist.';
+  END IF;
+  IF input_format_retired_at IS NOT NULL THEN
+    RAISE EXCEPTION 'Embedding spaces cannot use a retired input format.';
+  END IF;
+  RETURN NEW;
+END
+$embedding_space_input_format_active$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS "embedding_spaces_require_active_input_format"
+ON "embedding_spaces";
+CREATE TRIGGER "embedding_spaces_require_active_input_format"
+BEFORE INSERT OR UPDATE OF "input_format_id" ON "embedding_spaces"
+FOR EACH ROW
+WHEN (NEW."input_format_id" IS NOT NULL)
+EXECUTE FUNCTION "require_active_embedding_space_input_format"();
+
 DO $embedding_input_format_settings_validation$
 BEGIN
   IF EXISTS (

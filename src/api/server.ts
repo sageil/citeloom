@@ -48,11 +48,13 @@ import {
   buildInlineContentDisposition,
   decodeApplicationErrorQuery,
   decodeApplicationSettingsUpdate,
+  decodeCopyEmbeddingInputFormatRequest,
   decodeCreateResearchThreadRequest,
   decodeDocumentVersionComparison,
   decodeDocumentVersionList,
   decodeDocumentCatalogQuery,
   decodeDocumentFileRequest,
+  decodeEmbeddingInputFormatDefinition,
   decodeIngestionControlRequest,
   decodeQuestionRequest,
   decodeResearchExportFormat,
@@ -125,6 +127,10 @@ import {
   OpenAICodexDeviceAuthController,
 } from "../providers/openai-codex-device-auth.js";
 import { OpenAICodexOAuthError } from "../providers/openai-codex-oauth.js";
+import {
+  EmbeddingInputFormatInUseError,
+  EmbeddingInputFormatNotFoundError,
+} from "../embedding/input-format-store.js";
 
 export type {
   ApplicationStateRevisionSignal,
@@ -141,6 +147,7 @@ export type {
 } from "./services.js";
 export type {
   ApplicationSettingsResponse,
+  EmbeddingInputFormatResponse,
   RuntimeSettingFieldResponse,
   StartupSettingResponse,
 } from "./settings-response.js";
@@ -535,6 +542,57 @@ export async function buildWebServer(
     requireAdministratorPrincipal(requestPrincipals, request);
     const settings = await services.readSettings();
     return buildApplicationSettingsResponse(settings, config, webConfig);
+  });
+
+  server.post("/api/embedding-input-formats", async (request, reply) => {
+    requireAdministratorPrincipal(requestPrincipals, request);
+    const definition = decodeEmbeddingInputFormatDefinition(request.body);
+    const format = await services.createEmbeddingInputFormat(definition);
+    return reply.status(201).send({ id: format.id });
+  });
+
+  server.post(
+    "/api/embedding-input-formats/:id/copies",
+    async (request, reply) => {
+      requireAdministratorPrincipal(requestPrincipals, request);
+      const id = decodeResourceId(request.params);
+      const copy = decodeCopyEmbeddingInputFormatRequest(request.body);
+      try {
+        const format = await services.copyEmbeddingInputFormat(id, copy.name);
+        return reply.status(201).send({ id: format.id });
+      } catch (error: unknown) {
+        throw mapEmbeddingInputFormatError(error);
+      }
+    },
+  );
+
+  server.post(
+    "/api/embedding-input-formats/:id/revisions",
+    async (request, reply) => {
+      requireAdministratorPrincipal(requestPrincipals, request);
+      const id = decodeResourceId(request.params);
+      const definition = decodeEmbeddingInputFormatDefinition(request.body);
+      try {
+        const format = await services.reviseEmbeddingInputFormat(
+          id,
+          definition,
+        );
+        return reply.status(201).send({ id: format.id });
+      } catch (error: unknown) {
+        throw mapEmbeddingInputFormatError(error);
+      }
+    },
+  );
+
+  server.delete("/api/embedding-input-formats/:id", async (request) => {
+    requireAdministratorPrincipal(requestPrincipals, request);
+    const id = decodeResourceId(request.params);
+    try {
+      const format = await services.retireEmbeddingInputFormat(id);
+      return { id: format.id };
+    } catch (error: unknown) {
+      throw mapEmbeddingInputFormatError(error);
+    }
   });
 
   server.put("/api/settings", async (request): Promise<ApplicationSettingsResponse> => {
@@ -1415,6 +1473,16 @@ function mapWorkspaceMembershipError(error: unknown): unknown {
     return new WebRequestError(404, error.message);
   }
   if (error instanceof FinalWorkspaceAdministratorError) {
+    return new WebRequestError(409, error.message);
+  }
+  return error;
+}
+
+function mapEmbeddingInputFormatError(error: unknown): unknown {
+  if (error instanceof EmbeddingInputFormatNotFoundError) {
+    return new WebRequestError(404, error.message);
+  }
+  if (error instanceof EmbeddingInputFormatInUseError) {
     return new WebRequestError(409, error.message);
   }
   return error;

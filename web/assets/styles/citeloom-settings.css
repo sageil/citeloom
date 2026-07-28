@@ -1881,6 +1881,198 @@
   line-height: 1.5;
 }
 
+.settings-input-format-library {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-input-format-picker,
+.settings-input-format-actions,
+.settings-input-format-editor > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 30px;
+}
+
+.settings-input-format-picker label {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.settings-input-format-picker select,
+.settings-input-format-editor input,
+.settings-input-format-editor textarea {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.settings-input-format-record,
+.settings-input-format-editor {
+  margin-left: 30px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.settings-input-format-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-input-format-heading > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.settings-input-format-heading h4 {
+  margin: 0 5px 0 0;
+  font-size: 14px;
+}
+
+.settings-input-format-heading span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.1);
+  color: var(--cyan);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.settings-input-format-heading small {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+.settings-input-format-templates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.settings-input-format-templates > div {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.settings-input-format-templates span,
+.settings-input-format-metadata dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.settings-input-format-templates code,
+.settings-input-format-metadata code {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.settings-input-format-metadata {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.settings-input-format-metadata > div {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.settings-input-format-metadata dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.settings-input-format-actions {
+  margin-left: 0;
+}
+
+.settings-input-format-retire {
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  background: rgba(127, 29, 29, 0.14);
+  color: #fecaca;
+}
+
+.settings-input-format-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-input-format-editor > header,
+.settings-input-format-editor > p,
+.settings-input-format-editor > div,
+.settings-input-format-template-field {
+  grid-column: 1 / -1;
+}
+
+.settings-input-format-editor > header h4,
+.settings-input-format-editor > header p,
+.settings-input-format-editor > p {
+  margin: 0;
+}
+
+.settings-input-format-editor > header p,
+.settings-input-format-editor > p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.settings-input-format-editor label {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.settings-input-format-editor textarea {
+  min-height: 74px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.settings-input-format-editor input[readonly],
+.settings-input-format-editor textarea[readonly] {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.settings-input-format-editor > div {
+  justify-content: flex-end;
+  margin-left: 0;
+}
+
 @media (max-width: 1100px) {
   .settings-area-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2083,11 +2275,27 @@
 
   .settings-provider-connection-grid,
   .settings-provider-diagnostic-note,
+  .settings-input-format-editor,
+  .settings-input-format-picker,
+  .settings-input-format-record,
   .settings-runtime-control,
   .settings-runtime-credential-note,
   .settings-startup-value,
   .settings-startup-guidance {
     margin-left: 0 !important;
+  }
+
+  .settings-input-format-picker,
+  .settings-input-format-actions,
+  .settings-input-format-editor > div,
+  .settings-input-format-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-input-format-templates,
+  .settings-input-format-editor {
+    grid-template-columns: 1fr;
   }
 
   .settings-runtime-control,

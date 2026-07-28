@@ -67,6 +67,10 @@ import {
 } from "../research/store.js";
 import { contentIdSchema, tagSchema } from "../domain/validation.js";
 import {
+  readEmbeddingInputFormatDefinition,
+  type EmbeddingInputFormatDefinition,
+} from "../embedding/input-format-model.js";
+import {
   decodeRuntimeSettingBoundaryValue,
   readRuntimeSettingBoundaryReference,
   type RuntimeSettingBoundaryReference,
@@ -96,6 +100,10 @@ export interface UpdateApplicationSettingsRequest {
   changes: NormalizedRuntimeSettingChange[];
   expectedVersion: number;
   providerChanges: NormalizedProviderSettingsChange[];
+}
+
+export interface CopyEmbeddingInputFormatRequest {
+  name: string;
 }
 
 const MINIMUM_MP4_AUDIO_BYTES = 1_500;
@@ -280,6 +288,9 @@ const updateApplicationSettingsSchema = z.object({
     });
   }
 });
+const copyEmbeddingInputFormatSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+}).strict();
 
 export interface UploadedDocuments {
   documents: StagedIngestionDocument[];
@@ -667,6 +678,32 @@ export function decodeApplicationSettingsUpdate(
     expectedVersion: result.data.expectedVersion,
     providerChanges: result.data.providerChanges,
   };
+}
+
+export function decodeEmbeddingInputFormatDefinition(
+  value: unknown,
+): EmbeddingInputFormatDefinition {
+  try {
+    return readEmbeddingInputFormatDefinition(value);
+  } catch (error: unknown) {
+    const message = error instanceof Error
+      ? error.message
+      : "The embedding input format is invalid.";
+    throw new WebRequestError(400, message);
+  }
+}
+
+export function decodeCopyEmbeddingInputFormatRequest(
+  value: unknown,
+): CopyEmbeddingInputFormatRequest {
+  const result = copyEmbeddingInputFormatSchema.safeParse(value);
+  if (!result.success) {
+    throw new WebRequestError(
+      400,
+      "A valid name is required for the copied embedding input format.",
+    );
+  }
+  return result.data;
 }
 
 function formatProviderCapability(

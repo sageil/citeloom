@@ -151,6 +151,16 @@ import {
   readOpenAICodexModels,
   type OpenAICodexModel,
 } from "../providers/openai-codex-models.js";
+import {
+  copyEmbeddingInputFormat,
+  EmbeddingInputFormatStore,
+  retireEmbeddingInputFormat,
+  reviseEmbeddingInputFormat,
+  type EmbeddingInputFormatRecord,
+} from "../embedding/input-format-store.js";
+import type {
+  EmbeddingInputFormatDefinition,
+} from "../embedding/input-format-model.js";
 
 export interface RuntimeWebServices {
   readonly config: AppConfig;
@@ -250,6 +260,13 @@ export interface WebServices {
     setupToken: string,
     password: string,
   ) => Promise<AuthenticationSession>;
+  copyEmbeddingInputFormat: (
+    sourceId: string,
+    name: string,
+  ) => Promise<EmbeddingInputFormatRecord>;
+  createEmbeddingInputFormat: (
+    definition: EmbeddingInputFormatDefinition,
+  ) => Promise<EmbeddingInputFormatRecord>;
   createWorkspaceMember: (
     principal: AuthenticatedPrincipal,
     identity: NormalizedUserIdentity,
@@ -306,6 +323,13 @@ export interface WebServices {
     principal: AuthenticatedPrincipal,
     userId: string,
   ) => Promise<void>;
+  retireEmbeddingInputFormat: (
+    id: string,
+  ) => Promise<EmbeddingInputFormatRecord>;
+  reviseEmbeddingInputFormat: (
+    sourceId: string,
+    definition: EmbeddingInputFormatDefinition,
+  ) => Promise<EmbeddingInputFormatRecord>;
   updateSettings: (
     request: UpdateApplicationSettingsRequest,
   ) => Promise<EffectiveApplicationSettings>;
@@ -559,6 +583,17 @@ export function createWebServices(
         return authentication.completePasswordSetup(setupToken, password);
       });
     },
+    copyEmbeddingInputFormat: async (sourceId, name) => {
+      return manager.withRuntime(async (runtime) => {
+        return copyEmbeddingInputFormat(runtime.database, sourceId, name);
+      });
+    },
+    createEmbeddingInputFormat: async (definition) => {
+      return manager.withRuntime(async (runtime) => {
+        const store = new EmbeddingInputFormatStore(runtime.database);
+        return store.create(definition);
+      });
+    },
     changeWorkspaceMemberRole: async (principal, userId, role) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
@@ -660,6 +695,20 @@ export function createWebServices(
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
         await authentication.removeWorkspaceMember(principal, userId);
+      });
+    },
+    retireEmbeddingInputFormat: async (id) => {
+      return manager.withRuntime(async (runtime) => {
+        return retireEmbeddingInputFormat(runtime.database, id);
+      });
+    },
+    reviseEmbeddingInputFormat: async (sourceId, definition) => {
+      return manager.withRuntime(async (runtime) => {
+        return reviseEmbeddingInputFormat(
+          runtime.database,
+          sourceId,
+          definition,
+        );
       });
     },
     updateSettings: async (request) => {
