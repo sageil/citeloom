@@ -1,0 +1,263 @@
+name: Build and push CiteLoom images
+
+on:
+  workflow_dispatch:
+    inputs:
+      citeloom_version:
+        description: "CiteLoom version (for example, 0.1.0 or v0.1.0)"
+        required: true
+        type: string
+      dry_run:
+        description: "Validate the release configuration without publishing images"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dockerhub-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Resolve CiteLoom version
+        id: version
+        shell: bash
+        env:
+          CURRENT_REF: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REQUESTED_VERSION: ${{ inputs.citeloom_version }}
+        run: |
+          set -euo pipefail
+
+          if [ "$CURRENT_REF" != "$DEFAULT_BRANCH" ]; then
+            echo "Docker Hub releases must run from ${DEFAULT_BRANCH}, not ${CURRENT_REF}." >&2
+            exit 1
+          fi
+
+          normalized="${REQUESTED_VERSION#v}"
+          if [[ ! "$normalized" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid citeloom_version '${REQUESTED_VERSION}'. Expected semantic versioning such as 0.1.0 or v0.1.0." >&2
+            exit 1
+          fi
+
+          package_version="$(jq --raw-output '.version' package.json)"
+          if [ "$package_version" != "$normalized" ]; then
+            echo "Requested version ${normalized} does not match package.json version ${package_version}." >&2
+            exit 1
+          fi
+
+          compose_default_references="$(grep --only-matching --extended-regexp 'CITELOOM_(IMAGE_TAG|RELEASE):-[0-9]+\.[0-9]+\.[0-9]+' compose.dockerhub.yml || true)"
+          compose_default_versions="$(printf '%s\n' "$compose_default_references" | sed 's/.*:-//' | sort --unique)"
+          if [ "$compose_default_versions" != "$normalized" ]; then
+            echo "compose.dockerhub.yml release defaults must all equal ${normalized}." >&2
+            echo "Found: ${compose_default_versions:-none}" >&2
+            exit 1
+          fi
+
+          for dockerfile in \
+            infra/Dockerfile \
+            infra/postgres/Dockerfile \
+            infra/docling/Dockerfile \
+            infra/hhem/Dockerfile; do
+            if [ ! -f "$dockerfile" ]; then
+              echo "Missing Dockerfile: ${dockerfile}" >&2
+              exit 1
+            fi
+          done
+
+          echo "value=${normalized}" >> "$GITHUB_OUTPUT"
+
+      - name: Write dry-run summary
+        if: inputs.dry_run
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          {
+            echo "## Docker Hub dry run"
+            echo
+            echo "No registry login, build, or push was performed."
+            echo
+            echo "The following multi-architecture tags are ready to publish:"
+            echo
+            echo "- \`sageil/citeloom:${VERSION}\`"
+            echo "- \`sageil/citeloom-postgres:${VERSION}\`"
+            echo "- \`sageil/citeloom-docling:${VERSION}\`"
+            echo "- \`sageil/citeloom-hhem:${VERSION}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  preflight:
+    name: Check Docker Hub tags
+    if: ${{ !inputs.dry_run }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Verify release tags are unpublished
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          repositories=(
+            citeloom
+            citeloom-postgres
+            citeloom-docling
+            citeloom-hhem
+          )
+
+          for repository in "${repositories[@]}"; do
+            tag_url="https://hub.docker.com/v2/namespaces/sageil/repositories/${repository}/tags/${VERSION}"
+            tag_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "$tag_url")"
+            case "$tag_status" in
+              404)
+                ;;
+              200)
+                echo "Docker Hub tag sageil/${repository}:${VERSION} already exists and will not be overwritten." >&2
+                echo "Resume an interrupted release with GitHub's Re-run failed jobs action." >&2
+                exit 1
+                ;;
+              *)
+                echo "Unable to check sageil/${repository}:${VERSION}; Docker Hub returned HTTP ${tag_status}." >&2
+                exit 1
+                ;;
+            esac
+          done
+
+  publish:
+    name: Publish ${{ matrix.repository }}
+    if: ${{ !inputs.dry_run }}
+    needs:
+      - prepare
+      - preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - repository: citeloom
+            dockerfile: infra/Dockerfile
+          - repository: citeloom-postgres
+            dockerfile: infra/postgres/Dockerfile
+          - repository: citeloom-docling
+            dockerfile: infra/docling/Dockerfile
+          - repository: citeloom-hhem
+            dockerfile: infra/hhem/Dockerfile
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push multi-architecture image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: sageil/${{ matrix.repository }}:${{ needs.prepare.outputs.version }}
+          labels: |
+            org.opencontainers.image.licenses=AGPL-3.0-only
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+          cache-from: type=gha,scope=${{ matrix.repository }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.repository }}
+
+  verify:
+    name: Verify published manifests
+    if: ${{ !inputs.dry_run }}
+    needs:
+      - prepare
+      - publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Verify required platforms
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          repositories=(
+            citeloom
+            citeloom-postgres
+            citeloom-docling
+            citeloom-hhem
+          )
+
+          for repository in "${repositories[@]}"; do
+            reference="sageil/${repository}:${VERSION}"
+            manifest="$(docker buildx imagetools inspect --raw "$reference")"
+
+            if ! jq --exit-status 'any(.manifests[]?; .platform.os == "linux" and .platform.architecture == "amd64")' <<< "$manifest" >/dev/null; then
+              echo "${reference} does not contain linux/amd64." >&2
+              exit 1
+            fi
+
+            if ! jq --exit-status 'any(.manifests[]?; .platform.os == "linux" and .platform.architecture == "arm64")' <<< "$manifest" >/dev/null; then
+              echo "${reference} does not contain linux/arm64." >&2
+              exit 1
+            fi
+
+            echo "Verified ${reference}"
+          done
+
+      - name: Write publication summary
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          {
+            echo "## Docker Hub publication complete"
+            echo
+            echo "Verified \`linux/amd64\` and \`linux/arm64\` for:"
+            echo
+            echo "- \`sageil/citeloom:${VERSION}\`"
+            echo "- \`sageil/citeloom-postgres:${VERSION}\`"
+            echo "- \`sageil/citeloom-docling:${VERSION}\`"
+            echo "- \`sageil/citeloom-hhem:${VERSION}\`"
+            echo
+            echo "CiteLoom intentionally does not publish mutable \`latest\` tags."
+          } >> "$GITHUB_STEP_SUMMARY"
