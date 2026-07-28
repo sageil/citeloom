@@ -1,0 +1,14 @@
+# Changing output-affecting OCR settings requires a DOCLING_PROTOCOL_VERSION bump.
+default_ocr_preset: rapidocr
+default_ocr_kind: rapidocr
+custom_ocr_presets:
+  rapidocr:
+    kind: rapidocr
+    backend: onnxruntime
+    det_model_path: /opt/app-root/src/citeloom-ocr-models/ch_PP-OCRv5_server_det.onnx
+    cls_model_path: /opt/app-root/src/citeloom-ocr-models/ch_ppocr_mobile_v2.0_cls_infer.onnx
+    rec_model_path: /opt/app-root/src/citeloom-ocr-models/ch_PP-OCRv5_rec_server_infer.onnx
+    rec_keys_path: /opt/app-root/src/citeloom-ocr-models/ppocrv5_dict.txt
+    rapidocr_params:
+      Global.max_side_len: 1000
+      Det.unclip_ratio: 1.0
