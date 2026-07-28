@@ -1,0 +1,14 @@
+.env
+.env.development
+.git
+backups
+data
+dist
+documents
+node_modules
+pnpm-debug.log
+__pycache__
+*.pyc
+.cache
+models
+*.safetensors

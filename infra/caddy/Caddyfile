@@ -1,0 +1,24 @@
+{
+	admin off
+	servers {
+		protocols h1 h2
+	}
+}
+
+https://localhost:3443 {
+	tls internal
+
+	reverse_proxy {
+		dynamic a web 3000 {
+			refresh 5s
+			versions ipv4
+		}
+		lb_policy round_robin
+		lb_try_duration 10s
+		lb_try_interval 250ms
+		fail_duration 10s
+		max_fails 1
+		flush_interval -1
+		header_up X-Forwarded-Port 3443
+	}
+}
