@@ -1445,6 +1445,20 @@ export function registerPage(alpine) {
       }) ?? null;
     },
 
+    embeddingInputFormatIsSelected(format) {
+      return this.drafts.embeddingInputFormatId === format.id;
+    },
+
+    selectEmbeddingInputFormat(format) {
+      const field = this.featureFieldsFor("embedding").find((candidate) => {
+        return candidate.key === "embeddingInputFormatId";
+      });
+      if (field === undefined || format.retiredAt !== null) {
+        return;
+      }
+      this.writeFieldDraft(field, format.id);
+    },
+
     beginEmbeddingInputFormatCreate() {
       this.inputFormatEditorMode = "create";
       this.inputFormatDraft = {
@@ -1559,7 +1573,7 @@ export function registerPage(alpine) {
         this.managedInputFormatId = created.id;
         dispatchNotice(
           "success",
-          "The input format was created and is available to select.",
+          "The input format was created. Select it and save changes to apply it.",
         );
       } catch (error) {
         dispatchNotice(
@@ -1684,6 +1698,9 @@ export function registerPage(alpine) {
       this.saved = false;
       this.drafts[field.key] = value;
       this.pending[field.key] = "set";
+      if (field.key === "embeddingInputFormatId") {
+        this.managedInputFormatId = String(value);
+      }
     },
 
     resetField(field) {
@@ -1889,6 +1906,31 @@ export function registerPage(alpine) {
 
     featureDefaultModel(capability) {
       return this.featureConnection(capability)?.configuration[capability].model ?? null;
+    },
+
+    featureModelFieldLabel(capability) {
+      return capability === "embedding"
+        ? "Embedding model"
+        : "Feature model override";
+    },
+
+    featureModelInputPlaceholder(capability) {
+      const defaultModel = this.featureDefaultModel(capability);
+      return defaultModel === null
+        ? "Enter a model ID"
+        : `Provider default: ${defaultModel}`;
+    },
+
+    featureModelFieldHelp(capability) {
+      const override = this.featureModelOverride(capability);
+      if (capability === "embedding") {
+        return override === null
+          ? "Enter a model ID to use a different embedding model, or leave blank to use the provider default."
+          : "This embedding model overrides the provider default.";
+      }
+      return override === null
+        ? "No override. The provider default is used."
+        : "Overrides the provider default for this feature only.";
     },
 
     featureModelOverride(capability) {

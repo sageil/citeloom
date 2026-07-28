@@ -1886,6 +1886,25 @@
   gap: 14px;
 }
 
+.settings-feature-input-format-library {
+  padding-top: 4px;
+}
+
+.settings-input-format-library-heading {
+  display: grid;
+  gap: 4px;
+  margin-left: 30px;
+}
+
+.settings-input-format-library-heading strong {
+  font-size: 12px;
+}
+
+.settings-input-format-library-heading span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .settings-input-format-picker,
 .settings-input-format-actions,
 .settings-input-format-editor > div {
@@ -2256,6 +2275,7 @@
   .settings-provider-connection-grid,
   .settings-provider-diagnostic-note,
   .settings-input-format-editor,
+  .settings-input-format-library-heading,
   .settings-input-format-picker,
   .settings-input-format-record,
   .settings-runtime-control,
