@@ -1,0 +1,42 @@
+name: citeloom-benchmark
+
+x-docling-build: &docling-build
+  context: .
+  dockerfile: infra/docling/Dockerfile
+
+x-docling-image: &docling-image citeloom/docling-serve-cpu:1.27.0-ppocrv5-2d2fd797
+
+services:
+  docling-benchmark:
+    build: *docling-build
+    image: *docling-image
+    environment:
+      CITELOOM_SOURCE_CONTENT_DIRECTORY: /app/documents/blobs
+      DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS: "true"
+      DOCLING_SERVE_ENABLE_MANAGEMENT_ENDPOINTS: "true"
+      DOCLING_NUM_THREADS: ${DOCLING_BENCHMARK_NUM_THREADS:-4}
+      DOCLING_SERVE_BATCH_POLLING_INTERVAL_SECONDS: ${DOCLING_BENCHMARK_BATCH_POLLING_INTERVAL_SECONDS:-0.5}
+      DOCLING_SERVE_ENG_LOC_NUM_WORKERS: ${DOCLING_BENCHMARK_LOCAL_WORKER_COUNT:-1}
+      DOCLING_SERVE_ENG_LOC_SHARE_MODELS: ${DOCLING_BENCHMARK_LOCAL_MODELS_SHARED:-true}
+      DOCLING_SERVE_LAYOUT_BATCH_SIZE: ${DOCLING_BENCHMARK_LAYOUT_BATCH_SIZE:-4}
+      DOCLING_SERVE_LOAD_MODELS_AT_BOOT: ${DOCLING_BENCHMARK_LOAD_MODELS_AT_BOOT:-true}
+      DOCLING_SERVE_OCR_BATCH_SIZE: ${DOCLING_BENCHMARK_OCR_BATCH_SIZE:-4}
+      DOCLING_SERVE_OPTIONS_CACHE_SIZE: ${DOCLING_BENCHMARK_OPTIONS_CACHE_SIZE:-2}
+      DOCLING_SERVE_QUEUE_MAX_SIZE: ${DOCLING_BENCHMARK_QUEUE_MAX_SIZE:-8}
+      DOCLING_SERVE_RESULT_REMOVAL_DELAY: ${DOCLING_BENCHMARK_RESULT_REMOVAL_DELAY_SECONDS:-300}
+      DOCLING_SERVE_SINGLE_USE_RESULTS: ${DOCLING_BENCHMARK_SINGLE_USE_RESULTS:-true}
+      DOCLING_SERVE_TABLE_BATCH_SIZE: ${DOCLING_BENCHMARK_TABLE_BATCH_SIZE:-4}
+    ports:
+      - "127.0.0.1:5002:5001"
+    volumes:
+      - ${CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY:-./documents/blobs}:/app/documents/blobs:ro
+      - docling-benchmark-models:/opt/app-root/src/.cache/docling/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:5001/ready'))['status'] == 'ok'"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 60s
+
+volumes:
+  docling-benchmark-models:
