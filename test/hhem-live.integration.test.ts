@@ -1,0 +1,220 @@
+import { eq } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { verifyAnswerClaims } from "../src/answers/claim-verification.js";
+import { TaskLimiter } from "../src/shared/concurrency.js";
+import { openDatabase, type DatabaseSession } from "../src/database/client.js";
+import { researchTurns } from "../src/database/schema.js";
+import {
+  HHEM_MODEL_ID,
+  HHEM_MODEL_REVISION,
+  HttpHhemClient,
+  type HhemClient,
+  type HhemScoreItem,
+  type HhemScoreResult,
+} from "../src/verification/hhem-client.js";
+import { createInferenceModelRegistry } from "../src/inference/registry.js";
+import { ResearchStore } from "../src/research/store.js";
+import { readEqualWeightTestConfig } from "./config-fixture.js";
+
+const CANADA_TURN_ID = "6ff5c518-58b9-4fc7-8972-dab8a2a2ac30";
+const runLiveIntegration = process.env.HHEM_LIVE_TEST === "true";
+
+describe.skipIf(!runLiveIntegration)("live HHEM integration", () => {
+  const config = readEqualWeightTestConfig({
+    database: {
+      url: process.env.DATABASE_URL
+        ?? "postgresql://citeloom:citeloom@127.0.0.1:5432/citeloom",
+    },
+    providerOptions: {
+      inferenceBaseUrl: "http://127.0.0.1:11434/v1",
+    },
+    runtime: {
+      claimVerifierBaseUrl:
+        process.env.HHEM_BASE_URL ?? "http://127.0.0.1:8088",
+      claimVerifierTimeoutSeconds: 180,
+    },
+  });
+  let databaseSession: DatabaseSession;
+
+  beforeAll(async () => {
+    databaseSession = await openDatabase(config.database);
+  });
+
+  afterAll(async () => {
+    await databaseSession.close();
+  });
+
+  it("reproduces the six pinned validation cases and exact reorder invariance", async () => {
+    const client = new HttpHhemClient(config.claimVerifier);
+    const items: HhemScoreItem[] = [
+      {
+        claim: "The law of evidence is primarily judge-made.",
+        evidence: "The law of evidence is primarily judge-made.",
+        id: "validation-0",
+      },
+      {
+        claim: "The claim concerns Canadian law.",
+        evidence: "The law of evidence is primarily judge-made.",
+        id: "validation-1",
+      },
+      {
+        claim: "The claim concerns Canadian law.",
+        evidence:
+          "Section: Canadian Evidence Law. The law of evidence is primarily judge-made.",
+        id: "validation-2",
+      },
+      {
+        claim: "Judges may exclude any evidence for any reason.",
+        evidence:
+          "Trial judges may exclude evidence when its prejudicial effect exceeds its probative value.",
+        id: "validation-3",
+      },
+      {
+        claim: "The capital of France is Paris.",
+        evidence: "The capital of France is Berlin.",
+        id: "validation-4",
+      },
+      {
+        claim: "Trial judges determine whether expert evidence is admissible.",
+        evidence:
+          "The trial judge acts as gatekeeper when deciding whether expert evidence is admissible.",
+        id: "validation-5",
+      },
+    ];
+
+    const scores = await client.score(items, AbortSignal.timeout(180_000));
+    const reversedScores = await client.score(
+      [...items].reverse(),
+      AbortSignal.timeout(180_000),
+    );
+    const scoreById = new Map(scores.map((score) => [score.id, readScoredProbability(score)]));
+    const reversedScoreById = new Map(
+      reversedScores.map((score) => [score.id, readScoredProbability(score)]),
+    );
+
+    expect(scores.map(readScoredProbability)).toEqual([
+      expect.closeTo(0.7769169211, 6),
+      expect.closeTo(0.0878118277, 6),
+      expect.closeTo(0.9376132488, 6),
+      expect.closeTo(0.1002428383, 6),
+      expect.closeTo(0.0110615138, 6),
+      expect.closeTo(0.8745192289, 6),
+    ]);
+    let maximumDelta = 0;
+    for (const item of items) {
+      const score = scoreById.get(item.id);
+      const reversedScore = reversedScoreById.get(item.id);
+      if (score === undefined || reversedScore === undefined) {
+        throw new Error(`Missing validation score for ${item.id}.`);
+      }
+      maximumDelta = Math.max(maximumDelta, Math.abs(score - reversedScore));
+    }
+    expect(maximumDelta).toBe(0);
+  }, 240_000);
+
+  it("scores the stored Canada turn in one isolated batch with claim 16 unsupported", async () => {
+    const turnRows = await databaseSession.database
+      .select({ threadId: researchTurns.threadId })
+      .from(researchTurns)
+      .where(eq(researchTurns.id, CANADA_TURN_ID))
+      .limit(1);
+    const threadId = turnRows[0]?.threadId;
+    if (threadId === undefined) {
+      throw new Error(`Stored Canada turn is missing: ${CANADA_TURN_ID}.`);
+    }
+    const store = new ResearchStore(databaseSession.database, config);
+    const thread = await store.readThread(threadId);
+    const turn = thread?.turns.find((candidate) => candidate.id === CANADA_TURN_ID);
+    if (turn === undefined) {
+      throw new Error(`Stored Canada turn could not be decoded: ${CANADA_TURN_ID}.`);
+    }
+    const recordingClient = new RecordingHhemClient(
+      new HttpHhemClient(config.claimVerifier),
+    );
+    const models = {
+      ...createInferenceModelRegistry(config),
+      claimVerifier: recordingClient,
+    };
+
+    const checks = await verifyAnswerClaims(
+      models,
+      turn.claims,
+      turn.citations,
+      new TaskLimiter(1),
+      AbortSignal.timeout(180_000),
+    );
+
+    expect(recordingClient.scoreCalls).toHaveLength(1);
+    expect(recordingClient.scoreCalls[0]).toHaveLength(20);
+    expect(recordingClient.scoreCalls[0]?.every((item) => {
+      return Object.keys(item).sort().join(",") === "claim,evidence,id";
+    })).toBe(true);
+    expect(checks).toHaveLength(20);
+    const scores = recordingClient.scoreResults[0] ?? [];
+    expect(scores.filter((score) => readScoredProbability(score) < 0.5)).toEqual([
+      {
+        id: "claim-16",
+        outcome: "scored",
+        supportProbability: expect.closeTo(0.164, 3),
+      },
+    ]);
+    expect(checks.filter((check) => check.status === "supported")).toHaveLength(19);
+    expect(checks.find((check) => check.claimIndex === 16)).toMatchObject({
+      rationale:
+        "HHEM support probability 0.164 is below the configured 0.500 threshold.",
+      status: "unverified",
+    });
+    for (const result of scores) {
+      if (result.id === "claim-16") {
+        expect(readScoredProbability(result)).toBeCloseTo(0.164, 3);
+      } else {
+        expect(readScoredProbability(result)).toBeGreaterThan(0.72);
+      }
+    }
+    expect(turn.question).toBe("What are the rules of evidence in Canada?");
+    expect(JSON.stringify(recordingClient.scoreCalls[0])).not.toContain(
+      turn.question,
+    );
+  }, 240_000);
+});
+
+class RecordingHhemClient implements HhemClient {
+  public readonly scoreCalls: Array<readonly HhemScoreItem[]> = [];
+  public readonly scoreResults: HhemScoreResult[][] = [];
+
+  public constructor(private readonly delegate: HhemClient) {}
+
+  public get modelId(): string {
+    return `${HHEM_MODEL_ID}@${HHEM_MODEL_REVISION}`;
+  }
+
+  public get provider(): string {
+    return this.delegate.provider;
+  }
+
+  public get supportThreshold(): number {
+    return this.delegate.supportThreshold;
+  }
+
+  public async checkReady(abortSignal?: AbortSignal): Promise<void> {
+    await this.delegate.checkReady(abortSignal);
+  }
+
+  public async score(
+    items: readonly HhemScoreItem[],
+    abortSignal: AbortSignal,
+  ): Promise<HhemScoreResult[]> {
+    this.scoreCalls.push(items);
+    const results = await this.delegate.score(items, abortSignal);
+    this.scoreResults.push(results);
+    return results;
+  }
+}
+
+function readScoredProbability(result: HhemScoreResult): number {
+  if (result.outcome !== "scored") {
+    throw new Error(`Expected a scored HHEM result, received ${result.outcome}.`);
+  }
+  return result.supportProbability;
+}
