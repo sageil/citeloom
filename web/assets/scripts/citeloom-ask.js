@@ -9,6 +9,7 @@ import {
   readPositiveInteger,
   readString,
 } from "./citeloom-boundaries.js";
+import { dispatchNotice } from "./citeloom-notices.js";
 
 const answerSections = Object.freeze([
   "answer",
@@ -1688,10 +1689,11 @@ export function registerPage(alpine) {
         }
       } catch (error) {
         if (!controller.signal.aborted) {
-          this.requestError = readErrorMessage(
+          const message = readErrorMessage(
             error,
             "The answer could not be generated.",
           );
+          dispatchNotice("error", message);
         }
       } finally {
         if (this.requestAbortController === controller) {
