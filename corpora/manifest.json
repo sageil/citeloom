@@ -1,0 +1,319 @@
+{
+  "documents": [
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/A-1.pdf",
+      "fileName": "access-to-information-act-a-1.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/A-1/",
+      "title": "Access to Information Act",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/C-5.pdf",
+      "fileName": "canada-evidence-act-c-5.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/C-5/",
+      "title": "Canada Evidence Act",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/E-2.01.pdf",
+      "fileName": "canada-elections-act-e-2.01.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/E-2.01/",
+      "title": "Canada Elections Act",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/L-2.pdf",
+      "fileName": "canada-labour-code-l-2.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/L-2/",
+      "title": "Canada Labour Code",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/C-24.5.pdf",
+      "fileName": "cannabis-act-c-24.5.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/C-24.5/",
+      "title": "Cannabis Act",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/H-6.pdf",
+      "fileName": "canadian-human-rights-act-h-6.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/H-6/",
+      "title": "Canadian Human Rights Act",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/C-34.pdf",
+      "fileName": "competition-act-c-34.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/C-34/",
+      "title": "Competition Act",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/C-44.6.pdf",
+      "fileName": "corrections-and-conditional-release-act-c-44.6.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/C-44.6/",
+      "title": "Corrections and Conditional Release Act",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/C-42.pdf",
+      "fileName": "copyright-act-c-42.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/C-42/",
+      "title": "Copyright Act",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/C-46.pdf",
+      "fileName": "criminal-code-c-46.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/C-46/",
+      "title": "Criminal Code",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/D-3.4.pdf",
+      "fileName": "divorce-act-d-3.4.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/D-3.4/",
+      "title": "Divorce Act",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/I-2.5.pdf",
+      "fileName": "immigration-and-refugee-protection-act-i-2.5.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/I-2.5/",
+      "title": "Immigration and Refugee Protection Act",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/I-21.pdf",
+      "fileName": "interpretation-act-i-21.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/I-21/",
+      "title": "Interpretation Act",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/P-8.6.pdf",
+      "fileName": "personal-information-protection-and-electronic-documents-act-p-8.6.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/P-8.6/",
+      "title": "Personal Information Protection and Electronic Documents Act",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/P-21.pdf",
+      "fileName": "privacy-act-p-21.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/P-21/",
+      "title": "Privacy Act",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "downloadUrl": "https://laws-lois.justice.gc.ca/PDF/Y-1.5.pdf",
+      "fileName": "youth-criminal-justice-act-y-1.5.pdf",
+      "license": "Government of Canada federal-law reproduction",
+      "provider": "justice-laws",
+      "sourcePageUrl": "https://laws-lois.justice.gc.ca/eng/acts/Y-1.5/",
+      "title": "Youth Criminal Justice Act",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC4913615/unicode",
+      "fileName": "2015-seizure-management-in-dogs-pmc4913615.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC4913615",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4913615/",
+      "title": "2015 ACVIM Small Animal Consensus Statement on Seizure Management in Dogs",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC4895515/unicode",
+      "fileName": "2015-therapeutic-antimicrobial-use-and-resistance-pmc4895515.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC4895515",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4895515/",
+      "title": "ACVIM Consensus Statement on Therapeutic Antimicrobial Use in Animals and Antimicrobial Resistance",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC5032870/unicode",
+      "fileName": "2016-urolith-treatment-and-prevention-pmc5032870.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC5032870",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5032870/",
+      "title": "ACVIM Small Animal Consensus Recommendations on the Treatment and Prevention of Uroliths in Dogs and Cats",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC5980284/unicode",
+      "fileName": "2018-lyme-borreliosis-in-dogs-and-cats-pmc5980284.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC5980284",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5980284/",
+      "title": "ACVIM Consensus Update on Lyme Borreliosis in Dogs and Cats",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC5980460/unicode",
+      "fileName": "2018-safe-use-of-cytotoxic-chemotherapeutics-pmc5980460.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC5980460",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5980460/",
+      "title": "ACVIM Small Animal Consensus Statement on Safe Use of Cytotoxic Chemotherapeutics in Veterinary Practice",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC6271318/unicode",
+      "fileName": "2018-gastrointestinal-protectants-pmc6271318.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC6271318",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6271318/",
+      "title": "ACVIM Consensus Statement on Rational Administration of Gastrointestinal Protectants to Dogs and Cats",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC6271319/unicode",
+      "fileName": "2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC6271319",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6271319/",
+      "title": "ACVIM Guidelines for Systemic Hypertension in Dogs and Cats",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC6524396/unicode",
+      "fileName": "2019-chronic-hepatitis-in-dogs-pmc6524396.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC6524396",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6524396/",
+      "title": "ACVIM Consensus Statement on Diagnosis and Treatment of Chronic Hepatitis in Dogs",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC6430921/unicode",
+      "fileName": "2019-diagnosis-of-immune-mediated-hemolytic-anemia-pmc6430921.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC6430921",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6430921/",
+      "title": "ACVIM Consensus Statement on Diagnosis of Immune-Mediated Hemolytic Anemia in Dogs and Cats",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC6524084/unicode",
+      "fileName": "2019-myxomatous-mitral-valve-disease-pmc6524084.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC6524084",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6524084/",
+      "title": "ACVIM Consensus Guidelines for Myxomatous Mitral Valve Disease in Dogs",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC6524099/unicode",
+      "fileName": "2019-treatment-of-immune-mediated-hemolytic-anemia-pmc6524099.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC6524099",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6524099/",
+      "title": "ACVIM Consensus Statement on Treatment of Immune-Mediated Hemolytic Anemia in Dogs",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC7995362/unicode",
+      "fileName": "2021-pancreatitis-in-cats-pmc7995362.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC7995362",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7995362/",
+      "title": "ACVIM Consensus Statement on Pancreatitis in Cats",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC10229359/unicode",
+      "fileName": "2023-feline-chronic-enteropathies-pmc10229359.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC10229359",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10229359/",
+      "title": "ACVIM Guidelines on Feline Neoplastic and Inflammatory Chronic Enteropathies",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "downloadUrl": "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC12881957/unicode",
+      "fileName": "2026-chronic-inflammatory-enteropathy-in-dogs-pmc12881957.html",
+      "license": "CC BY-NC",
+      "pmcid": "PMC12881957",
+      "provider": "pmc-open-access",
+      "sourcePageUrl": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12881957/",
+      "title": "ACVIM Guidelines for Chronic Inflammatory Enteropathy in Dogs",
+      "modality": "document"
+    }
+  ],
+  "version": 2
+}

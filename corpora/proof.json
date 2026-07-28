@@ -1,0 +1,55 @@
+{
+  "caseCountPerSplit": 15,
+  "documents": [
+    {
+      "domain": "legal",
+      "fileName": "canadian-human-rights-act-h-6.pdf",
+      "split": "development",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "fileName": "privacy-act-p-21.pdf",
+      "split": "development",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "fileName": "interpretation-act-i-21.pdf",
+      "split": "holdout",
+      "modality": "document"
+    },
+    {
+      "domain": "legal",
+      "fileName": "youth-criminal-justice-act-y-1.5.pdf",
+      "split": "holdout",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "fileName": "2015-seizure-management-in-dogs-pmc4913615.html",
+      "split": "development",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "fileName": "2018-lyme-borreliosis-in-dogs-and-cats-pmc5980284.html",
+      "split": "development",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "fileName": "2018-safe-use-of-cytotoxic-chemotherapeutics-pmc5980460.html",
+      "split": "holdout",
+      "modality": "document"
+    },
+    {
+      "domain": "veterinary",
+      "fileName": "2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html",
+      "split": "holdout",
+      "modality": "document"
+    }
+  ],
+  "seed": "citeloom-evaluation-v1",
+  "version": 2
+}
