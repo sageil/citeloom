@@ -320,44 +320,22 @@
             </template>
             <template x-if="selectedFeatureCapability === 'embedding'">
               <div class="settings-input-format-library settings-feature-input-format-library">
-                <div class="settings-input-format-library-heading">
-                  <strong>Manage input formats</strong>
-                  <span>Create a format when an embedding model needs different document or query instructions.</span>
-                </div>
-                <div class="settings-input-format-picker">
-                  <label>
-                    <span>Format to manage</span>
-                    <select x-model="managedInputFormatId">
-                      <template x-for="format in settings.embeddingInputFormats" :key="format.id">
-                        <option :value="format.id" x-text="format.retiredAt === null ? format.name : `${format.name} (retired)`"></option>
-                      </template>
-                    </select>
-                  </label>
-                  <button class="button secondary" type="button" :disabled="inputFormatBusy" @click="beginEmbeddingInputFormatCreate()">Create new format</button>
-                </div>
-                <template x-if="managedEmbeddingInputFormat() !== null">
+                <template x-if="selectedEmbeddingInputFormat() !== null">
                   <div class="settings-input-format-record">
-                    <template x-for="format in [managedEmbeddingInputFormat()]" :key="format.id">
+                    <template x-for="format in [selectedEmbeddingInputFormat()]" :key="format.id">
                       <div>
                         <div class="settings-input-format-heading">
-                          <div>
-                            <h4 x-text="format.name"></h4>
-                            <span x-text="`Schema ${format.schemaVersion}`"></span>
-                            <span x-show="embeddingInputFormatIsSelected(format)">Selected</span>
-                            <span x-show="format.defaultSelected">Default</span>
-                            <span x-show="format.retiredAt !== null">Retired</span>
-                          </div>
-                          <small x-text="embeddingInputFormatUsage(format)"></small>
+                          <h4>Format templates</h4>
                         </div>
                         <div class="settings-input-format-templates">
                           <div><span>Document template</span><code x-text="format.documentTemplate"></code></div>
                           <div><span>Query template</span><code x-text="format.queryTemplate"></code></div>
                         </div>
                         <div class="settings-input-format-actions">
-                          <button class="button primary" type="button" x-show="format.retiredAt === null &amp;&amp; !embeddingInputFormatIsSelected(format)" :disabled="inputFormatBusy" @click="selectEmbeddingInputFormat(format)">Use this format</button>
-                          <button class="button secondary" type="button" :disabled="inputFormatBusy" @click="beginEmbeddingInputFormatCopy(format)">Copy</button>
-                          <button class="button secondary" type="button" :disabled="inputFormatBusy" @click="beginEmbeddingInputFormatRevision(format)">Create revision</button>
-                          <button class="button settings-input-format-retire" type="button" :disabled="inputFormatBusy || !format.canRetire" :title="format.canRetire ? 'Retire this unused format' : embeddingInputFormatUsage(format)" @click="retireEmbeddingInputFormat(format)">Retire unused</button>
+                          <button class="settings-input-format-action settings-input-format-action-primary" type="button" :disabled="inputFormatBusy" @click="beginEmbeddingInputFormatCreate()">New format</button>
+                          <button class="settings-input-format-action" type="button" :disabled="inputFormatBusy" @click="beginEmbeddingInputFormatCopy(format)">Copy</button>
+                          <button class="settings-input-format-action" type="button" :disabled="inputFormatBusy" @click="beginEmbeddingInputFormatRevision(format)">Create revision</button>
+                          <button class="settings-input-format-action settings-input-format-action-danger" type="button" x-show="format.canRetire" :disabled="inputFormatBusy" @click="retireEmbeddingInputFormat(format)">Retire format</button>
                         </div>
                       </div>
                     </template>
@@ -371,7 +349,7 @@
                     <label class="settings-input-format-template-field"><span>Document template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.documentTemplate"></textarea></label>
                     <label class="settings-input-format-template-field"><span>Query template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.queryTemplate"></textarea></label>
                     <p>Each template must contain exactly one <code>{{text}}</code> placeholder.</p>
-                    <div><button class="button secondary" type="button" :disabled="inputFormatBusy" @click="cancelEmbeddingInputFormatEditor()">Cancel</button><button class="button primary" type="submit" :disabled="inputFormatBusy" x-text="inputFormatBusy ? 'Saving' : 'Save format'"></button></div>
+                    <div><button class="settings-input-format-action" type="button" :disabled="inputFormatBusy" @click="cancelEmbeddingInputFormatEditor()">Cancel</button><button class="settings-input-format-action settings-input-format-action-primary" type="submit" :disabled="inputFormatBusy" x-text="inputFormatBusy ? 'Saving' : 'Save format'"></button></div>
                   </form>
                 </template>
               </div>

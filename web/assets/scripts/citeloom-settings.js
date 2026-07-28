@@ -969,7 +969,6 @@ export function registerPage(alpine) {
     inputFormatBusy: false,
     inputFormatDraft: null,
     inputFormatEditorMode: null,
-    managedInputFormatId: null,
     loading: true,
     openAICodexAuth: null,
     openAICodexBusy: false,
@@ -1351,16 +1350,6 @@ export function registerPage(alpine) {
         this.selectedProviderCapability =
           this.selectedProviderProfile?.capabilities[0]?.capability ?? null;
       }
-      const managedFormatStillExists = settings.embeddingInputFormats.some(
-        (format) => format.id === this.managedInputFormatId,
-      );
-      if (!managedFormatStillExists) {
-        const selectedFormat = settings.embeddingInputFormats.find((format) => {
-          return format.selected;
-        });
-        this.managedInputFormatId =
-          selectedFormat?.id ?? settings.embeddingInputFormats[0]?.id ?? null;
-      }
       this.settings = settings;
     },
 
@@ -1436,27 +1425,27 @@ export function registerPage(alpine) {
       return this.filteredFields[0] ?? null;
     },
 
-    managedEmbeddingInputFormat() {
-      if (this.settings === null || this.managedInputFormatId === null) {
+    selectedEmbeddingInputFormat() {
+      if (this.settings === null) {
         return null;
       }
       return this.settings.embeddingInputFormats.find((format) => {
-        return format.id === this.managedInputFormatId;
+        return format.id === this.drafts.embeddingInputFormatId;
       }) ?? null;
     },
 
-    embeddingInputFormatIsSelected(format) {
-      return this.drafts.embeddingInputFormatId === format.id;
-    },
-
-    selectEmbeddingInputFormat(format) {
+    selectEmbeddingInputFormatById(id) {
       const field = this.featureFieldsFor("embedding").find((candidate) => {
         return candidate.key === "embeddingInputFormatId";
       });
-      if (field === undefined || format.retiredAt !== null) {
-        return;
+      const format = this.settings?.embeddingInputFormats.find((candidate) => {
+        return candidate.id === id && candidate.retiredAt === null;
+      });
+      if (field === undefined || format === undefined) {
+        return false;
       }
       this.writeFieldDraft(field, format.id);
+      return true;
     },
 
     beginEmbeddingInputFormatCreate() {
@@ -1510,13 +1499,6 @@ export function registerPage(alpine) {
       return "Create input format";
     },
 
-    embeddingInputFormatUsage(format) {
-      if (format.retirementBlockers.length === 0) {
-        return "Unused";
-      }
-      return `Used by ${format.retirementBlockers.join(", ")}`;
-    },
-
     async submitEmbeddingInputFormat() {
       if (
         this.inputFormatBusy
@@ -1552,6 +1534,7 @@ export function registerPage(alpine) {
           `/api/embedding-input-formats/${encodeURIComponent(draft.sourceId)}/revisions`;
       }
       this.inputFormatBusy = true;
+      let createdId = null;
       try {
         const response = await fetch(endpoint, {
           body: JSON.stringify(body),
@@ -1566,14 +1549,16 @@ export function registerPage(alpine) {
           "Embedding input format update",
           readEmbeddingInputFormatMutationResponse,
         );
+        createdId = created.id;
         this.inputFormatDraft = null;
         this.inputFormatEditorMode = null;
         this.reloadAfterSave = false;
         await this.loadSettings();
-        this.managedInputFormatId = created.id;
+        this.selectEmbeddingInputFormatById(created.id);
+        this.reloadAfterSave = false;
         dispatchNotice(
           "success",
-          "The input format was created. Select it and save changes to apply it.",
+          "The input format was created and selected. Save changes to apply it.",
         );
       } catch (error) {
         dispatchNotice(
@@ -1586,7 +1571,10 @@ export function registerPage(alpine) {
         this.inputFormatBusy = false;
         if (this.reloadAfterSave) {
           this.reloadAfterSave = false;
-          void this.loadSettings();
+          await this.loadSettings();
+          if (createdId !== null) {
+            this.selectEmbeddingInputFormatById(createdId);
+          }
         }
       }
     },
@@ -1698,9 +1686,6 @@ export function registerPage(alpine) {
       this.saved = false;
       this.drafts[field.key] = value;
       this.pending[field.key] = "set";
-      if (field.key === "embeddingInputFormatId") {
-        this.managedInputFormatId = String(value);
-      }
     },
 
     resetField(field) {

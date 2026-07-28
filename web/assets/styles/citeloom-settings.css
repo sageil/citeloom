@@ -1890,22 +1890,6 @@
   padding-top: 4px;
 }
 
-.settings-input-format-library-heading {
-  display: grid;
-  gap: 4px;
-  margin-left: 30px;
-}
-
-.settings-input-format-library-heading strong {
-  font-size: 12px;
-}
-
-.settings-input-format-library-heading span {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.settings-input-format-picker,
 .settings-input-format-actions,
 .settings-input-format-editor > div {
   display: flex;
@@ -1914,17 +1898,6 @@
   margin-left: 30px;
 }
 
-.settings-input-format-picker label {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 650;
-}
-
-.settings-input-format-picker select,
 .settings-input-format-editor input,
 .settings-input-format-editor textarea {
   width: 100%;
@@ -1947,37 +1920,12 @@
 }
 
 .settings-input-format-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.settings-input-format-heading > div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 7px;
+  display: block;
 }
 
 .settings-input-format-heading h4 {
-  margin: 0 5px 0 0;
-  font-size: 14px;
-}
-
-.settings-input-format-heading span {
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: rgba(34, 211, 238, 0.1);
-  color: var(--cyan);
-  font-size: 10px;
-  font-weight: 700;
-}
-
-.settings-input-format-heading small {
-  color: var(--muted);
-  font-size: 11px;
-  text-align: right;
+  margin: 0;
+  font-size: 12px;
 }
 
 .settings-input-format-templates {
@@ -2015,10 +1963,37 @@
   margin-left: 0;
 }
 
-.settings-input-format-retire {
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  background: rgba(127, 29, 29, 0.14);
-  color: #fecaca;
+.settings-input-format-action {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface-soft);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.settings-input-format-action:hover:not(:disabled) {
+  border-color: rgba(6, 182, 212, 0.58);
+  background: rgba(6, 182, 212, 0.08);
+}
+
+.settings-input-format-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.settings-input-format-action-primary {
+  border-color: rgba(6, 182, 212, 0.48);
+  color: var(--cyan);
+}
+
+.settings-input-format-action-danger {
+  border-color: rgba(248, 113, 113, 0.32);
+  color: #fca5a5;
 }
 
 .settings-input-format-editor {
@@ -2275,8 +2250,6 @@
   .settings-provider-connection-grid,
   .settings-provider-diagnostic-note,
   .settings-input-format-editor,
-  .settings-input-format-library-heading,
-  .settings-input-format-picker,
   .settings-input-format-record,
   .settings-runtime-control,
   .settings-runtime-credential-note,
@@ -2285,10 +2258,8 @@
     margin-left: 0 !important;
   }
 
-  .settings-input-format-picker,
   .settings-input-format-actions,
-  .settings-input-format-editor > div,
-  .settings-input-format-heading {
+  .settings-input-format-editor > div {
     align-items: stretch;
     flex-direction: column;
   }
