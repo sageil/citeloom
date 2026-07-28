@@ -92,7 +92,7 @@ Recovery moves old PostgreSQL data but never permanently deletes it.
 ## Reindexing
 
 Use the document catalog to reindex a document.
-When reindexing within the selected embedding space, its current version stays searchable until the replacement is complete.
+A document's current version stays searchable during an ordinary reindex.
 The background worker processes queued jobs.
 Monitor progress with `pnpm status` or the worker logs.
 
@@ -101,9 +101,9 @@ The source filename remains the document's catalog identity, while CiteLoom read
 Files supported by Docling are converted again.
 Plain-text files are split, summarized, embedded, and indexed without Docling.
 Each completed job replaces the previous search index in one database operation.
-Selecting a different embedding configuration selects a new embedding space immediately.
-CiteLoom does not keep the old embedding space active while the new space is being populated.
-Settings and answer requests report that reindexing is required until the selected space contains indexed documents.
+After selecting a different embedding configuration, answers are unavailable until documents are reindexed.
+The previous configuration is not kept searchable.
+Settings and answer requests explain when reindexing is required.
 
 ```bash
 docker logs --follow citeloom-worker-1

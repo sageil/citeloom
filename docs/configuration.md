@@ -192,10 +192,8 @@ Use Provider default if an endpoint rejects explicit thinking controls, and conf
 
 ## Retrieval
 
-The embedding input format, model, dimensions, retrieval-window policy, and optional space ID determine which document and query embeddings can be compared.
-Changing the embedding model, dimensions, retrieval-window policy, or input format creates a new embedding space and requires reindexing.
-A newly created selected space has no searchable documents until documents are reindexed for that configuration.
-Settings reports when reindexing is required.
+Changing the embedding model, dimensions, retrieval-window policy, or input format requires reindexing.
+Settings reports when the selected configuration has no indexed documents.
 
 Retrieval settings control the search process.
 They set how many passages CiteLoom considers, how it expands a question, how it combines meaning-based and keyword results, whether it reranks them, and how many passages reach the answer model.
