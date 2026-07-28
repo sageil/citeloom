@@ -14,10 +14,17 @@ import type {
   CiteLoomUIMessage,
   StreamedAnswer,
 } from "../answers/stream.js";
-import type {
-  AnswerResult,
-  GeneratedAnswerResult,
+import {
+  UnexpectedAnswerFinishReasonError,
+  type AnswerResult,
+  type GeneratedAnswerResult,
 } from "../answers/inference.js";
+import { AnswerCapacityError } from "../answers/context-budget.js";
+import {
+  readInferenceApiFailure,
+  readInferenceErrorMessage,
+  type InferenceApiFailure,
+} from "../inference/error.js";
 import { verifyPublishedAnswer } from "../answers/claim-verification.js";
 import { DocumentCatalog } from "../documents/catalog/index.js";
 import type { TaskScheduler } from "../shared/concurrency.js";
@@ -39,6 +46,7 @@ import {
 import {
   InferenceCoordinator,
   InferenceLeaseLostError,
+  StaleInferenceSettingsError,
 } from "../inference/coordinator.js";
 import { InferenceFeatureTimeoutError } from "../inference/request.js";
 import { HhemClientError } from "../verification/hhem-client.js";
@@ -143,6 +151,17 @@ function createRetrievalTrace(
 
 const passiveAbortSignal = new AbortController().signal;
 const maximumLoggedAnswerErrorMessageCharacters = 500;
+
+type AnswerStreamFailure =
+  | { kind: "answer-capacity" }
+  | { kind: "answer-finish" }
+  | { kind: "answer-timeout"; message: string }
+  | { kind: "claim-verification"; category: HhemClientError["category"] }
+  | { kind: "provider"; error: Error; failure: InferenceApiFailure }
+  | { kind: "reranking-timeout"; message: string }
+  | { kind: "scheduler-lease" }
+  | { kind: "settings-changed" }
+  | { kind: "unexpected" };
 
 export async function askIndexedDocuments(
   config: AppConfig,
@@ -824,18 +843,97 @@ function readErrorMessage(error: unknown): string {
 }
 
 function readAnswerStreamError(error: unknown): string {
-  let message: string;
-  if (error instanceof InferenceFeatureTimeoutError) {
-    message = error.message;
-  } else if (error instanceof RerankingTimeoutError) {
-    message = error.message;
-  } else if (error instanceof HhemClientError && error.category === "timeout") {
-    message = "Claim verification timed out before the answer could be published.";
-  } else {
-    message = "The answer could not be generated.";
-  }
+  const failure = readAnswerStreamFailure(error);
+  const message = formatAnswerStreamFailure(failure);
   const errorId = readApplicationErrorId(error);
   return errorId === null ? message : `${message} Error ID: ${errorId}.`;
+}
+
+function readAnswerStreamFailure(error: unknown): AnswerStreamFailure {
+  const pending: unknown[] = [error];
+  const visited = new Set<Error>();
+  while (pending.length > 0 && visited.size < 16) {
+    const current = pending.pop();
+    if (!(current instanceof Error) || visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+    const failure = readDirectAnswerStreamFailure(current);
+    if (failure !== null) {
+      return failure;
+    }
+    if (current.cause !== undefined) {
+      pending.push(current.cause);
+    }
+    if (current instanceof AggregateError) {
+      pending.push(...current.errors);
+    }
+  }
+  return { kind: "unexpected" };
+}
+
+function readDirectAnswerStreamFailure(
+  error: Error,
+): AnswerStreamFailure | null {
+  const providerFailure = readInferenceApiFailure(error);
+  if (providerFailure !== null) {
+    return { error, failure: providerFailure, kind: "provider" };
+  }
+  switch (true) {
+    case error instanceof InferenceFeatureTimeoutError:
+      return { kind: "answer-timeout", message: error.message };
+    case error instanceof RerankingTimeoutError:
+      return { kind: "reranking-timeout", message: error.message };
+    case error instanceof AnswerCapacityError:
+      return { kind: "answer-capacity" };
+    case error instanceof UnexpectedAnswerFinishReasonError:
+      return { kind: "answer-finish" };
+    case error instanceof StaleInferenceSettingsError:
+      return { kind: "settings-changed" };
+    case error instanceof InferenceLeaseLostError:
+      return { kind: "scheduler-lease" };
+    case error instanceof HhemClientError:
+      return { category: error.category, kind: "claim-verification" };
+    default:
+      return null;
+  }
+}
+
+function formatAnswerStreamFailure(failure: AnswerStreamFailure): string {
+  switch (failure.kind) {
+    case "provider":
+      return readAnswerProviderFailureMessage(failure.failure);
+    case "answer-timeout":
+    case "reranking-timeout":
+      return failure.message;
+    case "answer-capacity":
+      return "The selected answer model cannot fit the answer instructions and retrieved evidence. Increase its configured context capacity or select a model with a larger context window.";
+    case "answer-finish":
+      return "The answer provider stopped before producing a complete answer. Try again or select another answer model.";
+    case "settings-changed":
+      return "Inference settings changed before answer generation started. Try the question again.";
+    case "scheduler-lease":
+      return "CiteLoom lost its inference slot while generating the answer. Try the question again.";
+    case "claim-verification":
+      return readClaimVerificationFailureMessage(failure.category);
+    case "unexpected":
+      return "The answer could not be generated.";
+  }
+}
+
+function readClaimVerificationFailureMessage(
+  category: HhemClientError["category"],
+): string {
+  switch (category) {
+    case "timeout":
+      return "Claim verification timed out before the answer could be published.";
+    case "service-unavailable":
+      return "Claim verification is unavailable, so CiteLoom did not publish the answer. Check the HHEM service and try again.";
+    case "invalid-response":
+      return "Claim verification returned an invalid response, so CiteLoom did not publish the answer. Check the HHEM service and try again.";
+    case "http-error":
+      return "Claim verification failed, so CiteLoom did not publish the answer. Check the HHEM service and try again.";
+  }
 }
 
 async function reportAnswerStreamFailure(
@@ -844,15 +942,16 @@ async function reportAnswerStreamFailure(
   runId: string,
   runSnapshot: TelemetryRunSnapshot | null,
 ): Promise<void> {
+  const failure = readAnswerStreamFailure(error);
   const reporter = new ApplicationErrorReporter(database);
   await reporter.report(error, {
-    category: readAnswerFailureCategory(error),
-    code: readAnswerFailureCode(error) ?? "answer_stream_failed",
-    diagnosticMessage: readSafeAnswerFailureMessage(error),
+    category: readAnswerFailureCategory(failure),
+    code: readAnswerFailureCode(failure, error) ?? "answer_stream_failed",
+    diagnosticMessage: readSafeAnswerFailureMessage(failure, error),
     instance: hostname(),
     operation: `answer-stream:${readFailedAnswerStage(runSnapshot)}`,
-    origin: readAnswerFailureOrigin(error),
-    retryable: readAnswerFailureRetryability(error),
+    origin: readAnswerFailureOrigin(failure),
+    retryable: readAnswerFailureRetryability(failure),
     runId,
     service: "web",
     severity: "error",
@@ -870,14 +969,15 @@ async function reportUntrackedAnswerStreamFailure(
   if (readApplicationErrorId(error) !== null) {
     return;
   }
+  const failure = readAnswerStreamFailure(error);
   const context = {
-    category: readAnswerFailureCategory(error),
-    code: readAnswerFailureCode(error) ?? "answer_stream_failed",
-    diagnosticMessage: readSafeAnswerFailureMessage(error),
+    category: readAnswerFailureCategory(failure),
+    code: readAnswerFailureCode(failure, error) ?? "answer_stream_failed",
+    diagnosticMessage: readSafeAnswerFailureMessage(failure, error),
     instance: hostname(),
     operation: "answer-stream:initialization",
-    origin: readAnswerFailureOrigin(error),
-    retryable: readAnswerFailureRetryability(error),
+    origin: readAnswerFailureOrigin(failure),
+    retryable: readAnswerFailureRetryability(failure),
     service: "web",
     severity: "error" as const,
   };
@@ -893,41 +993,43 @@ async function reportUntrackedAnswerStreamFailure(
   await reporter.report(error, context);
 }
 
-function isInferenceFailure(error: unknown): boolean {
-  return findError(error, (candidate) => {
-    return candidate instanceof InferenceFeatureTimeoutError
-      || candidate instanceof RerankingTimeoutError
-      || candidate instanceof HhemClientError;
-  }) !== null;
+function readAnswerFailureOrigin(failure: AnswerStreamFailure) {
+  switch (failure.kind) {
+    case "scheduler-lease":
+    case "settings-changed":
+      return "scheduler" as const;
+    case "provider":
+    case "answer-timeout":
+    case "answer-finish":
+    case "claim-verification":
+    case "reranking-timeout":
+      return "inference-provider" as const;
+    case "answer-capacity":
+    case "unexpected":
+      return "streaming-answer" as const;
+  }
 }
 
-function readAnswerFailureOrigin(error: unknown) {
-  const schedulerFailure = findError(error, (candidate) => {
-    return candidate instanceof InferenceLeaseLostError;
-  });
-  if (schedulerFailure !== null) {
-    return "scheduler" as const;
+function readAnswerFailureRetryability(
+  failure: AnswerStreamFailure,
+): boolean | null {
+  switch (failure.kind) {
+    case "provider":
+      return failure.failure.retryable;
+    case "answer-timeout":
+    case "reranking-timeout":
+    case "scheduler-lease":
+    case "settings-changed":
+      return true;
+    case "claim-verification":
+      return failure.category === "timeout"
+        || failure.category === "service-unavailable";
+    case "answer-capacity":
+      return false;
+    case "answer-finish":
+    case "unexpected":
+      return null;
   }
-  return isInferenceFailure(error)
-    ? "inference-provider" as const
-    : "streaming-answer" as const;
-}
-
-function readAnswerFailureRetryability(error: unknown): boolean | null {
-  if (readAnswerFailureOrigin(error) === "scheduler") {
-    return true;
-  }
-  if (
-    error instanceof InferenceFeatureTimeoutError
-    || error instanceof RerankingTimeoutError
-  ) {
-    return true;
-  }
-  if (error instanceof HhemClientError) {
-    return error.category === "timeout"
-      || error.category === "service-unavailable";
-  }
-  return null;
 }
 
 function readFailedAnswerStage(
@@ -945,48 +1047,55 @@ function readFailedAnswerStage(
   return "answer-run";
 }
 
-function readAnswerFailureCategory(error: unknown): string {
-  if (readAnswerFailureOrigin(error) === "scheduler") {
-    return "inference-scheduler";
+function readAnswerFailureCategory(failure: AnswerStreamFailure): string {
+  switch (failure.kind) {
+    case "provider":
+      return `inference-provider-${failure.failure.kind}`;
+    case "answer-timeout":
+      return "inference-timeout";
+    case "reranking-timeout":
+      return "reranking-timeout";
+    case "scheduler-lease":
+    case "settings-changed":
+      return "inference-scheduler";
+    case "claim-verification":
+      return `claim-verification-${failure.category}`;
+    case "answer-capacity":
+      return "answer-capacity";
+    case "answer-finish":
+      return "inference-provider-finish";
+    case "unexpected":
+      return "unexpected";
   }
-  if (error instanceof InferenceFeatureTimeoutError) {
-    return "inference-timeout";
-  }
-  if (error instanceof RerankingTimeoutError) {
-    return "reranking-timeout";
-  }
-  if (error instanceof HhemClientError) {
-    return `claim-verification-${error.category}`;
-  }
-  return "unexpected";
 }
 
-function findError(
+function readAnswerFailureCode(
+  failure: AnswerStreamFailure,
   error: unknown,
-  predicate: (candidate: Error) => boolean,
-): Error | null {
-  const pending: unknown[] = [error];
-  const visited = new Set<Error>();
-  while (pending.length > 0 && visited.size < 16) {
-    const current = pending.pop();
-    if (!(current instanceof Error) || visited.has(current)) {
-      continue;
-    }
-    visited.add(current);
-    if (predicate(current)) {
-      return current;
-    }
-    if (current.cause !== undefined) {
-      pending.push(current.cause);
-    }
-    if (current instanceof AggregateError) {
-      pending.push(...current.errors);
-    }
+): string | null {
+  switch (failure.kind) {
+    case "provider":
+      return readAnswerProviderFailureCode(failure.failure);
+    case "answer-timeout":
+      return "answer_provider_timeout";
+    case "reranking-timeout":
+      return "reranker_timeout";
+    case "scheduler-lease":
+      return "inference_lease_lost";
+    case "settings-changed":
+      return "inference_settings_changed";
+    case "claim-verification":
+      return readClaimVerificationFailureCode(failure.category);
+    case "answer-capacity":
+      return "answer_context_capacity_exceeded";
+    case "answer-finish":
+      return "answer_provider_incomplete";
+    case "unexpected":
+      return readSqlStateCode(error);
   }
-  return null;
 }
 
-function readAnswerFailureCode(error: unknown): string | null {
+function readSqlStateCode(error: unknown): string | null {
   if (!(error instanceof Error) || !("code" in error)) {
     return null;
   }
@@ -997,13 +1106,31 @@ function readAnswerFailureCode(error: unknown): string | null {
   return code;
 }
 
-function readSafeAnswerFailureMessage(error: unknown): string {
-  if (error instanceof InferenceFeatureTimeoutError || error instanceof RerankingTimeoutError) {
-    return truncateAnswerFailureMessage(error.message);
+function readSafeAnswerFailureMessage(
+  failure: AnswerStreamFailure,
+  error: unknown,
+): string {
+  switch (failure.kind) {
+    case "provider":
+      return truncateAnswerFailureMessage(
+        readInferenceErrorMessage(failure.error),
+      );
+    case "answer-timeout":
+    case "reranking-timeout":
+      return truncateAnswerFailureMessage(failure.message);
+    case "claim-verification":
+      return "Claim verification failed before the answer could be published.";
+    case "answer-capacity":
+    case "answer-finish":
+    case "scheduler-lease":
+    case "settings-changed":
+      return truncateAnswerFailureMessage(readErrorMessage(error));
+    case "unexpected":
+      return readUnexpectedAnswerFailureMessage(error);
   }
-  if (error instanceof HhemClientError) {
-    return "Claim verification failed before the answer could be published.";
-  }
+}
+
+function readUnexpectedAnswerFailureMessage(error: unknown): string {
   if (!(error instanceof Error)) {
     return "The answer stream threw a non-Error value.";
   }
@@ -1020,6 +1147,85 @@ function readSafeAnswerFailureMessage(error: unknown): string {
     return "Retrieved candidate has no current document version.";
   }
   return "Unexpected answer stream failure.";
+}
+
+function readAnswerProviderFailureCode(
+  failure: InferenceApiFailure,
+): string {
+  switch (failure.kind) {
+    case "authentication":
+      return "inference_provider_authentication_failed";
+    case "authorization":
+      return "inference_provider_access_denied";
+    case "billing":
+      return "inference_provider_billing_required";
+    case "conflict":
+      return "inference_provider_request_conflict";
+    case "model-not-found":
+      return "inference_provider_model_not_found";
+    case "rate-limited":
+      return "inference_provider_rate_limited";
+    case "request-too-large":
+      return "inference_provider_request_too_large";
+    case "timeout":
+      return "inference_provider_timeout";
+    case "unavailable":
+      return "inference_provider_unavailable";
+    case "unreachable":
+      return "inference_provider_unreachable";
+    case "invalid-request":
+      return "inference_provider_request_rejected";
+    case "unexpected":
+      return "inference_provider_failed";
+  }
+}
+
+function readClaimVerificationFailureCode(
+  category: HhemClientError["category"],
+): string {
+  switch (category) {
+    case "timeout":
+      return "claim_verification_timeout";
+    case "service-unavailable":
+      return "claim_verification_unavailable";
+    case "invalid-response":
+      return "claim_verification_invalid_response";
+    case "http-error":
+      return "claim_verification_http_error";
+  }
+}
+
+function readAnswerProviderFailureMessage(
+  failure: InferenceApiFailure,
+): string {
+  switch (failure.kind) {
+    case "authentication":
+      return "The AI provider could not authenticate the request. Configure or replace the provider API token in Settings, then try again.";
+    case "authorization":
+      return "The AI provider denied access. Check the API token permissions and access to the selected model.";
+    case "billing":
+      return "The AI provider rejected the request because of billing or account balance. Check the provider account, then try again.";
+    case "conflict":
+      return "The AI provider could not accept the request because of a temporary conflict. Try again.";
+    case "model-not-found":
+      return "The AI provider could not find the configured model or endpoint. Check the provider URL and model ID in Settings.";
+    case "rate-limited":
+      return "The AI provider is rate limited or its quota is exhausted. Check the provider account, then try again.";
+    case "request-too-large":
+      return "The AI request exceeds the provider input limit. Check the model context capacity or use a model with a larger context window.";
+    case "timeout":
+      return "The AI provider timed out before completing the request. Check the provider status, then try again.";
+    case "unavailable":
+      return "The AI provider is temporarily unavailable. Check the provider status, then try again.";
+    case "unreachable":
+      return "CiteLoom could not reach the AI provider. Check the provider URL, network connection, and TLS configuration.";
+    case "invalid-request":
+      return "The AI provider rejected CiteLoom's request. Check the selected model and provider configuration.";
+    case "unexpected":
+      return failure.statusCode === null
+        ? "The AI provider failed before returning a response. Check the provider configuration and status."
+        : `The AI provider failed with HTTP ${failure.statusCode}. Check the provider configuration and status.`;
+  }
 }
 
 function truncateAnswerFailureMessage(message: string): string {

@@ -2,6 +2,40 @@ import { APICallError, RetryError } from "ai";
 
 const MAX_UPSTREAM_ERROR_CHARACTERS = 2_000;
 
+export type InferenceApiFailureKind =
+  | "authentication"
+  | "authorization"
+  | "billing"
+  | "conflict"
+  | "invalid-request"
+  | "model-not-found"
+  | "rate-limited"
+  | "request-too-large"
+  | "timeout"
+  | "unavailable"
+  | "unreachable"
+  | "unexpected";
+
+export interface InferenceApiFailure {
+  kind: InferenceApiFailureKind;
+  retryable: boolean;
+  statusCode: number | null;
+}
+
+export function readInferenceApiFailure(
+  error: unknown,
+): InferenceApiFailure | null {
+  const apiError = readApiCallError(error);
+  if (apiError === null) {
+    return null;
+  }
+  return {
+    kind: classifyApiFailure(apiError.statusCode),
+    retryable: apiError.isRetryable,
+    statusCode: apiError.statusCode ?? null,
+  };
+}
+
 export function readInferenceErrorMessage(error: unknown): string {
   const apiError = readApiCallError(error);
   if (apiError === null) {
@@ -26,6 +60,37 @@ export function readInferenceErrorMessage(error: unknown): string {
 
   details.push(`retryable: ${apiError.isRetryable ? "yes" : "no"}`);
   return `Inference API request failed (${details.join("; ")}).`;
+}
+
+function classifyApiFailure(
+  statusCode: number | undefined,
+): InferenceApiFailureKind {
+  switch (statusCode) {
+    case undefined:
+      return "unreachable";
+    case 400:
+    case 422:
+      return "invalid-request";
+    case 401:
+      return "authentication";
+    case 402:
+      return "billing";
+    case 403:
+      return "authorization";
+    case 404:
+      return "model-not-found";
+    case 408:
+    case 504:
+      return "timeout";
+    case 409:
+      return "conflict";
+    case 413:
+      return "request-too-large";
+    case 429:
+      return "rate-limited";
+    default:
+      return statusCode >= 500 ? "unavailable" : "unexpected";
+  }
 }
 
 function readApiCallError(error: unknown): APICallError | null {
