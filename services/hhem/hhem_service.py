@@ -14,8 +14,9 @@ from urllib.parse import urlsplit
 
 from huggingface_hub import snapshot_download
 from huggingface_hub.errors import LocalEntryNotFoundError
+from safetensors.torch import load_file
 import torch
-from transformers import AutoConfig, AutoModelForSequenceClassification
+from transformers import AutoConfig, AutoTokenizer, T5ForTokenClassification
 
 
 HHEM_MODEL_ID = "vectara/hallucination_evaluation_model"
@@ -23,6 +24,14 @@ HHEM_MODEL_REVISION = "8e4a2e6e96c708cc76c2344f7e4757df2515292c"
 HHEM_FOUNDATION_ID = "google/flan-t5-base"
 HHEM_FOUNDATION_REVISION = "7bcac572ce56db69c1ea7c8af255c5d7c9672fc2"
 HHEM_DISPLAY_MODEL = f"{HHEM_MODEL_ID}@{HHEM_MODEL_REVISION}"
+HHEM_PROMPT = (
+    "<pad> Determine if the hypothesis is true given the premise?\n\n"
+    "Premise: {text1}\n\n"
+    "Hypothesis: {text2}"
+)
+HHEM_MODEL_WEIGHT_PREFIX = "t5."
+HHEM_SHARED_EMBEDDING_KEY = "transformer.shared.weight"
+HHEM_ENCODER_EMBEDDING_KEY = "transformer.encoder.embed_tokens.weight"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8080
@@ -504,6 +513,18 @@ def read_hhem_model(raw_model: object) -> HhemModelAdapter:
     if not isinstance(prompt, str) or not prompt:
         raise RuntimeError("The pinned HHEM model does not expose its prompt.")
 
+    return create_hhem_model_adapter(
+        predict=cast(Callable[[Sequence[tuple[str, str]]], object], predict),
+        tokenizer=tokenizer,
+        prompt=prompt,
+    )
+
+
+def create_hhem_model_adapter(
+    predict: Callable[[Sequence[tuple[str, str]]], object],
+    tokenizer: Callable[..., object],
+    prompt: str,
+) -> HhemModelAdapter:
     def count_tokens(evidence: str, claim: str) -> int:
         return count_model_input_tokens(tokenizer, prompt, evidence, claim)
 
@@ -527,10 +548,7 @@ def read_hhem_model(raw_model: object) -> HhemModelAdapter:
         return predict(validated_pairs)
 
     return HhemModelAdapter(
-        predict=cast(
-            Callable[[Sequence[tuple[str, str]]], object],
-            predict_bounded_pairs,
-        ),
+        predict=predict_bounded_pairs,
         count_tokens=count_tokens,
     )
 
@@ -562,12 +580,7 @@ def load_hhem_model(cache_directory: Path) -> HhemModelAdapter:
         cache_directory,
         repo_id=HHEM_MODEL_ID,
         revision=HHEM_MODEL_REVISION,
-        allow_patterns=(
-            "config.json",
-            "configuration_hhem_v2.py",
-            "model.safetensors",
-            "modeling_hhem_v2.py",
-        ),
+        allow_patterns=("model.safetensors",),
     )
     foundation_snapshot = read_or_download_snapshot(
         cache_directory,
@@ -581,20 +594,81 @@ def load_hhem_model(cache_directory: Path) -> HhemModelAdapter:
             "tokenizer_config.json",
         ),
     )
-    config = AutoConfig.from_pretrained(
-        model_snapshot,
+    foundation_config = AutoConfig.from_pretrained(
+        foundation_snapshot,
         local_files_only=True,
-        trust_remote_code=True,
     )
-    config.foundation = foundation_snapshot
-    raw_model = AutoModelForSequenceClassification.from_pretrained(
-        model_snapshot,
-        config=config,
-        local_files_only=True,
-        trust_remote_code=True,
+    raw_model = T5ForTokenClassification(foundation_config)
+    state = read_hhem_model_state(
+        Path(model_snapshot) / "model.safetensors",
     )
+    raw_model.load_state_dict(state, strict=True)
     raw_model.eval()
-    return read_hhem_model(raw_model)
+    tokenizer = AutoTokenizer.from_pretrained(
+        foundation_snapshot,
+        local_files_only=True,
+    )
+
+    def predict(pairs: Sequence[tuple[str, str]]) -> object:
+        prompts: list[str] = []
+        for evidence, claim in pairs:
+            prompts.append(HHEM_PROMPT.format(text1=evidence, text2=claim))
+        raw_inputs = tokenizer(prompts, return_tensors="pt", padding=True)
+        model_inputs = read_model_inputs(raw_inputs, raw_model.device)
+        with torch.no_grad():
+            outputs = raw_model(**model_inputs)
+        logits = outputs.logits[:, 0, :]
+        return torch.softmax(logits, dim=-1)[:, 1]
+
+    return create_hhem_model_adapter(
+        predict=predict,
+        tokenizer=tokenizer,
+        prompt=HHEM_PROMPT,
+    )
+
+
+def read_hhem_model_state(model_path: Path) -> dict[str, torch.Tensor]:
+    raw_state = load_file(model_path, device="cpu")
+    state: dict[str, torch.Tensor] = {}
+    for raw_key, value in raw_state.items():
+        if not raw_key.startswith(HHEM_MODEL_WEIGHT_PREFIX):
+            raise RuntimeError(
+                f"The pinned HHEM checkpoint has an unexpected key: {raw_key}."
+            )
+        key = raw_key.removeprefix(HHEM_MODEL_WEIGHT_PREFIX)
+        if not key or key in state:
+            raise RuntimeError(
+                f"The pinned HHEM checkpoint has an invalid key: {raw_key}."
+            )
+        if not isinstance(value, torch.Tensor):
+            raise RuntimeError(
+                f"The pinned HHEM checkpoint has invalid weights for {raw_key}."
+            )
+        state[key] = value
+
+    shared_embedding = state.get(HHEM_SHARED_EMBEDDING_KEY)
+    if not isinstance(shared_embedding, torch.Tensor):
+        raise RuntimeError(
+            "The pinned HHEM checkpoint omits its shared embedding weights."
+        )
+    state[HHEM_ENCODER_EMBEDDING_KEY] = shared_embedding
+    return state
+
+
+def read_model_inputs(
+    raw_inputs: object,
+    device: torch.device,
+) -> dict[str, torch.Tensor]:
+    if not isinstance(raw_inputs, Mapping):
+        raise RuntimeError("The HHEM tokenizer returned invalid model inputs.")
+    model_inputs: dict[str, torch.Tensor] = {}
+    for raw_key, raw_value in raw_inputs.items():
+        if not isinstance(raw_key, str) or not isinstance(raw_value, torch.Tensor):
+            raise RuntimeError("The HHEM tokenizer returned invalid model inputs.")
+        model_inputs[raw_key] = raw_value.to(device)
+    if "input_ids" not in model_inputs:
+        raise RuntimeError("The HHEM tokenizer omitted input_ids.")
+    return model_inputs
 
 
 def read_or_download_snapshot(
