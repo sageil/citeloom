@@ -1,0 +1,20 @@
+allowBuilds:
+  argon2: true
+  esbuild@0.25.12: true
+  esbuild@0.28.1: true
+
+minimumReleaseAgeExclude:
+  - '@biomejs/biome@2.5.5'
+  - '@biomejs/cli-darwin-arm64@2.5.5'
+  - '@biomejs/cli-darwin-x64@2.5.5'
+  - '@biomejs/cli-linux-arm64-musl@2.5.5'
+  - '@biomejs/cli-linux-arm64@2.5.5'
+  - '@biomejs/cli-linux-x64-musl@2.5.5'
+  - '@biomejs/cli-linux-x64@2.5.5'
+  - '@biomejs/cli-win32-arm64@2.5.5'
+  - '@biomejs/cli-win32-x64@2.5.5'
+
+overrides:
+  '@esbuild-kit/core-utils>esbuild': 0.25.12
+
+verifyDepsBeforeRun: false

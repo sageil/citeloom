@@ -1,0 +1,49 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.5/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "*.ts",
+      "src/**/*.ts",
+      "scripts/**/*.ts",
+      "web/assets/scripts/**/*.js"
+    ]
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "complexity": {
+        "noUselessEscapeInRegex": "off",
+        "noUselessStringRaw": "off",
+        "noUselessUndefinedInitialization": "off",
+        "useRegexLiterals": "off"
+      },
+      "suspicious": {
+        "noImplicitAnyLet": "error"
+      }
+    }
+  },
+  "assist": {
+    "enabled": false
+  },
+  "overrides": [
+    {
+      "includes": ["src/documents/plain-text.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noControlCharactersInRegex": "off"
+          }
+        }
+      }
+    }
+  ]
+}
