@@ -2,6 +2,85 @@ INSERT INTO "application_revisions" ("channel")
 VALUES ('catalog'), ('jobs'), ('settings')
 ON CONFLICT ("channel") DO NOTHING;
 
+INSERT INTO "embedding_input_formats" (
+  "id",
+  "input_format_hash",
+  "name",
+  "schema_version",
+  "document_template",
+  "query_template"
+)
+VALUES
+  (
+    '00000000-0000-4000-8000-000000000001',
+    'd6a52dbb7576b4b903d1b38cf25ed56bb1323e538ef84535897b84f0e97b0a9b',
+    'Plain',
+    1,
+    '{{text}}',
+    '{{text}}'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000002',
+    'a50500d0b2118ae88820af216c21f2a7bdc344a14286574c517f93a8e45ce227',
+    'EmbeddingGemma',
+    1,
+    'title: none | text: {{text}}',
+    'task: search result | query: {{text}}'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000003',
+    '68be6162f967ab76390e9e1e897c9a0c5297f27e02ac83c45594ffc73cf0862b',
+    'Snowflake',
+    1,
+    '{{text}}',
+    'Represent this sentence for searching relevant passages: {{text}}'
+  )
+ON CONFLICT ("id") DO NOTHING;
+
+UPDATE "embedding_spaces" AS space
+SET
+  "input_format_document_template" = input_format."document_template",
+  "input_format_hash" = input_format."input_format_hash",
+  "input_format_id" = input_format."id",
+  "input_format_query_template" = input_format."query_template",
+  "input_format_schema_version" = input_format."schema_version"
+FROM "embedding_input_formats" AS input_format
+WHERE space."input_format_id" IS NULL
+  AND (
+    (space."profile" = 'plain'
+      AND input_format."id" = '00000000-0000-4000-8000-000000000001')
+    OR
+    (space."profile" = 'embeddinggemma'
+      AND input_format."id" = '00000000-0000-4000-8000-000000000002')
+  );
+
+DO $embedding_input_format_backfill$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM "embedding_spaces"
+    WHERE "input_format_id" IS NULL
+  ) THEN
+    RAISE EXCEPTION
+      'Embedding input-format backfill found an unmapped legacy embedding space.';
+  END IF;
+END
+$embedding_input_format_backfill$;
+
+UPDATE "embedding_space_gc_spaces" AS space
+SET
+  "input_format_hash" = input_format."input_format_hash",
+  "input_format_name" = input_format."name"
+FROM "embedding_input_formats" AS input_format
+WHERE space."input_format_hash" IS NULL
+  AND (
+    (space."profile" = 'plain'
+      AND input_format."id" = '00000000-0000-4000-8000-000000000001')
+    OR
+    (space."profile" = 'embeddinggemma'
+      AND input_format."id" = '00000000-0000-4000-8000-000000000002')
+  );
+
 WITH canonical_settings AS (
   SELECT jsonb_set(
     $settings$

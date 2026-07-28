@@ -415,6 +415,39 @@ export const applicationRevisions = pgTable(
   ],
 );
 
+export const embeddingInputFormats = pgTable(
+  "embedding_input_formats",
+  {
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    documentTemplate: text("document_template").notNull(),
+    id: uuid("id").primaryKey(),
+    inputFormatHash: varchar("input_format_hash", { length: 64 }).notNull(),
+    name: varchar("name", { length: 100 }).notNull(),
+    queryTemplate: text("query_template").notNull(),
+    retiredAt: timestamp("retired_at", { mode: "date", withTimezone: true }),
+    schemaVersion: integer("schema_version").notNull(),
+  },
+  (table) => [
+    check(
+      "embedding_input_formats_values_valid",
+      sql`length(trim(${table.name})) > 0
+        AND ${table.schemaVersion} > 0
+        AND length(${table.documentTemplate})
+          - length(replace(${table.documentTemplate}, '{{text}}', '')) = 8
+        AND length(${table.queryTemplate})
+          - length(replace(${table.queryTemplate}, '{{text}}', '')) = 8
+        AND ${table.inputFormatHash} ~ '^[a-f0-9]{64}$'
+        AND (${table.retiredAt} IS NULL OR ${table.retiredAt} >= ${table.createdAt})`,
+    ),
+    index("embedding_input_formats_retired_name_idx").on(
+      table.retiredAt,
+      table.name,
+    ),
+  ],
+);
+
 export const embeddingSpaces = pgTable(
   "embedding_spaces",
   {
@@ -423,6 +456,14 @@ export const embeddingSpaces = pgTable(
       .defaultNow(),
     dimensions: integer("dimensions").notNull(),
     id: text("id").primaryKey(),
+    inputFormatDocumentTemplate: text("input_format_document_template"),
+    inputFormatHash: varchar("input_format_hash", { length: 64 }),
+    inputFormatId: uuid("input_format_id").references(
+      () => embeddingInputFormats.id,
+      { onDelete: "restrict" },
+    ),
+    inputFormatQueryTemplate: text("input_format_query_template"),
+    inputFormatSchemaVersion: integer("input_format_schema_version"),
     model: text("model").notNull(),
     profile: text("profile").notNull(),
     retrievalWindowPolicy: jsonb("retrieval_window_policy")
@@ -437,6 +478,22 @@ export const embeddingSpaces = pgTable(
     check(
       "embedding_spaces_retrieval_window_policy_fingerprint_valid",
       sql`${table.retrievalWindowPolicyFingerprint} ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      "embedding_spaces_input_format_snapshot_valid",
+      sql`(
+          ${table.inputFormatDocumentTemplate} IS NULL
+          AND ${table.inputFormatHash} IS NULL
+          AND ${table.inputFormatId} IS NULL
+          AND ${table.inputFormatQueryTemplate} IS NULL
+          AND ${table.inputFormatSchemaVersion} IS NULL
+        ) OR (
+          ${table.inputFormatDocumentTemplate} IS NOT NULL
+          AND ${table.inputFormatHash} ~ '^[a-f0-9]{64}$'
+          AND ${table.inputFormatId} IS NOT NULL
+          AND ${table.inputFormatQueryTemplate} IS NOT NULL
+          AND ${table.inputFormatSchemaVersion} > 0
+        )`,
     ),
   ],
 );
@@ -477,6 +534,8 @@ export const embeddingSpaceGcSpaces = pgTable(
     disposition: varchar("disposition", { length: 16 }).notNull(),
     errorMessage: text("error_message"),
     estimatedBytes: bigint("estimated_bytes", { mode: "bigint" }).notNull(),
+    inputFormatHash: varchar("input_format_hash", { length: 64 }),
+    inputFormatName: varchar("input_format_name", { length: 100 }),
     model: text("model").notNull(),
     profile: text("profile").notNull(),
     protectionDetail: text("protection_detail"),
