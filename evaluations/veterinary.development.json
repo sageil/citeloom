@@ -1,0 +1,725 @@
+{
+  "access": "development",
+  "atK": 10,
+  "cases": [
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-db8d4853e9d808fa",
+      "origin": {
+        "documentId": "a96223c09c6e828cfe7067b29c794d45860dd4edb367b954682fcde2887d5d4d",
+        "elementId": "06c13240927e9290495aa0c1b419191fa01c099ad7bccd38d6ca71e066ab553b",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2015-seizure-management-in-dogs-pmc4913615.html",
+        "sourceKind": "text"
+      },
+      "question": "How does the median lifespan of a dog with structural epilepsy compare to that of a dog with idiopathic epilepsy?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "06c13240927e9290495aa0c1b419191fa01c099ad7bccd38d6ca71e066ab553b"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text says structural epilepsy significantly reduces median lifespan while idiopathic epilepsy does not reduce it relative to dogs generally. The requested comparison is direct.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "06c13240927e9290495aa0c1b419191fa01c099ad7bccd38d6ca71e066ab553b",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "comparison",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-e10e1e8772bddb41",
+      "origin": {
+        "documentId": "a96223c09c6e828cfe7067b29c794d45860dd4edb367b954682fcde2887d5d4d",
+        "elementId": "3b47ff41114909c85d695a093c0711eece90290ff0e6c064ad2f73d1b909d80b",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2015-seizure-management-in-dogs-pmc4913615.html",
+        "sourceKind": "text"
+      },
+      "question": "What initial phenobarbital dose does the panel recommend for canine seizure management?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "3b47ff41114909c85d695a093c0711eece90290ff0e6c064ad2f73d1b909d80b"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "The consensus table gives the recommended initial phenobarbital dose for canine seizure management. The replacement question directly asks for that dose.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "3b47ff41114909c85d695a093c0711eece90290ff0e6c064ad2f73d1b909d80b",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-b60e0689a66030b8",
+      "origin": {
+        "documentId": "9c64772582acbe061db9ecccbb720ac35621652c3930246510d329a811a4506e",
+        "elementId": "bcd8de05de01580014892a63e1efc9ab89ad8952b3a5474cce600c699c1429b3",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-lyme-borreliosis-in-dogs-and-cats-pmc5980284.html",
+        "sourceKind": "text"
+      },
+      "question": "Which dog breed in Europe has been found to have a higher rate of Lyme borreliosis seropositivity compared to other breeds?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "bcd8de05de01580014892a63e1efc9ab89ad8952b3a5474cce600c699c1429b3"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text reports higher seropositivity in Bernese Mountain Dogs than other breeds. Direct answer: Bernese Mountain Dog.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "bcd8de05de01580014892a63e1efc9ab89ad8952b3a5474cce600c699c1429b3",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-ff2333f2559591f1",
+      "origin": {
+        "documentId": "9c64772582acbe061db9ecccbb720ac35621652c3930246510d329a811a4506e",
+        "elementId": "cf92aa675a17ca9b04d22338bfe0bb7d70e8b854eeaa7f02a5908ee323d67f4f",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-lyme-borreliosis-in-dogs-and-cats-pmc5980284.html",
+        "sourceKind": "text"
+      },
+      "question": "Which Borrelia species has been associated with Lyme borreliosis in dogs living in North America?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "cf92aa675a17ca9b04d22338bfe0bb7d70e8b854eeaa7f02a5908ee323d67f4f"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text associates North American canine disease with `B. burgdorferi sensu stricto`. The rewritten question correctly asks for the Borrelia species.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "cf92aa675a17ca9b04d22338bfe0bb7d70e8b854eeaa7f02a5908ee323d67f4f",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-da9e11f5e36896c6",
+      "origin": {
+        "documentId": "9c64772582acbe061db9ecccbb720ac35621652c3930246510d329a811a4506e",
+        "elementId": "0491d4e06a84f4cd0b658f42b62a1bd2c9d58130fb063c61d51a801470b44653",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-lyme-borreliosis-in-dogs-and-cats-pmc5980284.html",
+        "sourceKind": "text"
+      },
+      "question": "Should I use quantitative titers to determine if a dog needs treatment for Lyme disease?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "0491d4e06a84f4cd0b658f42b62a1bd2c9d58130fb063c61d51a801470b44653"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Consensus table places using quantitative titers to decide treatment in the nonconsensus column. Direct answer: there is no consensus supporting that use.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "0491d4e06a84f4cd0b658f42b62a1bd2c9d58130fb063c61d51a801470b44653",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-465c53dd0c606b5d",
+      "origin": {
+        "documentId": "a96223c09c6e828cfe7067b29c794d45860dd4edb367b954682fcde2887d5d4d",
+        "elementId": "e13c5f439aac57c12842c36b09f612cac2a2c50ba079ba40ad8d2804b8c4c754",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2015-seizure-management-in-dogs-pmc4913615.html",
+        "sourceKind": "text"
+      },
+      "question": "What was the observed effect on seizure frequency for dogs finishing a trial on an MCT-based diet compared to those on a placebo?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "e13c5f439aac57c12842c36b09f612cac2a2c50ba079ba40ad8d2804b8c4c754"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text reports significantly lower seizure frequency and monthly seizure days on the MCT test diet than placebo. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "e13c5f439aac57c12842c36b09f612cac2a2c50ba079ba40ad8d2804b8c4c754",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "comparison",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-41368d331251d9c7",
+      "origin": {
+        "documentId": "a96223c09c6e828cfe7067b29c794d45860dd4edb367b954682fcde2887d5d4d",
+        "elementId": "ccf839bcbe5d3f92844bd7b2e690aaad3a3bd7c17c77dba426c3a3b8bf475316",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2015-seizure-management-in-dogs-pmc4913615.html",
+        "sourceKind": "text"
+      },
+      "question": "What specific laboratory changes should prompt a veterinarian to investigate potential renal tubular acidosis in a dog treated with zonisamide?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "ccf839bcbe5d3f92844bd7b2e690aaad3a3bd7c17c77dba426c3a3b8bf475316"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text identifies increased serum chloride and decreased bicarbonate or TCO2. The requested laboratory changes are direct.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "ccf839bcbe5d3f92844bd7b2e690aaad3a3bd7c17c77dba426c3a3b8bf475316",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-153394a3b8b8f5cf",
+      "origin": {
+        "documentId": "a96223c09c6e828cfe7067b29c794d45860dd4edb367b954682fcde2887d5d4d",
+        "elementId": "b27a77572144205a6445a8d5794ca466712eacd5cd5333e69c223c45615b344b",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2015-seizure-management-in-dogs-pmc4913615.html",
+        "sourceKind": "text"
+      },
+      "question": "According to ACVIM guidelines, what is the grade of recommendation for using imepitoin as a monotherapy?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "b27a77572144205a6445a8d5794ca466712eacd5cd5333e69c223c45615b344b"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Table gives imepitoin monotherapy grade `A`. Direct answer: grade A.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "b27a77572144205a6445a8d5794ca466712eacd5cd5333e69c223c45615b344b",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-14b8b24c24693c97",
+      "origin": {
+        "documentId": "9c64772582acbe061db9ecccbb720ac35621652c3930246510d329a811a4506e",
+        "elementId": "a90c5cacf4180594e1010c3730c8ec6791a4cbc25081110ab25dbd75dd079a97",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-lyme-borreliosis-in-dogs-and-cats-pmc5980284.html",
+        "sourceKind": "text"
+      },
+      "question": "Does a high C6 antibody level in an asymptomatic dog without protein in their urine help determine if they need antibiotics?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "a90c5cacf4180594e1010c3730c8ec6791a4cbc25081110ab25dbd75dd079a97"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text says quantitative C6 does not provide evidence-based treatment guidance for a nonclinical, nonproteinuric dog. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "a90c5cacf4180594e1010c3730c8ec6791a4cbc25081110ab25dbd75dd079a97",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-c63ef8d61252b27d",
+      "origin": {
+        "documentId": "a96223c09c6e828cfe7067b29c794d45860dd4edb367b954682fcde2887d5d4d",
+        "elementId": "67c99324a1602d09619d7122f1ede4cfc4e53113ac2a326fb262ba9df88ad6bd",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2015-seizure-management-in-dogs-pmc4913615.html",
+        "sourceKind": "text"
+      },
+      "question": "What are the specific criteria recommended by the panel for initiating anticonvulsant therapy in dogs?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "67c99324a1602d09619d7122f1ede4cfc4e53113ac2a326fb262ba9df88ad6bd"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text enumerates four panel criteria for starting antiepileptic treatment. The question directly asks for the enumerated criteria.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "67c99324a1602d09619d7122f1ede4cfc4e53113ac2a326fb262ba9df88ad6bd",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-a7e711be2d4b5259",
+      "origin": {
+        "documentId": "9c64772582acbe061db9ecccbb720ac35621652c3930246510d329a811a4506e",
+        "elementId": "e06c143a21513ccd39a228f82efa5fe68595613ac4295a46f5c19d26d5250779",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-lyme-borreliosis-in-dogs-and-cats-pmc5980284.html",
+        "sourceKind": "text"
+      },
+      "question": "Which Lyme disease vaccine available in North America does not use an adjuvant?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "e06c143a21513ccd39a228f82efa5fe68595613ac4295a46f5c19d26d5250779"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Vaccine table marks Recombitek Lyme as having no adjuvant. Direct answer: Recombitek Lyme.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "e06c143a21513ccd39a228f82efa5fe68595613ac4295a46f5c19d26d5250779",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-6d3fc1fdb47a96c5",
+      "origin": {
+        "documentId": "9c64772582acbe061db9ecccbb720ac35621652c3930246510d329a811a4506e",
+        "elementId": "fc6750e5829bec844c8e782dd1239de2c485ae779de0c322f2dc4914f0f67945",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-lyme-borreliosis-in-dogs-and-cats-pmc5980284.html",
+        "sourceKind": "text"
+      },
+      "question": "What is the primary purpose of the updated ACVIM consensus statement regarding Lyme disease in pets?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "fc6750e5829bec844c8e782dd1239de2c485ae779de0c322f2dc4914f0f67945"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Abstract says the update guides diagnosis, treatment, and prevention of Lyme borreliosis in dogs and cats. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "fc6750e5829bec844c8e782dd1239de2c485ae779de0c322f2dc4914f0f67945",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-4bcc865437ee66f5",
+      "origin": {
+        "documentId": "9c64772582acbe061db9ecccbb720ac35621652c3930246510d329a811a4506e",
+        "elementId": "374e8dcfc99d9ca46da1a84d6473c53a60ee6a6c88b52a2b2263eb43a724fe5f",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-lyme-borreliosis-in-dogs-and-cats-pmc5980284.html",
+        "sourceKind": "text"
+      },
+      "question": "What are the primary side effects to watch for when administering cyclosporine to a patient?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "374e8dcfc99d9ca46da1a84d6473c53a60ee6a6c88b52a2b2263eb43a724fe5f"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Drug table lists gastrointestinal upset and gingival hyperplasia for cyclosporine. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "374e8dcfc99d9ca46da1a84d6473c53a60ee6a6c88b52a2b2263eb43a724fe5f",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-d0c4cbd479a8b801",
+      "origin": {
+        "documentId": "9c64772582acbe061db9ecccbb720ac35621652c3930246510d329a811a4506e",
+        "elementId": "80b22ef4913ed51995e04e98ba22017c74408d80548197a972a1cd03c3e0d25d",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-lyme-borreliosis-in-dogs-and-cats-pmc5980284.html",
+        "sourceKind": "text"
+      },
+      "question": "What was the recorded percentage of Borrelia burgdorferi antibody seroprevalence in dogs tested in Connecticut during 2017?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "80b22ef4913ed51995e04e98ba22017c74408d80548197a972a1cd03c3e0d25d"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Table records Connecticut as `22,132/135,483; 16.34`. Direct answer: 16.34 percent.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "80b22ef4913ed51995e04e98ba22017c74408d80548197a972a1cd03c3e0d25d",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-development-4d52e81bbd60f825",
+      "origin": {
+        "documentId": "a96223c09c6e828cfe7067b29c794d45860dd4edb367b954682fcde2887d5d4d",
+        "elementId": "124c38dd2627b8a31a82014a7466dd54301f30d8149ef0ca510e978cd158a454",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2015-seizure-management-in-dogs-pmc4913615.html",
+        "sourceKind": "text"
+      },
+      "question": "What is the primary objective of the new consensus statement regarding the management of long-term seizures in canine patients?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "124c38dd2627b8a31a82014a7466dd54301f30d8149ef0ca510e978cd158a454"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Abstract describes a concise sequential approach to chronic seizure management, response, monitoring, and quality of life. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "124c38dd2627b8a31a82014a7466dd54301f30d8149ef0ca510e978cd158a454",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    }
+  ],
+  "corpus": {
+    "documents": [
+      {
+        "documentId": "9c64772582acbe061db9ecccbb720ac35621652c3930246510d329a811a4506e",
+        "domain": "veterinary",
+        "modality": "document",
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-lyme-borreliosis-in-dogs-and-cats-pmc5980284.html"
+      },
+      {
+        "documentId": "a96223c09c6e828cfe7067b29c794d45860dd4edb367b954682fcde2887d5d4d",
+        "domain": "veterinary",
+        "modality": "document",
+        "sourceFile": "documents/evaluation-corpora/veterinary/2015-seizure-management-in-dogs-pmc4913615.html"
+      }
+    ],
+    "sha256": "19cfbe355a0c36e75b1ae210ac07353999f25a7261cc84a534d9cd3a91351322"
+  },
+  "name": "veterinary-development",
+  "split": "development",
+  "statisticalDesign": {
+    "alpha": 0.05,
+    "alternative": "two-sided",
+    "assumedPairedNdcgDeltaStandardDeviation": 0.25,
+    "method": "normal-approximation-paired-mean",
+    "minimumDetectableNdcgDelta": 0.2,
+    "power": 0.8,
+    "requiredCaseCount": 13
+  },
+  "version": 3
+}

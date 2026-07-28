@@ -1,0 +1,753 @@
+{
+  "access": "development",
+  "atK": 10,
+  "cases": [
+    {
+      "domain": "legal",
+      "id": "legal-development-5767db9ba528b152",
+      "origin": {
+        "documentId": "cd7f7334ffb2a42104f2003ea4a8954a787d3cbd9369592492c0f6715a8d2340",
+        "elementId": "a9047263b90acf5e57e016997a766ff3816dc739201a5a36af4464283add3a53",
+        "kind": "generated",
+        "pageNumber": 50,
+        "sourceFile": "documents/evaluation-corpora/legal/canadian-human-rights-act-h-6.pdf",
+        "sourceKind": "text"
+      },
+      "question": "Members of which two services are deemed to be employed by the Crown under the Canadian Human Rights Act?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "a9047263b90acf5e57e016997a766ff3816dc739201a5a36af4464283add3a53"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text deems members of the Canadian Forces and Royal Canadian Mounted Police to be employed by the Crown. The replacement question directly asks for the two named services.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "a9047263b90acf5e57e016997a766ff3816dc739201a5a36af4464283add3a53",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-3467e88ef09827e9",
+      "origin": {
+        "documentId": "8b11b116e9461be0273d689fd149485384d4b77dfcb2bac25b6adce97465b607",
+        "elementId": "f8f38a71a6c9eb79e9ceda7c628f24217a1cea33d257cbe0620627339b82af29",
+        "kind": "generated",
+        "pageNumber": 4,
+        "sourceFile": "documents/evaluation-corpora/legal/privacy-act-p-21.pdf",
+        "sourceKind": "table"
+      },
+      "question": "Under which section of the index can I find information regarding the extension of time limits?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "f8f38a71a6c9eb79e9ceda7c628f24217a1cea33d257cbe0620627339b82af29"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Index table maps `15` to `Extension of time limits`. Direct answer: section 15.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "f8f38a71a6c9eb79e9ceda7c628f24217a1cea33d257cbe0620627339b82af29",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "table"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-e76826d7a8528eab",
+      "origin": {
+        "documentId": "cd7f7334ffb2a42104f2003ea4a8954a787d3cbd9369592492c0f6715a8d2340",
+        "elementId": "1ddc8fd58934d8230036c548286e431504c8842e741abb4e13191fc306a41883",
+        "kind": "generated",
+        "pageNumber": 24,
+        "sourceFile": "documents/evaluation-corpora/legal/canadian-human-rights-act-h-6.pdf",
+        "sourceKind": "text"
+      },
+      "question": "What is the maximum number of regional or branch offices that the Commission is permitted to set up?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "1ddc8fd58934d8230036c548286e431504c8842e741abb4e13191fc306a41883"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text permits regional or branch offices `not exceeding twelve`. Direct answer: no more than 12 offices.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "1ddc8fd58934d8230036c548286e431504c8842e741abb4e13191fc306a41883",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-6d7e836071f1677c",
+      "origin": {
+        "documentId": "cd7f7334ffb2a42104f2003ea4a8954a787d3cbd9369592492c0f6715a8d2340",
+        "elementId": "433f2dace87b0c7edf45a632a5054bf04bc2c1906fd4a0c88f5db5d4fd09ad0e",
+        "kind": "generated",
+        "pageNumber": 4,
+        "sourceFile": "documents/evaluation-corpora/legal/canadian-human-rights-act-h-6.pdf",
+        "sourceKind": "table"
+      },
+      "question": "Under the Canadian Human Rights Act, which section covers the establishment of the Pay Equity Division?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "433f2dace87b0c7edf45a632a5054bf04bc2c1906fd4a0c88f5db5d4fd09ad0e"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Index table maps `36.1` to `Pay Equity Division`. Direct answer: section 36.1.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "433f2dace87b0c7edf45a632a5054bf04bc2c1906fd4a0c88f5db5d4fd09ad0e",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "table"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-a547624056b23c98",
+      "origin": {
+        "documentId": "8b11b116e9461be0273d689fd149485384d4b77dfcb2bac25b6adce97465b607",
+        "elementId": "d4ab7e771969f7d05d9dc2505276a2f2ea62fb9213661bac4b2c61614fe414e9",
+        "kind": "generated",
+        "pageNumber": 21,
+        "sourceFile": "documents/evaluation-corpora/legal/privacy-act-p-21.pdf",
+        "sourceKind": "text"
+      },
+      "question": "What rights does an individual have after finding an error or omission in personal information used for an administrative purpose?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "d4ab7e771969f7d05d9dc2505276a2f2ea62fb9213661bac4b2c61614fe414e9"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text states the rights available after an error or omission is found in administrative personal information. The replacement question directly asks for those rights.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "d4ab7e771969f7d05d9dc2505276a2f2ea62fb9213661bac4b2c61614fe414e9",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-6dac3d0b15c82a8a",
+      "origin": {
+        "documentId": "cd7f7334ffb2a42104f2003ea4a8954a787d3cbd9369592492c0f6715a8d2340",
+        "elementId": "350ad67a1a167c28b6aaaef7efb65f5ca54a15d9a0c7da36688059dcc12893cc",
+        "kind": "generated",
+        "pageNumber": 9,
+        "sourceFile": "documents/evaluation-corpora/legal/canadian-human-rights-act-h-6.pdf",
+        "sourceKind": "text"
+      },
+      "question": "Under what specific circumstances does refusing to hire someone or treating them poorly during their employment count as a discriminatory act?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "350ad67a1a167c28b6aaaef7efb65f5ca54a15d9a0c7da36688059dcc12893cc"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "French text states that refusal or adverse differentiation based on a prohibited ground is discriminatory. The English question is a faithful paraphrase of the labeled French provision.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "350ad67a1a167c28b6aaaef7efb65f5ca54a15d9a0c7da36688059dcc12893cc",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-9a6ecefc22c7efba",
+      "origin": {
+        "documentId": "cd7f7334ffb2a42104f2003ea4a8954a787d3cbd9369592492c0f6715a8d2340",
+        "elementId": "75610496568aca7f8e541a58f082bd9bc48c92110e0ef5a4a9cd0290be6aff2e",
+        "kind": "generated",
+        "pageNumber": 5,
+        "sourceFile": "documents/evaluation-corpora/legal/canadian-human-rights-act-h-6.pdf",
+        "sourceKind": "table"
+      },
+      "question": "Under which section is the process for appointing a conciliator addressed?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "75610496568aca7f8e541a58f082bd9bc48c92110e0ef5a4a9cd0290be6aff2e"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Index table maps `47` to appointment of a conciliator. Direct answer: section 47.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "75610496568aca7f8e541a58f082bd9bc48c92110e0ef5a4a9cd0290be6aff2e",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "table"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-79293f10304e8a60",
+      "origin": {
+        "documentId": "8b11b116e9461be0273d689fd149485384d4b77dfcb2bac25b6adce97465b607",
+        "elementId": "cada3958287c0294c0b0aa2e88c3a79e8991c70743f65ddd849dc1721f788fd0",
+        "kind": "generated",
+        "pageNumber": 24,
+        "sourceFile": "documents/evaluation-corpora/legal/privacy-act-p-21.pdf",
+        "sourceKind": "text"
+      },
+      "question": "When must personal information be provided in a person's requested official language, and when may the institution translate or interpret it?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "cada3958287c0294c0b0aa2e88c3a79e8991c70743f65ddd849dc1721f788fd0"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text specifies the official-language and translation obligations for personal information disclosed under the provision. The replacement question directly asks for those obligations.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "cada3958287c0294c0b0aa2e88c3a79e8991c70743f65ddd849dc1721f788fd0",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-83311958fd01d945",
+      "origin": {
+        "documentId": "8b11b116e9461be0273d689fd149485384d4b77dfcb2bac25b6adce97465b607",
+        "elementId": "77cf5bbd5ee3c4cfb28c976b8ce533eb6c0ca880bdf565bdb3751e2f5552b472",
+        "kind": "generated",
+        "pageNumber": 56,
+        "sourceFile": "documents/evaluation-corpora/legal/privacy-act-p-21.pdf",
+        "sourceKind": "text"
+      },
+      "question": "How is the continuous oversight of this law's application organized within Parliament?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "77cf5bbd5ee3c4cfb28c976b8ce533eb6c0ca880bdf565bdb3751e2f5552b472"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "French text provides for permanent review by a Commons, Senate, or joint committee designated or established by Parliament. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "77cf5bbd5ee3c4cfb28c976b8ce533eb6c0ca880bdf565bdb3751e2f5552b472",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-308667002fee76e2",
+      "origin": {
+        "documentId": "cd7f7334ffb2a42104f2003ea4a8954a787d3cbd9369592492c0f6715a8d2340",
+        "elementId": "60aa0a4bbabf42d4d5278b03e1c621c90a90073a19510a1abf78c352b53767b5",
+        "kind": "generated",
+        "pageNumber": 3,
+        "sourceFile": "documents/evaluation-corpora/legal/canadian-human-rights-act-h-6.pdf",
+        "sourceKind": "table"
+      },
+      "question": "Under which section of the Act are rules regarding retaliation addressed?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "60aa0a4bbabf42d4d5278b03e1c621c90a90073a19510a1abf78c352b53767b5"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Index table maps `14.1` to retaliation. Direct answer: section 14.1.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "60aa0a4bbabf42d4d5278b03e1c621c90a90073a19510a1abf78c352b53767b5",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "table"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-e63ccc3355c5435f",
+      "origin": {
+        "documentId": "cd7f7334ffb2a42104f2003ea4a8954a787d3cbd9369592492c0f6715a8d2340",
+        "elementId": "fb9e33fddc7445b98bfcd1ef1dd88c69538f9b76ee6332ba4aa8b9ead82ba9c8",
+        "kind": "generated",
+        "pageNumber": 1,
+        "sourceFile": "documents/evaluation-corpora/legal/canadian-human-rights-act-h-6.pdf",
+        "sourceKind": "image"
+      },
+      "question": "Which country's coat of arms is depicted in this image?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "fb9e33fddc7445b98bfcd1ef1dd88c69538f9b76ee6332ba4aa8b9ead82ba9c8"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Image depicts the Canadian coat of arms. Direct visual identification: Canada.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "fb9e33fddc7445b98bfcd1ef1dd88c69538f9b76ee6332ba4aa8b9ead82ba9c8",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "visual-identification",
+        "source": {
+          "kind": "image",
+          "visualIdentitySha256": "be892a7ad59dd8fe226d2e1c173e82ff1abab62662eca5125f894ebe2baeb9ba"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-93fa4c363a787b16",
+      "origin": {
+        "documentId": "cd7f7334ffb2a42104f2003ea4a8954a787d3cbd9369592492c0f6715a8d2340",
+        "elementId": "e35f6147083feb522a719e056deb353dffe74307968c5b5ae5d649b6775507a7",
+        "kind": "generated",
+        "pageNumber": 33,
+        "sourceFile": "documents/evaluation-corpora/legal/canadian-human-rights-act-h-6.pdf",
+        "sourceKind": "text"
+      },
+      "question": "Whom must the Commission notify in writing after receiving the report, and what must the notice describe?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "e35f6147083feb522a719e056deb353dffe74307968c5b5ae5d649b6775507a7"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "The fragment says the Commission must notify the complainant and respondent in writing and describe the action taken. The rewritten question asks only for the supported recipients and notice contents.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "e35f6147083feb522a719e056deb353dffe74307968c5b5ae5d649b6775507a7",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-d999920fad339dcf",
+      "origin": {
+        "documentId": "8b11b116e9461be0273d689fd149485384d4b77dfcb2bac25b6adce97465b607",
+        "elementId": "32240d033755b8144a83a1f2a96156fa5afe358d25b566a1ba32b21c6bdb8385",
+        "kind": "generated",
+        "pageNumber": 7,
+        "sourceFile": "documents/evaluation-corpora/legal/privacy-act-p-21.pdf",
+        "sourceKind": "table"
+      },
+      "question": "Which section of the Act covers the immunity from prosecution or civil proceedings?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "32240d033755b8144a83a1f2a96156fa5afe358d25b566a1ba32b21c6bdb8385"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Index table maps `74` to immunity from prosecution or civil proceedings. Direct answer: section 74.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "32240d033755b8144a83a1f2a96156fa5afe358d25b566a1ba32b21c6bdb8385",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "table"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-733bea6a05e8acb1",
+      "origin": {
+        "documentId": "8b11b116e9461be0273d689fd149485384d4b77dfcb2bac25b6adce97465b607",
+        "elementId": "228f5626bdbaa31447b5eeb3c6222739aefd93e47cb6fb77f2b5340b74759c1c",
+        "kind": "generated",
+        "pageNumber": 5,
+        "sourceFile": "documents/evaluation-corpora/legal/privacy-act-p-21.pdf",
+        "sourceKind": "table"
+      },
+      "question": "Under which section are the Privacy Commissioner's findings and recommendations addressed?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "228f5626bdbaa31447b5eeb3c6222739aefd93e47cb6fb77f2b5340b74759c1c",
+        "4e18ebabfa719eb2a97e127557ca91926082054bdbfe3816bef060ace07b3a9f"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "The table maps the Privacy Commissioner's findings to the applicable section. The replacement question directly asks for that section.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "228f5626bdbaa31447b5eeb3c6222739aefd93e47cb6fb77f2b5340b74759c1c",
+            "kind": "element"
+          }
+        },
+        {
+          "provenance": {
+            "kind": "pooled",
+            "methods": [
+              "bm25",
+              "dense",
+              "hybrid",
+              "hybrid-reranked"
+            ]
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "The element is headed 'Findings and recommendations of Privacy Commissioner' and begins with section 35 (1), directly establishing that the requested subject is addressed under section 35.",
+            "reviewedAt": "2026-07-23T03:19:54.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "evidence-audit",
+              "version": "1"
+            }
+          },
+          "target": {
+            "id": "4e18ebabfa719eb2a97e127557ca91926082054bdbfe3816bef060ace07b3a9f",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "table"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-development-b4687eee7546527f",
+      "origin": {
+        "documentId": "8b11b116e9461be0273d689fd149485384d4b77dfcb2bac25b6adce97465b607",
+        "elementId": "bcd093dd42aa5391e23ea7c27b5813eee9781034de0bfde30e643bab5e961d05",
+        "kind": "generated",
+        "pageNumber": 6,
+        "sourceFile": "documents/evaluation-corpora/legal/privacy-act-p-21.pdf",
+        "sourceKind": "table"
+      },
+      "question": "Which section addresses a court order to remove a file from an exempt bank?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "bcd093dd42aa5391e23ea7c27b5813eee9781034de0bfde30e643bab5e961d05"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "The table maps a court order to remove information from a file to its applicable section. The replacement question directly asks for that section.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "bcd093dd42aa5391e23ea7c27b5813eee9781034de0bfde30e643bab5e961d05",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "table"
+        }
+      }
+    }
+  ],
+  "corpus": {
+    "documents": [
+      {
+        "documentId": "8b11b116e9461be0273d689fd149485384d4b77dfcb2bac25b6adce97465b607",
+        "domain": "legal",
+        "modality": "document",
+        "sourceFile": "documents/evaluation-corpora/legal/privacy-act-p-21.pdf"
+      },
+      {
+        "documentId": "cd7f7334ffb2a42104f2003ea4a8954a787d3cbd9369592492c0f6715a8d2340",
+        "domain": "legal",
+        "modality": "document",
+        "sourceFile": "documents/evaluation-corpora/legal/canadian-human-rights-act-h-6.pdf"
+      }
+    ],
+    "sha256": "8641d0b1880f5ba62e569223b4dbfb7e07f0a3a42c57c13873063565a0e3885b"
+  },
+  "name": "legal-development",
+  "split": "development",
+  "statisticalDesign": {
+    "alpha": 0.05,
+    "alternative": "two-sided",
+    "assumedPairedNdcgDeltaStandardDeviation": 0.25,
+    "method": "normal-approximation-paired-mean",
+    "minimumDetectableNdcgDelta": 0.2,
+    "power": 0.8,
+    "requiredCaseCount": 13
+  },
+  "version": 3
+}

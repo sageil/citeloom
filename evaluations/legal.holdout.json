@@ -1,0 +1,725 @@
+{
+  "access": "regression",
+  "atK": 10,
+  "cases": [
+    {
+      "domain": "legal",
+      "id": "legal-holdout-a757458e7582d030",
+      "origin": {
+        "documentId": "6814c7d168e23689329fc75e0a6c1f81eaa88b5ca9d3c03ab40efd1c2ab761bc",
+        "elementId": "f064b32c2cc7bde83f142734615dcbcd27c88c9f8b228ef36b5b7746df6b082b",
+        "kind": "generated",
+        "pageNumber": 32,
+        "sourceFile": "documents/evaluation-corpora/legal/interpretation-act-i-21.pdf",
+        "sourceKind": "text"
+      },
+      "question": "When an amendment is made to a legal text, how is the new content integrated into the original document?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "f064b32c2cc7bde83f142734615dcbcd27c88c9f8b228ef36b5b7746df6b082b"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "French text says amending text becomes part of the amended text to the extent compatible with its content. The English question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "f064b32c2cc7bde83f142734615dcbcd27c88c9f8b228ef36b5b7746df6b082b",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "procedure",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-9cfc8ef41f25ba2c",
+      "origin": {
+        "documentId": "9f0f57e23bc403c4bcbc9a4d66ff8905bbaba36e37134b28d7ca9fcb72da8664",
+        "elementId": "a260d8fa9067ab7272133b150dffb9a7d5fd43fea23df7eaf79163f12d4eda67",
+        "kind": "generated",
+        "pageNumber": 8,
+        "sourceFile": "documents/evaluation-corpora/legal/youth-criminal-justice-act-y-1.5.pdf",
+        "sourceKind": "table"
+      },
+      "question": "Under which section of the Act can a young person access their own record?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "a260d8fa9067ab7272133b150dffb9a7d5fd43fea23df7eaf79163f12d4eda67"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "The Act's index maps `124` to access to the record by the young person. The rewritten question correctly refers to the Act.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "a260d8fa9067ab7272133b150dffb9a7d5fd43fea23df7eaf79163f12d4eda67",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "table"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-0f1e604a36728bc9",
+      "origin": {
+        "documentId": "9f0f57e23bc403c4bcbc9a4d66ff8905bbaba36e37134b28d7ca9fcb72da8664",
+        "elementId": "67b94294e490e2156a1308bdf2f421a2fe74f14d066e6cadfe6ae81188ebb121",
+        "kind": "generated",
+        "pageNumber": 28,
+        "sourceFile": "documents/evaluation-corpora/legal/youth-criminal-justice-act-y-1.5.pdf",
+        "sourceKind": "text"
+      },
+      "question": "How are existing provincial pre-charge diversion programs treated under the provisions of this article?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "67b94294e490e2156a1308bdf2f421a2fe74f14d066e6cadfe6ae81188ebb121"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "French text deems an existing provincial pre-charge review program to be established under subsection 1. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "67b94294e490e2156a1308bdf2f421a2fe74f14d066e6cadfe6ae81188ebb121",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-887a9c915e2c8c96",
+      "origin": {
+        "documentId": "6814c7d168e23689329fc75e0a6c1f81eaa88b5ca9d3c03ab40efd1c2ab761bc",
+        "elementId": "f6d98d7191da177d70f66ae170a950fff7b40c7471d15f15607659bdf1c8dc0d",
+        "kind": "generated",
+        "pageNumber": 35,
+        "sourceFile": "documents/evaluation-corpora/legal/interpretation-act-i-21.pdf",
+        "sourceKind": "table"
+      },
+      "question": "Which French country name appears immediately after 'Antigua et Barbuda' in the article 35 schedule?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "f6d98d7191da177d70f66ae170a950fff7b40c7471d15f15607659bdf1c8dc0d"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "The French schedule places `Australie` immediately after `Antigua et Barbuda`. The rewritten question asks for the supported sequence rather than an unsupported translation pairing.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "f6d98d7191da177d70f66ae170a950fff7b40c7471d15f15607659bdf1c8dc0d",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "table"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-8d9e190d5db9232f",
+      "origin": {
+        "documentId": "9f0f57e23bc403c4bcbc9a4d66ff8905bbaba36e37134b28d7ca9fcb72da8664",
+        "elementId": "3466112d3d169a9f843ada224b43b5a63858ceaa8b24e0ae5a59e51c29e93332",
+        "kind": "generated",
+        "pageNumber": 3,
+        "sourceFile": "documents/evaluation-corpora/legal/youth-criminal-justice-act-y-1.5.pdf",
+        "sourceKind": "table"
+      },
+      "question": "Under which section is a victim's right to information addressed?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "3466112d3d169a9f843ada224b43b5a63858ceaa8b24e0ae5a59e51c29e93332"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "The table identifies the section covering victims' rights. The replacement question directly asks for that section.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "3466112d3d169a9f843ada224b43b5a63858ceaa8b24e0ae5a59e51c29e93332",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "table"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-34479edd9f2f8375",
+      "origin": {
+        "documentId": "9f0f57e23bc403c4bcbc9a4d66ff8905bbaba36e37134b28d7ca9fcb72da8664",
+        "elementId": "a8755987668986596f62957441dc5081ce979b266cb15b230b29c31c18aec130",
+        "kind": "generated",
+        "pageNumber": 84,
+        "sourceFile": "documents/evaluation-corpora/legal/youth-criminal-justice-act-y-1.5.pdf",
+        "sourceKind": "text"
+      },
+      "question": "Who must be given a chance to present their side before the youth justice court issues an order under subsection (1)?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "a8755987668986596f62957441dc5081ce979b266cb15b230b29c31c18aec130"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text lists the young person, a parent, the Attorney General, the provincial director, and provincial and federal correctional representatives. The question directly asks for this list.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "a8755987668986596f62957441dc5081ce979b266cb15b230b29c31c18aec130",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-e9d14ad594e69675",
+      "origin": {
+        "documentId": "9f0f57e23bc403c4bcbc9a4d66ff8905bbaba36e37134b28d7ca9fcb72da8664",
+        "elementId": "4802fb4900b7f31b6b25ac3f8098354bdef7d9a90e6dfdc2273e1c3b21d3489e",
+        "kind": "generated",
+        "pageNumber": 6,
+        "sourceFile": "documents/evaluation-corpora/legal/youth-criminal-justice-act-y-1.5.pdf",
+        "sourceKind": "table"
+      },
+      "question": "What section of the code addresses the requirement to keep minors separate from adult inmates?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "4802fb4900b7f31b6b25ac3f8098354bdef7d9a90e6dfdc2273e1c3b21d3489e"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Index table maps `84` to keeping young people apart from adults. Direct answer: section 84.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "4802fb4900b7f31b6b25ac3f8098354bdef7d9a90e6dfdc2273e1c3b21d3489e",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "table"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-8530ede5aedf7115",
+      "origin": {
+        "documentId": "6814c7d168e23689329fc75e0a6c1f81eaa88b5ca9d3c03ab40efd1c2ab761bc",
+        "elementId": "c1b5face85e6303a656089050bbb151cac4b4c52e8905494738786379ad74790",
+        "kind": "generated",
+        "pageNumber": 7,
+        "sourceFile": "documents/evaluation-corpora/legal/interpretation-act-i-21.pdf",
+        "sourceKind": "text"
+      },
+      "question": "What must the Clerk of the Parliaments endorse on every Act immediately after its title?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "c1b5face85e6303a656089050bbb151cac4b4c52e8905494738786379ad74790"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text states what the Clerk must endorse on an instrument. The replacement question directly asks for the required endorsement.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "c1b5face85e6303a656089050bbb151cac4b4c52e8905494738786379ad74790",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-0af1bb9883f66e7d",
+      "origin": {
+        "documentId": "9f0f57e23bc403c4bcbc9a4d66ff8905bbaba36e37134b28d7ca9fcb72da8664",
+        "elementId": "62319dd3b9df7bbda43af472acccce3bde55b9692f0c3b0fd0b7b7a84288c4b9",
+        "kind": "generated",
+        "pageNumber": 67,
+        "sourceFile": "documents/evaluation-corpora/legal/youth-criminal-justice-act-y-1.5.pdf",
+        "sourceKind": "text"
+      },
+      "question": "Are there any specific provisions from the sentencing part of the Criminal Code that still apply to prosecutions under this Act?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "62319dd3b9df7bbda43af472acccce3bde55b9692f0c3b0fd0b7b7a84288c4b9"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text lists the Part XXIII Criminal Code provisions that still apply with necessary modifications. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "62319dd3b9df7bbda43af472acccce3bde55b9692f0c3b0fd0b7b7a84288c4b9",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-24a5cb4e1124d014",
+      "origin": {
+        "documentId": "9f0f57e23bc403c4bcbc9a4d66ff8905bbaba36e37134b28d7ca9fcb72da8664",
+        "elementId": "ad1aca2365ecb3870aa4e9c6a3ab17057354caf88c58b6cf383c05ce9a310a77",
+        "kind": "generated",
+        "pageNumber": 7,
+        "sourceFile": "documents/evaluation-corpora/legal/youth-criminal-justice-act-y-1.5.pdf",
+        "sourceKind": "table"
+      },
+      "question": "What is the French term used for a transfer to an adult correctional facility?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "ad1aca2365ecb3870aa4e9c6a3ab17057354caf88c58b6cf383c05ce9a310a77"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Table pairs `Transfer to adult facility` with `Transfèrement à un établissement correctionnel provincial pour adultes`. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "ad1aca2365ecb3870aa4e9c6a3ab17057354caf88c58b6cf383c05ce9a310a77",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "table"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-c855d9cfb2f9a7cc",
+      "origin": {
+        "documentId": "6814c7d168e23689329fc75e0a6c1f81eaa88b5ca9d3c03ab40efd1c2ab761bc",
+        "elementId": "7cc92f9db7f300e36f6d5d797bc1bc919eaa5082ecf1c825a0c341d2bdca996c",
+        "kind": "generated",
+        "pageNumber": 11,
+        "sourceFile": "documents/evaluation-corpora/legal/interpretation-act-i-21.pdf",
+        "sourceKind": "text"
+      },
+      "question": "How must every enactment be construed with respect to the Aboriginal and treaty rights of Indigenous peoples?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "7cc92f9db7f300e36f6d5d797bc1bc919eaa5082ecf1c825a0c341d2bdca996c"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text preserves Aboriginal and treaty rights when construing an enactment. The replacement question directly asks for that construction rule.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "7cc92f9db7f300e36f6d5d797bc1bc919eaa5082ecf1c825a0c341d2bdca996c",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "procedure",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-1ddea28a1a531863",
+      "origin": {
+        "documentId": "6814c7d168e23689329fc75e0a6c1f81eaa88b5ca9d3c03ab40efd1c2ab761bc",
+        "elementId": "c6b4ac81b37f803e2483f7be563a70152cfcd8cafe6505364408cdca52e98304",
+        "kind": "generated",
+        "pageNumber": 12,
+        "sourceFile": "documents/evaluation-corpora/legal/interpretation-act-i-21.pdf",
+        "sourceKind": "text"
+      },
+      "question": "How should an enactment deemed remedial be interpreted to best attain its objects?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "c6b4ac81b37f803e2483f7be563a70152cfcd8cafe6505364408cdca52e98304"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text requires a fair, large, and liberal construction that best ensures the enactment's objects. The replacement question directly asks for the remedial interpretation rule.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "c6b4ac81b37f803e2483f7be563a70152cfcd8cafe6505364408cdca52e98304",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "procedure",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-9daa2c22f63f4e65",
+      "origin": {
+        "documentId": "6814c7d168e23689329fc75e0a6c1f81eaa88b5ca9d3c03ab40efd1c2ab761bc",
+        "elementId": "8fb880c95394715c59386493f12d95e821b2e9be2d0a2a7c4907861bb1fb72b7",
+        "kind": "generated",
+        "pageNumber": 4,
+        "sourceFile": "documents/evaluation-corpora/legal/interpretation-act-i-21.pdf",
+        "sourceKind": "table"
+      },
+      "question": "Under which section number are rules regarding the calculation of months following a specific date found?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "8fb880c95394715c59386493f12d95e821b2e9be2d0a2a7c4907861bb1fb72b7"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Index table maps `28` to calculation of a period of months after or before a specified day. Direct answer: section 28.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "8fb880c95394715c59386493f12d95e821b2e9be2d0a2a7c4907861bb1fb72b7",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "table"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-b041970cb15bdbe9",
+      "origin": {
+        "documentId": "6814c7d168e23689329fc75e0a6c1f81eaa88b5ca9d3c03ab40efd1c2ab761bc",
+        "elementId": "1057f8816e946883022fdd34fb3fe70d76fe49f6ddd169ee145d41c862a2f5f5",
+        "kind": "generated",
+        "pageNumber": 12,
+        "sourceFile": "documents/evaluation-corpora/legal/interpretation-act-i-21.pdf",
+        "sourceKind": "text"
+      },
+      "question": "Do marginal notes and references to former enactments form part of an enactment, and why are they included?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "1057f8816e946883022fdd34fb3fe70d76fe49f6ddd169ee145d41c862a2f5f5"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text states that marginal notes form no part of an enactment and are inserted only for convenience of reference. The replacement question directly asks for their legal status and purpose.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "1057f8816e946883022fdd34fb3fe70d76fe49f6ddd169ee145d41c862a2f5f5",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "legal",
+      "id": "legal-holdout-4525c8ddeb355fda",
+      "origin": {
+        "documentId": "9f0f57e23bc403c4bcbc9a4d66ff8905bbaba36e37134b28d7ca9fcb72da8664",
+        "elementId": "a0e3886386dbf1e6d1c1f85efb1d2151fcea1202e0754f251cb86bb5cb93db80",
+        "kind": "generated",
+        "pageNumber": 90,
+        "sourceFile": "documents/evaluation-corpora/legal/youth-criminal-justice-act-y-1.5.pdf",
+        "sourceKind": "text"
+      },
+      "question": "Under what specific circumstances can a teenager be held in the same facility as an adult?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "a0e3886386dbf1e6d1c1f85efb1d2151fcea1202e0754f251cb86bb5cb93db80"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Section 84 lists the statutory exceptions that permit placement with adults. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "a0e3886386dbf1e6d1c1f85efb1d2151fcea1202e0754f251cb86bb5cb93db80",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    }
+  ],
+  "corpus": {
+    "documents": [
+      {
+        "documentId": "6814c7d168e23689329fc75e0a6c1f81eaa88b5ca9d3c03ab40efd1c2ab761bc",
+        "domain": "legal",
+        "modality": "document",
+        "sourceFile": "documents/evaluation-corpora/legal/interpretation-act-i-21.pdf"
+      },
+      {
+        "documentId": "9f0f57e23bc403c4bcbc9a4d66ff8905bbaba36e37134b28d7ca9fcb72da8664",
+        "domain": "legal",
+        "modality": "document",
+        "sourceFile": "documents/evaluation-corpora/legal/youth-criminal-justice-act-y-1.5.pdf"
+      }
+    ],
+    "sha256": "2f473dc4fcd900e0addc77af826bf5d10b477e71c22b8e1402be5682a1694903"
+  },
+  "name": "legal-holdout",
+  "split": "holdout",
+  "statisticalDesign": {
+    "alpha": 0.05,
+    "alternative": "two-sided",
+    "assumedPairedNdcgDeltaStandardDeviation": 0.25,
+    "method": "normal-approximation-paired-mean",
+    "minimumDetectableNdcgDelta": 0.2,
+    "power": 0.8,
+    "requiredCaseCount": 13
+  },
+  "version": 3
+}

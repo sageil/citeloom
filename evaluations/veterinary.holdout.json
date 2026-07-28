@@ -1,0 +1,725 @@
+{
+  "access": "regression",
+  "atK": 10,
+  "cases": [
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-f343c47aedf4f5fc",
+      "origin": {
+        "documentId": "90cb9bd94ef5ed50bf761c8bff76ae2f258db9118108457f24ce9a2138700404",
+        "elementId": "ac00a3be7884e9d51e0d51b69e4d18633252738d614ff413a7300a60b202fbf3",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-safe-use-of-cytotoxic-chemotherapeutics-pmc5980460.html",
+        "sourceKind": "text"
+      },
+      "question": "How often should a designated safety officer review and update safety manuals in a veterinary facility?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "ac00a3be7884e9d51e0d51b69e4d18633252738d614ff413a7300a60b202fbf3"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text requires continual review at least every six months and updates when new guidance appears. Direct answer: at least every six months.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "ac00a3be7884e9d51e0d51b69e4d18633252738d614ff413a7300a60b202fbf3",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-f984feae416c5cdf",
+      "origin": {
+        "documentId": "35eee8dfb3627272bb750b7b349ecb295e49eb3a0f10e43331f3abdea7226035",
+        "elementId": "7adeaead88cc09caa20ca15157d1f2ebd8fd7af8bb2564de732ab9463cab88b8",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html",
+        "sourceKind": "text"
+      },
+      "question": "What is the most frequent ocular finding seen in cats suffering from hypertension?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "7adeaead88cc09caa20ca15157d1f2ebd8fd7af8bb2564de732ab9463cab88b8"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text identifies exudative retinal detachment as the most commonly observed ocular finding. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "7adeaead88cc09caa20ca15157d1f2ebd8fd7af8bb2564de732ab9463cab88b8",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-b4b07f351801ef02",
+      "origin": {
+        "documentId": "90cb9bd94ef5ed50bf761c8bff76ae2f258db9118108457f24ce9a2138700404",
+        "elementId": "f374eb59e902fbd5506f329b13672419e7b5d81ffb9d7de0f4eeee5e61f6f0bd",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-safe-use-of-cytotoxic-chemotherapeutics-pmc5980460.html",
+        "sourceKind": "text"
+      },
+      "question": "How can a veterinary hospital reduce surface contamination from platinum-containing cytostatic drugs?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "f374eb59e902fbd5506f329b13672419e7b5d81ffb9d7de0f4eeee5e61f6f0bd"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "A cited study title states that a closed system reduced platinum-containing cytostatic workplace contamination in a veterinary hospital. Direct answer: introduce a closed-system drug-transfer device.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "f374eb59e902fbd5506f329b13672419e7b5d81ffb9d7de0f4eeee5e61f6f0bd",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "procedure",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-1bb0e0aad6cd4bc8",
+      "origin": {
+        "documentId": "90cb9bd94ef5ed50bf761c8bff76ae2f258db9118108457f24ce9a2138700404",
+        "elementId": "1c23e44b720b7dceedbcbdce35a8a74ee0227c843f95b2be226ad8d37b93dcb9",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-safe-use-of-cytotoxic-chemotherapeutics-pmc5980460.html",
+        "sourceKind": "text"
+      },
+      "question": "What specific items should a properly maintained spill kit include for managing chemotherapy spills?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "1c23e44b720b7dceedbcbdce35a8a74ee0227c843f95b2be226ad8d37b93dcb9"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text enumerates PPE, absorbent materials, labeled disposal bags, a scoop, and a puncture-resistant fragment container. The question directly asks for the enumerated spill-kit contents.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "1c23e44b720b7dceedbcbdce35a8a74ee0227c843f95b2be226ad8d37b93dcb9",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-8273dab2db085d7d",
+      "origin": {
+        "documentId": "35eee8dfb3627272bb750b7b349ecb295e49eb3a0f10e43331f3abdea7226035",
+        "elementId": "f8d1e09d22dbb7e84f4a91bb012db4997bf21f347e86e9fb208694f2e4d83b0d",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html",
+        "sourceKind": "text"
+      },
+      "question": "What systolic blood pressure range indicates a high risk of target-organ damage in cats and dogs?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "f8d1e09d22dbb7e84f4a91bb012db4997bf21f347e86e9fb208694f2e4d83b0d"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Table classifies SBP at or above 180 mm Hg as severely hypertensive with high target-organ-damage risk. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "f8d1e09d22dbb7e84f4a91bb012db4997bf21f347e86e9fb208694f2e4d83b0d",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-695ee9416c55f2e6",
+      "origin": {
+        "documentId": "35eee8dfb3627272bb750b7b349ecb295e49eb3a0f10e43331f3abdea7226035",
+        "elementId": "d11ef83000ac6830c5042180227b41f75a57a7a1132a8315890125255b1ba6c6",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html",
+        "sourceKind": "text"
+      },
+      "question": "What does the abbreviation SDMA stand for in a veterinary clinical context?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "d11ef83000ac6830c5042180227b41f75a57a7a1132a8315890125255b1ba6c6"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Abbreviation list expands SDMA to symmetric dimethylarginine. Direct answer: symmetric dimethylarginine.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "d11ef83000ac6830c5042180227b41f75a57a7a1132a8315890125255b1ba6c6",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "definition",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-071fa58cfd96ab66",
+      "origin": {
+        "documentId": "35eee8dfb3627272bb750b7b349ecb295e49eb3a0f10e43331f3abdea7226035",
+        "elementId": "ab52c94297a0d08225a9ea3b85716428736b9c9ddd7eb9dd029c269776794cda",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html",
+        "sourceKind": "text"
+      },
+      "question": "What specific term should be used instead of \"essential\" hypertension when an animal has high blood pressure without any obvious underlying disease?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "ab52c94297a0d08225a9ea3b85716428736b9c9ddd7eb9dd029c269776794cda"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Panel text recommends `idiopathic` in place of `essential`. Direct answer: idiopathic hypertension.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "ab52c94297a0d08225a9ea3b85716428736b9c9ddd7eb9dd029c269776794cda",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "definition",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-3b2b72dc440ac585",
+      "origin": {
+        "documentId": "35eee8dfb3627272bb750b7b349ecb295e49eb3a0f10e43331f3abdea7226035",
+        "elementId": "788ec54bad5c08c37dedd17ecfa0a55bc8b2588210c17d16fa0e2d1d1eb5f920",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html",
+        "sourceKind": "text"
+      },
+      "question": "Can darbepoetin be used to help treat anemia caused by chronic kidney disease in cats?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "788ec54bad5c08c37dedd17ecfa0a55bc8b2588210c17d16fa0e2d1d1eb5f920"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "A cited study title describes darbepoetin stimulation of erythropoiesis for anemia of chronic kidney disease in 25 cats. The title directly supports a qualified yes.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "788ec54bad5c08c37dedd17ecfa0a55bc8b2588210c17d16fa0e2d1d1eb5f920",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-911705a85f940d2a",
+      "origin": {
+        "documentId": "35eee8dfb3627272bb750b7b349ecb295e49eb3a0f10e43331f3abdea7226035",
+        "elementId": "589a53061e8162159588fc13ec72d6c87696d0dcf86c02526a097fa4b0269883",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html",
+        "sourceKind": "text"
+      },
+      "question": "What types of clinical research do experts suggest conducting to better understand blood pressure assessment and long-term treatment effects in pets?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "589a53061e8162159588fc13ec72d6c87696d0dcf86c02526a097fa4b0269883"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Conclusion recommends large multicenter BP-assessment studies and long-term hypertension-treatment studies. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "589a53061e8162159588fc13ec72d6c87696d0dcf86c02526a097fa4b0269883",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-01a1859fcb87cf89",
+      "origin": {
+        "documentId": "35eee8dfb3627272bb750b7b349ecb295e49eb3a0f10e43331f3abdea7226035",
+        "elementId": "fceab65f7a83dabc8df4f306f564b3535f39e1671899b832043bfd97db4b4105",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html",
+        "sourceKind": "text"
+      },
+      "question": "What annual increase in canine blood pressure has been reported in some studies as dogs age?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "fceab65f7a83dabc8df4f306f564b3535f39e1671899b832043bfd97db4b4105"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text reports a 1 to 3 mm Hg annual increase in some canine studies while noting that other studies found no age effect. The rewritten question accurately asks what has been reported in some studies.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "fceab65f7a83dabc8df4f306f564b3535f39e1671899b832043bfd97db4b4105",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-d5585e4c1e62e0da",
+      "origin": {
+        "documentId": "35eee8dfb3627272bb750b7b349ecb295e49eb3a0f10e43331f3abdea7226035",
+        "elementId": "38a7fa785bc50b5cc17299f55850a5a10cb761e45b50fd2959536103720794ba",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html",
+        "sourceKind": "text"
+      },
+      "question": "How much higher is the blood pressure in Greyhounds compared to mongrel dogs?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "38a7fa785bc50b5cc17299f55850a5a10cb761e45b50fd2959536103720794ba"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text reports hound BP approximately 10 to 20 mm Hg above mongrels. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "38a7fa785bc50b5cc17299f55850a5a10cb761e45b50fd2959536103720794ba",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "comparison",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-660733b1872adede",
+      "origin": {
+        "documentId": "35eee8dfb3627272bb750b7b349ecb295e49eb3a0f10e43331f3abdea7226035",
+        "elementId": "be832061fce1e84d1a08273fb7b3867d4229d0fabea3ae5573f143541865c845",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html",
+        "sourceKind": "text"
+      },
+      "question": "What are the potential side effects of using amlodipine in dogs?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "be832061fce1e84d1a08273fb7b3867d4229d0fabea3ae5573f143541865c845"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Cited titles report generalized peripheral edema and gingival hyperplasia associated with amlodipine in dogs. The titles directly support those potential adverse effects.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "be832061fce1e84d1a08273fb7b3867d4229d0fabea3ae5573f143541865c845",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-1b783317b0b56474",
+      "origin": {
+        "documentId": "35eee8dfb3627272bb750b7b349ecb295e49eb3a0f10e43331f3abdea7226035",
+        "elementId": "f62c2780e034886593f4d781617c0cfe9cbdb708089e0f0063c10cccccf50230",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html",
+        "sourceKind": "text"
+      },
+      "question": "What specific clinical signs and diagnostic tests should I look for to identify potential kidney damage caused by hypertension in a pet?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "f62c2780e034886593f4d781617c0cfe9cbdb708089e0f0063c10cccccf50230"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Target-organ-damage table lists renal findings and serum, urine, and GFR tests. The question directly asks for that row's findings and tests.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "f62c2780e034886593f4d781617c0cfe9cbdb708089e0f0063c10cccccf50230",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-bbdafe8a9904d331",
+      "origin": {
+        "documentId": "90cb9bd94ef5ed50bf761c8bff76ae2f258db9118108457f24ce9a2138700404",
+        "elementId": "3092982bd3f9b37ace053b4be00b7fe8e70069dc5d08893f373fc93b27ffbd97",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-safe-use-of-cytotoxic-chemotherapeutics-pmc5980460.html",
+        "sourceKind": "text"
+      },
+      "question": "How long can carboplatin be detected in a patient's urine or feces after it has been administered?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "3092982bd3f9b37ace053b4be00b7fe8e70069dc5d08893f373fc93b27ffbd97"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Excretion table reports carboplatin in urine, feces, and other products for 21 days. Direct answer: 21 days.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "3092982bd3f9b37ace053b4be00b7fe8e70069dc5d08893f373fc93b27ffbd97",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    },
+    {
+      "domain": "veterinary",
+      "id": "veterinary-holdout-518c4216f18fada1",
+      "origin": {
+        "documentId": "35eee8dfb3627272bb750b7b349ecb295e49eb3a0f10e43331f3abdea7226035",
+        "elementId": "0985ea4f73cebeda12643721e9b2625a23b5a670314f592966a0e5affd56bc4e",
+        "kind": "generated",
+        "pageNumber": null,
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html",
+        "sourceKind": "text"
+      },
+      "question": "What percentage of an extremity's circumference should the cuff width represent when using Doppler or many oscillometric units?",
+      "relevantDocumentIds": [],
+      "relevantElementIds": [
+        "0985ea4f73cebeda12643721e9b2625a23b5a670314f592966a0e5affd56bc4e"
+      ],
+      "judgments": [
+        {
+          "provenance": {
+            "kind": "origin"
+          },
+          "relevance": "direct",
+          "review": {
+            "auditStatus": "accepted",
+            "rationale": "Text specifies cuff width of 30 to 40 percent of extremity circumference. The question is directly supported.",
+            "reviewedAt": "2026-07-15T16:43:01.000Z",
+            "reviewer": {
+              "kind": "process",
+              "name": "semantic-audit",
+              "version": "9e35e4115c503b369d169b11512e853abcb97f40"
+            }
+          },
+          "target": {
+            "id": "0985ea4f73cebeda12643721e9b2625a23b5a670314f592966a0e5affd56bc4e",
+            "kind": "element"
+          }
+        }
+      ],
+      "metadata": {
+        "language": "en",
+        "questionType": "factoid",
+        "source": {
+          "kind": "text"
+        }
+      }
+    }
+  ],
+  "corpus": {
+    "documents": [
+      {
+        "documentId": "35eee8dfb3627272bb750b7b349ecb295e49eb3a0f10e43331f3abdea7226035",
+        "domain": "veterinary",
+        "modality": "document",
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-systemic-hypertension-in-dogs-and-cats-pmc6271319.html"
+      },
+      {
+        "documentId": "90cb9bd94ef5ed50bf761c8bff76ae2f258db9118108457f24ce9a2138700404",
+        "domain": "veterinary",
+        "modality": "document",
+        "sourceFile": "documents/evaluation-corpora/veterinary/2018-safe-use-of-cytotoxic-chemotherapeutics-pmc5980460.html"
+      }
+    ],
+    "sha256": "7877662fb8f404f9608108c71c6c70f7621bf0d0d50463e0cae2c86805a8062f"
+  },
+  "name": "veterinary-holdout",
+  "split": "holdout",
+  "statisticalDesign": {
+    "alpha": 0.05,
+    "alternative": "two-sided",
+    "assumedPairedNdcgDeltaStandardDeviation": 0.25,
+    "method": "normal-approximation-paired-mean",
+    "minimumDetectableNdcgDelta": 0.2,
+    "power": 0.8,
+    "requiredCaseCount": 13
+  },
+  "version": 3
+}
