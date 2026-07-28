@@ -732,10 +732,6 @@
                             <div><span>Document template</span><code x-text="format.documentTemplate"></code></div>
                             <div><span>Query template</span><code x-text="format.queryTemplate"></code></div>
                           </div>
-                          <dl class="settings-input-format-metadata">
-                            <div><dt>Hash</dt><dd><code x-text="format.inputFormatHash"></code></dd></div>
-                            <div><dt>Created</dt><dd x-text="formatEmbeddingInputFormatTimestamp(format.createdAt)"></dd></div>
-                          </dl>
                           <div class="settings-input-format-actions">
                             <button class="button secondary" type="button" :disabled="inputFormatBusy" @click="beginEmbeddingInputFormatCopy(format)">Copy</button>
                             <button class="button secondary" type="button" :disabled="inputFormatBusy" @click="beginEmbeddingInputFormatRevision(format)">Create revision</button>

@@ -1503,14 +1503,6 @@ export function registerPage(alpine) {
       return `Used by ${format.retirementBlockers.join(", ")}`;
     },
 
-    formatEmbeddingInputFormatTimestamp(value) {
-      const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime())) {
-        return value;
-      }
-      return parsed.toLocaleString();
-    },
-
     async submitEmbeddingInputFormat() {
       if (
         this.inputFormatBusy
@@ -1565,15 +1557,9 @@ export function registerPage(alpine) {
         this.reloadAfterSave = false;
         await this.loadSettings();
         this.managedInputFormatId = created.id;
-        const field = this.settings?.fields.find((candidate) => {
-          return candidate.key === "embeddingInputFormatId";
-        });
-        if (field !== undefined) {
-          this.writeFieldDraft(field, created.id);
-        }
         dispatchNotice(
           "success",
-          "The immutable input format was created. Save settings to select it.",
+          "The immutable input format was created and is available to select.",
         );
       } catch (error) {
         dispatchNotice(

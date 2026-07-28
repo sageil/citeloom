@@ -1976,16 +1976,14 @@
   border-radius: 6px;
 }
 
-.settings-input-format-templates span,
-.settings-input-format-metadata dt {
+.settings-input-format-templates span {
   color: var(--muted);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
 }
 
-.settings-input-format-templates code,
-.settings-input-format-metadata code {
+.settings-input-format-templates code {
   overflow-wrap: anywhere;
   color: var(--text);
   font-size: 11px;
@@ -1993,26 +1991,8 @@
   white-space: pre-wrap;
 }
 
-.settings-input-format-metadata {
-  display: grid;
-  gap: 8px;
-  margin: 12px 0;
-}
-
-.settings-input-format-metadata > div {
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr);
-  gap: 8px;
-}
-
-.settings-input-format-metadata dd {
-  min-width: 0;
-  margin: 0;
-  color: var(--muted);
-  font-size: 11px;
-}
-
 .settings-input-format-actions {
+  margin-top: 12px;
   margin-left: 0;
 }
 
