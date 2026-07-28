@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { asc, count, eq } from "drizzle-orm";
+import { asc, count, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { CiteLoomDatabase } from "../database/client.js";
@@ -93,7 +93,7 @@ export class EmbeddingInputFormatStore {
       .select()
       .from(embeddingInputFormats)
       .orderBy(
-        asc(embeddingInputFormats.retiredAt),
+        sql`${embeddingInputFormats.retiredAt} IS NOT NULL`,
         asc(embeddingInputFormats.name),
         asc(embeddingInputFormats.createdAt),
       );

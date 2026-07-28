@@ -40,8 +40,8 @@ const embeddingSpaceRowSchema = z.object({
   inputFormatId: z.uuid(),
   inputFormatQueryTemplate: z.string(),
   inputFormatSchemaVersion: z.number().int().positive(),
+  inputFormatName: z.string().trim().min(1),
   model: z.string().min(1),
-  profile: z.string().trim().min(1),
   retrievalWindowPolicy: storedRetrievalWindowPolicySchema,
   retrievalWindowPolicyFingerprint: z.string().regex(/^[a-f0-9]{64}$/u),
 });
@@ -152,8 +152,8 @@ export async function ensureEmbeddingSpace(
       inputFormatId: embeddingSpaces.inputFormatId,
       inputFormatQueryTemplate: embeddingSpaces.inputFormatQueryTemplate,
       inputFormatSchemaVersion: embeddingSpaces.inputFormatSchemaVersion,
+      inputFormatName: embeddingSpaces.inputFormatName,
       model: embeddingSpaces.model,
-      profile: embeddingSpaces.profile,
       retrievalWindowPolicy: embeddingSpaces.retrievalWindowPolicy,
       retrievalWindowPolicyFingerprint:
         embeddingSpaces.retrievalWindowPolicyFingerprint,
@@ -182,7 +182,7 @@ export async function ensureEmbeddingSpace(
       documentTemplate: result.data.inputFormatDocumentTemplate,
       id: result.data.inputFormatId,
       inputFormatHash: result.data.inputFormatHash,
-      name: result.data.profile,
+      name: result.data.inputFormatName,
       queryTemplate: result.data.inputFormatQueryTemplate,
       schemaVersion: result.data.inputFormatSchemaVersion,
     });
@@ -209,8 +209,8 @@ export async function ensureEmbeddingSpace(
       inputFormatId: space.inputFormat.id,
       inputFormatQueryTemplate: space.inputFormat.queryTemplate,
       inputFormatSchemaVersion: space.inputFormat.schemaVersion,
+      inputFormatName: space.inputFormat.name,
       model: space.model,
-      profile: space.inputFormat.name,
       retrievalWindowPolicy: space.retrievalWindow.policy,
       retrievalWindowPolicyFingerprint: space.retrievalWindow.fingerprint,
     })

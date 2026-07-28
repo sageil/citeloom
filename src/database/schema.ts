@@ -465,7 +465,7 @@ export const embeddingSpaces = pgTable(
     inputFormatQueryTemplate: text("input_format_query_template"),
     inputFormatSchemaVersion: integer("input_format_schema_version"),
     model: text("model").notNull(),
-    profile: text("profile").notNull(),
+    inputFormatName: text("profile").notNull(),
     retrievalWindowPolicy: jsonb("retrieval_window_policy")
       .$type<StoredRetrievalWindowPolicy>()
       .notNull(),
@@ -537,7 +537,7 @@ export const embeddingSpaceGcSpaces = pgTable(
     inputFormatHash: varchar("input_format_hash", { length: 64 }),
     inputFormatName: varchar("input_format_name", { length: 100 }),
     model: text("model").notNull(),
-    profile: text("profile").notNull(),
+    legacyProfile: text("profile").notNull(),
     protectionDetail: text("protection_detail"),
     protectionKind: varchar("protection_kind", { length: 32 }),
     rowCounts: jsonb("row_counts").$type<EmbeddingSpaceRowCounts>().notNull(),

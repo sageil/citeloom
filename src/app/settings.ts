@@ -43,6 +43,10 @@ import {
   EmbeddingInputFormatStore,
   type EmbeddingInputFormatRecordWithUsage,
 } from "../embedding/input-format-store.js";
+import {
+  readEmbeddingInputFormatContract,
+  type EmbeddingInputFormatContract,
+} from "../embedding/input-format-model.js";
 
 const SETTINGS_ID = "runtime";
 const runtimeSettingKeySchema = z.enum([
@@ -641,7 +645,7 @@ function normalizeEmbeddingSpaceIdAfterIdentityChange(
   request: ApplicationSettingsUpdateRequest,
   currentConfig: AppConfig,
   providerSettings: ProviderSettings,
-  inputFormat: EmbeddingInputFormatRecordWithUsage,
+  inputFormat: EmbeddingInputFormatContract,
 ): RuntimeSettings {
   const currentSpaceIdOverride =
     request.stored.settings.runtime.embeddingSpaceId;
@@ -886,6 +890,13 @@ async function readEmbeddingSpaceAvailability(
     database
       .select({ value: count() })
       .from(indexedDocumentSpaces)
+      .innerJoin(
+        indexedDocuments,
+        and(
+          eq(indexedDocumentSpaces.documentId, indexedDocuments.documentId),
+          eq(indexedDocumentSpaces.sourceFile, indexedDocuments.sourceFile),
+        ),
+      )
       .where(eq(indexedDocumentSpaces.embeddingSpaceId, embeddingSpaceId)),
   ]);
   return {
@@ -914,7 +925,7 @@ function readSettingsCount(
 function readSelectedInputFormat(
   inputFormats: readonly EmbeddingInputFormatRecordWithUsage[],
   id: string,
-): EmbeddingInputFormatRecordWithUsage {
+): EmbeddingInputFormatContract {
   const inputFormat = inputFormats.find((candidate) => candidate.id === id);
   if (inputFormat === undefined) {
     throw new SettingsValidationError(
@@ -926,7 +937,14 @@ function readSelectedInputFormat(
       `The selected embedding input format is retired: ${inputFormat.name}.`,
     );
   }
-  return inputFormat;
+  return readEmbeddingInputFormatContract({
+    documentTemplate: inputFormat.documentTemplate,
+    id: inputFormat.id,
+    inputFormatHash: inputFormat.inputFormatHash,
+    name: inputFormat.name,
+    queryTemplate: inputFormat.queryTemplate,
+    schemaVersion: inputFormat.schemaVersion,
+  });
 }
 
 function buildDoclingServiceInstances(
