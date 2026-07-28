@@ -179,6 +179,7 @@ A successful result lists every candidate, explains each rejection, identifies t
 ## Frozen configuration and sealed holdouts
 
 A freeze records the code revision, settings version, model identities, embedding space, index settings, result-fusion settings, and the rest of the retrieval configuration.
+The embedding-space provenance includes the input-format ID, name, schema version, document template, query template, and verified input-format hash.
 Its SHA-256 fingerprint detects later changes.
 It does not prevent anyone from changing the application or services.
 

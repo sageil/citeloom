@@ -153,6 +153,27 @@ The saved oMLX URL uses port 9000 and can be changed in Settings.
 
 Work already in progress keeps its saved settings snapshot when a model, endpoint, or route changes.
 
+## Embedding input formats
+
+Embedding input formats are immutable PostgreSQL records that define how CiteLoom renders document text and query text before sending either to the embedding provider.
+Each record has a human-readable name, schema version, document template, query template, deterministic SHA-256 input-format hash, creation time, and optional retirement time.
+Each template must contain exactly one `{{text}}` placeholder.
+The hash is derived from the schema version and both templates, so it can be verified without trusting the stored hash.
+CiteLoom never infers an input format from an embedding model name.
+
+A fresh database includes these formats:
+
+| Name | Document template | Query template |
+| --- | --- | --- |
+| Plain | `{{text}}` | `{{text}}` |
+| EmbeddingGemma | `title: none \| text: {{text}}` | `task: search result \| query: {{text}}` |
+| Snowflake | `{{text}}` | `Represent this sentence for searching relevant passages: {{text}}` |
+
+Use Settings to select an active format, create a format, copy an existing format, or create an immutable revision with different fields.
+Creating a revision always inserts a new record instead of changing the meaning of the source record.
+An unused format can be retired, but a format referenced by saved settings or any embedding space cannot be retired.
+Retired records remain available for history and verification but cannot be selected.
+
 ## Thinking mode
 
 Thinking mode is a CiteLoom runtime setting for answer generation, query expansion, and summarization.
@@ -174,8 +195,11 @@ Use Provider default if an endpoint rejects explicit thinking controls, and conf
 
 ## Retrieval
 
-The embedding profile, model, dimensions, and optional space ID determine which document and query embeddings can be compared.
-Changing these values creates a new embedding space and requires reindexing.
+The embedding input format, input-format hash, model, dimensions, retrieval-window policy, and optional space ID determine which document and query embeddings can be compared.
+Each embedding space stores the selected format reference, hash, schema version, and both templates so the hash and rendering contract can be verified independently.
+Changing the embedding model, dimensions, retrieval-window policy, or input format creates a new embedding space and requires reindexing.
+A newly created selected space has no searchable documents until documents are reindexed for that configuration.
+Settings reports this state to administrators instead of silently treating the old space as the selected one.
 
 Retrieval settings control the search process.
 They set how many passages CiteLoom considers, how it expands a question, how it combines meaning-based and keyword results, whether it reranks them, and how many passages reach the answer model.

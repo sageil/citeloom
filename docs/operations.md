@@ -92,21 +92,24 @@ Recovery moves old PostgreSQL data but never permanently deletes it.
 ## Reindexing
 
 Use the document catalog to reindex a document.
-Its current version stays searchable until the replacement is complete.
+When reindexing within the selected embedding space, its current version stays searchable until the replacement is complete.
 The background worker processes queued jobs.
 Monitor progress with `pnpm status` or the worker logs.
 
-Use the document controls in the web application to reindex after changing how content is split, how much surrounding text search returns, or the current embedding model.
+Use the document controls in the web application to reindex after changing the embedding model, dimensions, input format, retrieval-window policy, or any setting that changes how searchable content is constructed.
 The source filename remains the document's catalog identity, while CiteLoom reads the file itself from the content store.
 Files supported by Docling are converted again.
 Plain-text files are split, summarized, embedded, and indexed without Docling.
 Each completed job replaces the previous search index in one database operation.
+Selecting a different embedding configuration selects a new embedding space immediately.
+CiteLoom does not keep the old embedding space active while the new space is being populated.
+Settings and answer requests report that reindexing is required until the selected space contains indexed documents.
 
 ```bash
 docker logs --follow citeloom-worker-1
 ```
 
-Confirm that the active embedding model, profile, dimensions, and target space are intentional before scheduling broad reindexing.
+Confirm that the selected embedding model, input format and hash, dimensions, retrieval-window policy, and target space are intentional before scheduling broad reindexing.
 
 ## Embedding-space retention
 
@@ -134,6 +137,7 @@ pnpm dev embedding-spaces gc --resume <run-id> --apply
 
 The estimated size covers stored table rows.
 It excludes PostgreSQL index overhead because that space cannot be assigned exactly to one embedding space.
+Each retention report records the human-readable input-format name and hash for every embedding space.
 
 ## Routine checks
 
