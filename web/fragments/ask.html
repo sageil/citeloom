@@ -1,0 +1,969 @@
+<section
+  class="feature-page ask-feature-page"
+  aria-label="Ask page"
+  x-data="citeloomAskPage"
+  x-init="initialize()"
+  @keydown.escape.window="deleteThreadConfirmationOpen = false"
+>
+  <section
+    class="question-section"
+    id="ask"
+    aria-label="Ask questions or find sources"
+  >
+    <div
+      class="question-mode-switch"
+      role="group"
+      aria-label="Choose Ask or Find Sources"
+    >
+      <button
+        type="button"
+        :aria-pressed="mode === 'ask'"
+        :class="{ active: mode === 'ask' }"
+        @click="changeMode('ask')"
+      >Ask a question</button>
+      <button
+        type="button"
+        :aria-pressed="mode === 'discover'"
+        :class="{ active: mode === 'discover' }"
+        @click="changeMode('discover')"
+      >Find sources</button>
+    </div>
+
+    <div
+      class="research-thread-bar"
+      x-cloak
+      x-show="mode === 'ask'"
+    >
+      <label>
+        Research thread
+        <select
+          x-model="threadId"
+          :disabled="threadsLoading || operation === 'answer'"
+          @change="selectResearchThread($event.target.value)"
+        >
+          <option value="">Default (automatic)</option>
+          <template x-for="threadSummary in threads" :key="threadSummary.id">
+            <option
+              :value="threadSummary.id"
+              x-text="`${threadSummary.title} (${threadSummary.turnCount})`"
+            ></option>
+          </template>
+        </select>
+      </label>
+      <label>
+        Thread title (optional)
+        <input
+          maxlength="500"
+          placeholder="Default"
+          type="text"
+          x-model="newThreadTitle"
+          @keydown.enter.prevent="createThread()"
+        />
+      </label>
+      <button
+        class="button primary"
+        type="button"
+        :disabled="creatingThread || operation === 'answer'"
+        @click="createThread()"
+        x-text="creatingThread ? 'Selecting...' : 'Use thread'"
+      ></button>
+
+      <label x-cloak x-show="thread !== null && thread.turns.length > 0">
+        Historical turn
+        <select
+          x-model="turnId"
+          :disabled="operation === 'answer'"
+          @change="selectHistoricalTurn($event.target.value)"
+        >
+          <template x-for="turn in thread?.turns ?? []" :key="turn.id">
+            <option
+              :value="turn.id"
+              x-text="`Turn ${turn.sequence}: ${turn.question}`"
+            ></option>
+          </template>
+        </select>
+      </label>
+
+      <div
+        class="research-thread-exports"
+        aria-label="Research thread actions"
+        x-cloak
+        x-show="thread !== null"
+      >
+        <a
+          x-cloak
+          x-show="thread !== null && thread.turns.length > 0"
+          :href="threadExportUrl('markdown')"
+        >Markdown export</a>
+        <a
+          x-cloak
+          x-show="thread !== null && thread.turns.length > 0"
+          :href="threadExportUrl('json')"
+        >JSON export</a>
+        <a
+          x-cloak
+          x-show="thread !== null && thread.turns.length > 0"
+          :href="threadExportUrl('citations')"
+        >Citation report</a>
+        <button
+          class="text-action danger"
+          type="button"
+          :disabled="operation === 'answer'"
+          @click="deleteThreadConfirmationOpen = true"
+        >Delete thread</button>
+      </div>
+      <div
+        class="research-thread-confirmation danger"
+        x-cloak
+        x-show="deleteThreadConfirmationOpen &amp;&amp; thread !== null"
+        role="group"
+        aria-label="Confirm thread deletion"
+      >
+        <span class="research-thread-confirmation-icon">
+          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use></svg>
+        </span>
+        <p>
+          <strong x-text="`Delete “${thread?.title ?? ''}” permanently?`"></strong>
+          <span x-text="`This removes all ${thread?.turns.length ?? 0} saved ${(thread?.turns.length ?? 0) === 1 ? 'turn' : 'turns'} and cannot be undone.`"></span>
+        </p>
+        <div>
+          <button class="button secondary" type="button" :disabled="deletingThread" @click="deleteThreadConfirmationOpen = false">Cancel</button>
+          <button class="button danger" type="button" :disabled="deletingThread || operation === 'answer'" @click="deleteThread()" x-text="deletingThread ? 'Deleting…' : 'Delete thread'"></button>
+        </div>
+      </div>
+    </div>
+
+    <p
+      class="field-error ask-workspace-error"
+      role="alert"
+      x-cloak
+      x-show="workspaceError() !== ''"
+      x-text="workspaceError()"
+    ></p>
+
+    <div class="question-layout">
+      <div class="question-composer">
+        <template x-if="questionDocuments.length > 0">
+          <div>
+            <div class="field-label">
+              <span class="field-label-heading">
+                <label for="question-search-scope-selected">Search scope</label>
+                <a
+                  class="text-action inline-help"
+                  data-view="help"
+                  href="./index.html?view=help#choose-a-search-scope"
+                  hx-get="./fragments/help.html"
+                  hx-push-url="./index.html?view=help#choose-a-search-scope"
+                >Scope help</a>
+              </span>
+              <select
+                id="question-search-scope-selected"
+                value="selected"
+                @change="changeSelectedScope($event.target.value); if ($event.target.value !== 'selected') clearQuestionDocuments()"
+              >
+                <option
+                  value="selected"
+                  x-text="`Selected documents (${questionDocuments.length})`"
+                ></option>
+                <option value="all">All ready documents</option>
+                <option value="tag" :disabled="availableTags.length === 0">One tag</option>
+              </select>
+            </div>
+            <div class="selected-question-scope-summary">
+              <span x-text="selectedDocumentScopeLabel(questionDocuments.length)"></span>
+              <button
+                class="text-action"
+                type="button"
+                @click="openQuestionSelection(); navigateToView('documents')"
+              >Edit selection</button>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="questionDocuments.length === 0">
+          <div>
+            <div class="field-label">
+              <span class="field-label-heading">
+                <label for="question-search-scope">Search scope</label>
+                <a
+                  class="text-action inline-help"
+                  data-view="help"
+                  href="./index.html?view=help#choose-a-search-scope"
+                  hx-get="./fragments/help.html"
+                  hx-push-url="./index.html?view=help#choose-a-search-scope"
+                >Scope help</a>
+              </span>
+              <select
+                id="question-search-scope"
+                x-model="scopeKind"
+                @change="changeScope($event.target.value)"
+              >
+                <option value="all">All ready documents</option>
+                <option value="tag" :disabled="availableTags.length === 0">One tag</option>
+              </select>
+            </div>
+            <label
+              class="field-label compact-field"
+              x-cloak
+              x-show="scopeKind === 'tag'"
+            >
+              Tag
+              <select x-model="tag">
+                <option value="">Select a tag</option>
+                <template x-for="availableTag in availableTags" :key="availableTag">
+                  <option :value="availableTag" x-text="availableTag"></option>
+                </template>
+              </select>
+            </label>
+          </div>
+        </template>
+
+        <div class="field-label question-field">
+          <label for="question-input" x-text="mode === 'ask' ? 'Question' : 'Topic or keywords'"></label>
+          <textarea
+            id="question-input"
+            :class="{ 'compact-textarea': mode === 'discover' }"
+            :maxlength="mode === 'ask' ? 8000 : 500"
+            :placeholder="questionPlaceholder(questionDocuments.length)"
+            :rows="mode === 'ask' ? 6 : 3"
+            x-model="question"
+            x-ref="questionInput"
+            @keydown.meta.enter.prevent="handleSubmitShortcut(questionDocuments)"
+            @keydown.ctrl.enter.prevent="handleSubmitShortcut(questionDocuments)"
+          ></textarea>
+          <div class="question-input-actions">
+            <span id="question-input-hint" x-text="questionInputHint()"></span>
+            <div
+              class="speech-input"
+              aria-label="Voice input controls"
+              x-cloak
+              x-show="mode === 'ask' && speechToTextEnabled"
+            >
+              <div class="speech-input-controls">
+                <button
+                  class="button secondary speech-input-button"
+                  type="button"
+                  :disabled="operation !== null || speechState === 'transcribing'"
+                  x-show="speechState === 'idle' || speechState === 'error'"
+                  @click="startDictation()"
+                >
+                  <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-microphone"></use>
+                  </svg>
+                  <span x-text="speechState === 'error' ? 'Record again' : 'Start dictation'"></span>
+                </button>
+                <button
+                  class="button secondary speech-input-button recording"
+                  type="button"
+                  x-show="speechState === 'recording'"
+                  @click="stopDictation()"
+                >
+                  <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-stop"></use>
+                  </svg>
+                  <span>Stop</span>
+                </button>
+                <button
+                  class="text-action speech-cancel-button"
+                  type="button"
+                  x-show="speechState !== 'idle'"
+                  @click="cancelDictation()"
+                >Cancel</button>
+              </div>
+              <p
+                class="speech-input-status"
+                id="speech-input-status"
+                role="status"
+                x-text="speechStatus"
+              ></p>
+            </div>
+          </div>
+        </div>
+
+        <label
+          class="discovery-related-toggle"
+          x-cloak
+          x-show="mode === 'discover'"
+        >
+          <input type="checkbox" x-model="includeRelated" />
+          <span>Include semantic matches</span>
+        </label>
+
+        <p
+          class="field-error"
+          role="alert"
+          x-cloak
+          x-show="requestError !== ''"
+          x-text="requestError"
+        ></p>
+
+        <button
+          class="button primary submit-button"
+          type="button"
+          :disabled="(operation === null && queryableDocumentCount === 0) || (speechState !== 'idle' && speechState !== 'error')"
+          @click="operation === null ? submit(questionDocuments) : stopRequest(true)"
+        >
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+            <use :href="submitIconHref()"></use>
+          </svg>
+          <span x-text="submitLabel()"></span>
+        </button>
+        <button
+          class="text-action mode-text-action"
+          type="button"
+          @click="changeMode(mode === 'ask' ? 'discover' : 'ask')"
+          x-text="mode === 'ask' ? 'Find sources instead' : 'Ask a question instead'"
+        ></button>
+      </div>
+
+      <div class="ask-result-column">
+        <template x-if="mode === 'ask' && operation === 'answer' && answer === null">
+          <div
+            class="answer-panel answer-panel-loading"
+            aria-busy="true"
+            aria-live="polite"
+          >
+            <div class="answer-loading-header">
+              <div class="answer-loading-intro">
+                <div class="answer-heading">
+                  <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-brain"></use>
+                  </svg>
+                  <span>Local answer</span>
+                </div>
+              </div>
+              <span class="answer-loading-badge">Verifying</span>
+            </div>
+            <div class="answer-loading-visual">
+              <canvas
+                aria-label="A living evidence field ripples as supported claims are verified."
+                class="answer-loading-field"
+                role="img"
+                x-init="startAnswerLoadingAnimation($el)"
+              ></canvas>
+            </div>
+            <p class="answer-loading-status visually-hidden" role="status" x-text="answerLoadingStatus()"></p>
+          </div>
+        </template>
+
+        <template x-if="mode === 'ask' && answer === null && operation !== 'answer'">
+          <div class="answer-panel empty-answer">
+            <svg aria-hidden="true" class="citeloom-icon ask-empty-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
+            </svg>
+            <strong>Your cited answer will appear here</strong>
+            <p x-text="emptyAnswerDescription(questionDocuments.length)"></p>
+            <div class="empty-answer-actions">
+              <button class="text-action" type="button" @click="changeMode('discover')">Find sources instead</button>
+              <a
+                class="text-action"
+                data-view="help"
+                href="./index.html?view=help#ask-a-question"
+                hx-get="./fragments/help.html"
+                hx-push-url="./index.html?view=help#ask-a-question"
+              >See question examples</a>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="mode === 'ask' && answer !== null">
+          <div class="answer-panel" aria-live="polite">
+            <div class="answer-heading">
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-brain"></use>
+              </svg>
+              <span>Local answer</span>
+            </div>
+
+            <div class="answer-copy">
+              <template x-if="answer.answerDocument.status === 'no_answer'">
+                <p>The selected scope did not contain sufficiently relevant evidence to answer this question.</p>
+              </template>
+              <template x-for="section in answerSections()" :key="section.key">
+                <section class="answer-document-section">
+                  <h2 x-cloak x-show="section.title !== null" x-text="section.title"></h2>
+                  <template x-for="block in section.blocks" :key="block.key">
+                    <div>
+                      <template x-if="block.kind === 'paragraph'">
+                        <p>
+                          <span x-text="block.statements[0].content"></span>
+                          <span class="statement-citations">
+                            <template x-for="citation in block.statements[0].citations" :key="citation.id">
+                              <button
+                                class="inline-citation"
+                                type="button"
+                                :aria-label="citationLabel(citation)"
+                                @click="inspectCitation(citation)"
+                                x-text="`[${citation.citationNumber}]`"
+                              ></button>
+                            </template>
+                          </span>
+                        </p>
+                      </template>
+                      <template x-if="block.kind === 'bullets'">
+                        <ul>
+                          <template x-for="statement in block.statements" :key="statement.key">
+                            <li>
+                              <span x-text="statement.content"></span>
+                              <span class="statement-citations">
+                                <template x-for="citation in statement.citations" :key="citation.id">
+                                  <button
+                                    class="inline-citation"
+                                    type="button"
+                                    :aria-label="citationLabel(citation)"
+                                    @click="inspectCitation(citation)"
+                                    x-text="`[${citation.citationNumber}]`"
+                                  ></button>
+                                </template>
+                              </span>
+                            </li>
+                          </template>
+                        </ul>
+                      </template>
+                    </div>
+                  </template>
+                </section>
+              </template>
+            </div>
+
+            <section
+              class="answer-speech-player"
+              x-cloak
+              x-show="textToSpeechEnabled"
+            >
+              <div class="answer-speech-heading">
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-speaker"></use>
+                </svg>
+                <div>
+                  <strong>Listen to this answer</strong>
+                  <span x-text="textToSpeechPreloadEnabled ? 'Audio is prepared in the background by the configured speech model.' : 'Audio is generated on demand by the configured speech model.'"></span>
+                </div>
+              </div>
+              <button
+                class="button secondary answer-speech-action"
+                type="button"
+                x-cloak
+                x-show="speechAudioUrl === ''"
+                :disabled="speechAudioLoading"
+                @click="loadAnswerSpeech()"
+              >
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon" :class="{ spin: speechAudioLoading }">
+                  <use :href="speechAudioLoading ? './assets/images/citeloom-icons.svg#citeloom-refresh' : './assets/images/citeloom-icons.svg#citeloom-speaker'"></use>
+                </svg>
+                <span x-text="speechAudioLoading ? 'Preparing audio' : 'Listen to answer'"></span>
+              </button>
+              <div class="answer-speech-audio" x-cloak x-show="speechAudioUrl !== ''">
+                <audio aria-label="Spoken answer audio" controls preload="metadata" :src="speechAudioUrl"></audio>
+                <button class="text-action" type="button" @click="loadAnswerSpeech()">
+                  <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
+                  </svg>
+                  <span>Regenerate</span>
+                </button>
+              </div>
+              <p class="answer-speech-error" role="alert" x-cloak x-show="speechAudioError !== ''" x-text="speechAudioError"></p>
+            </section>
+
+            <div class="no-context-action" x-cloak x-show="answer.matchedDocuments.length === 0">
+              <p>No relevant retrieved context was available for this answer.</p>
+              <button class="text-action" type="button" @click="changeMode('discover')">Find sources for this query</button>
+            </div>
+
+            <div class="sources-list" x-cloak x-show="answer.sources.length > 0">
+              <h3>Cited sources</h3>
+              <template x-for="group in citedSourceGroups()" :key="group.key">
+                <section class="cited-source-group">
+                  <header class="cited-source-group-heading">
+                    <a
+                      class="source-document-link"
+                      rel="noopener noreferrer"
+                      target="_blank"
+                      :href="sourceFileUrl(group.fileSource)"
+                    >
+                      <strong x-text="basename(group.fileSource.sourceFile)"></strong>
+                      <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                        <use href="./assets/images/citeloom-icons.svg#citeloom-external"></use>
+                      </svg>
+                    </a>
+                    <small x-text="citedSourceGroupLabel(group.sources.length)"></small>
+                  </header>
+                  <div class="cited-source-items">
+                    <template x-for="source in group.sources" :key="source.id">
+                      <article>
+                        <span x-text="source.citationNumber"></span>
+                        <div>
+                          <small x-text="sourceDetail(source)"></small>
+                          <button class="text-action" type="button" @click="inspectCitation(source)">Inspect exact evidence</button>
+                        </div>
+                      </article>
+                    </template>
+                  </div>
+                </section>
+              </template>
+            </div>
+
+            <p class="uncited-context-note" x-cloak x-show="answer.sources.length === 0 && answer.matchedDocuments.length > 0">
+              No retrieved source directly supported a cited claim in this answer.
+            </p>
+
+            <details
+              class="answer-run-details retrieved-context-details"
+              x-cloak
+              x-show="answer.matchedDocuments.length > 0"
+            >
+              <summary>
+                <span>Retrieved context</span>
+                <small x-text="retrievedContextLabel()"></small>
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+                </svg>
+              </summary>
+              <p>Documents considered while generating this answer. A retrieved document is not necessarily cited evidence.</p>
+              <a
+                class="text-action"
+                data-view="help"
+                href="./index.html?view=help#understand-citations-and-retrieved-context"
+                hx-get="./fragments/help.html"
+                hx-push-url="./index.html?view=help#understand-citations-and-retrieved-context"
+              >Understand citations and retrieved context</a>
+              <div class="sources-list retrieved-context-list">
+                <template x-for="(document, index) in answer.matchedDocuments" :key="`${document.documentId}-${document.sourceFile}`">
+                  <article>
+                    <span x-text="index + 1"></span>
+                    <div>
+                      <a
+                        class="source-document-link"
+                        rel="noopener noreferrer"
+                        target="_blank"
+                        :href="documentFileUrl(document.documentId, document.sourceFile)"
+                      >
+                        <strong x-text="basename(document.sourceFile)"></strong>
+                        <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                          <use href="./assets/images/citeloom-icons.svg#citeloom-external"></use>
+                        </svg>
+                      </a>
+                      <small x-text="retrievedElementLabel(document.retrievedElementCount)"></small>
+                    </div>
+                  </article>
+                </template>
+              </div>
+            </details>
+
+            <section
+              class="claim-checks"
+              aria-label="Independent claim verification"
+              x-cloak
+              x-show="answer.claims.length > 0"
+            >
+              <h3>Claim verification</h3>
+              <p>The verifier is an aid. Inspect the original evidence before relying on a claim.</p>
+              <ul>
+                <template x-for="claim in answer.claims" :key="claim.id">
+                  <li>
+                    <div class="claim-check-heading">
+                      <span
+                        class="claim-status"
+                        :class="claim.status"
+                        x-text="claimStatusLabel(claim.status)"
+                      ></span>
+                      <span class="claim-citation-links">
+                        <template x-for="citationNumber in claim.citationNumbers" :key="citationNumber">
+                          <button
+                            class="claim-citation-link"
+                            type="button"
+                            @click="inspectCitationNumber(citationNumber)"
+                            x-text="`Citation ${citationNumber}`"
+                          ></button>
+                        </template>
+                      </span>
+                    </div>
+                    <strong x-text="claim.claim"></strong>
+                    <details class="claim-verification-details">
+                      <summary>Verification details</summary>
+                      <p x-text="claim.rationale"></p>
+                    </details>
+                  </li>
+                </template>
+              </ul>
+            </section>
+
+            <div class="answer-feedback-grid">
+              <div class="research-feedback">
+                <span>Was the retrieved context relevant?</span>
+                <button type="button" :class="{ selected: feedback.retrieval === 1 }" @click="submitFeedback('retrieval-relevance', 1, null)">Yes <span x-text="feedbackCounts.retrieval.positive"></span></button>
+                <button type="button" :class="{ selected: feedback.retrieval === -1 }" @click="submitFeedback('retrieval-relevance', -1, null)">No <span x-text="feedbackCounts.retrieval.negative"></span></button>
+              </div>
+              <div class="research-feedback">
+                <span>Was this answer useful?</span>
+                <button type="button" :class="{ selected: feedback.answer === 1 }" @click="submitFeedback('answer-usefulness', 1, null)">Yes <span x-text="feedbackCounts.answer.positive"></span></button>
+                <button type="button" :class="{ selected: feedback.answer === -1 }" @click="submitFeedback('answer-usefulness', -1, null)">No <span x-text="feedbackCounts.answer.negative"></span></button>
+              </div>
+            </div>
+
+            <details class="answer-run-details" x-cloak x-show="answer.runDetails !== null">
+              <summary>
+                <span>Run details</span>
+                <small x-text="formatDuration(answer.runDetails?.durationMs ?? 0)"></small>
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+                </svg>
+              </summary>
+              <dl class="run-metrics">
+                <div><dt>Generation time</dt><dd x-text="formatDuration(answer.runDetails?.durationMs ?? 0)"></dd></div>
+                <div><dt>Model</dt><dd x-text="answer.runDetails?.modelId ?? 'Unavailable'"></dd></div>
+                <div><dt>Sources used</dt><dd x-text="answer.runDetails?.sourceCount ?? 0"></dd></div>
+              </dl>
+              <div class="advanced-metrics">
+                <h3>Advanced diagnostics</h3>
+                <dl class="run-metrics">
+                  <div><dt>Input tokens</dt><dd x-text="formatTokenCount(answer.runDetails?.inputTokens ?? null)"></dd></div>
+                  <div><dt>Output tokens</dt><dd x-text="formatTokenCount(answer.runDetails?.outputTokens ?? null)"></dd></div>
+                  <div><dt>Finish reason</dt><dd x-text="answer.runDetails?.finishReason ?? 'Unavailable'"></dd></div>
+                </dl>
+              </div>
+            </details>
+          </div>
+        </template>
+
+        <template x-if="mode === 'discover' && discoveryResult === null && operation === 'search'">
+          <div
+            class="answer-panel answer-panel-loading discovery-panel"
+            aria-busy="true"
+            aria-live="polite"
+          >
+            <div class="answer-loading-header">
+              <div class="answer-heading">
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
+                </svg>
+                <span>Source discovery</span>
+              </div>
+              <span class="answer-loading-badge">Searching</span>
+            </div>
+            <div class="answer-loading-visual">
+              <canvas
+                aria-label="A living evidence field ripples while indexed sources are searched."
+                class="answer-loading-field"
+                role="img"
+                x-init="startAnswerLoadingAnimation($el)"
+              ></canvas>
+            </div>
+            <p class="answer-loading-status visually-hidden" role="status" x-text="discoveryStatus"></p>
+          </div>
+        </template>
+
+        <template x-if="mode === 'discover' && discoveryResult === null && operation !== 'search'">
+          <div class="answer-panel empty-answer discovery-panel">
+            <p class="visually-hidden" role="status" x-text="discoveryStatus"></p>
+            <svg aria-hidden="true" class="citeloom-icon ask-empty-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
+            </svg>
+            <strong x-text="queryableDocumentCount === 0 ? 'No documents are ready to search' : 'Find sources before asking'"></strong>
+            <p x-text="queryableDocumentCount === 0 ? 'Upload or reindex a document, then wait until it is Ready.' : 'Find documents with exact terms or optional semantic similarity. No answer will be generated.'"></p>
+            <a
+              class="text-action"
+              data-view="help"
+              href="./index.html?view=help#prepare-your-documents"
+              hx-get="./fragments/help.html"
+              hx-push-url="./index.html?view=help#prepare-your-documents"
+              :href="`./index.html?view=help#${queryableDocumentCount === 0 ? 'prepare-your-documents' : 'find-sources'}`"
+              :hx-push-url="`./index.html?view=help#${queryableDocumentCount === 0 ? 'prepare-your-documents' : 'find-sources'}`"
+            >Learn more</a>
+          </div>
+        </template>
+
+        <template x-if="mode === 'discover' && discoveryResult !== null">
+          <div class="answer-panel discovery-panel" :aria-busy="operation === 'search' || discoveryPageLoading">
+            <p class="visually-hidden" role="status" x-text="discoveryStatus"></p>
+            <div class="discovery-panel-heading">
+              <div>
+                <p class="section-kicker">Source discovery</p>
+                <h2 x-text="`Results for “${discoveryResult.query}”`"></h2>
+              </div>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon spin" x-cloak x-show="operation === 'search' || discoveryPageLoading">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
+              </svg>
+            </div>
+            <p class="discovery-summary" aria-live="polite" x-text="discoverySummary()"></p>
+            <div class="discovery-warning" role="status" x-cloak x-show="discoveryWarnings().length > 0">
+              <template x-for="warning in discoveryWarnings()" :key="warning">
+                <p x-text="warning"></p>
+              </template>
+            </div>
+            <div class="discovery-groups" x-cloak x-show="discoveryHasResults()">
+              <template x-for="group in discoveryGroups()" :key="group.key">
+                <section class="discovery-group">
+                  <header>
+                    <h3 x-text="group.label"></h3>
+                    <span x-text="group.total"></span>
+                  </header>
+                  <p class="discovery-empty-group" x-cloak x-show="group.documents.length === 0" x-text="group.emptyLabel"></p>
+                  <div class="discovery-card-list">
+                    <template x-for="document in group.documents" :key="discoveryDocumentKey(document)">
+                      <article class="discovery-card">
+                        <header>
+                          <label class="discovery-select">
+                            <input
+                              type="checkbox"
+                              :checked="discoveryDocumentSelected(document)"
+                              @change="toggleDiscoveryDocument(document)"
+                            />
+                            <span class="visually-hidden" x-text="`Select ${basename(document.sourceFile)}`"></span>
+                          </label>
+                          <div>
+                            <h4 x-text="basename(document.sourceFile)"></h4>
+                            <div class="match-badges">
+                              <span class="keyword" x-cloak x-show="document.matchKinds.includes('keyword')">Keyword match</span>
+                              <span class="semantic" x-cloak x-show="document.matchKinds.includes('semantic')">Semantic match</span>
+                            </div>
+                          </div>
+                          <a
+                            class="source-document-link"
+                            rel="noopener noreferrer"
+                            target="_blank"
+                            :href="discoverySourceUrl(document, document.passages[0])"
+                          >
+                            <span>Open source</span>
+                            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                              <use href="./assets/images/citeloom-icons.svg#citeloom-external"></use>
+                            </svg>
+                          </a>
+                        </header>
+                        <blockquote x-text="document.passages[0].excerpt"></blockquote>
+                        <p class="discovery-passage-detail" x-text="discoveryPassageDetail(document.sourceFile, document.passages[0])"></p>
+                        <details class="discovery-passages" x-cloak x-show="document.matchingPassageCount > 1">
+                          <summary x-text="additionalPassageLabel(document)"></summary>
+                          <template x-for="passage in document.passages.slice(1)" :key="passage.id">
+                            <div>
+                              <p x-text="passage.excerpt"></p>
+                              <small x-text="discoveryPassageDetail(document.sourceFile, passage)"></small>
+                            </div>
+                          </template>
+                          <small x-cloak x-show="document.matchingPassageCount - 1 > document.passages.slice(1).length">Showing representative passages from this document.</small>
+                        </details>
+                      </article>
+                    </template>
+                  </div>
+                  <nav
+                    class="discovery-pagination"
+                    aria-label="Keyword match pages"
+                    x-cloak
+                    x-show="group.key === 'keyword' && discoveryTotalPages() > 1"
+                  >
+                    <button
+                      class="button secondary"
+                      type="button"
+                      :disabled="operation !== null || discoveryPageLoading || discoveryResult.keyword.page === 1"
+                      @click="runDiscoveryPage('previous')"
+                    >Previous</button>
+                    <span x-text="`Page ${discoveryResult.keyword.page} of ${discoveryTotalPages()}`"></span>
+                    <button
+                      class="button secondary"
+                      type="button"
+                      :disabled="operation !== null || discoveryPageLoading || discoveryResult.keyword.page >= discoveryTotalPages()"
+                      @click="runDiscoveryPage('next')"
+                    >Next</button>
+                  </nav>
+                </section>
+              </template>
+            </div>
+            <div class="discovery-no-results" x-cloak x-show="!discoveryHasResults()">
+              <strong>No relevant sources were found in the selected scope.</strong>
+              <p>Try a broader scope, a synonym, or fewer terms.</p>
+              <a
+                class="text-action"
+                data-view="help"
+                href="./index.html?view=help#find-sources"
+                hx-get="./fragments/help.html"
+                hx-push-url="./index.html?view=help#find-sources"
+              >Read tips for finding sources</a>
+            </div>
+            <div class="discovery-selection-bar" x-cloak x-show="selectedDiscoveryDocuments.length > 0">
+              <span x-text="selectedDiscoveryLabel()"></span>
+              <button
+                class="button primary"
+                type="button"
+                @click="questionDocuments = selectedDiscoveryQuestionDocuments(); changeMode('ask')"
+              >Ask about selected sources</button>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </section>
+
+  <aside
+    class="evidence-inspector"
+    :style="citationInspectorStyle()"
+    tabindex="-1"
+    x-cloak
+    x-show="selectedCitation !== null"
+    @keydown.escape="closeEvidenceInspector()"
+  >
+    <div class="evidence-inspector-content">
+      <header>
+        <div>
+          <span class="claim-status" :class="selectedCitationStatus()" x-text="claimStatusLabel(selectedCitationStatus())"></span>
+          <h3 x-text="selectedCitation === null ? '' : `Citation [${selectedCitation.citationNumber}]`"></h3>
+          <p x-text="selectedCitationSummary()"></p>
+        </div>
+        <div class="evidence-inspector-header-actions">
+          <button
+            :aria-label="citationInspectorExpanded ? 'Restore citation inspector size' : 'Expand citation inspector'"
+            :aria-pressed="citationInspectorExpanded.toString()"
+            :title="citationInspectorExpanded ? 'Restore previous size' : 'Expand to available space'"
+            type="button"
+            @click="toggleExpandedCitationInspector()"
+          >
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+              <use :href="citationInspectorExpanded ? './assets/images/citeloom-icons.svg#citeloom-restore' : './assets/images/citeloom-icons.svg#citeloom-expand'"></use>
+            </svg>
+          </button>
+          <button aria-label="Close evidence inspector" type="button" @click="closeEvidenceInspector()">
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-close"></use>
+            </svg>
+          </button>
+        </div>
+      </header>
+      <p class="field-error" role="alert" x-cloak x-show="citationError !== ''" x-text="citationError"></p>
+      <p x-cloak x-show="citationLoading">Loading immutable evidence record...</p>
+      <template x-if="inspectedCitation !== null">
+        <div>
+          <div class="stale-citation-warning" role="status" x-cloak x-show="inspectedCitation.stale">
+            <strong>This citation uses a superseded document version.</strong>
+            <p>The original evidence remains available. Ask the question again to use the current corpus.</p>
+          </div>
+          <section class="exact-evidence">
+            <h4>Exact evidence</h4>
+            <template x-if="inspectedCitation.evidence.kind === 'image'">
+              <img :alt="`Citation ${inspectedCitation.citationNumber} evidence`" :src="citationImageUrl()" />
+            </template>
+            <template x-if="inspectedCitation.evidence.kind === 'text'">
+              <blockquote x-text="citationEvidenceText()"></blockquote>
+            </template>
+            <template x-if="inspectedCitation.evidence.kind === 'table'">
+              <div>
+                <template x-if="inspectedCitation.evidence.table.renderMode === 'text'">
+                  <blockquote
+                    :aria-label="`Citation ${inspectedCitation.citationNumber} extracted table text`"
+                    x-text="citationEvidenceText()"
+                  ></blockquote>
+                </template>
+                <template x-if="inspectedCitation.evidence.table.renderMode === 'grid'">
+                  <div
+                    :aria-label="`Citation ${inspectedCitation.citationNumber} evidence table`"
+                    class="exact-evidence-table-frame"
+                    role="region"
+                    tabindex="0"
+                  >
+                    <table class="exact-evidence-table">
+                      <caption
+                        class="visually-hidden"
+                        x-text="`Citation ${inspectedCitation.citationNumber} evidence table`"
+                      ></caption>
+                      <template x-if="inspectedCitation.evidence.table.headerRows.length > 0">
+                        <thead>
+                          <template x-for="row in inspectedCitation.evidence.table.headerRows" :key="row.key">
+                            <tr>
+                              <template x-for="cell in row.cells" :key="cell.key">
+                                <th
+                                  :colspan="cell.columnSpan"
+                                  :rowspan="cell.rowSpan"
+                                  scope="col"
+                                  x-text="cell.text"
+                                ></th>
+                              </template>
+                            </tr>
+                          </template>
+                        </thead>
+                      </template>
+                      <tbody>
+                        <template x-for="row in inspectedCitation.evidence.table.bodyRows" :key="row.key">
+                          <tr>
+                            <template x-for="cell in row.cells" :key="cell.key">
+                              <td
+                                :colspan="cell.columnSpan"
+                                :role="cell.rowHeader ? 'rowheader' : null"
+                                :rowspan="cell.rowSpan"
+                                x-text="cell.text"
+                              ></td>
+                            </template>
+                          </tr>
+                        </template>
+                      </tbody>
+                    </table>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </section>
+          <template x-if="citationSourceIsImage() && inspectedCitation.regions.length > 0">
+            <section class="citation-image-highlight">
+              <h4>Highlighted source image</h4>
+              <div class="citation-image-highlight-frame">
+                <img
+                  :alt="`Source image for citation ${inspectedCitation.citationNumber}`"
+                  :src="citationOriginalFileUrl()"
+                  @load="recordCitationImageDimensions($event)"
+                />
+                <template x-for="(region, index) in inspectedCitation.regions" :key="`${region.pageNumber}-${index}`">
+                  <span
+                    aria-hidden="true"
+                    class="citation-image-region"
+                    :style="citationRegionStyle(region)"
+                  ></span>
+                </template>
+              </div>
+              <p>Orange outlines mark the stored evidence regions.</p>
+            </section>
+          </template>
+          <dl class="evidence-metadata">
+            <div><dt>Document version</dt><dd><code x-text="inspectedCitation.documentVersionId"></code></dd></div>
+            <div><dt>Source element</dt><dd><code x-text="inspectedCitation.elementId"></code></dd></div>
+            <div><dt>Stored regions</dt><dd x-text="inspectedCitation.regionCount"></dd></div>
+          </dl>
+          <div class="evidence-actions">
+            <a class="evidence-file-action" rel="noopener noreferrer" target="_blank" :href="citationFileUrl()">
+              <span class="evidence-file-action-icon">
+                <svg aria-hidden="true" class="citeloom-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+                </svg>
+              </span>
+              <span class="evidence-file-action-copy">
+                <strong x-text="citationFileLabel()"></strong>
+                <small x-text="citationFileCaption()"></small>
+              </span>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-external"></use>
+              </svg>
+            </a>
+          </div>
+          <div class="research-feedback">
+            <span>Was this citation correct?</span>
+            <button type="button" :class="{ selected: feedback.citation === 1 }" @click="submitFeedback('citation-correctness', 1, inspectedCitation.id)">Yes <span x-text="feedbackCounts.citation.positive"></span></button>
+            <button type="button" :class="{ selected: feedback.citation === -1 }" @click="submitFeedback('citation-correctness', -1, inspectedCitation.id)">No <span x-text="feedbackCounts.citation.negative"></span></button>
+          </div>
+        </div>
+      </template>
+    </div>
+    <button
+      aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"
+      aria-label="Resize citation inspector. Use arrow keys to adjust its size."
+      class="evidence-inspector-resize-handle"
+      title="Drag left and down to resize. Use arrow keys for precise adjustments."
+      type="button"
+      @keydown="resizeCitationInspectorWithKeyboard($event)"
+      @lostpointercapture="citationInspectorResizeSession = null"
+      @pointercancel="finishCitationInspectorResize($event)"
+      @pointerdown="beginCitationInspectorResize($event)"
+      @pointermove="continueCitationInspectorResize($event)"
+      @pointerup="finishCitationInspectorResize($event)"
+    >
+      <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+        <use href="./assets/images/citeloom-icons.svg#citeloom-resize"></use>
+      </svg>
+    </button>
+  </aside>
+</section>
