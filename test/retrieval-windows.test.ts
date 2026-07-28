@@ -15,6 +15,10 @@ import {
   createRetrievalWindows,
 } from "../src/retrieval/windows.js";
 import { countEmbeddingInputTokens } from "../src/embedding/token-counter.js";
+import {
+  TEST_EMBEDDING_INPUT_FORMAT,
+  TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+} from "./config-fixture.js";
 import { buildSourceLocation } from "./source-element-fixture.js";
 
 describe("deterministic retrieval windows", () => {
@@ -28,11 +32,11 @@ describe("deterministic retrieval windows", () => {
     const policy = createPolicy(180);
 
     const first = createRetrievalWindows([element], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy,
     });
     const second = createRetrievalWindows([element], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy,
     });
 
@@ -53,7 +57,7 @@ describe("deterministic retrieval windows", () => {
   it("counts the complete provider-formatted input including its section", () => {
     const element = buildTextElement("Exact source evidence.");
     const windows = createRetrievalWindows([element], {
-      embeddingProfile: "embeddinggemma",
+      embeddingInputFormat: TEST_EMBEDDING_INPUT_FORMAT,
       policy: createPolicy(512),
     });
     const window = windows[0];
@@ -63,7 +67,7 @@ describe("deterministic retrieval windows", () => {
     const providerInput = buildRetrievalWindowProviderInput(
       window,
       element,
-      "embeddinggemma",
+      TEST_EMBEDDING_INPUT_FORMAT,
     );
 
     expect(providerInput).toContain("title: none | text: Section: Test section");
@@ -77,7 +81,7 @@ describe("deterministic retrieval windows", () => {
     const policy = createPolicy(160);
 
     const windows = createRetrievalWindows([element], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy,
     });
 
@@ -98,7 +102,7 @@ describe("deterministic retrieval windows", () => {
   it("keeps a sentence intact when it exceeds only the soft target", () => {
     const content = "This complete sentence remains intact even though its token count exceeds the soft target.";
     const windows = createRetrievalWindows([buildTextElement(content)], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy: createPolicy(12, 128),
     });
 
@@ -113,7 +117,7 @@ describe("deterministic retrieval windows", () => {
       "Third source sentence.",
     ].join("   ");
     const windows = createRetrievalWindows([buildTextElement(content)], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy: createPolicy(15, 128),
     });
 
@@ -129,7 +133,7 @@ describe("deterministic retrieval windows", () => {
       "beta evidence continues with enough additional words to exceed the limit.",
     ].join(" ");
     const windows = createRetrievalWindows([buildTextElement(content)], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy: createPolicy(18),
     });
 
@@ -155,7 +159,7 @@ describe("deterministic retrieval windows", () => {
       "Following paragraph.",
     ].join("\n");
     const windows = createRetrievalWindows([buildTextElement(content)], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy: createPolicy(16, 128),
     });
 
@@ -170,7 +174,7 @@ describe("deterministic retrieval windows", () => {
       sectionPath: ["Another section"],
     };
     const windows = createRetrievalWindows([first, second], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy: createPolicy(512),
     });
 
@@ -189,7 +193,7 @@ describe("deterministic retrieval windows", () => {
 
   it("creates no raw image window", () => {
     const windows = createRetrievalWindows([buildImageElement()], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy: createPolicy(512),
     });
 
@@ -201,7 +205,7 @@ describe("deterministic retrieval windows", () => {
     const policy = createPolicy(55);
 
     const windows = createRetrievalWindows([table], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy,
     });
 
@@ -228,7 +232,7 @@ describe("deterministic retrieval windows", () => {
   it("splits headerless tables while preserving empty structural headers", () => {
     const table = buildHeaderlessTableElement(12);
     const windows = createRetrievalWindows([table], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy: createPolicy(45),
     });
 
@@ -256,11 +260,11 @@ describe("deterministic retrieval windows", () => {
     const smallPolicy = createPolicy(512);
     const largePolicy = createPolicy(768);
     const small = createRetrievalWindows([element], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy: smallPolicy,
     });
     const large = createRetrievalWindows([element], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy: largePolicy,
     });
 

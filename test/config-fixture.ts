@@ -17,6 +17,11 @@ import {
   createTestProviderSettings,
   type TestProviderSettingsOptions,
 } from "./provider-settings-fixture.js";
+import {
+  BUILT_IN_EMBEDDING_INPUT_FORMAT_IDS,
+  createEmbeddingInputFormatContract,
+  type EmbeddingInputFormatContract,
+} from "../src/embedding/input-format.js";
 
 export const EQUAL_WEIGHT_FUSION_CONFIG: Readonly<RankFusionConfig> =
   Object.freeze({
@@ -36,6 +41,30 @@ export const TEST_SOURCE_CONTENT_CONFIG: Readonly<SourceContentConfig> =
   Object.freeze({
     directory: join(tmpdir(), "citeloom-test-source-content"),
   });
+
+export const TEST_EMBEDDING_INPUT_FORMAT = Object.freeze(
+  createEmbeddingInputFormatContract(
+    BUILT_IN_EMBEDDING_INPUT_FORMAT_IDS.embeddingGemma,
+    {
+      documentTemplate: "title: none | text: {{text}}",
+      name: "EmbeddingGemma",
+      queryTemplate: "task: search result | query: {{text}}",
+      schemaVersion: 1,
+    },
+  ),
+);
+
+export const TEST_PLAIN_EMBEDDING_INPUT_FORMAT = Object.freeze(
+  createEmbeddingInputFormatContract(
+    BUILT_IN_EMBEDDING_INPUT_FORMAT_IDS.plain,
+    {
+      documentTemplate: "{{text}}",
+      name: "Plain",
+      queryTemplate: "{{text}}",
+      schemaVersion: 1,
+    },
+  ),
+);
 
 const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
   answerMaximumOutputTokens: 8_192,
@@ -66,7 +95,7 @@ const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
   doclingTableStructureEnabled: true,
   doclingTimeoutSeconds: 1_800,
   embeddingDimensions: 768,
-  embeddingProfile: "embeddinggemma",
+  embeddingInputFormatId: TEST_EMBEDDING_INPUT_FORMAT.id,
   embeddingSpaceId: null,
   embeddingTimeoutSeconds: 21_600,
   expansionDecay: 1,
@@ -104,6 +133,7 @@ const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
 export interface TestConfigOptions {
   database?: Partial<DatabaseConfig>;
   doclingTopology?: DoclingServiceTopology;
+  embeddingInputFormat?: EmbeddingInputFormatContract;
   providerOptions?: TestProviderSettingsOptions;
   providerSettings?: ProviderSettings;
   runtime?: Partial<RuntimeSettings>;
@@ -154,6 +184,7 @@ export function readEqualWeightTestConfig(
     providerSettings,
     doclingServices,
     options.sourceContent ?? TEST_SOURCE_CONTENT_CONFIG,
+    options.embeddingInputFormat ?? TEST_EMBEDDING_INPUT_FORMAT,
   );
 }
 

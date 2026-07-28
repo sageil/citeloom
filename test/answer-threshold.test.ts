@@ -15,6 +15,7 @@ import {
   createRetrievalWindowPolicy,
   createRetrievalWindowPolicyContract,
 } from "../src/retrieval/window-policy.js";
+import { TEST_PLAIN_EMBEDDING_INPUT_FORMAT } from "./config-fixture.js";
 
 const supportingDocumentId = "a".repeat(64);
 const remainingDocumentId = "b".repeat(64);
@@ -29,7 +30,7 @@ describe("answer threshold calibration", () => {
 
     const selection = selectAnswerThreshold([preparation], 0.5);
 
-    expect(selection.version).toBe(3);
+    expect(selection.version).toBe(4);
     expect(selection.scoringConfiguration.retrieval.channelOrderingPolicy)
       .toBe("channel-score-then-retrieval-id-v1");
     expect(selection.selectedThreshold).toBeCloseTo(0.55);
@@ -191,8 +192,8 @@ function buildPreparation(
       embeddingSpace: {
         dimensions: 768,
         id: "embedding:test:768",
+        inputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
         model: "embedding-model",
-        profile: "plain",
         retrievalWindow: createRetrievalWindowPolicyContract(
           createRetrievalWindowPolicy("structured-token-v3", 512, 2_048),
         ),
@@ -220,7 +221,7 @@ function buildPreparation(
       },
       settingsVersion: 1,
     },
-    version: 5 as const,
+    version: 6 as const,
   };
   return decodeAnswerThresholdPreparation(value, "test fixture");
 }

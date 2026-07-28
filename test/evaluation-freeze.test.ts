@@ -26,7 +26,7 @@ describe("frozen evaluation configuration", () => {
           channelOrderingPolicy: "channel-score-then-retrieval-id-v1",
         },
       },
-      version: 5,
+      version: 6,
     });
 
     expect(() => assertEvaluationConfigurationFrozen(

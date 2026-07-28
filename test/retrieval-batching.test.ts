@@ -12,6 +12,7 @@ import {
 import { mapRetrievalVariants } from "../src/retrieval/indexing/query-store.js";
 import { createDeferred } from "./deferred-fixture.js";
 import { FakeHhemClient } from "./hhem-fixture.js";
+import { TEST_EMBEDDING_INPUT_FORMAT } from "./config-fixture.js";
 
 describe("batched retrieval queries", () => {
   it("embeds every query variant in one provider batch", async () => {
@@ -81,10 +82,10 @@ describe("batched retrieval queries", () => {
       adapter: "openai-compatible-embedding" as const,
       apiToken: null,
       baseUrl: "http://127.0.0.1:1234/v1",
+      inputFormat: TEST_EMBEDDING_INPUT_FORMAT,
       providerId: "embedding",
       maximumInputTokens: 2_048,
       model: "embedding-model",
-      profile: "embeddinggemma" as const,
       runtimeName: "test runtime",
       timeoutMs: 600_000,
     };

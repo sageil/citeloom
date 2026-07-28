@@ -44,6 +44,7 @@ import {
 import {
   EQUAL_WEIGHT_FUSION_CONFIG,
   readEqualWeightTestConfig,
+  TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
 } from "./config-fixture.js";
 import {
   buildExactCandidateRepresentation,
@@ -372,7 +373,7 @@ describe("comparative evaluation preparation", () => {
           timeToFirstTokenMs: null,
         },
       }],
-      version: 10,
+      version: 11,
     }, "telemetry test artifact");
 
     const result = scorePreparedEvaluation(artifact);
@@ -630,7 +631,7 @@ async function buildArtifact(): Promise<EvaluationPreparationArtifact> {
         timeToFirstTokenMs: null,
       },
     }],
-    version: 10,
+    version: 11,
   }, "test artifact");
 }
 
@@ -725,8 +726,8 @@ function buildProvenance(
     embeddingSpace: {
       dimensions: 768,
       id: "embedding-space",
+      inputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       model: "embedding-model",
-      profile: "plain",
       retrievalWindow: createRetrievalWindowPolicyContract(
         createRetrievalWindowPolicy("structured-token-v3", 512, 2_048),
       ),

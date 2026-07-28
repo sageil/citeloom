@@ -142,15 +142,15 @@ describe("database administrator bootstrap", () => {
       expect(document.providers.connections.ollama).toMatchObject({
         answer: {
           contextCapacityTokens: 131_072,
-          model: "gemma4:e4b",
+          model: "gemma4:e4b-mlx",
         },
         embedding: {
           contextCapacityTokens: 2_048,
-          model: "embeddinggemma",
+          model: "snowflake-arctic-embed:137m",
         },
         summarization: {
           contextCapacityTokens: 131_072,
-          model: "gemma4:e4b",
+          model: "gemma4:e4b-mlx",
         },
       });
     }

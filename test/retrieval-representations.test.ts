@@ -22,6 +22,7 @@ import {
   buildSourceLocation,
   buildTableStructure,
 } from "./source-element-fixture.js";
+import { TEST_PLAIN_EMBEDDING_INPUT_FORMAT } from "./config-fixture.js";
 
 const policy = createRetrievalWindowPolicyContract(
   createRetrievalWindowPolicy("structured-token-v3", 512, 2_048),
@@ -45,7 +46,7 @@ describe("retrieval representations", () => {
   it("creates exact representations only for ordinary text", () => {
     const text = buildTextElement();
     const windows = createRetrievalWindows([text], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy,
     });
 
@@ -70,7 +71,7 @@ describe("retrieval representations", () => {
       "Complaints by province: Ontario recorded 120 and Alberta recorded 42.",
     );
     const windows = createRetrievalWindows([table], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy,
     });
 
@@ -191,7 +192,7 @@ describe("retrieval representations", () => {
   it("fails when canonical media lacks a terminal description record", () => {
     const table = buildTableElement();
     const windows = createRetrievalWindows([table], {
-      embeddingProfile: "plain",
+      embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       policy,
     });
 

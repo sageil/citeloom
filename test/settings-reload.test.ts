@@ -12,6 +12,7 @@ import {
 import {
   createTestRuntimeSettings,
   readEqualWeightTestConfig,
+  TEST_EMBEDDING_INPUT_FORMAT,
 } from "./config-fixture.js";
 import { createDeferred } from "./deferred-fixture.js";
 import { createTestProviderSettings } from "./provider-settings-fixture.js";
@@ -148,9 +149,17 @@ function buildEffectiveSettings(version: number): EffectiveApplicationSettings {
   return {
     config,
     defaults: runtimeSettings,
+    embeddingInputFormats: [{
+      ...TEST_EMBEDDING_INPUT_FORMAT,
+      createdAt: new Date("2026-07-15T12:00:00.000Z"),
+      embeddingSpaceCount: 0,
+      retiredAt: null,
+    }],
+    indexedDocumentCount: 0,
     overrides: {},
     providerSettings,
     runtimeSettings,
+    selectedEmbeddingSpaceDocumentCount: 0,
     updatedAt: null,
     version,
   };

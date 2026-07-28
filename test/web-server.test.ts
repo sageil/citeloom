@@ -50,6 +50,7 @@ import {
 import {
   createTestRuntimeSettings,
   readEqualWeightTestConfig,
+  TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
 } from "./config-fixture.js";
 import { createDeferred } from "./deferred-fixture.js";
 import type { AuthenticatedPrincipal } from "../src/auth/model.js";
@@ -810,6 +811,8 @@ describe("web server boundary", () => {
         "Retrieval chunk target 4096 exceeds the embedding model context of "
         + "2048. CiteLoom is using 2048 tokens as the effective retrieval "
         + "chunk target.",
+        "The selected embedding configuration has no indexed documents. "
+        + "Index a document before asking questions.",
       ]);
       expect(body.fields).toEqual(expect.arrayContaining([
         expect.objectContaining({
@@ -2493,6 +2496,8 @@ type TestWebServiceOverrides = Partial<RuntimeWebServices>
     | "changePassword"
     | "changeWorkspaceMemberRole"
     | "completePasswordSetup"
+    | "copyEmbeddingInputFormat"
+    | "createEmbeddingInputFormat"
     | "createPasswordReset"
     | "createWorkspaceMember"
     | "listWorkspaceMembers"
@@ -2502,7 +2507,9 @@ type TestWebServiceOverrides = Partial<RuntimeWebServices>
     | "readSettings"
     | "reportApplicationError"
     | "removeWorkspaceMember"
+    | "retireEmbeddingInputFormat"
     | "revokeSession"
+    | "reviseEmbeddingInputFormat"
     | "subscribeRevisions"
     | "updateSettings"
   >>;
@@ -2568,6 +2575,10 @@ function buildServices(
     completePasswordSetup: overrides.completePasswordSetup ?? (async () => {
       throw new Error("Authentication is not configured in boundary tests.");
     }),
+    copyEmbeddingInputFormat: overrides.copyEmbeddingInputFormat
+      ?? (async () => buildEmbeddingInputFormatRecord()),
+    createEmbeddingInputFormat: overrides.createEmbeddingInputFormat
+      ?? (async () => buildEmbeddingInputFormatRecord()),
     createPasswordReset: overrides.createPasswordReset ?? (async () => {
       throw new Error("Authentication is not configured in boundary tests.");
     }),
@@ -2594,6 +2605,8 @@ function buildServices(
     removeWorkspaceMember: overrides.removeWorkspaceMember ?? (async () => {
       throw new Error("Authentication is not configured in boundary tests.");
     }),
+    retireEmbeddingInputFormat: overrides.retireEmbeddingInputFormat
+      ?? (async () => buildEmbeddingInputFormatRecord()),
     readSession: overrides.readSession ?? (async () => null),
     revokeSession: overrides.revokeSession ?? (async () => undefined),
     run: async (operation) => operation(effectiveRuntimeServices),
@@ -2603,6 +2616,8 @@ function buildServices(
     },
     stream: (operation) => operation(effectiveRuntimeServices),
     subscribeRevisions: overrides.subscribeRevisions ?? (() => () => undefined),
+    reviseEmbeddingInputFormat: overrides.reviseEmbeddingInputFormat
+      ?? (async () => buildEmbeddingInputFormatRecord()),
     updateSettings: overrides.updateSettings ?? (async () => buildEffectiveSettings()),
   };
 }
@@ -2706,9 +2721,15 @@ function buildEffectiveSettings(): EffectiveApplicationSettings {
   return {
     config,
     defaults: runtimeSettings,
+    embeddingInputFormats: [{
+      ...buildEmbeddingInputFormatRecord(),
+      embeddingSpaceCount: 0,
+    }],
+    indexedDocumentCount: 0,
     overrides: {},
     providerSettings: createTestProviderSettings(),
     runtimeSettings,
+    selectedEmbeddingSpaceDocumentCount: 0,
     updatedAt: null,
     version: 0,
   };
@@ -2717,10 +2738,18 @@ function buildEffectiveSettings(): EffectiveApplicationSettings {
 function buildRuntimeSettings(): RuntimeSettings {
   return createTestRuntimeSettings({
     claimVerifierRuntimeName: "test verifier runtime",
-    embeddingProfile: "plain",
+    embeddingInputFormatId: TEST_PLAIN_EMBEDDING_INPUT_FORMAT.id,
     maxDocumentMegabytes: 1,
     workerFallbackPollMs: 1_000,
   });
+}
+
+function buildEmbeddingInputFormatRecord() {
+  return {
+    ...TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+    createdAt: new Date("2026-07-15T12:00:00.000Z"),
+    retiredAt: null,
+  };
 }
 
 function buildBrowserDocument(
@@ -2828,6 +2857,7 @@ function buildPendingJob(sourceFile: string): PendingIngestionJob {
 
 function buildConfig(): AppConfig {
   return readEqualWeightTestConfig({
+    embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     providerOptions: {
       inferenceBaseUrl: "http://127.0.0.1:1234/v1",
     },

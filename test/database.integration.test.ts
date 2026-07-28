@@ -86,6 +86,7 @@ import {
   migrateDatabase,
   openDatabase,
 } from "../src/database/client.js";
+import { applyDatabaseBootstrap } from "../src/database/administrator-bootstrap.js";
 import {
   applicationSettings,
   applicationRevisions,
@@ -190,6 +191,7 @@ import {
   createTestRuntimeSettings,
   EQUAL_WEIGHT_FUSION_CONFIG,
   readEqualWeightTestConfig,
+  TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
 } from "./config-fixture.js";
 import { createTestProviderSettings } from "./provider-settings-fixture.js";
 import {
@@ -209,8 +211,8 @@ const testRetrievalWindowIdentity =
 const space768: EmbeddingSpaceConfig = {
   dimensions: 768,
   id: `test-embedding:plain:768:${testRetrievalWindowIdentity}`,
+  inputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
   model: "test-embedding",
-  profile: "plain",
   retrievalWindow: testRetrievalWindow,
 };
 
@@ -293,15 +295,15 @@ function buildTestDocumentFormatRow(sourceFile: string) {
 const space384: EmbeddingSpaceConfig = {
   dimensions: 384,
   id: `test-embedding:plain:384:${testRetrievalWindowIdentity}`,
+  inputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
   model: "test-embedding",
-  profile: "plain",
   retrievalWindow: testRetrievalWindow,
 };
 const space1024: EmbeddingSpaceConfig = {
   dimensions: 1024,
   id: `test-embedding:plain:1024:${testRetrievalWindowIdentity}`,
+  inputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
   model: "test-embedding",
-  profile: "plain",
   retrievalWindow: testRetrievalWindow,
 };
 let session: DatabaseSession;
@@ -313,6 +315,11 @@ beforeAll(async () => {
   };
   session = await openDatabase({ poolMax: 4, url: databaseUrl });
   await migrateDatabase(session.database);
+  await applyDatabaseBootstrap(session.database, {
+    CITELOOM_ADMIN_PASSWORD: "integration test administrator password",
+    CITELOOM_ADMIN_USERNAME: "IntegrationAdmin",
+    CITELOOM_SOURCE_CONTENT_DIRECTORY: sourceContentConfig.directory,
+  });
   await initializeDoclingBenchmarkSchema(session.database);
 });
 
@@ -1906,7 +1913,7 @@ function buildDatabaseOwnedSettings(): StoredApplicationSettings {
     claimVerifierRuntimeName: "test verifier runtime",
     doclingDefaultServiceCapacity: 1,
     embeddingDimensions: space768.dimensions,
-    embeddingProfile: space768.profile,
+    embeddingInputFormatId: space768.inputFormat.id,
     maxDocumentMegabytes: 1,
     workerFallbackPollMs: 1_000,
   });
@@ -3198,8 +3205,11 @@ describe("PostgreSQL document catalog", () => {
         space768.id,
       ),
     ).toEqual([{ documentId, sourceFile }]);
-    expect(await catalog.resolveQueryScope({ kind: "all" }, space384.id)).toEqual(
-      [],
+    await expect(
+      catalog.resolveQueryScope({ kind: "all" }, space384.id),
+    ).rejects.toThrow(
+      "The selected embedding configuration has no indexed documents. "
+      + "Reindex documents before asking a question.",
     );
     await expect(catalog.resolveQueryScope(
       { documentIds: ["f".repeat(64)], kind: "documentIds" },
@@ -5267,7 +5277,7 @@ describe("pgvector retrieval", () => {
     await ensureEmbeddingSpace(session.database, structuredSpace);
     const element = buildTextElement("1".repeat(64), "2".repeat(64));
     const windows = createRetrievalWindows([element], {
-      embeddingProfile: space768.profile,
+      embeddingInputFormat: space768.inputFormat,
       policy: space768.retrievalWindow,
     });
     const representations = createRetrievalRepresentations(
@@ -5309,7 +5319,10 @@ describe("pgvector retrieval", () => {
     element.sectionPath = ["Policy", "A section path counted in the input"];
     const windows = createRetrievalWindows(
       [element],
-      { embeddingProfile: "plain", policy },
+      {
+        embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+        policy,
+      },
     );
     const representations = createRetrievalRepresentations(
       [element],
@@ -6231,7 +6244,7 @@ function buildTestRepresentations(
   space: EmbeddingSpaceConfig,
 ): RetrievalRepresentation[] {
   const windows = createRetrievalWindows(elements, {
-    embeddingProfile: space.profile,
+    embeddingInputFormat: space.inputFormat,
     policy: space.retrievalWindow,
   });
   return createRetrievalRepresentations(
@@ -6252,7 +6265,7 @@ async function indexTestElements(
   elements: SourceElement[],
 ): Promise<void> {
   const windows = createRetrievalWindows(elements, {
-    embeddingProfile: space.profile,
+    embeddingInputFormat: space.inputFormat,
     policy: space.retrievalWindow,
   });
   if (windows.length !== embeddings.length) {
@@ -6767,6 +6780,7 @@ function buildTestConfig(): AppConfig {
     providerSettings: storedSettings.providers,
     runtime: storedSettings.runtime,
     sourceContent: sourceContentConfig,
+    embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
   });
 }
 
@@ -6942,8 +6956,16 @@ function buildRetentionSpace(spaceId: string, createdAt: Date) {
     createdAt,
     dimensions: 384,
     id: spaceId,
+    inputFormatDocumentTemplate:
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT.documentTemplate,
+    inputFormatHash: TEST_PLAIN_EMBEDDING_INPUT_FORMAT.inputFormatHash,
+    inputFormatId: TEST_PLAIN_EMBEDDING_INPUT_FORMAT.id,
+    inputFormatName: TEST_PLAIN_EMBEDDING_INPUT_FORMAT.name,
+    inputFormatQueryTemplate:
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT.queryTemplate,
+    inputFormatSchemaVersion:
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT.schemaVersion,
     model: "retention-test-model",
-    profile: "plain",
     retrievalWindowPolicy: testRetrievalWindow.policy,
     retrievalWindowPolicyFingerprint: testRetrievalWindow.fingerprint,
   } as const;
@@ -6953,8 +6975,13 @@ function buildEmbeddingSpaceRow(space: EmbeddingSpaceConfig) {
   return {
     dimensions: space.dimensions,
     id: space.id,
+    inputFormatDocumentTemplate: space.inputFormat.documentTemplate,
+    inputFormatHash: space.inputFormat.inputFormatHash,
+    inputFormatId: space.inputFormat.id,
+    inputFormatName: space.inputFormat.name,
+    inputFormatQueryTemplate: space.inputFormat.queryTemplate,
+    inputFormatSchemaVersion: space.inputFormat.schemaVersion,
     model: space.model,
-    profile: space.profile,
     retrievalWindowPolicy: space.retrievalWindow.policy,
     retrievalWindowPolicyFingerprint: space.retrievalWindow.fingerprint,
   };

@@ -13,6 +13,7 @@ import {
   createTestDoclingTopology,
   createTestRuntimeSettings,
   readEqualWeightTestConfig,
+  TEST_EMBEDDING_INPUT_FORMAT,
   TEST_SOURCE_CONTENT_CONFIG,
 } from "./config-fixture.js";
 import { createTestProviderSettings } from "./provider-settings-fixture.js";
@@ -105,6 +106,7 @@ describe("application configuration", () => {
       providers,
       doclingServices,
       TEST_SOURCE_CONTENT_CONFIG,
+      TEST_EMBEDDING_INPUT_FORMAT,
     );
 
     expect(config.scheduling.settingsVersion).toBe(7);
@@ -136,6 +138,7 @@ describe("application configuration", () => {
       providers,
       doclingServices,
       TEST_SOURCE_CONTENT_CONFIG,
+      TEST_EMBEDDING_INPUT_FORMAT,
     )).toThrow("Settings version must be a nonnegative integer");
     expect(() => parseRuntimeSettings({
       ...runtimeSettings,

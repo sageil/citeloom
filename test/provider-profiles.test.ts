@@ -7,6 +7,7 @@ import {
 import {
   createTestRuntimeSettings,
   readEqualWeightTestConfig,
+  TEST_EMBEDDING_INPUT_FORMAT,
 } from "./config-fixture.js";
 import { createTestProviderSettings } from "./provider-settings-fixture.js";
 
@@ -81,6 +82,7 @@ describe("provider profiles", () => {
       providers,
       startup.doclingServices,
       startup.sourceContent,
+      TEST_EMBEDDING_INPUT_FORMAT,
     );
 
     expect(config.speechToText).toMatchObject({
@@ -118,6 +120,7 @@ describe("provider profiles", () => {
       providers,
       startup.doclingServices,
       startup.sourceContent,
+      TEST_EMBEDDING_INPUT_FORMAT,
     );
 
     expect(config.inference.answer).toMatchObject({
@@ -166,6 +169,7 @@ describe("provider profiles", () => {
       providers,
       startup.doclingServices,
       startup.sourceContent,
+      TEST_EMBEDDING_INPUT_FORMAT,
     );
 
     expect(config.inference.answer).toMatchObject({
@@ -201,6 +205,7 @@ describe("provider profiles", () => {
       providers,
       startup.doclingServices,
       startup.sourceContent,
+      TEST_EMBEDDING_INPUT_FORMAT,
     );
 
     providers.routing.textToSpeech = "groq";
@@ -211,6 +216,7 @@ describe("provider profiles", () => {
       providers,
       startup.doclingServices,
       startup.sourceContent,
+      TEST_EMBEDDING_INPUT_FORMAT,
     );
 
     expect(localConfig.textToSpeech).toMatchObject({
@@ -255,5 +261,6 @@ function buildTextToSpeechConfig(
     providers,
     startup.doclingServices,
     startup.sourceContent,
+    TEST_EMBEDDING_INPUT_FORMAT,
   );
 }

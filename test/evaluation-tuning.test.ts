@@ -469,7 +469,7 @@ function buildPreparation(
     },
     skippedModes: [],
     telemetry: [{ caseId, trace: buildTrace(domain) }],
-    version: 10,
+    version: 11,
   }, `${domain} tuning preparation`);
 }
 

@@ -10,6 +10,7 @@ import {
   splitRetrievalRepresentationAtTokenLimit,
   type RetrievalRepresentation,
 } from "../src/retrieval/representations.js";
+import { TEST_PLAIN_EMBEDDING_INPUT_FORMAT } from "./config-fixture.js";
 import { buildSourceLocation } from "./source-element-fixture.js";
 
 describe("retrieval representation splitting", () => {
@@ -20,7 +21,7 @@ describe("retrieval representation splitting", () => {
     const split = splitRetrievalRepresentationAtTokenLimit(
       representation,
       element,
-      "plain",
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       12,
     );
     const linked = linkRetrievalRepresentationNeighbors(split);
@@ -29,7 +30,11 @@ describe("retrieval representation splitting", () => {
     expect(new Set(linked.map((piece) => piece.id)).size).toBe(linked.length);
     expect(linked.map((piece) => piece.content).join(" ")).toBe(content);
     expect(linked.every((piece) => (
-      countRetrievalEmbeddingInputTokens(piece.content, element, "plain") <= 12
+      countRetrievalEmbeddingInputTokens(
+        piece.content,
+        element,
+        TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+      ) <= 12
     ))).toBe(true);
     expect(linked[0]?.previousRetrievalId).toBeNull();
     expect(linked[0]?.nextRetrievalId).toBe(linked[1]?.id);
