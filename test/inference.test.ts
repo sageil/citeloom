@@ -37,11 +37,14 @@ import {
 import {
   createTestRuntimeSettings,
   readEqualWeightTestConfig,
+  TEST_EMBEDDING_INPUT_FORMAT,
+  TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
 } from "./config-fixture.js";
 import { createTestProviderSettings } from "./provider-settings-fixture.js";
 import {
   answerQuestion,
   buildAnswerContent,
+  InvalidAnswerDraftError,
   streamAnswerQuestion,
 } from "../src/answers/inference.js";
 import {
@@ -372,9 +375,7 @@ describe("createInferenceModelRegistry", () => {
       throw new Error(`Unexpected Cohere request URL: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
-    const runtimeSettings = createTestRuntimeSettings({
-      embeddingProfile: "plain",
-    });
+    const runtimeSettings = createTestRuntimeSettings();
     const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
     const providers = createTestProviderSettings();
     providers.connections.cohere.apiToken = "cohere-secret";
@@ -391,6 +392,7 @@ describe("createInferenceModelRegistry", () => {
       providers,
       startup.doclingServices,
       startup.sourceContent,
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
 
     const models = createInferenceModelRegistry(config);
@@ -554,6 +556,7 @@ describe("createInferenceModelRegistry", () => {
       providers,
       startup.doclingServices,
       startup.sourceContent,
+      TEST_EMBEDDING_INPUT_FORMAT,
     );
     const models = createInferenceModelRegistry(config);
 
@@ -619,7 +622,6 @@ describe("createInferenceModelRegistry", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     const runtimeSettings = createTestRuntimeSettings({
-      embeddingProfile: "plain",
       inferenceThinkingMode: "disabled",
     });
     const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
@@ -633,6 +635,7 @@ describe("createInferenceModelRegistry", () => {
       providers,
       startup.doclingServices,
       startup.sourceContent,
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
 
     const models = createInferenceModelRegistry(config);
@@ -678,9 +681,7 @@ describe("createInferenceModelRegistry", () => {
       }));
     });
     vi.stubGlobal("fetch", fetchMock);
-    const runtimeSettings = createTestRuntimeSettings({
-      embeddingProfile: "plain",
-    });
+    const runtimeSettings = createTestRuntimeSettings();
     const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
     const providers = createTestProviderSettings();
     providers.routing.embedding = "ollama";
@@ -691,6 +692,7 @@ describe("createInferenceModelRegistry", () => {
       providers,
       startup.doclingServices,
       startup.sourceContent,
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
 
     expect(config.inference.embedding).toMatchObject({
@@ -734,9 +736,7 @@ describe("createInferenceModelRegistry", () => {
       }));
     });
     vi.stubGlobal("fetch", fetchMock);
-    const runtimeSettings = createTestRuntimeSettings({
-      embeddingProfile: "plain",
-    });
+    const runtimeSettings = createTestRuntimeSettings();
     const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
     const providers = createTestProviderSettings();
     providers.connections.jina.apiToken = "jina-secret";
@@ -750,6 +750,7 @@ describe("createInferenceModelRegistry", () => {
       providers,
       startup.doclingServices,
       startup.sourceContent,
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
 
     const models = createInferenceModelRegistry(config);
@@ -875,10 +876,10 @@ describe("buildAnswerContent", () => {
       adapter: "openai-compatible-embedding",
       apiToken: null,
       baseUrl: "http://localhost:1234/v1",
+      inputFormat: TEST_EMBEDDING_INPUT_FORMAT,
       providerId: "embedding",
       maximumInputTokens: 2_048,
       model: "embeddinggemma",
-      profile: "embeddinggemma",
       runtimeName: "test runtime",
       timeoutMs: 600_000,
     };
@@ -1065,7 +1066,7 @@ describe("answer generation", () => {
     ]);
   });
 
-  it("starts document-specific recovery only after trying the full context", async () => {
+  it("returns a valid no-answer response without retrying", async () => {
     const privacySource = buildRetrievedElement(
       "a",
       "b",
@@ -1076,10 +1077,11 @@ describe("answer generation", () => {
       "d",
       "/tmp/labour-code.pdf",
     );
-    const answerModel = buildSequentialAnswerModel([
-      { status: "no_answer" },
-      buildAnsweredDraft("The Privacy Act provides protections.", [1]),
-    ]);
+    const answerModel = buildAnswerModel({
+      conflictGroups: [],
+      statements: [],
+      status: "no_answer",
+    });
 
     const result = await answerQuestion(
       buildModelRegistry(answerModel),
@@ -1089,18 +1091,17 @@ describe("answer generation", () => {
       generationSettings,
     );
 
-    expect(result.outcome).toBe("answered");
-    expect(answerModel.doGenerateCalls).toHaveLength(2);
+    expect(result).toMatchObject({
+      outcome: "fallback",
+      reason: "model-no-answer",
+    });
+    expect(answerModel.doGenerateCalls).toHaveLength(1);
     const initialPrompt = JSON.stringify(answerModel.doGenerateCalls[0]?.prompt);
-    const recoveryPrompt = JSON.stringify(answerModel.doGenerateCalls[1]?.prompt);
     expect(initialPrompt).toContain("/tmp/privacy-act.pdf");
     expect(initialPrompt).toContain("/tmp/labour-code.pdf");
-    expect(recoveryPrompt).toContain("/tmp/privacy-act.pdf");
-    expect(recoveryPrompt).not.toContain("/tmp/labour-code.pdf");
-    expect(result.sources[0]?.elementId).toBe(privacySource.element.id);
   });
 
-  it("can recover from either document after a cross-document attempt", async () => {
+  it("repairs one invalid response with the same complete evidence", async () => {
     const privacySource = buildRetrievedElement(
       "a",
       "b",
@@ -1117,9 +1118,8 @@ describe("answer generation", () => {
       recordAnswerRequest,
     };
     const answerModel = buildSequentialAnswerModel([
-      { status: "no_answer" },
-      { status: "no_answer" },
-      buildAnsweredDraft("PIPEDA provides privacy protections.", [1]),
+      buildAnsweredDraft("Invalid source reference.", [3]),
+      buildAnsweredDraft("The documents provide privacy protections.", [1, 2]),
     ]);
 
     const result = await answerQuestion(
@@ -1132,24 +1132,18 @@ describe("answer generation", () => {
     );
 
     expect(result.outcome).toBe("answered");
-    expect(answerModel.doGenerateCalls).toHaveLength(3);
+    expect(answerModel.doGenerateCalls).toHaveLength(2);
     const initialPrompt = JSON.stringify(answerModel.doGenerateCalls[0]?.prompt);
-    const firstRecoveryPrompt = JSON.stringify(
+    const repairPrompt = JSON.stringify(
       answerModel.doGenerateCalls[1]?.prompt,
-    );
-    const secondRecoveryPrompt = JSON.stringify(
-      answerModel.doGenerateCalls[2]?.prompt,
     );
     expect(initialPrompt).toContain("/tmp/privacy-act.pdf");
     expect(initialPrompt).toContain(
       "/tmp/personal-information-protection-and-electronic-documents-act.pdf",
     );
-    expect(firstRecoveryPrompt).toContain("/tmp/privacy-act.pdf");
-    expect(firstRecoveryPrompt).not.toContain(
-      "/tmp/personal-information-protection-and-electronic-documents-act.pdf",
-    );
-    expect(secondRecoveryPrompt).not.toContain("/tmp/privacy-act.pdf");
-    expect(secondRecoveryPrompt).toContain(
+    expect(repairPrompt).toContain("RETRY INSTRUCTION:");
+    expect(repairPrompt).toContain("/tmp/privacy-act.pdf");
+    expect(repairPrompt).toContain(
       "/tmp/personal-information-protection-and-electronic-documents-act.pdf",
     );
     expect(recordAnswerRequest.mock.calls.map((call) => call[0])).toEqual([{
@@ -1159,13 +1153,16 @@ describe("answer generation", () => {
       ],
       phase: "initial",
     }, {
-      evidence: [buildAnswerRequestEvidence(privacySource)],
-      phase: "recovery",
-    }, {
-      evidence: [buildAnswerRequestEvidence(pipedaSource)],
+      evidence: [
+        buildAnswerRequestEvidence(privacySource),
+        buildAnswerRequestEvidence(pipedaSource),
+      ],
       phase: "recovery",
     }]);
-    expect(result.sources[0]?.elementId).toBe(pipedaSource.element.id);
+    expect(result.sources.map((source) => source.elementId)).toEqual([
+      privacySource.element.id,
+      pipedaSource.element.id,
+    ]);
   });
 
   it("publishes a valid structured answer whose output can exceed 1,500 tokens", async () => {
@@ -1263,7 +1260,7 @@ describe("answer generation", () => {
     });
   });
 
-  it("fails closed for an expected model-contract failure", async () => {
+  it("rejects when both structured responses violate the contract", async () => {
     const answerModel = new MockLanguageModelV4({
       doGenerate: buildTextGeneration(
         JSON.stringify({
@@ -1280,22 +1277,14 @@ describe("answer generation", () => {
       ),
     });
 
-    const result = await answerQuestion(
+    await expect(answerQuestion(
       buildModelRegistry(answerModel),
       "What changed?",
       [buildRetrievedElement("a", "b")],
       new TaskLimiter(1),
       generationSettings,
-    );
-
-    expect(result).toMatchObject({
-      answer: mandatoryNoAnswer,
-      answerDocument: { status: "no_answer" },
-      outcome: "fallback",
-      reason: "invalid-draft",
-      sources: [],
-    });
-    expect(JSON.stringify(result)).not.toContain("Revenue increased");
+    )).rejects.toBeInstanceOf(InvalidAnswerDraftError);
+    expect(answerModel.doGenerateCalls).toHaveLength(2);
   });
 
   it("publishes an answer after removing model citation decoration", async () => {
@@ -1477,7 +1466,7 @@ function buildAnsweredDraft(
 }
 
 function buildSequentialAnswerModel(
-  drafts: readonly AnswerDraft[],
+  drafts: readonly unknown[],
 ): MockLanguageModelV4 {
   let requestIndex = 0;
   return new MockLanguageModelV4({

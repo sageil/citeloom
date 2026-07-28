@@ -37,6 +37,7 @@ import type {
 import type { SaveResearchTurnInput } from "../src/research/store.js";
 import { readEqualWeightTestConfig } from "./config-fixture.js";
 import { FakeHhemClient } from "./hhem-fixture.js";
+import { InvalidAnswerDraftError } from "../src/answers/inference.js";
 import {
   buildRetrievedElementProvenance,
   buildSourceLocation,
@@ -359,26 +360,20 @@ describe("atomic structured answer publication", () => {
     expect(saveTurnMock).toHaveBeenCalledOnce();
   });
 
-  it("replaces an invalid model draft before persistence and publication", async () => {
+  it("rejects an invalid model draft without persistence or publication", async () => {
     const answerModel = buildAnswerModel(buildAnsweredDraft([2]));
     const verifier = new FakeHhemClient();
     const stream = buildWriter();
 
-    await runStreamedAnswer(
+    await expect(runStreamedAnswer(
       buildPrepared(answerModel, verifier),
       stream.writer,
-    );
+    )).rejects.toBeInstanceOf(InvalidAnswerDraftError);
 
+    expect(answerModel.doGenerateCalls).toHaveLength(2);
     expect(verifier.scoreCalls).toEqual([]);
-    expect(readSavedTurnInput().answerDocument).toEqual({
-      citations: [],
-      schemaVersion: 1,
-      statements: [],
-      status: "no_answer",
-    });
-    const published = readChunks(stream.chunks, "data-answer")[0]?.data;
-    expect(published?.answerDocument.status).toBe("no_answer");
-    expect(JSON.stringify(published)).not.toContain("Revenue increased");
+    expect(saveTurnMock).not.toHaveBeenCalled();
+    expect(stream.chunks).toEqual([]);
   });
 
   it("preserves verifier failure without persisting or publishing", async () => {
