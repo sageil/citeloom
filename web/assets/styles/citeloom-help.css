@@ -1,0 +1,188 @@
+/* Help route styles are loaded only when the Help workspace is requested. */
+
+.help-page {
+  display: grid;
+  gap: 20px;
+  padding: 8px 0 40px;
+}
+
+.help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.help-heading {
+  min-width: 0;
+}
+
+.help-heading h1 {
+  margin: 0;
+  color: var(--cyan);
+  font-family: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(31px, 3.2vw, 38px);
+  font-weight: 610;
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.help-layout {
+  display: grid;
+  gap: 20px;
+}
+
+.help-toc {
+  position: static;
+}
+
+.help-guide {
+  min-width: 0;
+}
+
+.help-topic-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.help-topic-grid li {
+  min-width: 0;
+}
+
+.help-topic-grid a {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 72px;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(11, 16, 32, 0.72);
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.help-topic-grid a > svg:first-child {
+  color: var(--cyan);
+}
+
+.help-topic-grid a strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.help-topic-grid a:hover,
+.help-topic-grid a:focus-visible {
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.help-topic-grid a:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: -3px;
+}
+
+.help-content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+}
+
+.help-section {
+  min-width: 0;
+  padding: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.help-section:nth-child(odd) {
+  border-right: 1px solid var(--border);
+}
+
+.help-section:last-child {
+  border-bottom: 0;
+}
+
+.help-section:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+  border-right: 0;
+}
+
+.help-section h2 {
+  margin-bottom: 14px;
+  scroll-margin-top: 20px;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+}
+
+.help-section h2:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--cyan);
+  outline-offset: 4px;
+}
+
+.help-section h3 {
+  margin: 18px 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.help-section p,
+.help-section li {
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.help-section p:last-child,
+.help-section ul:last-child,
+.help-section ol:last-child {
+  margin-bottom: 0;
+}
+
+.help-section ul,
+.help-section ol {
+  display: grid;
+  gap: 7px;
+  padding-left: 22px;
+}
+
+.help-section code {
+  color: #a5f3fc;
+  font-size: 0.92em;
+}
+
+.help-examples {
+  padding-left: 0 !important;
+  list-style: none;
+}
+
+.help-examples li {
+  padding: 9px 11px;
+  border-left: 2px solid var(--cyan);
+  background: rgba(6, 182, 212, 0.06);
+}
+
+@media (max-width: 1100px) {
+  .help-topic-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .help-topic-grid {
+    grid-template-columns: 1fr;
+  }
+}
