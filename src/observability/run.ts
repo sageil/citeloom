@@ -91,6 +91,7 @@ export interface CandidateBudgetAdmissionTelemetry {
 
 export interface CandidateBudgetDecisionTelemetry {
   admissionRank: number | null;
+  detectedLanguage?: string;
   documentId: string;
   exclusionReason: PreRerankCandidateExclusionReason | null;
   fusedRank: number;
@@ -152,6 +153,16 @@ export interface CandidateBudgetTelemetry {
   fusedWindowCount: number;
   hydratedDistinctParentCount: number;
   hydratedWindowCount: number;
+  languageAdmission?: {
+    admittedEnglishRepresentativeCount: number;
+    admittedUndeterminedRepresentativeCount: number;
+    englishRepresentativeCount: number;
+    fusedCandidateCount: number;
+    nonEnglishRepresentativeCount: number;
+    representativeCandidateCount: number;
+    supportedLanguage: "eng";
+    undeterminedRepresentativeCount: number;
+  };
   queries: CandidateBudgetQueryTelemetry[];
   retrievalWindowPolicy: RetrievalWindowPolicyContract;
 }

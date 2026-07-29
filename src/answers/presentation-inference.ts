@@ -7,6 +7,7 @@ import {
 } from "./presentation.js";
 import type { AppliedGenerationSettings } from "../inference/generation-settings.js";
 import type { InferenceModelRegistry } from "../inference/registry.js";
+import { createProcessingQuestion } from "../domain/question.js";
 import {
   createInferenceRequestSignal,
   throwInferenceRequestFailure,
@@ -47,12 +48,13 @@ export async function classifyAnswerSemanticShape(
     models.queryExpansion.provider,
     models.queryExpansion.modelId,
   );
+  const processingQuestion = createProcessingQuestion(question);
   let completion: AnswerShapeCompletion | null = null;
   try {
     const result = await scheduler.run(
       (requestSignal) => requestAnswerSemanticShape(
         models,
-        question,
+        processingQuestion,
         requestSignal,
         generationSettings,
       ),

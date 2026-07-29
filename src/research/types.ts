@@ -13,6 +13,9 @@ import type {
   TableStructure,
 } from "../domain/source-elements.js";
 import type {
+  QUESTION_PROCESSING_POLICY_ID,
+} from "../domain/question.js";
+import type {
   RepresentationHit,
 } from "../retrieval/ranking/rank-fusion.js";
 
@@ -127,7 +130,7 @@ interface ResearchRetrievalTraceBase {
   }>;
 }
 
-export interface ResearchRetrievalTrace extends ResearchRetrievalTraceBase {
+interface ResearchRetrievalTraceSources {
   orderedSources: Array<{
     documentId: string;
     documentVersionId: string;
@@ -139,8 +142,26 @@ export interface ResearchRetrievalTrace extends ResearchRetrievalTraceBase {
     sourceFile: string;
     descriptionAffected: boolean;
   }>;
+}
+
+export interface LegacyResearchRetrievalTrace
+  extends ResearchRetrievalTraceBase, ResearchRetrievalTraceSources {
   version: 3;
 }
+
+export interface CurrentResearchRetrievalTrace
+  extends ResearchRetrievalTraceBase, ResearchRetrievalTraceSources {
+  question: {
+    original: string;
+    policyId: typeof QUESTION_PROCESSING_POLICY_ID;
+    processing: string;
+  };
+  version: 4;
+}
+
+export type ResearchRetrievalTrace =
+  | LegacyResearchRetrievalTrace
+  | CurrentResearchRetrievalTrace;
 
 export type StoredResearchRetrievalTrace = ResearchRetrievalTrace;
 

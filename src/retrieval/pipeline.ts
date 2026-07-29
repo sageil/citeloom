@@ -61,12 +61,19 @@ import { RerankingTimeoutError } from "./ranking/reranker.js";
 import { embedQuestions } from "../embedding/inference.js";
 import { expandRetrievalQuery } from "./query-expansion.js";
 import type { QueryExpansionGenerationSettings } from "./query-expansion.js";
+import {
+  createQuestionInput,
+  type QuestionInput,
+} from "../domain/question.js";
 import type {
   QueryScope,
   ResolvedQueryScopeTarget,
 } from "../domain/query-scope.js";
 import type { ClaimVerificationResult } from "../research/types.js";
-import type { ResearchRetrievalTrace } from "../research/types.js";
+import type {
+  CurrentResearchRetrievalTrace,
+  ResearchRetrievalTrace,
+} from "../research/types.js";
 import {
   createTurnGenerationSettings,
   type TurnGenerationSettings,
@@ -111,10 +118,11 @@ export interface PreparedRetrieval {
 
 function createRetrievalTrace(
   generation: TurnGenerationSettings,
+  question: QuestionInput,
   queryTexts: readonly string[],
   retrieved: readonly RetrievedElement[],
-): ResearchRetrievalTrace {
-  const queries: ResearchRetrievalTrace["queries"] = [];
+): CurrentResearchRetrievalTrace {
+  const queries: CurrentResearchRetrievalTrace["queries"] = [];
   for (let index = 0; index < queryTexts.length; index += 1) {
     const text = queryTexts[index];
     if (text === undefined) {
@@ -125,7 +133,7 @@ function createRetrievalTrace(
       text,
     });
   }
-  const orderedSources: ResearchRetrievalTrace["orderedSources"] = [];
+  const orderedSources: CurrentResearchRetrievalTrace["orderedSources"] = [];
   for (let index = 0; index < retrieved.length; index += 1) {
     const item = retrieved[index];
     if (item === undefined) {
@@ -146,13 +154,25 @@ function createRetrievalTrace(
   return {
     generation,
     orderedSources,
+    question: {
+      original: question.original,
+      policyId: question.policyId,
+      processing: question.processing,
+    },
     queries,
-    version: 3,
+    version: 4,
   };
 }
 
 const passiveAbortSignal = new AbortController().signal;
 const maximumLoggedAnswerErrorMessageCharacters = 500;
+
+function readQuestionInput(question: string | QuestionInput): QuestionInput {
+  if (typeof question === "string") {
+    return createQuestionInput(question);
+  }
+  return question;
+}
 
 type AnswerStreamFailure =
   | { kind: "answer-capacity" }
@@ -172,6 +192,7 @@ export async function askIndexedDocuments(
   reportProgress: (message: string) => void,
   scope: QueryScope = { kind: "all" },
 ): Promise<AnswerResult> {
+  const questionInput = createQuestionInput(question);
   const databaseSession = await openDatabase(config.database);
   const runTelemetry = await createDatabaseRunTelemetry(
     config,
@@ -182,7 +203,7 @@ export async function askIndexedDocuments(
     const prepared = await prepareRetrieval(
       config,
       databaseSession,
-      question,
+      questionInput,
       reportProgress,
       scope,
       passiveAbortSignal,
@@ -196,7 +217,7 @@ export async function askIndexedDocuments(
     reportProgress("Generating an answer from the retrieved multimodal context");
     let result = await answerQuestion(
       prepared.models,
-      question,
+      questionInput.processing,
       prepared.retrieved,
       prepared.answerScheduler,
       prepared.generationSettings.answer,
@@ -235,6 +256,7 @@ export function streamIndexedDocumentAnswer(
   threadId: string,
   abortSignal: AbortSignal,
 ): ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>> {
+  const questionInput = createQuestionInput(question);
   return createUIMessageStream<CiteLoomUIMessage>({
     execute: async ({ writer }) => {
       writer.write({ type: "start" });
@@ -245,7 +267,7 @@ export function streamIndexedDocumentAnswer(
         await writeStreamedAnswer(
           config,
           openedSession,
-          question,
+          questionInput,
           scope,
           threadId,
           reportProgress,
@@ -254,7 +276,7 @@ export function streamIndexedDocumentAnswer(
           async (runTelemetry) => prepareRetrieval(
             config,
             openedSession,
-            question,
+            questionInput,
             reportProgress,
             scope,
             abortSignal,
@@ -285,14 +307,15 @@ export function streamIndexedDocumentAnswerWithRuntime(
   threadId: string,
   abortSignal: AbortSignal,
 ): ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>> {
+  const questionInput = createQuestionInput(question);
   return createUIMessageStream<CiteLoomUIMessage>({
     execute: async ({ writer }) => {
       writer.write({ type: "start" });
       try {
-        await writeStreamedAnswer(runtime.config, runtime, question, scope, threadId, reportProgress, abortSignal, writer,
+        await writeStreamedAnswer(runtime.config, runtime, questionInput, scope, threadId, reportProgress, abortSignal, writer,
           async (runTelemetry) => prepareRetrievalWithRuntime(
             runtime,
-            question,
+            questionInput,
             reportProgress,
             scope,
             abortSignal,
@@ -321,6 +344,7 @@ export async function retrieveIndexedDocuments(
   scope: QueryScope = { kind: "all" },
   workload: WorkloadClass = "interactive-search",
 ): Promise<RetrievedElement[]> {
+  const questionInput = createQuestionInput(question);
   const databaseSession = await openDatabase(config.database);
   const runTelemetry = await createDatabaseRunTelemetry(
     config,
@@ -331,7 +355,7 @@ export async function retrieveIndexedDocuments(
     const prepared = await prepareRetrieval(
       config,
       databaseSession,
-      question,
+      questionInput,
       reportProgress,
       scope,
       passiveAbortSignal,
@@ -351,13 +375,14 @@ export async function retrieveIndexedDocuments(
 export async function prepareRetrieval(
   config: AppConfig,
   databaseSession: DatabaseSession,
-  question: string,
+  question: string | QuestionInput,
   reportProgress: (message: string) => void,
   scope: QueryScope,
   abortSignal: AbortSignal,
   runTelemetry: RunTelemetry = noopRunTelemetry,
   workload: WorkloadClass = "interactive-search",
 ): Promise<PreparedRetrieval> {
+  const questionInput = readQuestionInput(question);
   abortSignal.throwIfAborted();
   await ensureEmbeddingSpace(databaseSession.database, config.embeddingSpace);
   const coordinator = new InferenceCoordinator(databaseSession.database);
@@ -397,7 +422,7 @@ export async function prepareRetrieval(
     embeddingScheduler,
     queryExpansionScheduler,
     rerankingScheduler,
-    question,
+    questionInput,
     reportProgress,
     scope,
     abortSignal,
@@ -408,7 +433,7 @@ export async function prepareRetrieval(
 
 export async function prepareRetrievalWithRuntime(
   runtime: ApplicationRuntime,
-  question: string,
+  question: string | QuestionInput,
   reportProgress: (message: string) => void,
   scope: QueryScope,
   abortSignal: AbortSignal,
@@ -416,6 +441,7 @@ export async function prepareRetrievalWithRuntime(
   config: AppConfig = runtime.config,
   workload: WorkloadClass = "interactive-search",
 ): Promise<PreparedRetrieval> {
+  const questionInput = readQuestionInput(question);
   return prepareRetrievalWithResources(
     config,
     runtime,
@@ -426,7 +452,7 @@ export async function prepareRetrievalWithRuntime(
     config.retrieval.reranker === null
       ? null
       : runtime.scheduler("reranking", workload),
-    question,
+    questionInput,
     reportProgress,
     scope,
     abortSignal,
@@ -443,7 +469,7 @@ async function prepareRetrievalWithResources(
   embeddingScheduler: TaskScheduler,
   queryExpansionScheduler: TaskScheduler,
   rerankingScheduler: TaskScheduler | null,
-  question: string,
+  question: QuestionInput,
   reportProgress: (message: string) => void,
   scope: QueryScope,
   abortSignal: AbortSignal,
@@ -472,7 +498,7 @@ async function prepareRetrievalWithResources(
   runTelemetry.setScopeSize(scopeTargets.length);
   const generationSettings = createTurnGenerationSettings(
     config.retrieval,
-    question,
+    question.processing,
     scopeTargets,
   );
   abortSignal.throwIfAborted();
@@ -486,7 +512,12 @@ async function prepareRetrievalWithResources(
       generationSettings,
       models,
       rerankingScheduler,
-      retrievalTrace: createRetrievalTrace(generationSettings, [question], []),
+      retrievalTrace: createRetrievalTrace(
+        generationSettings,
+        question,
+        [question.processing],
+        [],
+      ),
       retrieved: [],
     };
   }
@@ -494,7 +525,7 @@ async function prepareRetrievalWithResources(
   const queries = await prepareRetrievalQueries(
     config,
     models,
-    question,
+    question.processing,
     reportProgress,
     embeddingScheduler,
     queryExpansionScheduler,
@@ -512,7 +543,7 @@ async function prepareRetrievalWithResources(
     databaseSession.query,
     documentStore,
     config.embeddingSpace,
-    question,
+    question.processing,
     queries,
     config.retrieval,
     scopeTargets,
@@ -535,7 +566,7 @@ async function prepareRetrievalWithResources(
     && retrieval.retrieved.length > 0
     ? await classifyAnswerSemanticShape(
       models,
-      question,
+      question.processing,
       queryExpansionScheduler,
       abortSignal,
       generationSettings.queryExpansion,
@@ -550,6 +581,7 @@ async function prepareRetrievalWithResources(
     rerankingScheduler,
     retrievalTrace: createRetrievalTrace(
       generationSettings,
+      question,
       queries.map((query) => query.text),
       retrieval.retrieved,
     ),
@@ -730,7 +762,7 @@ async function createDatabaseRunTelemetry(
 export async function writeStreamedAnswer(
   config: AppConfig,
   databaseSession: DatabaseSession,
-  question: string,
+  question: string | QuestionInput,
   scope: QueryScope,
   threadId: string,
   reportProgress: (message: string) => void,
@@ -738,6 +770,7 @@ export async function writeStreamedAnswer(
   writer: UIMessageStreamWriter<CiteLoomUIMessage>,
   prepare: (runTelemetry: RunTelemetry) => Promise<PreparedRetrieval>,
 ): Promise<void> {
+  const questionInput = readQuestionInput(question);
   const runTelemetry = await createDatabaseRunTelemetry(
     config,
     databaseSession,
@@ -760,7 +793,7 @@ export async function writeStreamedAnswer(
       reportProgress("Generating an answer from the retrieved multimodal context");
       result = await streamAnswerQuestion(
         prepared.models,
-        question,
+        questionInput.processing,
         prepared.retrieved,
         prepared.answerScheduler,
         abortSignal,
@@ -790,7 +823,7 @@ export async function writeStreamedAnswer(
       answerDocument: result.answerDocument,
       claims: verifiedClaims,
       completedAt: new Date(),
-      question,
+      question: questionInput.original,
       retrievedContext: result.matchedDocuments,
       retrievalTrace: prepared.retrievalTrace,
       runConfiguration: buildResearchRunConfiguration(config),

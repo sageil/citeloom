@@ -26,6 +26,7 @@ import type {
 } from "../retrieval/document-retrieval.js";
 import { buildMatchedDocuments } from "../retrieval/document-retrieval.js";
 import type { InferenceModelRegistry } from "../inference/registry.js";
+import { createProcessingQuestion } from "../domain/question.js";
 import {
   createInferenceRequestSignal,
   throwInferenceRequestFailure,
@@ -249,11 +250,12 @@ async function generateAnswer(
   if (retrieved.length === 0) {
     return createNoRelevantAnswer();
   }
+  const processingQuestion = createProcessingQuestion(question);
   let budget: AnswerRequestBudget;
   try {
     const capabilities = await models.readAnswerCapabilities(abortSignal);
     const availableEvidenceRefs = createEvidenceReferences(retrieved.length);
-    const fixedContent = buildAnswerFixedContent(question);
+    const fixedContent = buildAnswerFixedContent(processingQuestion);
     const outputContract = buildAnswerOutputContract(availableEvidenceRefs);
     const sourceContents = buildAnswerSourceContents(
       retrieved,
@@ -304,7 +306,7 @@ async function generateAnswer(
     budget.expandedRetrievalWindowIds,
   );
   const content = buildAnswerContentWithEvidence(
-    question,
+    processingQuestion,
     selectedRetrieved,
     allowedEvidenceRefs,
     expandedRetrievalWindowIds,
@@ -421,7 +423,7 @@ async function generateAnswer(
     try {
       correctedResponse = await correctAnswerDraft(
         models,
-        question,
+        processingQuestion,
         selectedRetrieved,
         allowedEvidenceRefs,
         initialResponse.failure,

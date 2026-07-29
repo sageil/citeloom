@@ -33,7 +33,8 @@ export type CandidateAllocationPolicy =
 
 export type PreRerankCandidateExclusionReason =
   | "candidate-budget"
-  | "duplicate-evidence";
+  | "duplicate-evidence"
+  | "unsupported-language";
 
 export interface PreRerankCandidateDecision {
   admissionRank: number | null;

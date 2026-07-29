@@ -13,12 +13,16 @@ import type { CiteLoomDatabase, SqlQueryExecutor } from "../../database/client.j
 import { indexedDocuments } from "../../database/schema.js";
 import {
   createCandidateParentKey,
-  selectNonOverlappingCandidatesWithTrace,
   selectSourceDiverseCandidates,
   selectSourceDiverseElements,
   type NonOverlappingCandidateSelection,
 } from "../document-retrieval.js";
 import type { RetrievedElement } from "../document-retrieval.js";
+import {
+  selectEnglishCandidateAdmission,
+  type CandidateLanguageAdmissionTrace,
+  type EvidenceLanguageClassification,
+} from "../evidence-language.js";
 import type { RetrievalSourceElement } from "../../domain/source-elements.js";
 import {
   fuseRankedCandidates,
@@ -270,17 +274,11 @@ export async function retrieveRelevantElementsWithScores(
     }));
     throw error;
   }
-  const candidateSelection = config.mode === "hybrid-reranked"
-    ? selectRerankingCandidatesWithTrace(
-      originalQuestion,
-      rankedCandidates,
-      config.candidateK,
-    )
-    : selectNonOverlappingCandidatesWithTrace(
-      rankedCandidates,
-      config.candidateK,
-      "fused-order",
-    );
+  const candidateAdmission = selectEnglishCandidateAdmission(
+    rankedCandidates,
+    config.candidateK,
+  );
+  const candidateSelection = candidateAdmission.selection;
   const candidatesToLoad = candidateSelection.selected;
   runTelemetry.setCandidateCount(candidatesToLoad.length);
   const hydrationStage = runTelemetry.startStage({
@@ -316,6 +314,7 @@ export async function retrieveRelevantElementsWithScores(
     space.retrievalWindow,
     candidateSelection,
     hydratedCandidates,
+    candidateAdmission.trace,
   );
   runTelemetry.recordCandidateBudget(candidateBudget);
   if (config.mode !== "hybrid-reranked") {
@@ -430,11 +429,10 @@ export function selectRerankingCandidatesWithTrace(
   rankedCandidates: FusedCandidate[],
   limit: number,
 ): NonOverlappingCandidateSelection {
-  return selectNonOverlappingCandidatesWithTrace(
+  return selectEnglishCandidateAdmission(
     rankedCandidates,
     limit,
-    "fused-order",
-  );
+  ).selection;
 }
 
 export async function queryRetrievalCandidateRankings(
@@ -519,7 +517,7 @@ export function rankRetrievalCandidates(
 
 export function selectPreparedRetrievalCandidates(
   mode: RetrievalMode,
-  question: string,
+  _question: string,
   rankings: RetrievalCandidateRankings,
   candidateK: number,
   topK: number,
@@ -527,10 +525,11 @@ export function selectPreparedRetrievalCandidates(
   fusion: RankFusionConfig,
 ): FusedCandidate[] {
   const ranked = rankRetrievalCandidates(mode, rankings, rrfK, fusion);
+  const admission = selectEnglishCandidateAdmission(ranked, candidateK);
+  const candidates = admission.selection.selected;
   if (mode === "hybrid-reranked") {
-    return selectRerankingCandidates(question, ranked, candidateK);
+    return candidates;
   }
-  const candidates = ranked.slice(0, candidateK);
   return selectSourceDiverseCandidates(candidates, topK);
 }
 
@@ -572,6 +571,7 @@ export function buildCandidateBudgetTelemetry(
   retrievalWindowPolicy: EmbeddingSpaceConfig["retrievalWindow"],
   selection: NonOverlappingCandidateSelection,
   hydratedCandidates: readonly FusedCandidate[],
+  languageAdmission: CandidateLanguageAdmissionTrace | null = null,
 ): CandidateBudgetTelemetry {
   const fusedCandidates = selection.decisions.map((decision) => (
     decision.candidate
@@ -638,30 +638,21 @@ export function buildCandidateBudgetTelemetry(
     });
   }
 
-  return {
+  const languageByCandidate = buildLanguageClassificationMap(
+    languageAdmission,
+  );
+  const telemetry: CandidateBudgetTelemetry = {
     allocationPolicy: selection.allocationPolicy,
     admittedCandidates: admissions,
     admittedDistinctParentCount: admittedParentKeys.size,
     admittedWindowCount: admittedCandidates.length,
     candidateK: selection.candidateK,
-    fusedCandidates: selection.decisions.map((decision) => ({
-      admissionRank: decision.admissionRank,
-      documentId: decision.candidate.documentId,
-      exclusionReason: decision.exclusionReason,
-      fusedRank: decision.fusedRank,
-      fusion: {
-        bm25Score: decision.candidate.bm25Score ?? null,
-        denseDistance: decision.candidate.denseDistance,
-        fusedScore: decision.candidate.fusedScore,
-      },
-      parentElementId: decision.candidate.parentId,
-      representationHits: decision.candidate.representationHits,
-      representativeRetrievalWindowId:
-        decision.representativeRetrievalWindowId,
-      retrievalWindowId: decision.candidate.retrievalId,
-      sourceFile: decision.candidate.sourceFile,
-      descriptionAffected: decision.candidate.descriptionAffected,
-    })),
+    fusedCandidates: selection.decisions.map((decision) => (
+      buildCandidateBudgetDecisionTelemetry(
+        decision,
+        languageByCandidate.get(decision.candidate),
+      )
+    )),
     fusedDistinctParentCount: countDistinctCandidateParents(fusedCandidates),
     fusedWindowCount: fusedCandidates.length,
     hydratedDistinctParentCount: countDistinctCandidateParents(hydratedCandidates),
@@ -672,6 +663,125 @@ export function buildCandidateBudgetTelemetry(
       channelCandidateLimit,
     ),
     retrievalWindowPolicy,
+  };
+  if (languageAdmission === null) {
+    return telemetry;
+  }
+  return {
+    ...telemetry,
+    languageAdmission: buildLanguageAdmissionTelemetry(
+      selection,
+      languageByCandidate,
+    ),
+  };
+}
+
+function buildLanguageClassificationMap(
+  languageAdmission: CandidateLanguageAdmissionTrace | null,
+): ReadonlyMap<FusedCandidate, EvidenceLanguageClassification> {
+  const languageByCandidate = new Map<
+    FusedCandidate,
+    EvidenceLanguageClassification
+  >();
+  if (languageAdmission === null) {
+    return languageByCandidate;
+  }
+  for (const entry of languageAdmission.classifications) {
+    languageByCandidate.set(entry.candidate, entry.language);
+  }
+  return languageByCandidate;
+}
+
+function buildCandidateBudgetDecisionTelemetry(
+  decision: NonOverlappingCandidateSelection["decisions"][number],
+  language: EvidenceLanguageClassification | undefined,
+): CandidateBudgetTelemetry["fusedCandidates"][number] {
+  const telemetry: CandidateBudgetTelemetry["fusedCandidates"][number] = {
+    admissionRank: decision.admissionRank,
+    documentId: decision.candidate.documentId,
+    exclusionReason: decision.exclusionReason,
+    fusedRank: decision.fusedRank,
+    fusion: {
+      bm25Score: decision.candidate.bm25Score ?? null,
+      denseDistance: decision.candidate.denseDistance,
+      fusedScore: decision.candidate.fusedScore,
+    },
+    parentElementId: decision.candidate.parentId,
+    representationHits: decision.candidate.representationHits,
+    representativeRetrievalWindowId:
+      decision.representativeRetrievalWindowId,
+    retrievalWindowId: decision.candidate.retrievalId,
+    sourceFile: decision.candidate.sourceFile,
+    descriptionAffected: decision.candidate.descriptionAffected,
+  };
+  if (language === undefined) {
+    return telemetry;
+  }
+  return {
+    ...telemetry,
+    detectedLanguage: language.code,
+  };
+}
+
+function buildLanguageAdmissionTelemetry(
+  selection: NonOverlappingCandidateSelection,
+  languageByCandidate: ReadonlyMap<
+    FusedCandidate,
+    EvidenceLanguageClassification
+  >,
+): NonNullable<CandidateBudgetTelemetry["languageAdmission"]> {
+  let admittedEnglishRepresentativeCount = 0;
+  let admittedUndeterminedRepresentativeCount = 0;
+  let englishRepresentativeCount = 0;
+  let nonEnglishRepresentativeCount = 0;
+  let representativeCandidateCount = 0;
+  let undeterminedRepresentativeCount = 0;
+  for (const decision of selection.decisions) {
+    if (
+      decision.representativeRetrievalWindowId
+      !== decision.candidate.retrievalId
+    ) {
+      continue;
+    }
+    const language = languageByCandidate.get(decision.candidate);
+    if (language === undefined) {
+      throw new Error(
+        `Fused candidate ${decision.candidate.retrievalId} has no language classification.`,
+      );
+    }
+    representativeCandidateCount += 1;
+    if (language.code === "eng") {
+      englishRepresentativeCount += 1;
+      if (decision.admissionRank !== null) {
+        admittedEnglishRepresentativeCount += 1;
+      }
+    } else if (language.code === "und") {
+      undeterminedRepresentativeCount += 1;
+      if (decision.admissionRank !== null) {
+        admittedUndeterminedRepresentativeCount += 1;
+      }
+    } else {
+      nonEnglishRepresentativeCount += 1;
+    }
+  }
+  if (
+    admittedEnglishRepresentativeCount
+      + admittedUndeterminedRepresentativeCount
+    !== selection.selected.length
+  ) {
+    throw new Error(
+      "Admitted candidates include an unsupported evidence language.",
+    );
+  }
+  return {
+    admittedEnglishRepresentativeCount,
+    admittedUndeterminedRepresentativeCount,
+    englishRepresentativeCount,
+    fusedCandidateCount: selection.decisions.length,
+    nonEnglishRepresentativeCount,
+    representativeCandidateCount,
+    supportedLanguage: "eng",
+    undeterminedRepresentativeCount,
   };
 }
 

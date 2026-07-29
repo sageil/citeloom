@@ -41,6 +41,7 @@ import {
   type PublishedAnswerStatement,
 } from "../answers/published.js";
 import { queryScopeSchema, type QueryScope } from "../domain/query-scope.js";
+import { QUESTION_PROCESSING_POLICY_ID } from "../domain/question.js";
 import type {
   CitationEvidence,
   ClaimVerificationResult,
@@ -119,8 +120,7 @@ const retrievalTraceBaseSchema = z.object({
     text: z.string().min(1),
   }).strict()).min(1),
 });
-const currentRetrievalTraceSchema = retrievalTraceBaseSchema.extend({
-  orderedSources: z.array(z.object({
+const retrievalTraceOrderedSourcesSchema = z.array(z.object({
     documentId: contentIdSchema,
     documentVersionId: z.uuid(),
     evidenceSha256: contentIdSchema,
@@ -142,10 +142,24 @@ const currentRetrievalTraceSchema = retrievalTraceBaseSchema.extend({
     retrievalWindowId: contentIdSchema,
     sourceFile: z.string().min(1),
     descriptionAffected: z.boolean(),
-  }).strict()),
+  }).strict());
+const legacyRetrievalTraceSchema = retrievalTraceBaseSchema.extend({
+  orderedSources: retrievalTraceOrderedSourcesSchema,
   version: z.literal(3),
 }).strict();
-const storedRetrievalTraceSchema = currentRetrievalTraceSchema;
+const currentRetrievalTraceSchema = retrievalTraceBaseSchema.extend({
+  orderedSources: retrievalTraceOrderedSourcesSchema,
+  question: z.object({
+    original: z.string().min(1),
+    policyId: z.literal(QUESTION_PROCESSING_POLICY_ID),
+    processing: z.string().min(1),
+  }).strict(),
+  version: z.literal(4),
+}).strict();
+const storedRetrievalTraceSchema = z.discriminatedUnion("version", [
+  legacyRetrievalTraceSchema,
+  currentRetrievalTraceSchema,
+]);
 const passiveAbortSignal = new AbortController().signal;
 const evidenceSchema = z.discriminatedUnion("kind", [
   z.object({ excerpt: z.string().min(1), kind: z.literal("text") }).strict(),
@@ -1192,7 +1206,7 @@ function decodeSaveResearchTurnInput(input: SaveResearchTurnInput): SaveResearch
       retrievedElementCount: z.number().int().positive(),
       sourceFile: z.string().trim().min(1),
     }).strict()),
-    retrievalTrace: currentRetrievalTraceSchema,
+    retrievalTrace: storedRetrievalTraceSchema,
     runConfiguration: runConfigurationSchema,
     runId: z.uuid(),
     scope: queryScopeSchema,

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { RetrievalConfig } from "../config/index.js";
 import type { ResolvedQueryScopeTarget } from "../domain/query-scope.js";
+import { createProcessingQuestion } from "../domain/question.js";
 
 export interface AppliedGenerationSettings {
   seed: number | null;
@@ -19,17 +20,21 @@ export function createTurnGenerationSettings(
   question: string,
   scopeTargets: readonly ResolvedQueryScopeTarget[],
 ): TurnGenerationSettings {
-  const requestIdentity = createRequestIdentity(question, scopeTargets);
+  const seedInput = createGenerationSeedInput(question, scopeTargets);
   return {
     answer: {
-      seed: createGenerationSeed(retrieval.generationSeedMode, "answer", requestIdentity),
+      seed: createGenerationSeed(
+        retrieval.generationSeedMode,
+        "answer",
+        seedInput,
+      ),
       temperature: retrieval.answerTemperature,
     },
     queryExpansion: {
       seed: createGenerationSeed(
         retrieval.generationSeedMode,
         "query-expansion",
-        requestIdentity,
+        seedInput,
       ),
       temperature: retrieval.queryExpansionTemperature,
     },
@@ -37,14 +42,15 @@ export function createTurnGenerationSettings(
   };
 }
 
-function createRequestIdentity(
+function createGenerationSeedInput(
   question: string,
   scopeTargets: readonly ResolvedQueryScopeTarget[],
 ): string {
   const normalizedQuestion = question.trim().replace(/\s+/gu, " ");
+  const seedQuestion = createProcessingQuestion(normalizedQuestion);
   const sortedTargets = [...scopeTargets];
   sortedTargets.sort(compareResolvedTargets);
-  return JSON.stringify({ question: normalizedQuestion, scopeTargets: sortedTargets });
+  return JSON.stringify({ question: seedQuestion, scopeTargets: sortedTargets });
 }
 
 function compareResolvedTargets(
@@ -63,7 +69,7 @@ function compareResolvedTargets(
 function createGenerationSeed(
   mode: RetrievalConfig["generationSeedMode"],
   operation: "answer" | "query-expansion",
-  requestIdentity: string,
+  seedInput: string,
 ): number | null {
   if (mode === "random") {
     return null;
@@ -72,7 +78,7 @@ function createGenerationSeed(
     .update("citeloom-generation-seed-v1\0")
     .update(operation)
     .update("\0")
-    .update(requestIdentity)
+    .update(seedInput)
     .digest();
   return digest.readUInt32BE(0) & 0x7fff_ffff;
 }

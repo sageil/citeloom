@@ -13,6 +13,7 @@ import {
   noopRunTelemetry,
   type RunTelemetry,
 } from "../observability/run.js";
+import { createProcessingQuestion } from "../domain/question.js";
 
 export interface QueryExpansionGenerationSettings {
   seed: number | null;
@@ -52,6 +53,7 @@ export async function expandRetrievalQuery(
   );
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
+  const processingQuestion = createProcessingQuestion(question);
   const recordCompletion = (completion: QueryExpansionCompletion): void => {
     inputTokens = completion.inputTokens;
     outputTokens = completion.outputTokens;
@@ -60,7 +62,7 @@ export async function expandRetrievalQuery(
   try {
     const runGeneration = (requestSignal: AbortSignal) => requestQueryExpansions(
       models,
-      question,
+      processingQuestion,
       expansionCount,
       requestSignal,
       generationSettings,

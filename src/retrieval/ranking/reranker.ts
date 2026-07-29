@@ -23,6 +23,7 @@ import {
   readBoundedJsonResponse,
   readBoundedResponseText,
 } from "../../providers/http-response.js";
+import { createProcessingQuestion } from "../../domain/question.js";
 
 const MAX_RERANK_ERROR_BYTES = 16 * 1_024;
 const MAX_RERANK_ERROR_CHARACTERS = 2_000;
@@ -239,6 +240,7 @@ async function rankRetrievedElements(
     reranker.model.modelId,
   );
   let result: RerankResult<string>;
+  const processingQuery = createProcessingQuestion(query);
   const timeoutSignal = AbortSignal.timeout(reranker.timeoutMs);
   try {
     const requestSignal = abortSignal === undefined
@@ -250,7 +252,7 @@ async function rankRetrievedElements(
       maxRetries: 1,
       model: reranker.model,
       onEnd: () => finishMetric(),
-      query,
+      query: processingQuery,
       telemetry: {
         functionId: "citeloom.rerank",
         isEnabled: reranker.metrics.enabled,

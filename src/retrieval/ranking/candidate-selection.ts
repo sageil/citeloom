@@ -54,12 +54,20 @@ export function selectRerankedContext<Item>(
   const ranking = rankRerankerCandidates(candidates);
   const cutoff = readContextCutoff(ranking, maximumContextSize, policy);
   const withinCutoff = ranking.slice(0, cutoff.cutoffRank);
-  const uniqueWithinCutoff = removeDuplicateElements(withinCutoff);
-  const selected = selectSourceDiverseItems(
-    uniqueWithinCutoff,
-    cutoff.cutoffRank,
-    (candidate) => createDocumentIdentity(candidate.identity),
+  const diversityCandidates = cutoff.reason === "maximum-context"
+    ? ranking
+    : withinCutoff;
+  const uniqueDiversityCandidates = removeDuplicateElements(
+    diversityCandidates,
   );
+  let selected: RankedRerankerCandidate<Item>[] = [];
+  if (cutoff.cutoffRank > 0) {
+    selected = selectSourceDiverseItems(
+      uniqueDiversityCandidates,
+      cutoff.cutoffRank,
+      (candidate) => createDocumentIdentity(candidate.identity),
+    );
+  }
   const selectedContextRankByCandidate = new Map<
     RankedRerankerCandidate<Item>,
     number
