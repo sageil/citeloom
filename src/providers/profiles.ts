@@ -928,7 +928,7 @@ function formatCapability(capability: ProviderCapability): string {
     return "summarization";
   }
   if (capability === "queryExpansion") {
-    return "query expansion";
+    return "extra search queries";
   }
   if (capability === "speechToText") {
     return "speech-to-text";

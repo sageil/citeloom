@@ -17,7 +17,7 @@ Migration saves its path in PostgreSQL, which becomes the shared location used b
 | Local source content store | Immutable raw source bytes addressed by SHA-256 |
 | PostgreSQL | Source records, processing results, jobs, settings, search indexes, and shared model-request limits |
 | Docling | Document conversion that preserves reading order, tables, page locations, and image regions |
-| Model providers | Summaries, embeddings, query expansion, reranking, answers, and optional speech |
+| Model providers | Summaries, embeddings, extra search queries, reranking, answers, and optional speech |
 | HHEM service | Support scores for individual answer claims and their cited evidence |
 | Offline evaluation tools | Dataset generation, corpus management, scoring, tuning, and configuration freezes outside the production build |
 
@@ -92,7 +92,7 @@ The application builds one typed runtime configuration and then applies the sele
 flowchart LR
     Settings[(Provider settings<br/>in PostgreSQL)] --> Builder[Configuration builder]
     Builder --> Answer[Answer]
-    Builder --> Expansion[Query expansion]
+    Builder --> Expansion[Extra search queries]
     Builder --> Summary[Summarization]
     Builder --> Embedding[Embedding]
     Builder --> Reranking[Reranking]
@@ -174,7 +174,7 @@ It then combines those rankings and can optionally rerank the best candidates.
 Reranking can improve answer and citation accuracy by using a specialized relevance model to reorder candidates before CiteLoom selects the answer context.
 
 Each answer run uses the configured sampling temperatures.
-In stable seed mode, CiteLoom derives separate seeds for query expansion and answer generation from the normalized question and the sorted IDs of the selected documents.
+In stable seed mode, CiteLoom derives separate seeds for extra search queries and answer generation from the normalized original question and the sorted IDs of the selected documents.
 In random mode, the model provider chooses the sampling randomness.
 
 ```mermaid
@@ -193,7 +193,7 @@ sequenceDiagram
     Client->>Entry: Question and document scope
     Entry->>Query: Start answer request
     Query->>DB: Resolve active documents and scope
-    Query->>AI: Generate query variations
+    Query->>AI: Generate extra search queries
     par Dense retrieval
         Query->>DB: pgvector cosine search
     and Lexical retrieval
@@ -206,8 +206,8 @@ sequenceDiagram
     end
     Query->>DB: Load original source elements
     Query->>AI: Generate structured answer draft
-    AI-->>Validate: Statements and request-local source numbers
-    Validate->>Validate: Compile server-owned citations and validate source order
+    AI-->>Validate: Statements and request-local evidence references
+    Validate->>Validate: Match exact evidence references and compile server-owned citations
     Validate->>HHEM: Score claims against cited evidence
     HHEM-->>Validate: Support decisions
     Validate->>Research: Verified answer, citations, claims, and retrieval trace

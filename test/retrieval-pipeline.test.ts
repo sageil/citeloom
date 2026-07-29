@@ -63,7 +63,7 @@ afterEach(() => {
 describe("atomic structured answer publication", () => {
   it("verifies, persists, and then publishes one completed answer entity", async () => {
     const events: string[] = [];
-    const answerModel = buildAnswerModel(buildAnsweredDraft([1]));
+    const answerModel = buildAnswerModel(buildAnsweredDraft(["EVID_A"]));
     const verifier = new FakeHhemClient(0.5, async (items) => {
       events.push("verify");
       return items.map((item) => ({
@@ -141,14 +141,14 @@ describe("atomic structured answer publication", () => {
       conflictGroups: [],
       statements: [{
         content: "Unsupported statement.",
+        evidenceRefs: ["EVID_A"],
         presentation: "paragraph",
         section: "answer",
-        sourceNumbers: [1],
       }, {
         content: "Revenue decreased.",
+        evidenceRefs: ["EVID_B", "EVID_A"],
         presentation: "paragraph",
         section: "answer",
-        sourceNumbers: [2, 1],
       }],
       status: "answered",
     });
@@ -214,8 +214,8 @@ describe("atomic structured answer publication", () => {
       doGenerate: async () => {
         requestCount += 1;
         const draft = requestCount === 1
-          ? buildAnsweredDraft([3])
-          : buildAnsweredDraft([1, 2]);
+          ? buildAnsweredDraft(["EVID_C"])
+          : buildAnsweredDraft(["EVID_A", "EVID_B"]);
         return buildTextGeneration(JSON.stringify(draft));
       },
       modelId: "answer-model:answer",
@@ -270,7 +270,7 @@ describe("atomic structured answer publication", () => {
 
     await runStreamedAnswer(
       buildPrepared(
-        buildAnswerModel(buildAnsweredDraft([1])),
+        buildAnswerModel(buildAnsweredDraft(["EVID_A"])),
         verifier,
       ),
       stream.writer,
@@ -308,10 +308,10 @@ describe("atomic structured answer publication", () => {
         explanation: "The same reported revenue cannot both increase and decrease.",
         positions: [{
           claim: "Revenue increased.",
-          sourceNumbers: [1],
+          evidenceRefs: ["EVID_A"],
         }, {
           claim: "Revenue decreased.",
-          sourceNumbers: [2],
+          evidenceRefs: ["EVID_B"],
         }],
         sharedScope: {
           conditions: "the same accounting basis",
@@ -361,7 +361,7 @@ describe("atomic structured answer publication", () => {
   });
 
   it("rejects an invalid model draft without persistence or publication", async () => {
-    const answerModel = buildAnswerModel(buildAnsweredDraft([2]));
+    const answerModel = buildAnswerModel(buildAnsweredDraft(["EVID_B"]));
     const verifier = new FakeHhemClient();
     const stream = buildWriter();
 
@@ -384,7 +384,7 @@ describe("atomic structured answer publication", () => {
     const stream = buildWriter();
 
     await expect(runStreamedAnswer(
-      buildPrepared(buildAnswerModel(buildAnsweredDraft([1])), verifier),
+      buildPrepared(buildAnswerModel(buildAnsweredDraft(["EVID_A"])), verifier),
       stream.writer,
     )).rejects.toBe(verifierError);
 
@@ -410,7 +410,7 @@ describe("atomic structured answer publication", () => {
 
     await expect(runStreamedAnswer(
       buildPrepared(
-        buildAnswerModel(buildAnsweredDraft([1, 2])),
+        buildAnswerModel(buildAnsweredDraft(["EVID_A", "EVID_B"])),
         verifier,
         [buildTextRetrieved(), buildContradictingTextRetrieved()],
       ),
@@ -427,7 +427,7 @@ describe("atomic structured answer publication", () => {
     const answerModel = new MockLanguageModelV4({
       doGenerate: async () => {
         controller.abort(new Error("cancelled"));
-        return buildTextGeneration(JSON.stringify(buildAnsweredDraft([1])));
+        return buildTextGeneration(JSON.stringify(buildAnsweredDraft(["EVID_A"])));
       },
     });
     const stream = buildWriter();
@@ -449,7 +449,7 @@ describe("atomic structured answer publication", () => {
 
     await expect(runStreamedAnswer(
       buildPrepared(
-        buildAnswerModel(buildAnsweredDraft([1])),
+        buildAnswerModel(buildAnsweredDraft(["EVID_A"])),
         new FakeHhemClient(),
       ),
       stream.writer,
@@ -469,7 +469,7 @@ describe("atomic structured answer publication", () => {
 
     await expect(runStreamedAnswer(
       buildPrepared(
-        buildAnswerModel(buildAnsweredDraft([1])),
+        buildAnswerModel(buildAnsweredDraft(["EVID_A"])),
         new FakeHhemClient(),
       ),
       stream.writer,
@@ -560,14 +560,14 @@ function buildAnswerModel(draft: unknown): MockLanguageModelV4 {
   });
 }
 
-function buildAnsweredDraft(sourceNumbers: number[]) {
+function buildAnsweredDraft(evidenceRefs: string[]) {
   return {
     conflictGroups: [],
     statements: [{
       content: "Revenue increased.",
+      evidenceRefs,
       presentation: "paragraph",
       section: "answer",
-      sourceNumbers,
     }],
     status: "answered",
   };

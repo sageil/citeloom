@@ -25,8 +25,8 @@ Use the same semantic version for the images and application release.
 ```dotenv
 CITELOOM_ADMIN_USERNAME=Mayhem
 CITELOOM_ADMIN_PASSWORD='replace-with-a-private-passphrase'
-CITELOOM_IMAGE_TAG=0.1.1
-CITELOOM_RELEASE=0.1.1
+CITELOOM_IMAGE_TAG=0.1.2
+CITELOOM_RELEASE=0.1.2
 ```
 
 Pull and start the CiteLoom stack.
@@ -39,7 +39,7 @@ docker compose --env-file .env -f compose.dockerhub.yml up -d --wait
 The stack pulls the application, PostgreSQL, Docling, and HHEM images from the `sageil` Docker Hub account.
 Caddy uses the version pinned in the Compose file.
 Model providers run separately.
-A fresh database points the required routes to LM Studio and leaves reranking and speech ready for the administrator to configure.
+A fresh database points the required routes to Ollama and leaves reranking and speech ready for the administrator to configure.
 
 Open `https://localhost:3443`.
 If the browser warns about the local development certificate, use its trust or continue flow for this local site.
@@ -134,11 +134,14 @@ The dry run validates the source branch, semantic version, Compose release defau
 
 For publication, disable `dry_run`.
 The workflow confirms that the requested semantic-version tags are unpublished, then builds and pushes each exact version tag for `linux/amd64` and `linux/arm64`.
-Publication completes after each remote manifest confirms both required platforms.
+After every remote manifest confirms both required platforms, the workflow points each repository's `latest` tag to the same verified image without rebuilding it.
+Publication completes only after every `latest` tag resolves to the same image digest as its exact version tag.
 
-Releases use immutable semantic-version tags, with the same `CITELOOM_IMAGE_TAG` applied to all four images.
-The workflow protects existing version tags from being overwritten.
+Releases use exact semantic-version tags, with the same `CITELOOM_IMAGE_TAG` applied to all four images.
+The workflow treats those version tags as immutable and prevents them from being overwritten.
+The `latest` tags are mutable pointers for users who want the newest verified release, while the supplied Compose configuration remains pinned to an exact version by default.
 If a run stops after publishing only some version tags, fix the cause and use GitHub's **Re-run failed jobs** action on the original run so every retried build uses the original commit.
+If a run stops while updating `latest`, use the same action to safely finish pointing all four repositories to the verified release.
 Existing exact-version deployments remain unchanged during a partial publication.
 
 ## Configuration and storage

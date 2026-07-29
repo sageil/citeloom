@@ -636,7 +636,7 @@ async function buildRetrievalQueries(
   if (config.retrieval.queryExpansions <= 0) {
     return queryTexts;
   }
-  reportProgress("Expanding the retrieval query");
+  reportProgress("Generating extra search queries");
   try {
     const expansions = await expandRetrievalQuery(
       models,
@@ -651,7 +651,7 @@ async function buildRetrievalQueries(
   } catch (error: unknown) {
     abortSignal.throwIfAborted();
     reportProgress(
-      `Query expansion was unavailable, so retrieval is using the original question: ${readErrorMessage(error)}`,
+      `Extra search queries were unavailable, so retrieval is using the original question: ${readErrorMessage(error)}`,
     );
   }
   return queryTexts;
@@ -668,7 +668,7 @@ async function embedRetrievalQueries(
 ): Promise<RetrievalQuery[]> {
   let embeddings: number[][] = [];
   if (retrievalModeUsesDense(config.retrieval.mode)) {
-    reportProgress(`Embedding ${queryTexts.length} retrieval query variants`);
+    reportProgress(`Embedding ${queryTexts.length} search queries`);
     embeddings = await embedQuestions(
       models,
       queryTexts,
@@ -913,7 +913,7 @@ function formatAnswerStreamFailure(failure: AnswerStreamFailure): string {
     case "answer-finish":
       return "The answer provider stopped before producing a complete answer. Try again or select another answer model.";
     case "answer-invalid":
-      return "The answer model returned an invalid response twice. Try again or select another answer model.";
+      return "The answer model returned an invalid response after one correction request. Try again or select another answer model.";
     case "settings-changed":
       return "Inference settings changed before answer generation started. Try the question again.";
     case "scheduler-lease":

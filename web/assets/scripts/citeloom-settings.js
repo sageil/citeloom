@@ -95,7 +95,7 @@ const textToSpeechAdapters = Object.freeze([
 const capabilityLabels = Object.freeze({
   answer: "Answer generation",
   embedding: "Embedding",
-  queryExpansion: "Query expansion",
+  queryExpansion: "Extra search queries",
   reranking: "Reranking",
   speechToText: "Speech-to-text",
   summarization: "Summarization",
@@ -1673,7 +1673,7 @@ export function registerPage(alpine) {
         Docling: "Configure document conversion, OCR, parsing, and extraction behavior.",
         Inference: "Configure answer generation and citation-support validation behavior.",
         "Ingestion recovery": "Configure ingestion retries and recovery timing.",
-        Retrieval: "Configure candidate discovery, query expansion, ranking, and evidence selection.",
+        Retrieval: "Choose how many matches to consider, how extra search queries are used, and how much evidence reaches the answer.",
         Telemetry: "Configure privacy-safe application metrics and operational reporting.",
         "Uploads and ingestion": "Configure upload limits and document processing behavior.",
         "Worker scheduling": "Configure how each worker advances ingestion jobs.",
@@ -2073,7 +2073,7 @@ export function registerPage(alpine) {
         return entry.capability === selectedCapability;
       }) ?? false;
       if (!supported) {
-        this.errorMessage = "The selected capability is unavailable for this provider.";
+        this.errorMessage = "The selected feature is unavailable for this provider.";
         return;
       }
       this.selectedProviderCapability = selectedCapability;
@@ -2182,7 +2182,7 @@ export function registerPage(alpine) {
         return this.openAICodexConnectionLabel();
       }
       if (connection.capabilityApiTokensConfigured[capability]) {
-        return "Configured for this capability";
+        return "Configured for this feature";
       }
       if (connection.apiTokenConfigured) {
         return "Configured at provider level";

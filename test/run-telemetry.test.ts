@@ -69,6 +69,7 @@ describe("run telemetry", () => {
       outputBudgetTokens: 1_384,
       providerSafetyMarginTokens: 2_000,
       requests: [],
+      responseDiagnostics: [],
       windows: [{
         evidenceSha256: "f".repeat(64),
         elementId: "b".repeat(64),
@@ -92,7 +93,27 @@ describe("run telemetry", () => {
         elementId: "c".repeat(64),
         retrievalWindowId: "d".repeat(64),
       }],
-      phase: "recovery",
+      phase: "correction",
+    });
+    telemetry.recordAnswerResponseDiagnostic({
+      correctionOutcome: "succeeded",
+      failureCategory: "unknown-evidence-reference",
+      invalidFieldPaths: ["statements[0].evidenceRefs[0]"],
+      modelId: "answer-model",
+      phase: "initial",
+      provider: "local-runtime",
+      responseSha256: "8".repeat(64),
+      unknownReferenceCount: 1,
+    });
+    telemetry.recordAnswerResponseDiagnostic({
+      correctionOutcome: "succeeded",
+      failureCategory: null,
+      invalidFieldPaths: [],
+      modelId: "answer-model",
+      phase: "correction",
+      provider: "local-runtime",
+      responseSha256: "7".repeat(64),
+      unknownReferenceCount: 0,
     });
     telemetry.recordContextSelection({
       candidateBudget: {
@@ -243,7 +264,26 @@ describe("run telemetry", () => {
             elementId: "c".repeat(64),
             retrievalWindowId: "d".repeat(64),
           }],
-          phase: "recovery",
+          phase: "correction",
+        }],
+        responseDiagnostics: [{
+          correctionOutcome: "succeeded",
+          failureCategory: "unknown-evidence-reference",
+          invalidFieldPaths: ["statements[0].evidenceRefs[0]"],
+          modelId: "answer-model",
+          phase: "initial",
+          provider: "local-runtime",
+          responseSha256: "8".repeat(64),
+          unknownReferenceCount: 1,
+        }, {
+          correctionOutcome: "succeeded",
+          failureCategory: null,
+          invalidFieldPaths: [],
+          modelId: "answer-model",
+          phase: "correction",
+          provider: "local-runtime",
+          responseSha256: "7".repeat(64),
+          unknownReferenceCount: 0,
         }],
         windows: [{ reason: "included", retrievalRank: 1 }],
       },

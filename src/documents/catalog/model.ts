@@ -23,6 +23,11 @@ export type IngestionPhase = z.output<typeof ingestionPhaseSchema>;
 export type IngestionState = z.output<typeof ingestionStateSchema>;
 export type IngestionControlState = z.output<typeof ingestionControlStateSchema>;
 
+export interface IngestionControlActor {
+  isAdministrator: boolean;
+  userId: string;
+}
+
 export interface IngestionControlDoclingTask {
   controlState: "pause_requested" | "cancel_requested";
   serviceInstanceId: string;

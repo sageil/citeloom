@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import {
   createAnswerModelResponseSchema,
+  createEvidenceReferences,
   decodeAnswerDraft,
   decodeAnswerModelResponse,
 } from "../src/answers/draft.js";
@@ -20,7 +21,9 @@ import {
 
 describe("answer draft boundary", () => {
   it("uses an OpenAI-compatible object at the structured-output root", () => {
-    const schema = z.toJSONSchema(createAnswerModelResponseSchema(2));
+    const schema = z.toJSONSchema(
+      createAnswerModelResponseSchema(createEvidenceReferences(2)),
+    );
 
     expect(schema).toMatchObject({
       additionalProperties: false,
@@ -29,15 +32,43 @@ describe("answer draft boundary", () => {
     });
     expect(schema).not.toHaveProperty("oneOf");
     expect(schema).not.toHaveProperty("anyOf");
+    expect(JSON.stringify(schema)).toContain("EVID_A");
+    expect(JSON.stringify(schema)).toContain("EVID_B");
   });
 
   it("decodes valid answered and no-answer drafts", () => {
-    expect(decodeAnswerDraft({ status: "no_answer" }, 2)).toEqual({
+    const allowedEvidenceRefs = createEvidenceReferences(2);
+    expect(decodeAnswerDraft({ status: "no_answer" }, allowedEvidenceRefs)).toEqual({
       status: "no_answer",
     });
-    expect(decodeAnswerDraft(buildAnsweredDraft([2, 1]), 2)).toEqual(
-      buildAnsweredDraft([2, 1]),
+    expect(decodeAnswerDraft(
+      buildAnsweredDraft(["EVID_B", "EVID_A"]),
+      allowedEvidenceRefs,
+    )).toEqual(
+      buildAnsweredDraft(["EVID_B", "EVID_A"]),
     );
+  });
+
+  it("fills missing presentation metadata at the model boundary", () => {
+    const draft = decodeAnswerModelResponse({
+      conflictGroups: [],
+      statements: [{
+        content: "Revenue increased.",
+        evidenceRefs: ["EVID_A"],
+      }],
+      status: "answered",
+    }, createEvidenceReferences(1));
+
+    expect(draft).toEqual({
+      conflictGroups: [],
+      statements: [{
+        content: "Revenue increased.",
+        evidenceRefs: ["EVID_A"],
+        presentation: "paragraph",
+        section: "answer",
+      }],
+      status: "answered",
+    });
   });
 
   it("normalizes a no-answer model response into the domain draft", () => {
@@ -45,7 +76,7 @@ describe("answer draft boundary", () => {
       conflictGroups: [],
       statements: [],
       status: "no_answer",
-    }, 2)).toEqual({
+    }, createEvidenceReferences(2))).toEqual({
       status: "no_answer",
     });
   });
@@ -55,8 +86,8 @@ describe("answer draft boundary", () => {
       conflictGroups: [{
         explanation: "The claims cannot both describe the same result (Sources 1, 2).",
         positions: [
-          { claim: "Revenue increased [1].", sourceNumbers: [1] },
-          { claim: "Revenue [2] decreased.", sourceNumbers: [2] },
+          { claim: "Revenue increased [EVID_A].", evidenceRefs: ["EVID_A"] },
+          { claim: "Revenue [EVID_B] decreased.", evidenceRefs: ["EVID_B"] },
         ],
         sharedScope: {
           conditions: "the same accounting basis【1】",
@@ -69,19 +100,19 @@ describe("answer draft boundary", () => {
         content: "Revenue was reported by both sources. [1, 2]",
         presentation: "paragraph",
         section: "answer",
-        sourceNumbers: [1, 2],
+        evidenceRefs: ["EVID_A", "EVID_B"],
       }],
       status: "answered",
     };
 
-    expect(decodeAnswerModelResponse(value, 2)).toEqual({
+    expect(decodeAnswerModelResponse(value, createEvidenceReferences(2))).toEqual({
       ...value,
       conflictGroups: [{
         ...value.conflictGroups[0],
         explanation: "The claims cannot both describe the same result.",
         positions: [
-          { claim: "Revenue increased.", sourceNumbers: [1] },
-          { claim: "Revenue decreased.", sourceNumbers: [2] },
+          { claim: "Revenue increased.", evidenceRefs: ["EVID_A"] },
+          { claim: "Revenue decreased.", evidenceRefs: ["EVID_B"] },
         ],
         sharedScope: {
           conditions: "the same accounting basis",
@@ -98,6 +129,9 @@ describe("answer draft boundary", () => {
   });
 
   it.each([
+    ["Revenue increased. [EVID_B]", "Revenue increased."],
+    ["Revenue increased [EVID_A].", "Revenue increased."],
+    ["Revenue [EVID_A] increased.", "Revenue increased."],
     ["Revenue increased. [2]", "Revenue increased."],
     ["Revenue increased [1].", "Revenue increased."],
     ["Revenue [1] increased.", "Revenue increased."],
@@ -106,7 +140,10 @@ describe("answer draft boundary", () => {
     ["Revenue increased (Source 1).", "Revenue increased."],
     ["Revenue increased, source #1.", "Revenue increased."],
   ])("normalizes model citation decoration in %s", (content, expected) => {
-    const draft = decodeAnswerModelResponse(buildDraftWithContent(content), 2);
+    const draft = decodeAnswerModelResponse(
+      buildDraftWithContent(content),
+      createEvidenceReferences(2),
+    );
     if (draft.status !== "answered") {
       throw new Error("Expected an answered draft.");
     }
@@ -116,7 +153,7 @@ describe("answer draft boundary", () => {
   it("preserves unrecognized model annotations as plain content", () => {
     const draft = decodeAnswerModelResponse(
       buildDraftWithContent("Revenue increased (see ref. A)."),
-      2,
+      createEvidenceReferences(2),
     );
     if (draft.status !== "answered") {
       throw new Error("Expected an answered draft.");
@@ -138,9 +175,9 @@ describe("answer draft boundary", () => {
         statements: [{
           content: "Revenue increased.",
           extra: true,
+          evidenceRefs: ["EVID_A"],
           presentation: "paragraph",
           section: "answer",
-          sourceNumbers: [1],
         }],
         status: "answered",
       },
@@ -151,9 +188,9 @@ describe("answer draft boundary", () => {
         conflictGroups: [],
         statements: [{
           content: "The estimate remains limited.",
+          evidenceRefs: ["EVID_A"],
           presentation: "paragraph",
           section: "limitations",
-          sourceNumbers: [1],
         }],
         status: "answered",
       },
@@ -167,7 +204,8 @@ describe("answer draft boundary", () => {
       value: buildDraftWithContent("<strong>Revenue increased.</strong>"),
     },
   ])("rejects $label", ({ value }) => {
-    expect(() => decodeAnswerDraft(value, 2)).toThrow("Invalid answer draft");
+    expect(() => decodeAnswerDraft(value, createEvidenceReferences(2)))
+      .toThrow("Invalid answer draft");
   });
 
   it("rejects independent conflicting-evidence statement classification", () => {
@@ -175,31 +213,34 @@ describe("answer draft boundary", () => {
       conflictGroups: [],
       statements: [{
         content: "The sources disagree.",
+        evidenceRefs: ["EVID_A"],
         presentation: "paragraph",
         section: "conflicting-evidence",
-        sourceNumbers: [1],
       }],
       status: "answered",
-    }, 1)).toThrow("Invalid answer draft");
+    }, createEvidenceReferences(1))).toThrow("Invalid answer draft");
   });
 
   it.each([
     {
       label: "one position",
-      value: buildConflictDraft([{ claim: "Revenue increased.", sourceNumbers: [1] }]),
+      value: buildConflictDraft([{
+        claim: "Revenue increased.",
+        evidenceRefs: ["EVID_A"],
+      }]),
     },
     {
       label: "a missing shared scope field",
       value: {
         ...buildConflictDraft([
-          { claim: "Revenue increased.", sourceNumbers: [1] },
-          { claim: "Revenue decreased.", sourceNumbers: [2] },
+          { claim: "Revenue increased.", evidenceRefs: ["EVID_A"] },
+          { claim: "Revenue decreased.", evidenceRefs: ["EVID_B"] },
         ]),
         conflictGroups: [{
           explanation: "The claims cannot both describe the same result.",
           positions: [
-            { claim: "Revenue increased.", sourceNumbers: [1] },
-            { claim: "Revenue decreased.", sourceNumbers: [2] },
+            { claim: "Revenue increased.", evidenceRefs: ["EVID_A"] },
+            { claim: "Revenue decreased.", evidenceRefs: ["EVID_B"] },
           ],
           scope: {
             conditions: "the same accounting basis",
@@ -212,39 +253,43 @@ describe("answer draft boundary", () => {
     {
       label: "duplicate positions",
       value: buildConflictDraft([
-        { claim: "Revenue increased.", sourceNumbers: [1] },
-        { claim: "REVENUE INCREASED.", sourceNumbers: [2] },
+        { claim: "Revenue increased.", evidenceRefs: ["EVID_A"] },
+        { claim: "REVENUE INCREASED.", evidenceRefs: ["EVID_B"] },
       ]),
     },
     {
       label: "an unsupported position",
       value: buildConflictDraft([
-        { claim: "Revenue increased.", sourceNumbers: [1] },
-        { claim: "Revenue decreased.", sourceNumbers: [] },
+        { claim: "Revenue increased.", evidenceRefs: ["EVID_A"] },
+        { claim: "Revenue decreased.", evidenceRefs: [] },
       ]),
     },
   ])("rejects an incomplete conflict group with $label", ({ value }) => {
-    expect(() => decodeAnswerDraft(value, 2)).toThrow("Invalid answer draft");
+    expect(() => decodeAnswerDraft(value, createEvidenceReferences(2)))
+      .toThrow("Invalid answer draft");
   });
 
   it("accepts complete long, numerous, and broadly sourced statements", () => {
-    const sourceNumbers = Array.from({ length: 12 }, (_value, index) => index + 1);
+    const evidenceRefs = createEvidenceReferences(12);
     const statements = [];
     for (let index = 0; index < 65; index += 1) {
       statements.push({
         content: `${"a".repeat(1_000)} ${index}`,
+        evidenceRefs,
         presentation: "paragraph",
         section: "answer",
-        sourceNumbers,
       });
     }
-    const draft = decodeAnswerDraft({ conflictGroups: [], statements, status: "answered" }, 12);
+    const draft = decodeAnswerDraft(
+      { conflictGroups: [], statements, status: "answered" },
+      evidenceRefs,
+    );
     expect(draft).toMatchObject({ status: "answered" });
     if (draft.status !== "answered") {
       throw new Error("Expected an answered draft.");
     }
     expect(draft.statements).toHaveLength(65);
-    expect(draft.statements[0]?.sourceNumbers).toEqual(sourceNumbers);
+    expect(draft.statements[0]?.evidenceRefs).toEqual(evidenceRefs);
 
     const retrieved: RetrievedElement[] = [];
     for (let index = 0; index < 12; index += 1) {
@@ -268,20 +313,26 @@ describe("answer draft boundary", () => {
   });
 
   it.each([
-    { label: "zero", sourceNumbers: [0] },
-    { label: "negative", sourceNumbers: [-1] },
-    { label: "out-of-range", sourceNumbers: [3] },
-  ])("rejects $label source references", ({ sourceNumbers }) => {
-    expect(() => decodeAnswerDraft(buildAnsweredDraft(sourceNumbers), 2))
+    { evidenceRefs: ["EVID_C"], label: "unknown" },
+    { evidenceRefs: ["evid_a"], label: "wrong-case" },
+    { evidenceRefs: ["EVID_A "], label: "modified" },
+  ])("rejects $label evidence references", ({ evidenceRefs }) => {
+    expect(() => decodeAnswerDraft(
+      buildAnsweredDraft(evidenceRefs),
+      createEvidenceReferences(2),
+    ))
       .toThrow("Invalid answer draft");
   });
 
-  it("normalizes duplicate model source numbers", () => {
-    const draft = decodeAnswerModelResponse(buildAnsweredDraft([2, 1, 2, 1]), 2);
+  it("normalizes duplicate model evidence references", () => {
+    const draft = decodeAnswerModelResponse(
+      buildAnsweredDraft(["EVID_B", "EVID_A", "EVID_B", "EVID_A"]),
+      createEvidenceReferences(2),
+    );
     if (draft.status !== "answered") {
       throw new Error("Expected an answered draft.");
     }
-    expect(draft.statements[0]?.sourceNumbers).toEqual([2, 1]);
+    expect(draft.statements[0]?.evidenceRefs).toEqual(["EVID_B", "EVID_A"]);
   });
 
   it("omits statements emptied by model-text normalization", () => {
@@ -290,46 +341,46 @@ describe("answer draft boundary", () => {
       statements: [
         {
           content: "",
+          evidenceRefs: ["EVID_A"],
           presentation: "paragraph",
           section: "answer",
-          sourceNumbers: [1],
         },
         {
           content: "  \n  ",
+          evidenceRefs: ["EVID_A"],
           presentation: "paragraph",
           section: "answer",
-          sourceNumbers: [1],
         },
         {
           content: "**Model formatting**",
+          evidenceRefs: ["EVID_A"],
           presentation: "paragraph",
           section: "answer",
-          sourceNumbers: [1],
         },
         {
           content: "[1]",
+          evidenceRefs: ["EVID_A"],
           presentation: "paragraph",
           section: "answer",
-          sourceNumbers: [1],
         },
         {
           content: "Revenue increased [1].",
+          evidenceRefs: ["EVID_A"],
           presentation: "paragraph",
           section: "answer",
-          sourceNumbers: [1],
         },
       ],
       status: "answered",
     };
-    const draft = decodeAnswerModelResponse(value, 1);
+    const draft = decodeAnswerModelResponse(value, createEvidenceReferences(1));
     if (draft.status !== "answered") {
       throw new Error("Expected an answered draft.");
     }
     expect(draft.statements).toEqual([{
       content: "Revenue increased.",
+      evidenceRefs: ["EVID_A"],
       presentation: "paragraph",
       section: "answer",
-      sourceNumbers: [1],
     }]);
   });
 
@@ -338,8 +389,8 @@ describe("answer draft boundary", () => {
       conflictGroups: [{
         explanation: "The claims cannot both be true.",
         positions: [
-          { claim: "Revenue increased [1].", sourceNumbers: [1] },
-          { claim: "Revenue increased [2].", sourceNumbers: [2] },
+          { claim: "Revenue increased [1].", evidenceRefs: ["EVID_A"] },
+          { claim: "Revenue increased [2].", evidenceRefs: ["EVID_B"] },
         ],
         sharedScope: {
           conditions: "the same basis",
@@ -350,13 +401,13 @@ describe("answer draft boundary", () => {
       }],
       statements: [{
         content: "Revenue was reported [1].",
+        evidenceRefs: ["EVID_A"],
         presentation: "paragraph",
         section: "answer",
-        sourceNumbers: [1],
       }],
       status: "answered",
     };
-    const draft = decodeAnswerModelResponse(value, 2);
+    const draft = decodeAnswerModelResponse(value, createEvidenceReferences(2));
     if (draft.status !== "answered") {
       throw new Error("Expected an answered draft.");
     }
@@ -366,13 +417,16 @@ describe("answer draft boundary", () => {
 });
 
 describe("published answer compilation", () => {
-  it("resolves request-local numbers against the exact ordered retrieval", () => {
+  it("resolves evidence references against the exact ordered retrieval", () => {
     const retrieved = [
       buildRetrievedElement("a", "b", 3),
       buildRetrievedElement("c", "d", 7),
     ];
     const document = compileAnswerDraft(
-      decodeAnswerDraft(buildAnsweredDraft([2, 1]), retrieved.length),
+      decodeAnswerDraft(
+        buildAnsweredDraft(["EVID_B", "EVID_A"]),
+        createEvidenceReferences(retrieved.length),
+      ),
       retrieved,
     );
     if (document.status !== "answered") {
@@ -400,17 +454,17 @@ describe("published answer compilation", () => {
       conflictGroups: [],
       statements: [{
         content: "Part II says revenue increased by 10% (estimated) [estimate].",
+        evidenceRefs: ["EVID_A"],
         presentation: "paragraph",
         section: "answer",
-        sourceNumbers: [1],
       }, {
         content: "The estimate remains limited.",
+        evidenceRefs: ["EVID_A"],
         presentation: "paragraph",
         section: "answer",
-        sourceNumbers: [1],
       }],
       status: "answered",
-    }, 1);
+    }, createEvidenceReferences(1));
     const document = compileAnswerDraft(
       draft,
       [buildRetrievedElement("a", "b", 3)],
@@ -433,10 +487,10 @@ describe("published answer compilation", () => {
         explanation: "The revenue cannot both have increased and decreased in the same period.",
         positions: [{
           claim: "Revenue increased.",
-          sourceNumbers: [1],
+          evidenceRefs: ["EVID_A"],
         }, {
           claim: "Revenue decreased.",
-          sourceNumbers: [2],
+          evidenceRefs: ["EVID_B"],
         }],
         sharedScope: {
           conditions: "reported revenue under the same accounting basis",
@@ -447,12 +501,12 @@ describe("published answer compilation", () => {
       }],
       statements: [{
         content: "Revenue was reported for 2025.",
+        evidenceRefs: ["EVID_A"],
         presentation: "paragraph",
         section: "answer",
-        sourceNumbers: [1],
       }],
       status: "answered",
-    }, 2);
+    }, createEvidenceReferences(2));
     const document = compileAnswerDraft(
       draft,
       [
@@ -480,8 +534,8 @@ describe("published answer compilation", () => {
 
   it("omits an exact duplicate conflict group without dropping either position", () => {
     const conflictDraft = buildConflictDraft([
-      { claim: "Revenue increased.", sourceNumbers: [1] },
-      { claim: "Revenue decreased.", sourceNumbers: [2] },
+      { claim: "Revenue increased.", evidenceRefs: ["EVID_A"] },
+      { claim: "Revenue decreased.", evidenceRefs: ["EVID_B"] },
     ]);
     const firstGroup = conflictDraft.conflictGroups[0];
     if (firstGroup === undefined) {
@@ -491,7 +545,10 @@ describe("published answer compilation", () => {
       ...firstGroup,
       explanation: "Both revenue directions cannot describe the same result.",
     });
-    const draft = decodeAnswerDraft(conflictDraft, 2);
+    const draft = decodeAnswerDraft(
+      conflictDraft,
+      createEvidenceReferences(2),
+    );
 
     const document = compileAnswerDraft(draft, [
       buildRetrievedElement("a", "b", 3),
@@ -504,14 +561,14 @@ describe("published answer compilation", () => {
   });
 });
 
-function buildAnsweredDraft(sourceNumbers: number[]) {
+function buildAnsweredDraft(evidenceRefs: string[]) {
   return {
     conflictGroups: [],
     statements: [{
       content: "Revenue increased.",
+      evidenceRefs,
       presentation: "paragraph",
       section: "answer",
-      sourceNumbers,
     }],
     status: "answered",
   };
@@ -522,16 +579,16 @@ function buildDraftWithContent(content: string) {
     conflictGroups: [],
     statements: [{
       content,
+      evidenceRefs: ["EVID_A"],
       presentation: "paragraph",
       section: "answer",
-      sourceNumbers: [1],
     }],
     status: "answered",
   };
 }
 
 function buildConflictDraft(
-  positions: Array<{ claim: string; sourceNumbers: number[] }>,
+  positions: Array<{ claim: string; evidenceRefs: string[] }>,
 ) {
   return {
     conflictGroups: [{

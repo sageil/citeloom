@@ -28,6 +28,7 @@ import type {
   Clock,
   DoclingTaskReference,
   DocumentStatistics,
+  IngestionControlActor,
   IngestionControlDoclingTask,
   IngestionJob,
   IngestionControlState,
@@ -902,7 +903,7 @@ export class CatalogJobStore {
   public async requestControl(
     sourceFile: string,
     action: "pause" | "cancel",
-    actor: { isAdministrator: boolean; userId: string },
+    actor: IngestionControlActor,
   ): Promise<RequestIngestionControlResult> {
     const currentTime = this.clock.now();
     return this.database.transaction(async (transaction) => {
@@ -944,7 +945,7 @@ export class CatalogJobStore {
 
   public async resumePausedJob(
     sourceFile: string,
-    actor: { isAdministrator: boolean; userId: string },
+    actor: IngestionControlActor,
   ): Promise<ResumeIngestionResult> {
     const currentTime = this.clock.now();
     return this.database.transaction(async (transaction) => {
@@ -1570,12 +1571,15 @@ function readRequestedControlState(
 
 function canControlJob(
   job: IngestionJob,
-  actor: { isAdministrator: boolean; userId: string },
+  actor: IngestionControlActor,
 ): boolean {
+  if (actor.isAdministrator) {
+    return true;
+  }
   if (job.uploadedByUserId === null) {
     return false;
   }
-  return actor.isAdministrator || job.uploadedByUserId === actor.userId;
+  return job.uploadedByUserId === actor.userId;
 }
 
 export function requireSingleJobTransition(

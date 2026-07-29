@@ -54,7 +54,7 @@ function formatInferenceFeature(feature: InferenceFeature): string {
     return "Embedding generation";
   }
   if (feature === "queryExpansion") {
-    return "Query expansion";
+    return "Extra search query generation";
   }
   return "Summarization";
 }

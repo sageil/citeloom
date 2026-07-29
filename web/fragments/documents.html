@@ -685,7 +685,7 @@
           <section
             class="inspector-document-controls inspector-ingestion-controls"
             x-cloak
-            x-show="selectedDocument.uploadedByUserId !== null &amp;&amp; (selectedDocument.status === 'pending' || selectedDocument.status === 'running' || selectedDocument.status === 'failed')"
+            x-show="(currentRole === 'admin' || (currentUserId !== null &amp;&amp; selectedDocument.uploadedByUserId === currentUserId)) &amp;&amp; (selectedDocument.status === 'pending' || selectedDocument.status === 'running' || selectedDocument.status === 'failed')"
           >
             <div class="inspector-management-actions inspector-control-actions">
               <button
@@ -723,7 +723,7 @@
             </div>
             <div class="inspector-confirmation danger" x-show="actionConfirmation === 'cancel-ingestion'">
               <strong>Cancel this ingestion?</strong>
-              <span>This removes the uploaded file and any partial index data.</span>
+              <span x-text="selectedDocument.activeDocumentId === null ? 'This removes the uploaded file and any partial index data.' : 'This stops the reindex and keeps the current version available.'"></span>
               <div>
                 <button class="button secondary" type="button" @click="actionConfirmation = null">Keep ingestion</button>
                 <button

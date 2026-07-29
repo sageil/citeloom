@@ -23,7 +23,10 @@ import type {
   BrowseDocumentCatalogRequest,
   BrowseDocumentCatalogResult,
 } from "../documents/catalog/browser.js";
-import { DocumentCatalog } from "../documents/catalog/index.js";
+import {
+  DocumentCatalog,
+  type IngestionControlActor,
+} from "../documents/catalog/index.js";
 import {
   readApplicationErrorRetentionConfig,
   readDoclingServiceTopologyFromConfig,
@@ -224,6 +227,7 @@ export interface RuntimeWebServices {
   reconcileIngestionCancellations?: () => Promise<void>;
   reindexDocument: (
     request: ReindexDocumentRequest,
+    actor: IngestionControlActor,
   ) => Promise<ReindexDocumentResult>;
   retryFailedJob: (
     sourceFile: string,
@@ -231,11 +235,11 @@ export interface RuntimeWebServices {
   requestIngestionControl: (
     sourceFile: string,
     action: "pause" | "cancel",
-    actor: { isAdministrator: boolean; userId: string },
+    actor: IngestionControlActor,
   ) => ReturnType<typeof requestIngestionControlWithRuntime>;
   resumeIngestion: (
     sourceFile: string,
-    actor: { isAdministrator: boolean; userId: string },
+    actor: IngestionControlActor,
   ) => ReturnType<typeof resumeIngestionWithRuntime>;
   searchSources: (
     request: SourceDiscoveryRequest,
@@ -887,10 +891,11 @@ function createRuntimeWebServices(
         runtime.config.sourceContent,
       );
     },
-    reindexDocument: async (request) => {
+    reindexDocument: async (request, actor) => {
       return queueDocumentReindexWithRuntime(
         runtime,
         request,
+        actor.userId,
         reportWebProgress,
       );
     },

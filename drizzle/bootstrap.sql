@@ -642,7 +642,7 @@ WITH canonical_settings AS (
           "reranking": {
             "apiToken": null,
             "baseUrl": "http://host.docker.internal:9000/v1",
-            "model": "Qwen3-Reranker-4B-mxfp8"
+            "model": "gte-reranker-modernbert-base"
           },
           "speechToText": {
             "apiToken": null,
@@ -901,9 +901,14 @@ SET
     jsonb_set(
       jsonb_set(
         jsonb_set(
-          "application_settings"."defaults",
-          '{providers,routing}',
-          EXCLUDED."defaults"#>'{providers,routing}',
+          jsonb_set(
+            "application_settings"."defaults",
+            '{providers,routing}',
+            EXCLUDED."defaults"#>'{providers,routing}',
+            true
+          ),
+          '{providers,connections,omlx}',
+          EXCLUDED."defaults"#>'{providers,connections,omlx}',
           true
         ),
         '{providers,connections,ollama}',
@@ -929,6 +934,8 @@ SET
 WHERE
   "application_settings"."defaults"#>'{providers,routing}'
     IS DISTINCT FROM EXCLUDED."defaults"#>'{providers,routing}'
+  OR "application_settings"."defaults"#>'{providers,connections,omlx}'
+    IS DISTINCT FROM EXCLUDED."defaults"#>'{providers,connections,omlx}'
   OR "application_settings"."defaults"#>'{providers,connections,ollama}'
     IS DISTINCT FROM EXCLUDED."defaults"#>'{providers,connections,ollama}'
   OR "application_settings"."defaults"#>'{runtime,embeddingInputFormatId}'

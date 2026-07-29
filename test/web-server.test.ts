@@ -2118,6 +2118,55 @@ describe("web server boundary", () => {
       });
       expect(reindexDocument).toHaveBeenCalledWith(
         { documentId, sourceFile },
+        {
+          isAdministrator: true,
+          userId: "00000000-0000-4000-8000-000000000000",
+        },
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("passes the authenticated member to document reindexing", async () => {
+    const principal = buildAuthenticatedPrincipal("member");
+    const reindexDocument = vi.fn<RuntimeWebServices["reindexDocument"]>(
+      async (request) => ({
+        documentId: request.documentId,
+        kind: "queued",
+        sourceFile: request.sourceFile,
+      }),
+    );
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readSession: async () => principal,
+        reindexDocument,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "POST",
+        payload: {
+          sourceFile: "/app/documents/uploads/group/handbook.pdf",
+        },
+        url: `/api/documents/${"a".repeat(64)}/reindex`,
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(reindexDocument).toHaveBeenCalledWith(
+        {
+          documentId: "a".repeat(64),
+          sourceFile: "/app/documents/uploads/group/handbook.pdf",
+        },
+        {
+          isAdministrator: false,
+          userId: principal.userId,
+        },
       );
     } finally {
       await server.close();

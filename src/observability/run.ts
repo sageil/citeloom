@@ -184,6 +184,7 @@ export interface AnswerBudgetTelemetry {
   outputBudgetTokens: number | null;
   providerSafetyMarginTokens: number;
   requests: AnswerGenerationRequestTelemetry[];
+  responseDiagnostics: AnswerResponseDiagnosticTelemetry[];
   windows: Array<{
     evidenceSha256: string;
     elementId: string;
@@ -200,7 +201,28 @@ export interface AnswerGenerationRequestTelemetry {
     elementId: string;
     retrievalWindowId: string;
   }>;
-  phase: "initial" | "recovery";
+  phase: "correction" | "initial";
+}
+
+export type AnswerResponseFailureCategory =
+  | "invalid-content"
+  | "invalid-json"
+  | "invalid-structure"
+  | "unknown-evidence-reference";
+
+export interface AnswerResponseDiagnosticTelemetry {
+  correctionOutcome:
+    | "invalid"
+    | "not-needed"
+    | "succeeded"
+    | "transport-error";
+  failureCategory: AnswerResponseFailureCategory | null;
+  invalidFieldPaths: string[];
+  modelId: string;
+  phase: "correction" | "initial";
+  provider: string;
+  responseSha256: string | null;
+  unknownReferenceCount: number;
 }
 
 export interface TelemetryModelIdentity {
@@ -320,6 +342,9 @@ export interface RunTelemetry {
   markStreamCompleted: () => void;
   markStreamStarted: () => void;
   recordAnswerRequest: (value: AnswerGenerationRequestTelemetry) => void;
+  recordAnswerResponseDiagnostic: (
+    value: AnswerResponseDiagnosticTelemetry,
+  ) => void;
   recordCandidateBudget: (value: CandidateBudgetTelemetry) => void;
   recordContextSelection: (value: ContextSelectionTelemetry) => void;
   recordAnswerBudget: (value: AnswerBudgetTelemetry) => void;
@@ -351,6 +376,7 @@ export const noopRunTelemetry: RunTelemetry = {
   markStreamCompleted: () => undefined,
   markStreamStarted: () => undefined,
   recordAnswerRequest: () => undefined,
+  recordAnswerResponseDiagnostic: () => undefined,
   recordCandidateBudget: () => undefined,
   recordContextSelection: () => undefined,
   recordAnswerBudget: () => undefined,
@@ -521,6 +547,15 @@ export class RunTelemetryRecorder implements RunTelemetry {
       throw new Error("Answer request telemetry requires a recorded answer budget.");
     }
     this.answerBudget.requests.push(structuredClone(value));
+  }
+
+  public recordAnswerResponseDiagnostic(
+    value: AnswerResponseDiagnosticTelemetry,
+  ): void {
+    if (this.answerBudget === null) {
+      throw new Error("Answer response diagnostics require a recorded answer budget.");
+    }
+    this.answerBudget.responseDiagnostics.push(structuredClone(value));
   }
 
   public setScopeSize(value: number): void {

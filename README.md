@@ -9,12 +9,10 @@
 
 ![CiteLoom product artwork with the message Private by Design](assets/citeloom-readme-private-by-design-caps.png)
 
-CiteLoom turns private documents into answers backed by citations.
-It runs locally and can search text, tables, and images across several file formats.
-
-When you ask a question, CiteLoom combines meaning-based search with keyword search to find relevant evidence.
-Generated summaries can help it find useful passages, but every citation points back to the original source.
-Before publishing an answer, CiteLoom validates its citations and checks how well the cited evidence supports each claim.
+CiteLoom is an open-source, self-hosted Retrieval-Augmented Generation (RAG) system for private documents.
+It combines structure-aware document processing, embedding search with pgvector cosine similarity, BM25 keyword search, extra search queries, weighted Reciprocal Rank Fusion, and optional relevance-model reranking to find evidence across text, tables, and images.
+Generated descriptions can improve discovery, but citations always point back to original evidence.
+It generates structured answers using exact evidence references, converts them into server-owned citations, and independently checks whether the cited evidence supports each claim using the Hallucination Evaluation Model (HHEM) before publication.
 
 ## Features
 
@@ -56,8 +54,8 @@ Set the initial administrator credentials and release tag in `.env`.
 ```dotenv
 CITELOOM_ADMIN_USERNAME=Mayhem
 CITELOOM_ADMIN_PASSWORD='replace-with-a-private-passphrase'
-CITELOOM_IMAGE_TAG=0.1.1
-CITELOOM_RELEASE=0.1.1
+CITELOOM_IMAGE_TAG=0.1.2
+CITELOOM_RELEASE=0.1.2
 ```
 
 Pull the published images and start CiteLoom.
@@ -70,7 +68,7 @@ docker compose --env-file .env -f compose.dockerhub.yml up -d --wait
 Open `https://localhost:3443` and sign in with the administrator account.
 If the browser warns about the local development certificate, use its trust or continue flow for this local site.
 
-A fresh database routes answers, summaries, query expansion, and embeddings to LM Studio.
+A fresh database routes answers, summaries, extra search queries, and embeddings to Ollama.
 Open Settings to use different providers or to enable reranking, speech-to-text, or text-to-speech.
 See [Deployment](docs/deployment.md) for storage paths, restart behavior, and building the images locally.
 
@@ -89,7 +87,7 @@ The installer creates `.env` when needed, asks for the initial administrator cre
 Provider routing is configured per capability in Settings.
 A provider can serve one capability while another provider serves the rest.
 
-| Provider | Answers | Query expansion | Summaries | Embeddings | Reranking | Speech-to-text | Text-to-speech |
+| Provider | Answers | Extra search queries | Summaries | Embeddings | Reranking | Speech-to-text | Text-to-speech |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | oMLX | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Ollama | Yes | Yes | Yes | Yes | - | - | - |
@@ -110,18 +108,21 @@ See [Configuration](docs/configuration.md#provider-reference) for endpoint conve
 ## Fresh-install provider defaults
 
 CiteLoom services run in Docker Compose while local model servers run on the host.
-Fresh settings include oMLX model suggestions for optional reranking and speech.
+Fresh settings use Ollama for answers, extra search queries, summaries, and embeddings, and include oMLX model suggestions for optional reranking and speech.
 Users can route speech-to-text and text-to-speech independently to oMLX, OpenAI, Groq, or Custom.
 Users can optionally enable reranking with oMLX, Cohere, Jina, or Custom.
 
 | Runtime | Model | Status and use |
 | --- | --- | --- |
-| LM Studio | `google/gemma-4-e4b` | Answer generation, summarization, and query expansion |
-| LM Studio | `text-embedding-embeddinggemma-300m-qat` | Document and query embeddings |
-| oMLX | `Qwen3-Reranker-4B-mxfp8` | Available for optional retrieval reranking when routed |
+| Ollama | `gemma4:e4b-mlx` | Answer generation, summarization, and extra search queries |
+| Ollama | `snowflake-arctic-embed:137m` | Document and query embeddings |
+| oMLX | `gte-reranker-modernbert-base` | Available for optional retrieval reranking when routed |
 | oMLX | `Qwen3-ASR-1.7B-8bit` | Available for speech-to-text transcription when routed |
 | oMLX | `Kokoro-82M-bf16` | Available for text-to-speech synthesis with the `af_heart` voice when routed |
 | Docker Compose | `vectara/hallucination_evaluation_model` | Independent claim-support verification through HHEM |
+
+The `gemma4:e4b-mlx` default is an MLX model for Macs.
+Linux users should remove the `-mlx` suffix and configure `gemma4:e4b` instead, or Ollama will fail because the configured Mac model is unavailable.
 
 ```mermaid
 flowchart LR
@@ -136,12 +137,12 @@ flowchart LR
     end
 
     subgraph Host[Host machine]
-        LMStudio[LM Studio :1234<br/>answers, summaries, query expansion, embeddings]
+        Ollama[Ollama :11434<br/>answers, summaries, extra search queries, embeddings]
         OMLX[oMLX :9000<br/>optional reranking and speech]
     end
 
-    Web -->|host.docker.internal| LMStudio
-    Worker -->|host.docker.internal| LMStudio
+    Web -->|host.docker.internal| Ollama
+    Worker -->|host.docker.internal| Ollama
     Web -->|host.docker.internal| OMLX
 ```
 

@@ -127,8 +127,8 @@ async function requestQueryExpansions(
         });
       },
       output: Output.object({
-        description: "Distinct alternate search queries for document retrieval.",
-        name: "query_expansions",
+        description: "Extra search queries that seek evidence not already targeted by the original question.",
+        name: "extra_search_queries",
         schema: createQueryExpansionSchema(expansionCount),
       }),
       prompt: question,
@@ -150,7 +150,6 @@ function createQueryExpansionSchema(expansionCount: number) {
   return z.object({
     queries: z
       .array(z.string().trim().min(1).max(500))
-      .min(1)
       .max(expansionCount),
   });
 }
@@ -161,14 +160,19 @@ function normalizeQueryExpansions(
   expansionCount: number,
 ): string[] {
   const expansions: string[] = [];
-  const seen = new Set([originalQuestion.trim().toLocaleLowerCase()]);
+  const seenQueries = new Set([normalizeQueryText(originalQuestion)]);
+  const seenEvidenceNeeds = new Set([
+    createEvidenceNeedFingerprint(originalQuestion),
+  ]);
   for (const value of values) {
     const query = value.trim();
-    const normalized = query.toLocaleLowerCase();
-    if (seen.has(normalized)) {
+    const normalized = normalizeQueryText(query);
+    const evidenceNeed = createEvidenceNeedFingerprint(query);
+    if (seenQueries.has(normalized) || seenEvidenceNeeds.has(evidenceNeed)) {
       continue;
     }
-    seen.add(normalized);
+    seenQueries.add(normalized);
+    seenEvidenceNeeds.add(evidenceNeed);
     expansions.push(query);
     if (expansions.length === expansionCount) {
       break;
@@ -193,17 +197,22 @@ export function decodeQueryExpansions(
   expansionCount: number,
 ): string[] {
   const expansions: string[] = [];
-  const seen = new Set([originalQuestion.trim().toLocaleLowerCase()]);
+  const seenQueries = new Set([normalizeQueryText(originalQuestion)]);
+  const seenEvidenceNeeds = new Set([
+    createEvidenceNeedFingerprint(originalQuestion),
+  ]);
   for (const rawLine of value.split(/\r?\n/)) {
     const line = rawLine.replace(/^\s*(?:[-*]|\d+[.)])\s+/, "").trim();
     if (line === "" || line.length > 500) {
       continue;
     }
-    const normalized = line.toLocaleLowerCase();
-    if (seen.has(normalized)) {
+    const normalized = normalizeQueryText(line);
+    const evidenceNeed = createEvidenceNeedFingerprint(line);
+    if (seenQueries.has(normalized) || seenEvidenceNeeds.has(evidenceNeed)) {
       continue;
     }
-    seen.add(normalized);
+    seenQueries.add(normalized);
+    seenEvidenceNeeds.add(evidenceNeed);
     expansions.push(line);
     if (expansions.length === expansionCount) {
       break;
@@ -212,269 +221,127 @@ export function decodeQueryExpansions(
   return expansions;
 }
 
+const queryScaffoldingWords = new Set([
+  "a",
+  "all",
+  "an",
+  "are",
+  "be",
+  "been",
+  "being",
+  "can",
+  "complete",
+  "comprehensive",
+  "could",
+  "describe",
+  "details",
+  "did",
+  "do",
+  "does",
+  "enumerate",
+  "explain",
+  "find",
+  "for",
+  "give",
+  "how",
+  "identify",
+  "information",
+  "is",
+  "list",
+  "me",
+  "name",
+  "of",
+  "overview",
+  "please",
+  "provide",
+  "search",
+  "show",
+  "tell",
+  "the",
+  "to",
+  "was",
+  "were",
+  "what",
+  "when",
+  "where",
+  "which",
+  "who",
+  "why",
+  "would",
+]);
+
+function normalizeQueryText(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .match(/[\p{L}\p{N}]+/gu)
+    ?.join(" ") ?? "";
+}
+
+function createEvidenceNeedFingerprint(value: string): string {
+  const normalized = normalizeQueryText(value);
+  const words = normalized === "" ? [] : normalized.split(" ");
+  const substantiveWords: string[] = [];
+  for (const word of words) {
+    if (!queryScaffoldingWords.has(word)) {
+      substantiveWords.push(word);
+    }
+  }
+  const fingerprintWords = substantiveWords.length > 0
+    ? substantiveWords
+    : words;
+  const uniqueWords = [...new Set(fingerprintWords)];
+  uniqueWords.sort();
+  return uniqueWords.join("\0");
+}
+
 function buildQueryExpansionSystemPrompt(
   expansionCount: number,
 ): string {
   return [
-    "You are Citeloom's Retrieval Query Planner model for a document ingestion pipeline",
+    "You write extra search queries for CiteLoom document retrieval.",
     "",
-    "## Objective",
+    "The original question is always searched unchanged and remains the question CiteLoom will answer.",
     "",
-    "Given a user's question, generate the smallest set of retrieval queries needed to retrieve all evidence required to answer the question.",
+    "Return only extra search queries that are likely to find different evidence from the original question.",
     "",
-    "Your goal is to maximize retrieval coverage while minimizing redundant searches.",
+    `Return between zero and ${expansionCount} extra search queries.`,
     "",
-    "Think about the information that needs to be retrieved, not how to rephrase the user's question.",
+    "Return zero extra search queries when the original question is sufficient.",
     "",
-    "## Scope",
+    "Each extra search query must be self-contained, immediately searchable, and focused on one distinct evidence need.",
     "",
-    "Handle questions including, but not limited to:",
+    "Preserve important entities, dates, locations, versions, organizations, and constraints.",
     "",
-    "- Factual questions",
-    "- Comparisons",
-    "- Causal questions",
-    "- Procedural questions",
-    "- Troubleshooting",
-    "- Analytical questions",
-    "- Multi-part questions",
-    "- Time-sensitive questions",
+    "Use genuinely different terminology only when it may locate evidence that the original wording would miss.",
     "",
-    "## Rules",
+    "For an exhaustive request such as “List all...”, add searches only for distinct categories, exceptions, conditions, limitations, or other evidence that may appear separately.",
     "",
-    "1. Preserve the user's original intent.",
+    "Do not:",
     "",
-    "2. Generate only queries that can be executed immediately.",
+    "- repeat or lightly restate the original question",
+    "- turn a command into a grammatical question",
+    "- replace the original question",
+    "- return synonymous searches that seek the same evidence",
+    "- invent facts, entities, dates, categories, or assumptions",
+    "- answer the original question",
+    "- explain your reasoning",
     "",
-    "3. Every query must be:",
-    "   - self-contained",
-    "   - independently searchable",
-    "   - focused on one information need",
-    "   - phrased naturally",
-    "   - optimized for retrieval",
+    "Examples:",
     "",
-    "4. Preserve important:",
-    "   - entities",
-    "   - dates",
-    "   - locations",
-    "   - product versions",
-    "   - organizations",
-    "   - constraints",
+    "Original question: When was Project Northstar launched?",
+    'Output: { "queries": [] }',
     "",
-    "5. Generate multiple queries only when each query is expected to retrieve different evidence.",
+    "Original question: Compare PostgreSQL and MySQL.",
+    'Output: { "queries": ["PostgreSQL features and capabilities", "MySQL features and capabilities"] }',
     "",
-    "6. Do NOT generate alternate phrasings of the same search.",
+    "Original question: How do I configure single sign-on and what license is required?",
+    'Output: { "queries": ["Single sign-on configuration steps", "Single sign-on licensing requirements"] }',
     "",
-    "7. Do NOT generate synonymous queries.",
+    "Original question: List all supported deployment modes.",
+    'Good output: { "queries": ["Deployment mode exceptions and conditions", "Deprecated deployment modes"] }',
+    'Bad output: { "queries": ["List of supported deployment modes"] }',
     "",
-    "8. If one query is sufficient, return only one query.",
-    "",
-    "9. Prefer complementary evidence over linguistic decomposition.",
-    "",
-    "10. Do NOT invent facts, entities, dates, or assumptions.",
-    "",
-    "11. Do NOT answer the user's question.",
-    "",
-    "12. Do NOT explain your reasoning.",
-    "",
-    "13. Return only valid JSON.",
-    "",
-    `14. Generate between 1 and ${expansionCount} retrieval queries.`,
-    "",
-    "## Query Planning Guidelines",
-    "",
-    "### Atomic Questions",
-    "",
-    "Return a single retrieval query.",
-    "",
-    "### Comparison Questions",
-    "",
-    "Retrieve information about each item individually.",
-    "",
-    "Only generate a direct comparison query if it is likely to retrieve unique comparative information.",
-    "",
-    "Example:",
-    "",
-    "User:",
-    "",
-    "Compare PostgreSQL and MySQL",
-    "",
-    "Good:",
-    "",
-    "- PostgreSQL features and capabilities",
-    "- MySQL features and capabilities",
-    "",
-    "Bad:",
-    "",
-    "- Compare PostgreSQL and MySQL",
-    "- Differences between PostgreSQL and MySQL",
-    "",
-    "These retrieve nearly identical results.",
-    "",
-    "Legal comparison example:",
-    "",
-    "User:",
-    "",
-    "Compare the Clean Air Act and the Clean Water Act",
-    "",
-    "Good:",
-    "",
-    "- Clean Air Act purpose, scope, protections, obligations, exceptions, remedies, and enforcement",
-    "- Clean Water Act purpose, scope, protections, obligations, exceptions, remedies, and enforcement",
-    "",
-    "### Causal Questions",
-    "",
-    "Retrieve:",
-    "",
-    "- the event",
-    "- independent explanations or analyses",
-    "",
-    "Example:",
-    "",
-    "User:",
-    "",
-    "Why did Apple's stock fall after WWDC?",
-    "",
-    "Good:",
-    "",
-    "- Apple stock performance after WWDC",
-    "- Analyses explaining Apple's stock decline after WWDC",
-    "",
-    "Bad:",
-    "",
-    "- Why did Apple's stock fall?",
-    "- Reasons Apple's stock fell",
-    "",
-    "### Procedural Questions",
-    "",
-    "Generate separate queries only if different documents are likely to contain:",
-    "",
-    "- prerequisites",
-    "- procedure",
-    "- limitations",
-    "- best practices",
-    "",
-    "### Troubleshooting Questions",
-    "",
-    "Generate separate queries only if different documents are likely to contain:",
-    "",
-    "- symptoms",
-    "- causes",
-    "- fixes",
-    "",
-    "### Multi-part Questions",
-    "",
-    "Generate one query per independent information need.",
-    "",
-    "Example:",
-    "",
-    "User:",
-    "",
-    "How do I configure Azure AD SSO and what licensing is required?",
-    "",
-    "Good:",
-    "",
-    "- Configure Azure AD single sign-on",
-    "- Azure AD single sign-on licensing requirements",
-    "",
-    "## Examples",
-    "",
-    "### Example 1",
-    "",
-    "User:",
-    "",
-    "When was PIPEDA enacted?",
-    "",
-    "Output:",
-    "",
-    "{",
-    '  "queries": [',
-    '    "When was PIPEDA enacted?"',
-    "  ]",
-    "}",
-    "",
-    "### Example 2",
-    "",
-    "User:",
-    "",
-    "Compare PostgreSQL and MySQL.",
-    "",
-    "Output:",
-    "",
-    "{",
-    '  "queries": [',
-    '    "PostgreSQL features and capabilities",',
-    '    "MySQL features and capabilities"',
-    "  ]",
-    "}",
-    "",
-    "### Example 3",
-    "",
-    "User:",
-    "",
-    "Compare the Clean Air Act and the Clean Water Act.",
-    "",
-    "Output:",
-    "",
-    "{",
-    '  "queries": [',
-    '    "Clean Air Act purpose, scope, protections, obligations, exceptions, remedies, and enforcement",',
-    '    "Clean Water Act purpose, scope, protections, obligations, exceptions, remedies, and enforcement"',
-    "  ]",
-    "}",
-    "",
-    "### Example 4",
-    "",
-    "User:",
-    "",
-    "Why did Apple's stock fall after WWDC?",
-    "",
-    "Output:",
-    "",
-    "{",
-    '  "queries": [',
-    '    "Apple stock performance after WWDC",',
-    '    "Analyses explaining Apple\'s stock decline after WWDC"',
-    "  ]",
-    "}",
-    "",
-    "### Example 5",
-    "",
-    "User:",
-    "",
-    "How do I configure Azure AD SSO and what licensing is required?",
-    "",
-    "Output:",
-    "",
-    "{",
-    '  "queries": [',
-    '    "Configure Azure AD single sign-on",',
-    '    "Azure AD single sign-on licensing requirements"',
-    "  ]",
-    "}",
-    "",
-    "### Example 6",
-    "",
-    "User:",
-    "",
-    "Latest PIPEDA amendments",
-    "",
-    "Output:",
-    "",
-    "{",
-    '  "queries": [',
-    '    "Latest PIPEDA amendments"',
-    "  ]",
-    "}",
-    "",
-    "## Output Schema",
-    "",
-    "Return only valid JSON:",
-    "",
-    "{",
-    '  "queries": [',
-    '    "First retrieval query",',
-    '    "Second retrieval query"',
-    "  ]",
-    "}",
+    'Return only JSON in this form: { "queries": ["extra search query"] }',
   ].join("\n");
 }

@@ -775,6 +775,104 @@ describe("PostgreSQL ingestion controls", () => {
       userId: uploaderId,
     })).resolves.toEqual({ kind: "not-paused" });
   });
+
+  it("allows administrators to control ownerless ingestion jobs", async () => {
+    const content = Buffer.from("ownerless reindex control");
+    const documentId = createHash("sha256").update(content).digest("hex");
+    const sourceFile = "/app/documents/uploads/control-test/reindex.pdf";
+    const sourceContentStore = new SourceContentStore(
+      session.database,
+      sourceContentConfig,
+    );
+    await sourceContentStore.writeDocument({ content, documentId });
+    await session.database.insert(ingestionJobs).values({
+      documentId,
+      embeddingSpaceId: "test:plain:768",
+      fileExtension: ".pdf",
+      generationId: randomUUID(),
+      mediaType: "application/pdf",
+      sourceFile,
+      uploadedByUserId: null,
+    });
+    const catalog = new DocumentCatalog(session.database);
+
+    await expect(catalog.requestIngestionControl(sourceFile, "pause", {
+      isAdministrator: false,
+      userId: "00000000-0000-4000-8000-000000000292",
+    })).resolves.toEqual({ kind: "forbidden" });
+
+    await expect(catalog.requestIngestionControl(sourceFile, "pause", {
+      isAdministrator: true,
+      userId: "00000000-0000-4000-8000-000000000293",
+    })).resolves.toMatchObject({
+      job: { controlState: "paused" },
+      kind: "accepted",
+    });
+  });
+
+  it("cancels a reindex without deleting the current version", async () => {
+    const content = Buffer.from("published document under reindex");
+    const documentId = createHash("sha256").update(content).digest("hex");
+    const sourceFile = "/app/documents/uploads/control-test/published.pdf";
+    const versionId = "00000000-0000-4000-8000-000000000294";
+    const sourceContentStore = new SourceContentStore(
+      session.database,
+      sourceContentConfig,
+    );
+    await sourceContentStore.writeDocument({ content, documentId });
+    await writeIndexedDocument(documentId, sourceFile, versionId);
+    const generationId = randomUUID();
+    await session.database.insert(ingestionJobs).values({
+      controlState: "cancel_requested",
+      documentId,
+      embeddingSpaceId: "test:plain:768",
+      fileExtension: ".pdf",
+      generationId,
+      mediaType: "application/pdf",
+      sourceFile,
+      uploadedByUserId: null,
+    });
+    const element = buildTableElement(documentId, "7".repeat(64), sourceFile);
+    const description = buildRetrievalDescriptionRecord(
+      element,
+      "Temporary description from the canceled reindex.",
+    );
+    const artifactStore = new IngestionArtifactStore(session.database);
+    await artifactStore.writeRetrievalDescription(
+      generationId,
+      documentId,
+      0,
+      description,
+    );
+
+    await expect(finalizeIngestionCancellation(
+      session.database,
+      sourceFile,
+      sourceContentConfig,
+    )).resolves.toEqual({ kind: "canceled" });
+
+    const catalog = new DocumentCatalog(session.database);
+    await expect(catalog.getJob(sourceFile)).resolves.toBeNull();
+    await expect(session.database
+      .select({ versionId: indexedDocuments.versionId })
+      .from(indexedDocuments)
+      .where(eq(indexedDocuments.sourceFile, sourceFile)))
+      .resolves.toEqual([{ versionId }]);
+    await expect(session.database
+      .select({ id: documentVersions.id })
+      .from(documentVersions)
+      .where(eq(documentVersions.sourceFile, sourceFile)))
+      .resolves.toEqual([{ id: versionId }]);
+    await expect(sourceContentStore.readDocument(documentId)).resolves.toEqual({
+      content,
+      documentId,
+    });
+    await expect(artifactStore.readRetrievalDescriptionCheckpoints(
+      generationId,
+      0,
+      10,
+    )).resolves.toEqual([]);
+  });
 });
 
 describe("PostgreSQL stored-source reindex", () => {

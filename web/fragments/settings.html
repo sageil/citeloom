@@ -186,7 +186,7 @@
       <div class="settings-feature-health" aria-label="Configuration health">
         <div>
           <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg>
-          <span><strong x-text="`${featureCapabilities.length} application features`"></strong><small>Provider-backed capabilities</small></span>
+          <span><strong x-text="`${featureCapabilities.length} application features`"></strong><small>Features that use an AI provider</small></span>
         </div>
         <div>
           <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-database"></use></svg>
@@ -254,9 +254,12 @@
                   </template>
                 </select>
               </label>
-              <div class="application-feature-value settings-feature-url">
+              <div class="provider-form-field settings-readonly-field settings-feature-url">
                 <span>Provider URL</span>
-                <code x-text="valueOrFallback(featureBaseUrl(selectedFeatureCapability))"></code>
+                <output class="settings-readonly-control">
+                  <code x-text="valueOrFallback(featureBaseUrl(selectedFeatureCapability), 'Not configured')"></code>
+                </output>
+                <small>Inherited from the selected provider connection.</small>
               </div>
             </div>
             <div class="settings-credential-warning" x-show="featureProviderId(selectedFeatureCapability) !== null &amp;&amp; !featureCredentialConfigured(selectedFeatureCapability)">
@@ -415,7 +418,7 @@
     <section class="settings-search-results settings-feature-workbench settings-provider-workbench">
       <div class="settings-feature-workspace settings-provider-workspace">
         <aside class="settings-feature-sidebar settings-provider-sidebar">
-          <header><h2>Providers</h2><p>Select a provider to configure its connection and capability defaults.</p></header>
+          <header><h2>Providers</h2><p>Select a provider to configure its connection and feature defaults.</p></header>
           <nav aria-label="Provider connections">
             <template x-for="profile in providerDrafts.catalog" :key="profile.id">
               <button
@@ -442,7 +445,7 @@
                 <h2 x-text="selectedProviderProfile?.displayName ?? ''"></h2>
               </span>
               <p class="settings-provider-heading-metadata">
-                <span x-text="`${selectedProviderProfile?.capabilities.length ?? 0} capabilities`"></span>
+                <span x-text="`${selectedProviderProfile?.capabilities.length ?? 0} features`"></span>
                 <span aria-hidden="true">•</span>
                 <span x-text="providerUsesDeviceAuth() ? `Device sign-in: ${openAICodexConnectionLabel()}` : `API token: ${selectedProviderConnection?.apiTokenConfigured ? 'Configured' : 'Not configured'}`"></span>
                 <span aria-hidden="true">•</span>
@@ -475,7 +478,7 @@
               :class="{ active: providerEditorSection === 'capabilities' }"
               :aria-selected="providerEditorSection === 'capabilities'"
               @click="selectProviderEditorSection('capabilities')"
-            >Capability defaults</button>
+            >Feature defaults</button>
           </nav>
 
           <section
@@ -485,43 +488,51 @@
           >
             <header>
               <h3>Connection</h3>
-              <p>Set the shared endpoint and optional credential inherited by this provider's capabilities.</p>
+              <p>Set where CiteLoom connects, how many requests it may send at once, and how it signs in.</p>
             </header>
             <div class="provider-form-grid settings-provider-connection-grid">
               <label class="provider-form-field">
                 <span>Provider base URL</span>
                 <input placeholder="Enter the provider base URL" type="url" :disabled="providerUsesDeviceAuth()" :value="selectedProviderConnection?.configuration.baseUrl ?? ''" @input="writeProviderBaseUrl($event.target.value)" />
-                <small x-show="selectedProviderConnection?.configuration.baseUrl === null">No base URL configured.</small>
                 <small x-show="providerUsesDeviceAuth()">Fixed to the ChatGPT Codex subscription endpoint.</small>
+                <small x-show="!providerUsesDeviceAuth()" x-text="selectedProviderConnection?.configuration.baseUrl === null ? 'Enter the address used to reach this provider.' : 'Used by all features unless a feature has its own URL.'"></small>
               </label>
               <label class="provider-form-field">
                 <span>Maximum parallel requests</span>
                 <input max="16" min="1" step="1" type="number" :value="providerMaximumParallelRequests() ?? 1" @change="writeProviderMaximumParallelRequests($event.target.value)" />
-                <small>The deployment-wide request limit for this provider.</small>
+                <small>Higher values may reduce waiting when the provider has spare capacity, but they increase load and can cause rate-limit errors. This does not improve answer quality.</small>
               </label>
-              <div class="provider-form-field" x-show="providerUsesDeviceAuth()">
-                <span>OpenAI device sign-in</span>
-                <div class="provider-secret-control">
-                  <strong x-text="openAICodexConnectionLabel()"></strong>
-                  <button class="button secondary" type="button" :disabled="openAICodexBusy" x-show="openAICodexAuth?.connection.state !== 'connected'" @click="startOpenAICodexSignIn()">Sign in</button>
-                  <button class="button secondary" type="button" :disabled="openAICodexBusy" x-show="openAICodexAuth?.connection.state === 'connected'" @click="loadOpenAICodexModels()">Load models</button>
-                  <button class="text-button" type="button" :disabled="openAICodexBusy" x-show="openAICodexAuth?.connection.state === 'connected'" @click="disconnectOpenAICodex()">Disconnect</button>
+              <div class="settings-provider-authentication" x-show="providerUsesDeviceAuth()">
+                <div class="settings-provider-auth-heading">
+                  <span>OpenAI device sign-in</span>
+                  <small>Connect the ChatGPT subscription that CiteLoom uses for this provider.</small>
                 </div>
-                <small x-show="openAICodexAuth?.connection.state === 'connected'">Loading models contacts the Codex subscription endpoint and fills the model selectors.</small>
-                <div x-show="openAICodexAuth?.flow?.state === 'pending' || openAICodexAuth?.flow?.state === 'exchanging'">
+                <div class="settings-provider-auth-control">
+                  <strong x-text="openAICodexConnectionLabel()"></strong>
+                  <div class="settings-provider-auth-actions">
+                    <button class="button secondary" type="button" :disabled="openAICodexBusy" x-show="openAICodexAuth?.connection.state !== 'connected'" @click="startOpenAICodexSignIn()">Sign in</button>
+                    <button class="button secondary" type="button" :disabled="openAICodexBusy" x-show="openAICodexAuth?.connection.state === 'connected'" @click="loadOpenAICodexModels()">Load models</button>
+                    <button class="button secondary" type="button" :disabled="openAICodexBusy" x-show="openAICodexAuth?.connection.state === 'connected'" @click="disconnectOpenAICodex()">Disconnect</button>
+                  </div>
+                </div>
+                <small class="settings-provider-auth-note" x-show="openAICodexAuth?.connection.state === 'connected'">Load models refreshes the model choices. It does not change the models already selected.</small>
+                <div class="settings-provider-device-flow" x-show="openAICodexAuth?.flow?.state === 'pending' || openAICodexAuth?.flow?.state === 'exchanging'">
                   <p>Open <a :href="openAICodexAuth?.flow?.verificationUrl ?? '#'" target="_blank" rel="noopener noreferrer">the OpenAI device page</a> and enter:</p>
                   <code x-text="openAICodexAuth?.flow?.userCode ?? ''"></code>
-                  <button class="text-button" type="button" :disabled="openAICodexBusy" @click="cancelOpenAICodexSignIn()">Cancel sign-in</button>
+                  <button class="button secondary" type="button" :disabled="openAICodexBusy" @click="cancelOpenAICodexSignIn()">Cancel sign-in</button>
                 </div>
-                <small x-show="openAICodexAuth?.flow?.error !== null" x-text="openAICodexAuth?.flow?.error"></small>
+                <small class="settings-provider-auth-note settings-provider-auth-error" x-show="openAICodexAuth?.flow?.error !== null" x-text="openAICodexAuth?.flow?.error"></small>
               </div>
-              <label class="provider-form-field" x-show="!providerUsesDeviceAuth()">
-                <span>API token</span>
-                <div class="provider-secret-control">
-                  <input autocomplete="new-password" data-1p-ignore="true" data-bwignore="true" data-lpignore="true" name="provider-credential-replacement" type="password" :placeholder="selectedProviderCredentialPlaceholder()" :value="credentialDrafts[selectedProviderId] ?? ''" @input="writeProviderCredential($event.target.value)" />
-                  <button class="text-button" type="button" :disabled="providerCredentialClearDisabled()" @click="clearProviderCredential()">Clear</button>
+              <div class="settings-provider-authentication" x-show="!providerUsesDeviceAuth()">
+                <div class="settings-provider-auth-heading">
+                  <label for="provider-api-token">API token</label>
+                  <small>Used by this provider's features unless a feature has its own token. Local providers often do not need one.</small>
                 </div>
-              </label>
+                <div class="provider-secret-control">
+                  <input id="provider-api-token" autocomplete="new-password" data-1p-ignore="true" data-bwignore="true" data-lpignore="true" name="provider-credential-replacement" type="password" :placeholder="selectedProviderCredentialPlaceholder()" :value="credentialDrafts[selectedProviderId] ?? ''" @input="writeProviderCredential($event.target.value)" />
+                  <button class="button secondary" type="button" :disabled="providerCredentialClearDisabled()" @click="clearProviderCredential()">Clear</button>
+                </div>
+              </div>
             </div>
             <p class="provider-no-probe-note settings-provider-diagnostic-note">Saving does not contact providers or discover models. Use <a data-view="system-health" href="./index.html?view=system-health" hx-get="./fragments/system-health.html" hx-push-url="./index.html?view=system-health">System health</a> to run diagnostic requests.</p>
           </section>
@@ -552,7 +563,7 @@
 
             <div class="settings-provider-capability-matrix">
               <div class="settings-provider-matrix-header" aria-hidden="true">
-                <span>Capability</span>
+                <span>Feature</span>
                 <span>Effective URL</span>
                 <span>Authentication</span>
                 <span>Default model</span>
@@ -595,7 +606,7 @@
                   >
                     <header>
                       <h3 x-text="`Edit ${capabilityLabel(entry.capability)} defaults`"></h3>
-                      <p>Update the default model, context, or base URL override for this capability.</p>
+                      <p>Update the default model, context, or base URL override for this feature.</p>
                     </header>
 
                     <div class="settings-provider-inheritance-summary">
@@ -639,7 +650,7 @@
                       </label>
                       <div class="provider-form-field settings-provider-override-field" x-show="!providerUsesDeviceAuth()">
                         <span class="settings-provider-field-heading">
-                          <label :for="`provider-${selectedProviderId}-${entry.capability}-base-url`">Capability base URL override</label>
+                          <label :for="`provider-${selectedProviderId}-${entry.capability}-base-url`">Feature base URL override</label>
                           <button
                             class="text-button"
                             type="button"
@@ -648,7 +659,7 @@
                           >Clear override</button>
                         </span>
                         <input :id="`provider-${selectedProviderId}-${entry.capability}-base-url`" placeholder="Use the provider base URL" type="url" :value="providerCapabilityBaseUrl(entry.capability) ?? ''" @input="writeProviderCapabilityBaseUrl(entry.capability, $event.target.value)" />
-                        <small x-text="providerCapabilityBaseUrl(entry.capability) === null ? 'Uses the provider base URL.' : 'Overrides the provider base URL for this capability.'"></small>
+                        <small x-text="providerCapabilityBaseUrl(entry.capability) === null ? 'Uses the provider base URL.' : 'Overrides the provider base URL for this feature.'"></small>
                       </div>
                     </div>
                   </section>
@@ -745,7 +756,23 @@
                 <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input :autocomplete="field.sensitive ? 'new-password' : 'off'" :data-1p-ignore="field.sensitive ? 'true' : null" :data-bwignore="field.sensitive ? 'true' : null" :data-lpignore="field.sensitive ? 'true' : null" :id="`setting-${field.key}`" :max="field.max" :min="field.min" :name="`setting-${field.key}`" :placeholder="field.sensitive &amp;&amp; field.configured ? 'Configured' : ''" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
                 <span class="setting-unit" x-show="field.unit !== null" x-text="field.unit"></span><button class="text-button" type="button" :disabled="fieldResetDisabled(field)" @click="resetField(field)">Reset to default</button>
               </div><small class="settings-runtime-credential-note" x-show="fieldCredentialMessageVisible(field)">A credential is configured. Enter a new value to replace it.</small></section>
-              <section class="settings-feature-step"><header><span>2</span><h3>Source and effect</h3><p>Understand where this value comes from and what changing it affects.</p></header><div class="settings-resolved-result"><div><span>Current source</span><strong x-text="fieldSourceLabel(field)"></strong></div><div><span>Example change and effect</span><strong x-text="field.changeExample"></strong></div></div></section>
+              <section class="settings-feature-step">
+                <header>
+                  <span>2</span>
+                  <h3>What to expect</h3>
+                  <p>How this setting can affect results, speed, or system load.</p>
+                </header>
+                <div class="settings-resolved-result settings-runtime-guidance">
+                  <div>
+                    <span>Current value comes from</span>
+                    <strong x-text="fieldSourceLabel(field)"></strong>
+                  </div>
+                  <div>
+                    <span>Changing this setting</span>
+                    <strong x-text="field.changeExample"></strong>
+                  </div>
+                </div>
+              </section>
               <footer class="settings-feature-footer"><span :class="{ changed: changeCount > 0 }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><strong x-text="changeSummaryLabel()"></strong></span><div><button class="button secondary" type="button" :disabled="saving" @click="resetAll()">Reset</button><button class="button primary" type="button" :disabled="!canSave" @click="saveChanges()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="saveLabel()"></span></button></div></footer>
             </div>
             </template>

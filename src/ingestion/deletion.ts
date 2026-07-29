@@ -33,6 +33,7 @@ import {
 } from "../database/schema.js";
 import {
   deletePermanentDocumentIngestionArtifacts,
+  deleteTemporaryRetrievalDescriptionGeneration,
   deleteTemporaryDocumentIngestionArtifacts,
 } from "./artifact-store.js";
 import { deleteStoredDocumentEvidence } from "../documents/storage/source-document-store.js";
@@ -67,6 +68,7 @@ export async function finalizeIngestionCancellation(
     .select({
       controlState: ingestionJobs.controlState,
       documentId: ingestionJobs.documentId,
+      generationId: ingestionJobs.generationId,
       state: ingestionJobs.state,
     })
     .from(ingestionJobs)
@@ -91,6 +93,7 @@ export async function finalizeIngestionCancellation(
       .select({
         controlState: ingestionJobs.controlState,
         documentId: ingestionJobs.documentId,
+        generationId: ingestionJobs.generationId,
         state: ingestionJobs.state,
       })
       .from(ingestionJobs)
@@ -114,6 +117,10 @@ export async function finalizeIngestionCancellation(
       return { kind: "pending" as const };
     }
     await transaction.delete(ingestionJobs).where(eq(ingestionJobs.sourceFile, sourceFile));
+    await deleteTemporaryRetrievalDescriptionGeneration(
+      transaction,
+      lockedJob.generationId,
+    );
     await deleteDocumentDataWithoutReferences(transaction, lockedJob.documentId);
     return { documentId: lockedJob.documentId, kind: "canceled" as const };
   });

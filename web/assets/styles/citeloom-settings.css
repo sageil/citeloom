@@ -846,6 +846,13 @@
   font-size: 12px;
 }
 
+.provider-form-field > small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.5;
+}
+
 .provider-editor {
   overflow: hidden;
 }
@@ -1226,8 +1233,29 @@
 }
 
 .settings-feature-url {
+  min-height: 0;
+  padding: 0;
+}
+
+.settings-readonly-control {
+  display: flex;
+  min-width: 0;
   min-height: 40px;
-  padding: 9px 11px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: rgba(11, 16, 32, 0.55);
+}
+
+.settings-readonly-control code {
+  overflow: hidden;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings-credential-warning {
@@ -1546,7 +1574,112 @@
 }
 
 .settings-provider-connection-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.settings-provider-authentication {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(230px, 0.7fr) minmax(0, 1.3fr);
+  align-items: center;
+  gap: 12px 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(11, 16, 32, 0.45);
+}
+
+.settings-provider-auth-heading {
+  display: grid;
+  gap: 5px;
+}
+
+.settings-provider-auth-heading > span,
+.settings-provider-auth-heading > label {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.settings-provider-auth-heading small,
+.settings-provider-auth-note {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.5;
+}
+
+.settings-provider-auth-control {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.settings-provider-auth-control > strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.settings-provider-auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-provider-auth-actions .button,
+.settings-provider-authentication .provider-secret-control .button,
+.settings-provider-device-flow .button {
+  min-height: 38px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.settings-provider-authentication .provider-secret-control {
+  min-width: 0;
+}
+
+.settings-provider-authentication .provider-secret-control input {
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.settings-provider-auth-note,
+.settings-provider-device-flow {
+  grid-column: 1 / -1;
+}
+
+.settings-provider-auth-error {
+  color: var(--danger);
+}
+
+.settings-provider-device-flow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-provider-device-flow p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.settings-provider-device-flow code {
+  color: var(--cyan);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .settings-provider-diagnostic-note {
@@ -1879,6 +2012,10 @@
   color: var(--text);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.settings-runtime-guidance > div:first-child strong {
+  color: var(--cyan);
 }
 
 .settings-input-format-library {
@@ -2255,6 +2392,25 @@
     grid-template-columns: 1fr;
   }
 
+  .settings-provider-authentication {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-provider-auth-control {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .settings-provider-auth-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .settings-provider-device-flow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .settings-provider-connection-summary > div,
   .settings-provider-inheritance-summary > div,
   .settings-provider-connection-summary > div:nth-child(2) {
@@ -2306,5 +2462,14 @@
 
   .settings-resolved-result {
     grid-template-columns: 1fr;
+  }
+
+  .settings-resolved-result > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .settings-resolved-result > div:last-child {
+    border-bottom: 0;
   }
 }

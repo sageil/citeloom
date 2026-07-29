@@ -5,9 +5,11 @@ import type {
   AnswerDraftConflictGroup,
   AnswerPresentation,
   AnswerSection,
+  EvidenceReference,
 } from "./draft.js";
 import {
   ANSWER_DRAFT_SECTIONS,
+  createEvidenceReferences,
   renderAnswerDraftConflictScope,
 } from "./draft.js";
 import type { RetrievedElement } from "../retrieval/document-retrieval.js";
@@ -44,7 +46,7 @@ export class AnswerDraftSourceError extends Error {
 }
 
 interface PreparedDraftStatement {
-  sourceNumbers: number[];
+  evidenceRefs: EvidenceReference[];
   statement: PublishedDraftStatement;
 }
 
@@ -55,8 +57,13 @@ interface PublishedDraftStatement {
 }
 
 interface SelectedSource {
+  evidenceRef: EvidenceReference;
   item: RetrievedElement;
-  sourceNumber: number;
+}
+
+interface RequestEvidence {
+  evidenceRef: EvidenceReference;
+  item: RetrievedElement;
 }
 
 export function compileAnswerDraft(
@@ -66,25 +73,27 @@ export function compileAnswerDraft(
   if (draft.status === "no_answer") {
     return createNoAnswerDocument();
   }
-  const preparedStatements = prepareDraftStatements(draft, retrieved);
-  const referencedNumbers = new Set<number>();
+  const requestEvidence = createRequestEvidence(retrieved);
+  const preparedStatements = prepareDraftStatements(draft, requestEvidence);
+  const referencedEvidence = new Set<EvidenceReference>();
   for (const prepared of preparedStatements) {
-    for (const sourceNumber of prepared.sourceNumbers) {
-      referencedNumbers.add(sourceNumber);
+    for (const evidenceRef of prepared.evidenceRefs) {
+      referencedEvidence.add(evidenceRef);
     }
   }
-  const citationBySourceNumber = new Map<number, PublishedAnswerCitation>();
+  const citationByEvidenceRef = new Map<
+    EvidenceReference,
+    PublishedAnswerCitation
+  >();
   const citations: PublishedAnswerCitation[] = [];
-  for (let index = 0; index < retrieved.length; index += 1) {
-    const sourceNumber = index + 1;
-    if (!referencedNumbers.has(sourceNumber)) {
+  for (const evidence of requestEvidence) {
+    if (!referencedEvidence.has(evidence.evidenceRef)) {
       continue;
     }
-    const item = requireRetrievedSource(retrieved, sourceNumber);
     const citationNumber = citations.length + 1;
-    const citation = createPublishedCitation(item, citationNumber);
+    const citation = createPublishedCitation(evidence.item, citationNumber);
     citations.push(citation);
-    citationBySourceNumber.set(sourceNumber, citation);
+    citationByEvidenceRef.set(evidence.evidenceRef, citation);
   }
   const statements: PublishedAnswerStatement[] = [];
   for (const section of ANSWER_DRAFT_SECTIONS) {
@@ -94,11 +103,11 @@ export function compileAnswerDraft(
         continue;
       }
       const citationIds: string[] = [];
-      for (const sourceNumber of prepared.sourceNumbers) {
-        const citation = citationBySourceNumber.get(sourceNumber);
+      for (const evidenceRef of prepared.evidenceRefs) {
+        const citation = citationByEvidenceRef.get(evidenceRef);
         if (citation === undefined) {
           throw new AnswerDraftSourceError(
-            `Answer statement references unavailable source ${sourceNumber}.`,
+            `Answer statement references unavailable evidence ${evidenceRef}.`,
           );
         }
         citationIds.push(citation.id);
@@ -111,7 +120,11 @@ export function compileAnswerDraft(
       });
     }
   }
-  appendConflictStatements(statements, preparedStatements, citationBySourceNumber);
+  appendConflictStatements(
+    statements,
+    preparedStatements,
+    citationByEvidenceRef,
+  );
   return decodePublishedAnswerDocument({
     citations,
     schemaVersion: 1,
@@ -122,16 +135,16 @@ export function compileAnswerDraft(
 
 function prepareDraftStatements(
   draft: Extract<AnswerDraft, { status: "answered" }>,
-  retrieved: readonly RetrievedElement[],
+  requestEvidence: readonly RequestEvidence[],
 ): PreparedDraftStatement[] {
-  const canonicalSourceNumbers = createCanonicalSourceNumbers(retrieved);
+  const canonicalEvidenceRefs = createCanonicalEvidenceRefs(requestEvidence);
   const preparedStatements: PreparedDraftStatement[] = [];
   for (const statement of draft.statements) {
     preparedStatements.push({
-      sourceNumbers: compactStatementSources(
-        statement.sourceNumbers,
-        retrieved,
-        canonicalSourceNumbers,
+      evidenceRefs: compactStatementEvidence(
+        statement.evidenceRefs,
+        requestEvidence,
+        canonicalEvidenceRefs,
       ),
       statement,
     });
@@ -146,8 +159,8 @@ function prepareDraftStatements(
     appendPreparedConflictGroup(
       preparedStatements,
       group,
-      retrieved,
-      canonicalSourceNumbers,
+      requestEvidence,
+      canonicalEvidenceRefs,
     );
   }
   return preparedStatements;
@@ -158,7 +171,7 @@ function createConflictGroupKey(group: AnswerDraftConflictGroup): string {
   for (const position of group.positions) {
     positions.push({
       claim: position.claim.toLowerCase(),
-      sourceNumbers: [...position.sourceNumbers].sort((left, right) => left - right),
+      evidenceRefs: [...position.evidenceRefs].sort(),
     });
   }
   positions.sort((left, right) => left.claim.localeCompare(right.claim));
@@ -176,26 +189,26 @@ function createConflictGroupKey(group: AnswerDraftConflictGroup): string {
 function appendPreparedConflictGroup(
   preparedStatements: PreparedDraftStatement[],
   group: AnswerDraftConflictGroup,
-  retrieved: readonly RetrievedElement[],
-  canonicalSourceNumbers: ReadonlyMap<string, number>,
+  requestEvidence: readonly RequestEvidence[],
+  canonicalEvidenceRefs: ReadonlyMap<string, EvidenceReference>,
 ): void {
-  const groupSourceNumbers: number[] = [];
-  const seenGroupSources = new Set<number>();
+  const groupEvidenceRefs: EvidenceReference[] = [];
+  const seenGroupEvidence = new Set<EvidenceReference>();
   for (const position of group.positions) {
-    const sourceNumbers = compactStatementSources(
-      position.sourceNumbers,
-      retrieved,
-      canonicalSourceNumbers,
+    const evidenceRefs = compactStatementEvidence(
+      position.evidenceRefs,
+      requestEvidence,
+      canonicalEvidenceRefs,
     );
-    for (const sourceNumber of sourceNumbers) {
-      if (!seenGroupSources.has(sourceNumber)) {
-        seenGroupSources.add(sourceNumber);
-        groupSourceNumbers.push(sourceNumber);
+    for (const evidenceRef of evidenceRefs) {
+      if (!seenGroupEvidence.has(evidenceRef)) {
+        seenGroupEvidence.add(evidenceRef);
+        groupEvidenceRefs.push(evidenceRef);
       }
     }
   }
   preparedStatements.push({
-    sourceNumbers: groupSourceNumbers,
+    evidenceRefs: groupEvidenceRefs,
     statement: {
       content: renderAnswerDraftConflictScope(group.sharedScope),
       presentation: "paragraph",
@@ -204,10 +217,10 @@ function appendPreparedConflictGroup(
   });
   for (const position of group.positions) {
     preparedStatements.push({
-      sourceNumbers: compactStatementSources(
-        position.sourceNumbers,
-        retrieved,
-        canonicalSourceNumbers,
+      evidenceRefs: compactStatementEvidence(
+        position.evidenceRefs,
+        requestEvidence,
+        canonicalEvidenceRefs,
       ),
       statement: {
         content: position.claim,
@@ -217,7 +230,7 @@ function appendPreparedConflictGroup(
     });
   }
   preparedStatements.push({
-    sourceNumbers: groupSourceNumbers,
+    evidenceRefs: groupEvidenceRefs,
     statement: {
       content: group.explanation,
       presentation: "paragraph",
@@ -229,18 +242,21 @@ function appendPreparedConflictGroup(
 function appendConflictStatements(
   statements: PublishedAnswerStatement[],
   preparedStatements: readonly PreparedDraftStatement[],
-  citationBySourceNumber: ReadonlyMap<number, PublishedAnswerCitation>,
+  citationByEvidenceRef: ReadonlyMap<
+    EvidenceReference,
+    PublishedAnswerCitation
+  >,
 ): void {
   for (const prepared of preparedStatements) {
     if (prepared.statement.section !== "conflicting-evidence") {
       continue;
     }
     const citationIds: string[] = [];
-    for (const sourceNumber of prepared.sourceNumbers) {
-      const citation = citationBySourceNumber.get(sourceNumber);
+    for (const evidenceRef of prepared.evidenceRefs) {
+      const citation = citationByEvidenceRef.get(evidenceRef);
       if (citation === undefined) {
         throw new AnswerDraftSourceError(
-          `Answer statement references unavailable source ${sourceNumber}.`,
+          `Answer statement references unavailable evidence ${evidenceRef}.`,
         );
       }
       citationIds.push(citation.id);
@@ -254,55 +270,76 @@ function appendConflictStatements(
   }
 }
 
-function createCanonicalSourceNumbers(
+function createRequestEvidence(
   retrieved: readonly RetrievedElement[],
-): ReadonlyMap<string, number> {
-  const canonicalSourceNumbers = new Map<string, number>();
+): RequestEvidence[] {
+  const evidenceRefs = createEvidenceReferences(retrieved.length);
+  const requestEvidence: RequestEvidence[] = [];
   for (let index = 0; index < retrieved.length; index += 1) {
     const item = retrieved[index];
+    const evidenceRef = evidenceRefs[index];
     if (item === undefined) {
-      throw new AnswerDraftSourceError(`Missing retrieved source ${index + 1}.`);
+      throw new AnswerDraftSourceError(`Missing retrieved evidence at index ${index}.`);
     }
-    const key = createRetrievedElementKey(item);
-    if (!canonicalSourceNumbers.has(key)) {
-      canonicalSourceNumbers.set(key, index + 1);
-    }
-  }
-  return canonicalSourceNumbers;
-}
-
-function compactStatementSources(
-  sourceNumbers: readonly number[],
-  retrieved: readonly RetrievedElement[],
-  canonicalSourceNumbers: ReadonlyMap<string, number>,
-): number[] {
-  const selectedSources: SelectedSource[] = [];
-  const seenSourceNumbers = new Set<number>();
-  for (const sourceNumber of sourceNumbers) {
-    const item = requireRetrievedSource(retrieved, sourceNumber);
-    const key = createRetrievedElementKey(item);
-    const canonicalSourceNumber = canonicalSourceNumbers.get(key);
-    if (canonicalSourceNumber === undefined) {
+    if (evidenceRef === undefined) {
       throw new AnswerDraftSourceError(
-        `Answer statement references unavailable source ${sourceNumber}.`,
+        `Missing evidence reference at index ${index}.`,
       );
     }
-    if (seenSourceNumbers.has(canonicalSourceNumber)) {
+    requestEvidence.push({ evidenceRef, item });
+  }
+  return requestEvidence;
+}
+
+function createCanonicalEvidenceRefs(
+  requestEvidence: readonly RequestEvidence[],
+): ReadonlyMap<string, EvidenceReference> {
+  const canonicalEvidenceRefs = new Map<string, EvidenceReference>();
+  for (const evidence of requestEvidence) {
+    const key = createRetrievedElementKey(evidence.item);
+    if (!canonicalEvidenceRefs.has(key)) {
+      canonicalEvidenceRefs.set(key, evidence.evidenceRef);
+    }
+  }
+  return canonicalEvidenceRefs;
+}
+
+function compactStatementEvidence(
+  evidenceRefs: readonly EvidenceReference[],
+  requestEvidence: readonly RequestEvidence[],
+  canonicalEvidenceRefs: ReadonlyMap<string, EvidenceReference>,
+): EvidenceReference[] {
+  const evidenceByRef = new Map<EvidenceReference, RetrievedElement>();
+  for (const evidence of requestEvidence) {
+    evidenceByRef.set(evidence.evidenceRef, evidence.item);
+  }
+  const selectedSources: SelectedSource[] = [];
+  const seenEvidenceRefs = new Set<EvidenceReference>();
+  for (const evidenceRef of evidenceRefs) {
+    const item = requireRetrievedEvidence(evidenceByRef, evidenceRef);
+    const key = createRetrievedElementKey(item);
+    const canonicalEvidenceRef = canonicalEvidenceRefs.get(key);
+    if (canonicalEvidenceRef === undefined) {
+      throw new AnswerDraftSourceError(
+        `Answer statement references unavailable evidence ${evidenceRef}.`,
+      );
+    }
+    if (seenEvidenceRefs.has(canonicalEvidenceRef)) {
       continue;
     }
-    seenSourceNumbers.add(canonicalSourceNumber);
+    seenEvidenceRefs.add(canonicalEvidenceRef);
     selectedSources.push({
-      item: requireRetrievedSource(retrieved, canonicalSourceNumber),
-      sourceNumber: canonicalSourceNumber,
+      evidenceRef: canonicalEvidenceRef,
+      item: requireRetrievedEvidence(evidenceByRef, canonicalEvidenceRef),
     });
   }
 
-  const compacted: number[] = [];
+  const compacted: EvidenceReference[] = [];
   for (const selected of selectedSources) {
     if (isRedundantStandaloneImage(selected, selectedSources)) {
       continue;
     }
-    compacted.push(selected.sourceNumber);
+    compacted.push(selected.evidenceRef);
   }
   return compacted;
 }
@@ -316,7 +353,7 @@ function isRedundantStandaloneImage(
     return false;
   }
   for (const candidate of allSelected) {
-    if (candidate.sourceNumber === selected.sourceNumber) {
+    if (candidate.evidenceRef === selected.evidenceRef) {
       continue;
     }
     if (candidate.item.element.kind === "image") {
@@ -459,17 +496,14 @@ export function escapeMarkdownText(value: string): string {
   return value.replace(/[\\`*_{}\[\]()<>#+\-.!|]/g, "\\$&");
 }
 
-function requireRetrievedSource(
-  retrieved: readonly RetrievedElement[],
-  sourceNumber: number,
+function requireRetrievedEvidence(
+  evidenceByRef: ReadonlyMap<EvidenceReference, RetrievedElement>,
+  evidenceRef: EvidenceReference,
 ): RetrievedElement {
-  if (!Number.isInteger(sourceNumber) || sourceNumber < 1) {
-    throw new AnswerDraftSourceError(`Invalid answer source number ${sourceNumber}.`);
-  }
-  const item = retrieved[sourceNumber - 1];
+  const item = evidenceByRef.get(evidenceRef);
   if (item === undefined) {
     throw new AnswerDraftSourceError(
-      `Answer references source ${sourceNumber}, but only ${retrieved.length} sources were retrieved.`,
+      `Answer references unavailable evidence ${evidenceRef}.`,
     );
   }
   return item;

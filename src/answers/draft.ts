@@ -13,7 +13,8 @@ export const ANSWER_DRAFT_SECTIONS = [
 
 export const ANSWER_PRESENTATIONS = ["paragraph", "bullet"] as const;
 
-const modelCitationDecorationPattern = /(?:[\[【]\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\s*[\]】]|\(\s*(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\s*\)|\b(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\b)/gi;
+const numericCitationDecorationPattern = /(?:[\[【]\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\s*[\]】]|\(\s*(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\s*\)|\b(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\b)/gi;
+const evidenceReferenceDecorationPattern = /(?:[\[【]\s*EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\s*[\]】]|\(\s*(?:evidence\s+)?references?\s*EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\s*\)|\b(?:evidence\s+)?references?\s*EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\b)/gi;
 const htmlTagPattern = /<\/?[A-Za-z][^>]*>/;
 const markdownLinkPattern = /!?\[[^\]]*\]\([^)]*\)/;
 const markdownBlockPattern = /^(?:\s{0,3}(?:#{1,6}|>|\||[-+*]\s|\d+[.)]\s|```|~~~))/;
@@ -38,17 +39,18 @@ const answerModelContentSchema = z.string();
 export type AnswerSection = z.output<typeof answerSectionSchema>;
 export type AnswerDraftSection = z.output<typeof answerDraftSectionSchema>;
 export type AnswerPresentation = z.output<typeof answerPresentationSchema>;
+export type EvidenceReference = string;
 
 export interface AnswerDraftStatement {
   content: string;
+  evidenceRefs: EvidenceReference[];
   presentation: AnswerPresentation;
   section: AnswerDraftSection;
-  sourceNumbers: number[];
 }
 
 export interface AnswerDraftConflictPosition {
   claim: string;
-  sourceNumbers: number[];
+  evidenceRefs: EvidenceReference[];
 }
 
 export interface AnswerDraftConflictScope {
@@ -83,29 +85,62 @@ interface AnswerSchemaParts {
   statements: z.ZodType<AnswerDraftStatement[]>;
 }
 
+interface AnswerStatementFieldSchemas {
+  presentation: z.ZodType<AnswerPresentation>;
+  section: z.ZodType<AnswerDraftSection>;
+}
+
+export interface AnswerDraftValidationIssue {
+  message: string;
+  path: string;
+}
+
 export class AnswerDraftDecodeError extends Error {
-  public constructor(message: string) {
+  public constructor(
+    message: string,
+    public readonly failureCategory:
+      | "invalid-content"
+      | "invalid-structure"
+      | "unknown-evidence-reference",
+    public readonly issues: AnswerDraftValidationIssue[],
+    public readonly unknownReferenceCount: number,
+  ) {
     super(message);
     this.name = "AnswerDraftDecodeError";
   }
 }
 
+export function createEvidenceReferences(count: number): EvidenceReference[] {
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error("Answer evidence requires at least one retrieved element.");
+  }
+  const references: EvidenceReference[] = [];
+  for (let index = 0; index < count; index += 1) {
+    references.push(`EVID_${createAlphabeticLabel(index)}`);
+  }
+  return references;
+}
+
 export function createAnswerDraftSchema(
-  sourceCount: number,
+  allowedEvidenceRefs: readonly EvidenceReference[],
 ): z.ZodType<AnswerDraft> {
   return buildAnswerDraftSchema(
-    sourceCount,
+    allowedEvidenceRefs,
     false,
     answerStatementContentSchema,
   );
 }
 
 export function createAnswerModelResponseSchema(
-  sourceCount: number,
+  allowedEvidenceRefs: readonly EvidenceReference[],
 ): z.ZodType<AnswerModelResponse> {
   const parts = buildAnswerSchemaParts(
-    sourceCount,
+    allowedEvidenceRefs,
     answerModelContentSchema,
+    {
+      presentation: answerPresentationSchema.default("paragraph"),
+      section: answerDraftSectionSchema.default("answer"),
+    },
   );
   return z.object({
     conflictGroups: parts.conflictGroups,
@@ -140,11 +175,18 @@ export function createAnswerModelResponseSchema(
 }
 
 function buildAnswerDraftSchema(
-  sourceCount: number,
+  allowedEvidenceRefs: readonly EvidenceReference[],
   allowLegacyConflictGroupOmission: boolean,
   modelContentSchema: z.ZodType<string>,
 ): z.ZodType<AnswerDraft> {
-  const parts = buildAnswerSchemaParts(sourceCount, modelContentSchema);
+  const parts = buildAnswerSchemaParts(
+    allowedEvidenceRefs,
+    modelContentSchema,
+    {
+      presentation: answerPresentationSchema,
+      section: answerDraftSectionSchema,
+    },
+  );
   let conflictGroupsSchema = parts.conflictGroups;
   if (allowLegacyConflictGroupOmission) {
     conflictGroupsSchema = conflictGroupsSchema.default([]);
@@ -172,24 +214,23 @@ function buildAnswerDraftSchema(
 }
 
 function buildAnswerSchemaParts(
-  sourceCount: number,
+  allowedEvidenceRefs: readonly EvidenceReference[],
   modelContentSchema: z.ZodType<string>,
+  statementFields: AnswerStatementFieldSchemas,
 ): AnswerSchemaParts {
-  if (!Number.isInteger(sourceCount) || sourceCount < 1) {
-    throw new Error("Answer draft decoding requires at least one source.");
-  }
-  const sourceNumbersSchema = z.array(
-    z.number().int().min(1).max(sourceCount),
-  ).min(1);
+  const evidenceReferenceSchema = createEvidenceReferenceSchema(
+    allowedEvidenceRefs,
+  );
+  const evidenceReferencesSchema = z.array(evidenceReferenceSchema).min(1);
   const statementSchema: z.ZodType<AnswerDraftStatement> = z.object({
     content: modelContentSchema,
-    presentation: answerPresentationSchema,
-    section: answerDraftSectionSchema,
-    sourceNumbers: sourceNumbersSchema,
+    evidenceRefs: evidenceReferencesSchema,
+    presentation: statementFields.presentation,
+    section: statementFields.section,
   }).strict();
   const conflictPositionSchema: z.ZodType<AnswerDraftConflictPosition> = z.object({
     claim: modelContentSchema,
-    sourceNumbers: sourceNumbersSchema,
+    evidenceRefs: evidenceReferencesSchema,
   }).strict();
   const conflictGroupSchema: z.ZodType<AnswerDraftConflictGroup> = z.object({
     explanation: modelContentSchema,
@@ -248,26 +289,38 @@ export function renderAnswerDraftConflictScope(
 
 export function decodeAnswerDraft(
   value: unknown,
-  sourceCount: number,
+  allowedEvidenceRefs: readonly EvidenceReference[],
 ): AnswerDraft {
   const result = buildAnswerDraftSchema(
-    sourceCount,
+    allowedEvidenceRefs,
     true,
     answerStatementContentSchema,
   ).safeParse(value);
   if (!result.success) {
-    throw new AnswerDraftDecodeError(`Invalid answer draft: ${result.error.message}`);
+    throw createAnswerDraftDecodeError(
+      "Invalid answer draft",
+      result.error.issues,
+      value,
+      allowedEvidenceRefs,
+    );
   }
   return result.data;
 }
 
 export function decodeAnswerModelResponse(
   value: unknown,
-  sourceCount: number,
+  allowedEvidenceRefs: readonly EvidenceReference[],
 ): AnswerDraft {
-  const modelResult = createAnswerModelResponseSchema(sourceCount).safeParse(value);
+  const modelResult = createAnswerModelResponseSchema(
+    allowedEvidenceRefs,
+  ).safeParse(value);
   if (!modelResult.success) {
-    throw new AnswerDraftDecodeError(`Invalid answer model response: ${modelResult.error.message}`);
+    throw createAnswerDraftDecodeError(
+      "Invalid answer model response",
+      modelResult.error.issues,
+      value,
+      allowedEvidenceRefs,
+    );
   }
   if (modelResult.data.status === "no_answer") {
     return { status: "no_answer" };
@@ -281,7 +334,7 @@ export function decodeAnswerModelResponse(
       continue;
     }
     statement.content = content;
-    statement.sourceNumbers = uniqueSourceNumbers(statement.sourceNumbers);
+    statement.evidenceRefs = uniqueEvidenceReferences(statement.evidenceRefs);
     statements.push(statement);
   }
   normalized.statements = statements;
@@ -294,7 +347,7 @@ export function decodeAnswerModelResponse(
     group.sharedScope.timePeriod = normalizeModelText(group.sharedScope.timePeriod);
     for (const position of group.positions) {
       position.claim = normalizeModelText(position.claim);
-      position.sourceNumbers = uniqueSourceNumbers(position.sourceNumbers);
+      position.evidenceRefs = uniqueEvidenceReferences(position.evidenceRefs);
     }
     if (modelNormalizationInvalidatedConflictGroup(group)) {
       continue;
@@ -302,7 +355,18 @@ export function decodeAnswerModelResponse(
     conflictGroups.push(group);
   }
   normalized.conflictGroups = conflictGroups;
-  return decodeAnswerDraft(normalized, sourceCount);
+  if (countAnswerContent(normalized.statements, normalized.conflictGroups) === 0) {
+    throw new AnswerDraftDecodeError(
+      "Invalid answer model response: no valid answer content remained.",
+      "invalid-content",
+      [{
+        message: "An answered response must contain valid plain-text answer content.",
+        path: "statements",
+      }],
+      0,
+    );
+  }
+  return normalized;
 }
 
 function modelNormalizationInvalidatedConflictGroup(
@@ -316,13 +380,13 @@ function modelNormalizationInvalidatedConflictGroup(
     group.sharedScope.timePeriod,
   ];
   for (const value of groupText) {
-    if (!answerStatementContentSchema.safeParse(value).success) {
+    if (!isCanonicalAnswerText(value)) {
       return true;
     }
   }
   const claims = new Set<string>();
   for (const position of group.positions) {
-    if (!answerStatementContentSchema.safeParse(position.claim).success) {
+    if (!isCanonicalAnswerText(position.claim)) {
       return true;
     }
     const claim = position.claim.toLocaleLowerCase();
@@ -336,28 +400,34 @@ function modelNormalizationInvalidatedConflictGroup(
 
 function readCanonicalModelText(value: string): string | null {
   const normalized = normalizeModelText(value);
-  if (!answerStatementContentSchema.safeParse(normalized).success) {
+  if (!isCanonicalAnswerText(normalized)) {
     return null;
   }
   return normalized;
 }
 
-function uniqueSourceNumbers(sourceNumbers: readonly number[]): number[] {
-  const unique: number[] = [];
-  const seen = new Set<number>();
-  for (const sourceNumber of sourceNumbers) {
-    if (seen.has(sourceNumber)) {
+function uniqueEvidenceReferences(
+  evidenceRefs: readonly EvidenceReference[],
+): EvidenceReference[] {
+  const unique: EvidenceReference[] = [];
+  const seen = new Set<EvidenceReference>();
+  for (const evidenceRef of evidenceRefs) {
+    if (seen.has(evidenceRef)) {
       continue;
     }
-    seen.add(sourceNumber);
-    unique.push(sourceNumber);
+    seen.add(evidenceRef);
+    unique.push(evidenceRef);
   }
   return unique;
 }
 
 function normalizeModelText(value: string): string {
-  const withoutCitationDecorations = value.replace(
-    modelCitationDecorationPattern,
+  const withoutNumericCitations = value.replace(
+    numericCitationDecorationPattern,
+    " ",
+  );
+  const withoutCitationDecorations = withoutNumericCitations.replace(
+    evidenceReferenceDecorationPattern,
     " ",
   );
   return withoutCitationDecorations
@@ -365,4 +435,174 @@ function normalizeModelText(value: string): string {
     .replace(/\s+([,.;:!?])/g, "$1")
     .replace(/[,;:]+([.!?])/g, "$1")
     .trim();
+}
+
+function createEvidenceReferenceSchema(
+  allowedEvidenceRefs: readonly EvidenceReference[],
+) {
+  const first = allowedEvidenceRefs[0];
+  if (first === undefined) {
+    throw new Error("Answer evidence references must not be empty.");
+  }
+  const uniqueReferences = new Set(allowedEvidenceRefs);
+  if (uniqueReferences.size !== allowedEvidenceRefs.length) {
+    throw new Error("Answer evidence references must be unique.");
+  }
+  return z.enum([first, ...allowedEvidenceRefs.slice(1)]);
+}
+
+function createAlphabeticLabel(index: number): string {
+  let remaining = index;
+  let label = "";
+  do {
+    label = String.fromCharCode(65 + (remaining % 26)) + label;
+    remaining = Math.floor(remaining / 26) - 1;
+  } while (remaining >= 0);
+  return label;
+}
+
+function isCanonicalAnswerText(value: string): boolean {
+  return value.length > 0
+    && value === value.trim()
+    && !/[\r\n]/.test(value)
+    && !htmlTagPattern.test(value)
+    && !markdownLinkPattern.test(value)
+    && !markdownBlockPattern.test(value)
+    && !value.includes("*")
+    && !markdownInlineDelimiterPattern.test(value)
+    && !value.includes("`");
+}
+
+function createAnswerDraftDecodeError(
+  label: string,
+  issues: readonly {
+    code: string;
+    message: string;
+    path: PropertyKey[];
+  }[],
+  value: unknown,
+  allowedEvidenceRefs: readonly EvidenceReference[],
+): AnswerDraftDecodeError {
+  const allowed = new Set(allowedEvidenceRefs);
+  const unknownReferenceCount = countUnknownEvidenceReferences(value, allowed);
+  const failureCategory = unknownReferenceCount > 0
+    ? "unknown-evidence-reference"
+    : "invalid-structure";
+  const validationIssues: AnswerDraftValidationIssue[] = [];
+  for (const issue of issues) {
+    validationIssues.push({
+      message: readShortValidationMessage(issue, failureCategory),
+      path: formatValidationPath(issue.path),
+    });
+  }
+  return new AnswerDraftDecodeError(
+    `${label}: ${formatValidationIssues(validationIssues)}`,
+    failureCategory,
+    validationIssues,
+    unknownReferenceCount,
+  );
+}
+
+function readShortValidationMessage(
+  issue: { code: string; message: string },
+  failureCategory: AnswerDraftDecodeError["failureCategory"],
+): string {
+  if (failureCategory === "unknown-evidence-reference") {
+    return "must contain only allowed evidence references";
+  }
+  if (issue.code === "unrecognized_keys") {
+    return "contains fields that are not allowed";
+  }
+  return issue.message;
+}
+
+function formatValidationIssues(
+  issues: readonly AnswerDraftValidationIssue[],
+): string {
+  if (issues.length === 0) {
+    return "the response does not match the required structure.";
+  }
+  return issues
+    .map((issue) => `${issue.path}: ${issue.message}`)
+    .join("; ");
+}
+
+function formatValidationPath(path: readonly PropertyKey[]): string {
+  if (path.length === 0) {
+    return "$";
+  }
+  let formatted = "";
+  for (const part of path) {
+    if (typeof part === "number") {
+      formatted += `[${part}]`;
+      continue;
+    }
+    const name = String(part);
+    formatted += formatted === "" ? name : `.${name}`;
+  }
+  return formatted;
+}
+
+function countUnknownEvidenceReferences(
+  value: unknown,
+  allowedEvidenceRefs: ReadonlySet<EvidenceReference>,
+): number {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return 0;
+  }
+  let count = 0;
+  const response = value as {
+    conflictGroups?: unknown;
+    statements?: unknown;
+  };
+  count += countUnknownStatementReferences(
+    response.statements,
+    allowedEvidenceRefs,
+  );
+  if (!Array.isArray(response.conflictGroups)) {
+    return count;
+  }
+  for (const group of response.conflictGroups) {
+    if (typeof group !== "object" || group === null || Array.isArray(group)) {
+      continue;
+    }
+    const positions = (group as { positions?: unknown }).positions;
+    count += countUnknownStatementReferences(
+      positions,
+      allowedEvidenceRefs,
+    );
+  }
+  return count;
+}
+
+function countUnknownStatementReferences(
+  value: unknown,
+  allowedEvidenceRefs: ReadonlySet<EvidenceReference>,
+): number {
+  if (!Array.isArray(value)) {
+    return 0;
+  }
+  let count = 0;
+  for (const statement of value) {
+    if (
+      typeof statement !== "object"
+      || statement === null
+      || Array.isArray(statement)
+    ) {
+      continue;
+    }
+    const evidenceRefs = (statement as { evidenceRefs?: unknown }).evidenceRefs;
+    if (!Array.isArray(evidenceRefs)) {
+      continue;
+    }
+    for (const evidenceRef of evidenceRefs) {
+      if (
+        typeof evidenceRef === "string"
+        && !allowedEvidenceRefs.has(evidenceRef)
+      ) {
+        count += 1;
+      }
+    }
+  }
+  return count;
 }

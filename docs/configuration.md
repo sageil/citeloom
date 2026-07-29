@@ -12,10 +12,10 @@ Each job and answer run keeps the settings it started with.
 
 After CiteLoom starts, open Settings.
 Configure a provider connection, then assign it to one or more capabilities.
-Answers, query expansion, summaries, and embeddings require a provider.
+Answers, extra search queries, summaries, and embeddings require a provider.
 Reranking, speech-to-text, and text-to-speech are optional.
 
-A fresh database uses LM Studio for the required capabilities.
+A fresh database uses Ollama for the required capabilities.
 Optional capabilities start unassigned and can be enabled at any time.
 See [Provider reference](#provider-reference) for supported combinations and endpoint formats.
 
@@ -91,7 +91,7 @@ If validation fails, the previous setting remains active.
 [`providerCatalog`](../src/providers/profiles.ts) is the source of truth for built-in provider profiles and capabilities.
 Each capability is routed independently, so one provider can generate answers while other providers supply embeddings, reranking, or speech.
 
-| Provider | Answers | Query expansion | Summaries | Embeddings | Reranking | Speech-to-text | Text-to-speech |
+| Provider | Answers | Extra search queries | Summaries | Embeddings | Reranking | Speech-to-text | Text-to-speech |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | oMLX | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Ollama | Yes | Yes | Yes | Yes | - | - | - |
@@ -136,18 +136,18 @@ Confirm current details in the official documentation for [oMLX](https://github.
 
 ### Fresh-install routes and models
 
-Fresh installs use Ollama for answers, query expansion, summaries, and embeddings.
+Fresh installs use Ollama for answers, extra search queries, summaries, and embeddings.
 Reranking and both speech capabilities start unassigned.
 The saved oMLX models are ready to use if an administrator selects oMLX for one of those capabilities.
 The saved oMLX URL uses port 9000 and can be changed in Settings.
 
-| Capability | Bootstrap provider | Bootstrap model |
+| Feature | Bootstrap provider | Bootstrap model |
 | --- | --- | --- |
 | Answers | Ollama | `gemma4:e4b-mlx` |
-| Query expansion | Ollama | `gemma4:e4b-mlx` |
+| Extra search queries | Ollama | `gemma4:e4b-mlx` |
 | Summaries | Ollama | `gemma4:e4b-mlx` |
 | Embeddings | Ollama | `snowflake-arctic-embed:137m` |
-| Reranking | Not selected | oMLX default `Qwen3-Reranker-4B-mxfp8` is available |
+| Reranking | Not selected | oMLX default `gte-reranker-modernbert-base` is available |
 | Speech-to-text | Not selected | oMLX default `Qwen3-ASR-1.7B-8bit` is available |
 | Text-to-speech | Not selected | oMLX default `Kokoro-82M-bf16`, voice `af_heart`, is available |
 
@@ -177,7 +177,7 @@ Changing the selected format requires reindexing.
 
 ## Thinking mode
 
-Thinking mode is a CiteLoom runtime setting for answer generation, query expansion, and summarization.
+Thinking mode is a CiteLoom runtime setting for answer generation, extra search queries, and summarization.
 CiteLoom handles reasoning output through its provider adapters, so no runtime-specific delimiter setup is needed.
 
 | Setting | Behavior |
@@ -220,10 +220,10 @@ Use the [evaluation workflow](evaluation.md) to calibrate discovery thresholds a
 
 ### Reproducible generation
 
-Query expansion and answer generation use separate sampling temperatures.
+Extra search query generation and answer generation use separate sampling temperatures.
 Both `queryExpansionTemperature` and `answerTemperature` default to `0` for the most repeatable provider behavior.
 `generationSeedMode` defaults to `stable`.
-In this mode, CiteLoom derives separate nonnegative seeds for query expansion and answer generation from the normalized question and the sorted IDs of the selected documents.
+In this mode, CiteLoom derives separate nonnegative seeds for extra search queries and answer generation from the normalized original question and the sorted IDs of the selected documents.
 Set the mode to `random` to omit those seeds and let the provider choose the sampling randomness.
 
 Stable mode sends the same temperature and seed for the same question and document scope.

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildTestModelCapabilities } from "./model-capabilities-fixture.js";
-import { APICallError, embedMany, generateText, Output } from "ai";
+import { APICallError, embedMany, generateText, jsonSchema, Output } from "ai";
 import { MockEmbeddingModelV4, MockLanguageModelV4 } from "ai/test";
+import { z } from "zod";
 import {
   buildRetrievedElementProvenance,
   buildSourceLocation,
@@ -14,7 +15,8 @@ import type {
 
 import { InferenceMetricsReporter } from "../src/inference/metrics.js";
 import {
-  createAnswerDraftSchema,
+  createAnswerModelResponseSchema,
+  createEvidenceReferences,
   type AnswerDraft,
 } from "../src/answers/draft.js";
 import type { EvaluationModelRegistry } from "../tools/evaluation/models.js";
@@ -289,7 +291,7 @@ describe("retrieval description context", () => {
 });
 
 describe("query expansion boundary", () => {
-  it("keeps distinct close variants and preserves the original separately", () => {
+  it("keeps searches that use different terminology", () => {
     expect(decodeQueryExpansions(
       "1. sexual orientation discrimination\n- homosexuality equality rights\ngay\n",
       "gay",
@@ -298,6 +300,46 @@ describe("query expansion boundary", () => {
       "sexual orientation discrimination",
       "homosexuality equality rights",
     ]);
+  });
+
+  it("rejects a trivial restatement of the original question", () => {
+    expect(decodeQueryExpansions(
+      "list of suppletive rules\nsuppletive rule exceptions\nsuppletive rule conditions",
+      "List all suppletive rules",
+      3,
+    )).toEqual([
+      "suppletive rule exceptions",
+      "suppletive rule conditions",
+    ]);
+  });
+
+  it("rejects command-to-question rewrites", () => {
+    expect(decodeQueryExpansions(
+      "What are human rights?\nhuman rights historical development",
+      "Explain human rights",
+      2,
+    )).toEqual([
+      "human rights historical development",
+    ]);
+  });
+
+  it("allows the model to return no extra search queries", async () => {
+    const summaryModel = new MockLanguageModelV4({
+      doGenerate: buildTextGeneration(JSON.stringify({
+        queries: [],
+      }), "stop"),
+    });
+
+    const expansions = await expandRetrievalQuery(
+      buildModelRegistry(summaryModel),
+      "When was Project Northstar launched?",
+      2,
+      new TaskLimiter(1),
+      new AbortController().signal,
+      { seed: 42, temperature: 0 },
+    );
+
+    expect(expansions).toEqual([]);
   });
 
   it("applies deterministic generation settings for prepared evaluations", async () => {
@@ -357,7 +399,14 @@ describe("createInferenceModelRegistry", () => {
         return Promise.resolve(Response.json({
           finish_reason: "COMPLETE",
           message: {
-            content: [{ text: "Cohere answer", type: "text" }],
+            content: [{
+              text: JSON.stringify({
+                conflictGroups: [],
+                statements: [],
+                status: "no_answer",
+              }),
+              type: "text",
+            }],
             role: "assistant",
           },
           usage: {
@@ -400,6 +449,11 @@ describe("createInferenceModelRegistry", () => {
     const answer = await generateText({
       maxRetries: 0,
       model: models.answer,
+      output: Output.object({
+        schema: jsonSchema(z.toJSONSchema(
+          createAnswerModelResponseSchema(createEvidenceReferences(1)),
+        )),
+      }),
       prompt: "Hello",
     });
     const embedding = await embedMany({
@@ -408,11 +462,35 @@ describe("createInferenceModelRegistry", () => {
       values: ["Document"],
     });
 
-    expect(answer.text).toBe("Cohere answer");
+    expect(answer.output).toEqual({
+      conflictGroups: [],
+      statements: [],
+      status: "no_answer",
+    });
     expect(embedding.embeddings).toEqual([[0.1, 0.2]]);
     expect(requests).toHaveLength(2);
     expect(requests[0]).toMatchObject({
-      body: { model: "configured-chat" },
+      body: {
+        model: "configured-chat",
+        response_format: {
+          json_schema: {
+            properties: {
+              statements: {
+                items: {
+                  properties: {
+                    evidenceRefs: {
+                      items: {
+                        enum: ["EVID_A"],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          type: "json_object",
+        },
+      },
       url: "https://api.cohere.com/v2/chat",
     });
     expect(requests[1]).toMatchObject({
@@ -525,7 +603,11 @@ describe("createInferenceModelRegistry", () => {
           finish_reason: "stop",
           index: 0,
           message: {
-            content: JSON.stringify({ status: "no_answer" }),
+            content: JSON.stringify({
+              conflictGroups: [],
+              statements: [],
+              status: "no_answer",
+            }),
             role: "assistant",
           },
         }],
@@ -564,13 +646,19 @@ describe("createInferenceModelRegistry", () => {
       maxRetries: 0,
       model: models.answer,
       output: Output.object({
-        schema: createAnswerDraftSchema(1),
+        schema: jsonSchema(z.toJSONSchema(
+          createAnswerModelResponseSchema(createEvidenceReferences(1)),
+        )),
       }),
       prompt: "Return no_answer.",
       seed: 42,
     });
 
-    expect(result.output).toEqual({ status: "no_answer" });
+    expect(result.output).toEqual({
+      conflictGroups: [],
+      statements: [],
+      status: "no_answer",
+    });
     expect(requestBodies).toHaveLength(1);
     expect(requestBodies[0]).toMatchObject({
       messages: expect.arrayContaining([
@@ -587,6 +675,8 @@ describe("createInferenceModelRegistry", () => {
         type: "disabled",
       },
     });
+    expect(JSON.stringify(requestBodies[0])).toContain("evidenceRefs");
+    expect(JSON.stringify(requestBodies[0])).toContain("EVID_A");
     expect(requestBodies[0]).not.toHaveProperty("reasoning_effort");
     expect(requestBodies[0]).not.toHaveProperty("seed");
   });
@@ -611,7 +701,11 @@ describe("createInferenceModelRegistry", () => {
         eval_duration: 1,
         load_duration: 1,
         message: {
-          content: JSON.stringify({ status: "no_answer" }),
+          content: JSON.stringify({
+            conflictGroups: [],
+            statements: [],
+            status: "no_answer",
+          }),
           role: "assistant",
         },
         model: "gemma4:12b",
@@ -643,18 +737,35 @@ describe("createInferenceModelRegistry", () => {
       maxRetries: 0,
       model: models.answer,
       output: Output.object({
-        schema: createAnswerDraftSchema(1),
+        schema: jsonSchema(z.toJSONSchema(
+          createAnswerModelResponseSchema(createEvidenceReferences(1)),
+        )),
       }),
       prompt: "Return no_answer.",
     });
 
-    expect(result.output).toEqual({ status: "no_answer" });
+    expect(result.output).toEqual({
+      conflictGroups: [],
+      statements: [],
+      status: "no_answer",
+    });
     expect(requestBodies).toHaveLength(1);
     expect(requestBodies[0]).toMatchObject({
       format: {
-        oneOf: expect.arrayContaining([
-          expect.objectContaining({ additionalProperties: false }),
-        ]),
+        additionalProperties: false,
+        properties: {
+          statements: {
+            items: {
+              properties: {
+                evidenceRefs: {
+                  items: {
+                    enum: ["EVID_A"],
+                  },
+                },
+              },
+            },
+          },
+        },
       },
       model: "gemma4:12b",
       options: {
@@ -915,9 +1026,9 @@ describe("answer generation", () => {
         conflictGroups: [],
         statements: [{
           content: "Revenue increased.",
+          evidenceRefs: ["EVID_A"],
           presentation: "paragraph",
           section: "answer",
-          sourceNumbers: [1],
         }],
         status: "answered",
       }), "stop"),
@@ -961,6 +1072,36 @@ describe("answer generation", () => {
     });
   });
 
+  it("does not request correction for missing presentation metadata", async () => {
+    const answerModel = new MockLanguageModelV4({
+      doGenerate: buildTextGeneration(JSON.stringify({
+        conflictGroups: [],
+        statements: [{
+          content: "Revenue increased.",
+          evidenceRefs: ["EVID_A"],
+        }],
+        status: "answered",
+      }), "stop"),
+      modelId: "answer-model:answer",
+    });
+
+    const result = await answerQuestion(
+      buildModelRegistry(answerModel),
+      "What changed?",
+      [buildRetrievedElement("a", "b")],
+      new TaskLimiter(1),
+      generationSettings,
+    );
+
+    expect(result.outcome).toBe("answered");
+    expect(answerModel.doGenerateCalls).toHaveLength(1);
+    expect(result.answerDocument.statements[0]).toMatchObject({
+      content: "Revenue increased.",
+      presentation: "paragraph",
+      section: "answer",
+    });
+  });
+
   it("sends every budget-selected source for a document-specific question", async () => {
     const privacySource = buildRetrievedElement(
       "a",
@@ -974,7 +1115,7 @@ describe("answer generation", () => {
     );
     const answerModel = buildAnswerModel(buildAnsweredDraft(
       "The Privacy Act provides protections.",
-      [1],
+      ["EVID_A"],
     ));
     const recordAnswerBudget = vi.fn();
     const recordAnswerRequest = vi.fn();
@@ -1042,7 +1183,7 @@ describe("answer generation", () => {
     );
     const answerModel = buildAnswerModel(buildAnsweredDraft(
       "The documents describe different privacy protections.",
-      [1, 2],
+      ["EVID_A", "EVID_B"],
     ));
 
     const result = await answerQuestion(
@@ -1113,13 +1254,18 @@ describe("answer generation", () => {
       "/tmp/personal-information-protection-and-electronic-documents-act.pdf",
     );
     const recordAnswerRequest = vi.fn();
+    const recordAnswerResponseDiagnostic = vi.fn();
     const runTelemetry: RunTelemetry = {
       ...noopRunTelemetry,
       recordAnswerRequest,
+      recordAnswerResponseDiagnostic,
     };
     const answerModel = buildSequentialAnswerModel([
-      buildAnsweredDraft("Invalid source reference.", [3]),
-      buildAnsweredDraft("The documents provide privacy protections.", [1, 2]),
+      buildAnsweredDraft("Invalid evidence reference.", ["EVID_C"]),
+      buildAnsweredDraft(
+        "The documents provide privacy protections.",
+        ["EVID_A", "EVID_B"],
+      ),
     ]);
 
     const result = await answerQuestion(
@@ -1141,7 +1287,11 @@ describe("answer generation", () => {
     expect(initialPrompt).toContain(
       "/tmp/personal-information-protection-and-electronic-documents-act.pdf",
     );
-    expect(repairPrompt).toContain("RETRY INSTRUCTION:");
+    expect(repairPrompt).toContain("CORRECTION REQUEST:");
+    expect(repairPrompt).toContain("statements[0].evidenceRefs[0]");
+    expect(repairPrompt).toContain("EVID_A, EVID_B");
+    expect(repairPrompt).toContain("Invalid evidence reference.");
+    expect(repairPrompt).toContain("Preserve all supported answer content");
     expect(repairPrompt).toContain("/tmp/privacy-act.pdf");
     expect(repairPrompt).toContain(
       "/tmp/personal-information-protection-and-electronic-documents-act.pdf",
@@ -1157,8 +1307,31 @@ describe("answer generation", () => {
         buildAnswerRequestEvidence(privacySource),
         buildAnswerRequestEvidence(pipedaSource),
       ],
-      phase: "recovery",
+      phase: "correction",
     }]);
+    expect(recordAnswerResponseDiagnostic.mock.calls.map((call) => call[0]))
+      .toEqual([
+        expect.objectContaining({
+          correctionOutcome: "succeeded",
+          failureCategory: "unknown-evidence-reference",
+          invalidFieldPaths: ["statements[0].evidenceRefs[0]"],
+          phase: "initial",
+          responseSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+          unknownReferenceCount: 1,
+        }),
+        expect.objectContaining({
+          correctionOutcome: "succeeded",
+          failureCategory: null,
+          invalidFieldPaths: [],
+          phase: "correction",
+          responseSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+          unknownReferenceCount: 0,
+        }),
+      ]);
+    expect(JSON.stringify(recordAnswerResponseDiagnostic.mock.calls))
+      .not.toContain("Invalid evidence reference.");
+    expect(JSON.stringify(recordAnswerResponseDiagnostic.mock.calls))
+      .not.toContain("Compare the Privacy Act with PIPEDA.");
     expect(result.sources.map((source) => source.elementId)).toEqual([
       privacySource.element.id,
       pipedaSource.element.id,
@@ -1174,9 +1347,9 @@ describe("answer generation", () => {
       conflictGroups: [],
       statements: [{
         content: longContent,
+        evidenceRefs: ["EVID_A"],
         presentation: "paragraph",
         section: "answer",
-        sourceNumbers: [1],
       }],
       status: "answered",
     });
@@ -1205,9 +1378,9 @@ describe("answer generation", () => {
       conflictGroups: [],
       statements: [{
         content: `The sources describe ${content}.`,
+        evidenceRefs: ["EVID_A"],
         presentation: "paragraph",
         section: "answer",
-        sourceNumbers: [1],
       }],
       status: "answered",
     });
@@ -1267,9 +1440,9 @@ describe("answer generation", () => {
           conflictGroups: [],
           statements: [{
             content: "Revenue increased.",
+            evidenceRefs: ["EVID_B"],
             presentation: "paragraph",
             section: "answer",
-            sourceNumbers: [2],
           }],
           status: "answered",
         }),
@@ -1292,9 +1465,9 @@ describe("answer generation", () => {
       conflictGroups: [],
       statements: [{
         content: "Revenue increased [1].",
+        evidenceRefs: ["EVID_A"],
         presentation: "paragraph",
         section: "answer",
-        sourceNumbers: [1],
       }],
       status: "answered",
     });
@@ -1317,9 +1490,9 @@ describe("answer generation", () => {
       conflictGroups: [],
       statements: [{
         content: "Treatment options include phenobarbital [1].",
+        evidenceRefs: ["EVID_A"],
         presentation: "paragraph",
         section: "answer",
-        sourceNumbers: [1],
       }],
       status: "answered",
     });
@@ -1338,14 +1511,14 @@ describe("answer generation", () => {
       .toBe("Treatment options include phenobarbital.");
   });
 
-  it("uses sourceNumbers as citation authority instead of model citation decoration", async () => {
+  it("uses evidenceRefs as citation authority instead of model citation decoration", async () => {
     const answerModel = buildAnswerModel({
       conflictGroups: [],
       statements: [{
         content: "Revenue increased. [2]",
+        evidenceRefs: ["EVID_A"],
         presentation: "paragraph",
         section: "answer",
-        sourceNumbers: [1],
       }],
       status: "answered",
     });
@@ -1451,15 +1624,15 @@ function buildAnswerModel(draft: unknown): MockLanguageModelV4 {
 
 function buildAnsweredDraft(
   content: string,
-  sourceNumbers: number[],
+  evidenceRefs: string[],
 ): AnswerDraft {
   return {
     conflictGroups: [],
     statements: [{
       content,
+      evidenceRefs,
       presentation: "paragraph",
       section: "answer",
-      sourceNumbers,
     }],
     status: "answered",
   };

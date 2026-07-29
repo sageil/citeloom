@@ -94,7 +94,7 @@ pnpm evaluate \
 Answer-threshold calibration uses accepted evaluation questions as answerable cases.
 For each one, it creates an unanswerable comparison by searching a corpus from another declared domain.
 For example, it can run a legal question against the veterinary corpus.
-Each comparison uses the same query expansion, retrieval, source loading, and reranking path as a production question.
+Each comparison uses the same extra search queries, retrieval, source loading, and reranking path as a production question.
 The saved preparation records the strongest scores, document scopes, telemetry, corpus and model identities, retrieval settings, and code revision for both cases.
 
 Prepare each development domain separately.
@@ -149,7 +149,7 @@ The report uses them only to show answerable pass rates, false-acceptance rates,
 
 Threshold reports can still help compare historical reranker scores, but CiteLoom does not use a raw reranker score to decide whether to generate an answer.
 Create new preparations after changing any part of search or scoring.
-This includes the reranker, provider scoring, embedding space, query expansion, candidate count, result fusion, HNSW settings, corpus, or relevant code.
+This includes the reranker, provider scoring, embedding space, extra search queries, candidate count, result fusion, HNSW settings, corpus, or relevant code.
 This calibration measures accepted positive cases against negatives from another domain.
 It does not establish performance for arbitrary real-world questions or difficult negatives from the same domain.
 

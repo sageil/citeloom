@@ -97,6 +97,8 @@ jobs:
             echo "- \`sageil/citeloom-postgres:${VERSION}\`"
             echo "- \`sageil/citeloom-docling:${VERSION}\`"
             echo "- \`sageil/citeloom-hhem:${VERSION}\`"
+            echo
+            echo "After all four tags pass verification, the workflow will point each repository's \`latest\` tag to the same image."
           } >> "$GITHUB_STEP_SUMMARY"
 
   preflight:
@@ -244,6 +246,52 @@ jobs:
             echo "Verified ${reference}"
           done
 
+      - name: Point latest tags to the verified release
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          repositories=(
+            citeloom
+            citeloom-postgres
+            citeloom-docling
+            citeloom-hhem
+          )
+
+          for repository in "${repositories[@]}"; do
+            version_reference="sageil/${repository}:${VERSION}"
+            latest_reference="sageil/${repository}:latest"
+            version_manifest="$(
+              docker buildx imagetools inspect "$version_reference" \
+                --format '{{json .Manifest}}'
+            )"
+            version_digest="$(jq --raw-output '.digest' <<< "$version_manifest")"
+
+            if [[ ! "$version_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "Could not read the image digest for ${version_reference}." >&2
+              exit 1
+            fi
+
+            docker buildx imagetools create \
+              --tag "$latest_reference" \
+              "sageil/${repository}@${version_digest}"
+
+            latest_digest="$(
+              docker buildx imagetools inspect "$latest_reference" \
+                --format '{{json .Manifest}}' |
+                jq --raw-output '.digest'
+            )"
+
+            if [ "$latest_digest" != "$version_digest" ]; then
+              echo "${latest_reference} does not match ${version_reference}." >&2
+              exit 1
+            fi
+
+            echo "Published ${latest_reference} from ${version_reference}"
+          done
+
       - name: Write publication summary
         shell: bash
         env:
@@ -259,5 +307,5 @@ jobs:
             echo "- \`sageil/citeloom-docling:${VERSION}\`"
             echo "- \`sageil/citeloom-hhem:${VERSION}\`"
             echo
-            echo "CiteLoom intentionally does not publish mutable \`latest\` tags."
+            echo "Each repository's \`latest\` tag now points to the same verified image as its \`${VERSION}\` tag."
           } >> "$GITHUB_STEP_SUMMARY"

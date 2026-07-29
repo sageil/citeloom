@@ -4,6 +4,7 @@ import type { ApplicationRuntime } from "../app/runtime.js";
 import {
   type DocumentStatistics,
   type IndexedDocument,
+  type IngestionControlActor,
   type IngestionJob,
   type IngestionPhase,
   type PrepareIngestionResult,
@@ -85,7 +86,7 @@ export async function requestIngestionControlWithRuntime(
   runtime: ApplicationRuntime,
   sourceFile: string,
   action: "pause" | "cancel",
-  actor: { isAdministrator: boolean; userId: string },
+  actor: IngestionControlActor,
 ): Promise<RequestIngestionControlResult> {
   const catalog = new DocumentCatalog(runtime.database);
   const result = await catalog.requestIngestionControl(sourceFile, action, actor);
@@ -115,7 +116,7 @@ export async function requestIngestionControlWithRuntime(
 export async function resumeIngestionWithRuntime(
   runtime: ApplicationRuntime,
   sourceFile: string,
-  actor: { isAdministrator: boolean; userId: string },
+  actor: IngestionControlActor,
 ): Promise<ResumeIngestionResult> {
   const catalog = new DocumentCatalog(runtime.database);
   return catalog.resumePausedIngestion(sourceFile, actor);
@@ -460,6 +461,7 @@ export async function queueDocumentReindex(
 export async function queueDocumentReindexWithRuntime(
   runtime: ApplicationRuntime,
   request: ReindexDocumentRequest,
+  uploadedByUserId: string,
   reportProgress: (message: string) => void,
 ): Promise<ReindexDocumentResult> {
   const catalog = new DocumentCatalog(runtime.database);
@@ -476,6 +478,7 @@ export async function queueDocumentReindexWithRuntime(
     indexedDocument,
     runtime,
     reportProgress,
+    uploadedByUserId,
   );
 }
 
@@ -574,6 +577,7 @@ async function queueStoredDocumentReindex(
   indexedDocument: PublishedDocument,
   runtime: ApplicationRuntime | null,
   reportProgress: (message: string) => void,
+  uploadedByUserId: string | null = null,
 ): Promise<ReindexDocumentResult> {
   const documentStore = new SourceContentStore(database, config.sourceContent);
   let source: FileDocumentSource;
@@ -603,7 +607,7 @@ async function queueStoredDocumentReindex(
       recursive: false,
       tags: indexedDocument.tags,
     },
-    uploadedByUserId: null,
+    uploadedByUserId,
     processor,
     reportProgress,
     sourceFiles: [indexedDocument.sourceFile],

@@ -24,7 +24,10 @@ import {
   SettingsVersionConflictError,
 } from "../app/settings.js";
 import { openDatabase } from "../database/client.js";
-import type { IngestionPhase } from "../documents/catalog/index.js";
+import type {
+  IngestionControlActor,
+  IngestionPhase,
+} from "../documents/catalog/index.js";
 import {
   DEFAULT_DOCUMENT_CATALOG_REQUEST,
   type BrowseDocumentCatalogResult,
@@ -1022,12 +1025,16 @@ export async function buildWebServer(
   });
 
   server.post("/api/documents/:documentId/reindex", async (request, reply) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const reindexRequest = decodeReindexDocumentRequest(
       request.params,
       request.body,
     );
     const result = await services.run(async (runtime) => {
-      return runtime.reindexDocument(reindexRequest);
+      return runtime.reindexDocument(
+        reindexRequest,
+        buildIngestionControlActor(principal),
+      );
     });
     if (result.kind === "not-found") {
       throw new WebRequestError(404, "The selected document is no longer indexed.");
@@ -1435,7 +1442,7 @@ function requireAdministratorPrincipal<T extends object>(
 
 function buildIngestionControlActor(
   principal: AuthenticatedPrincipal,
-): { isAdministrator: boolean; userId: string } {
+): IngestionControlActor {
   return {
     isAdministrator: principal.role === "admin",
     userId: principal.userId,

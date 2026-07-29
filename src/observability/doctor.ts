@@ -1,8 +1,15 @@
 import { z } from "zod";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
-import { generateText, Output, rerank } from "ai";
+import { generateText, rerank } from "ai";
 
-import { createAnswerDraftSchema } from "../answers/draft.js";
+import {
+  createEvidenceReferences,
+  decodeAnswerModelResponse,
+} from "../answers/draft.js";
+import {
+  createAnswerModelOutput,
+  createAnswerSystemPrompt,
+} from "../answers/inference.js";
 import {
   createRuntimeTaskScheduler,
   type ApplicationRuntime,
@@ -265,6 +272,7 @@ async function checkStructuredAnswerCapability(
   scheduler: TaskScheduler,
 ): Promise<DoctorCheck> {
   try {
+    const allowedEvidenceRefs = createEvidenceReferences(1);
     const result = await scheduler.run(
       (requestSignal) => generateText({
         abortSignal: AbortSignal.any([
@@ -274,15 +282,20 @@ async function checkStructuredAnswerCapability(
         maxOutputTokens: 200,
         maxRetries: 0,
         model,
-        output: Output.object({
-          description: "A CiteLoom answer draft containing one source-backed statement.",
-          name: "answer_draft_readiness",
-          schema: createAnswerDraftSchema(1),
-        }),
+        output: createAnswerModelOutput(allowedEvidenceRefs),
         prompt: [
-          "Source 1: A readiness probe checks structured answer generation.",
-          "Return status answered with one plain-text statement supported by source number 1.",
+          "ORIGINAL QUESTION:",
+          "What does the retrieved evidence say about structured answer generation?",
+          "",
+          "RETRIEVED EVIDENCE FOLLOWS.",
+          "",
+          "Use the exact evidence reference on each retrieved item.",
+          "Do not invent, change, or guess evidence references.",
+          "",
+          "EVID_A: A readiness probe checks structured answer generation.",
+          "Return status answered with one plain-text statement supported by evidence reference EVID_A.",
         ].join("\n"),
+        system: createAnswerSystemPrompt(),
         telemetry: {
           isEnabled: false,
           recordInputs: false,
@@ -291,7 +304,11 @@ async function checkStructuredAnswerCapability(
         temperature: 0,
       }),
     );
-    if (result.output.status !== "answered") {
+    const draft = decodeAnswerModelResponse(
+      result.output,
+      allowedEvidenceRefs,
+    );
+    if (draft.status !== "answered") {
       return failedCheck(
         "Answer draft protocol",
         `model ${modelId} returned no_answer for the structured-output readiness probe`,

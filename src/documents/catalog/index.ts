@@ -14,6 +14,7 @@ import type {
   DoclingTaskReference,
   DocumentStatistics,
   IndexedDocument,
+  IngestionControlActor,
   IngestionJob,
   IngestionPhase,
   JobFailureResult,
@@ -43,6 +44,7 @@ export type {
   ElementCounts,
   DocumentStatistics,
   IndexedDocument,
+  IngestionControlActor,
   IngestionJob,
   IngestionControlState,
   IngestionControlDoclingTask,
@@ -178,14 +180,14 @@ export class DocumentCatalog {
   public async requestIngestionControl(
     sourceFile: string,
     action: "pause" | "cancel",
-    actor: { isAdministrator: boolean; userId: string },
+    actor: IngestionControlActor,
   ): Promise<RequestIngestionControlResult> {
     return this.jobs.requestControl(sourceFile, action, actor);
   }
 
   public async resumePausedIngestion(
     sourceFile: string,
-    actor: { isAdministrator: boolean; userId: string },
+    actor: IngestionControlActor,
   ): Promise<ResumeIngestionResult> {
     return this.jobs.resumePausedJob(sourceFile, actor);
   }
