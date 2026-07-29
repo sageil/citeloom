@@ -506,6 +506,7 @@ function buildPrepared(
 ): PreparedRetrieval {
   const scheduler = new TaskLimiter(1);
   return {
+    answerSemanticShape: null,
     generationSettings: {
       answer: { seed: 1, temperature: 0 },
       queryExpansion: { seed: 2, temperature: 0 },

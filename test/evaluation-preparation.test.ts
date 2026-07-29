@@ -780,7 +780,7 @@ function buildPreparedInputs(): PreparedCaseInputs {
 }
 
 function buildDenseCandidate(character: string, distance: number) {
-  const content = `Summary ${character}`;
+  const content = buildEnglishEvidence(character);
   const retrievalWindowId = elementId(character);
   return {
     distance,
@@ -797,7 +797,7 @@ function buildDenseCandidate(character: string, distance: number) {
 }
 
 function buildLexicalCandidate(character: string, bm25Score: number) {
-  const content = `Summary ${character}`;
+  const content = buildEnglishEvidence(character);
   const retrievalWindowId = elementId(character);
   return {
     bm25Score,
@@ -811,6 +811,12 @@ function buildLexicalCandidate(character: string, bm25Score: number) {
     ),
     sourceFile: `/documents/${character}.pdf`,
   };
+}
+
+function buildEnglishEvidence(character: string): string {
+  return (
+    `This English evidence summary explains the relevant policy for section ${character}.`
+  );
 }
 
 function buildRerankedRetrieval(

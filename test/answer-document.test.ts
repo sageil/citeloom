@@ -32,8 +32,11 @@ describe("answer draft boundary", () => {
     });
     expect(schema).not.toHaveProperty("oneOf");
     expect(schema).not.toHaveProperty("anyOf");
-    expect(JSON.stringify(schema)).toContain("EVID_A");
-    expect(JSON.stringify(schema)).toContain("EVID_B");
+    const schemaText = JSON.stringify(schema);
+    expect(schemaText).toContain("EVID_A");
+    expect(schemaText).toContain("EVID_B");
+    expect(schemaText).not.toContain("presentation");
+    expect(schemaText).not.toContain('"section"');
   });
 
   it("decodes valid answered and no-answer drafts", () => {
@@ -67,6 +70,99 @@ describe("answer draft boundary", () => {
         presentation: "paragraph",
         section: "answer",
       }],
+      status: "answered",
+    });
+  });
+
+  it("ignores model-authored presentation and owns direct-answer formatting", () => {
+    const draft = decodeAnswerModelResponse({
+      conflictGroups: [],
+      statements: [{
+        content: "A supported cause is configuration failure.",
+        evidenceRefs: ["EVID_A"],
+        presentation: "bullet",
+        section: "key-points",
+      }],
+      status: "answered",
+    }, createEvidenceReferences(1));
+
+    expect(draft).toMatchObject({
+      statements: [{
+        presentation: "paragraph",
+        section: "answer",
+      }],
+      status: "answered",
+    });
+  });
+
+  it.each([
+    ["two", ["regional", "global"]],
+    ["three", ["regional", "global", "local"]],
+    ["four", ["regional", "global", "local", "isolated"]],
+  ])(
+    "uses bullet presentation for %s independently supported items",
+    (_label, deploymentModes) => {
+      const evidenceRefs = createEvidenceReferences(deploymentModes.length);
+      const statements = deploymentModes.map((mode, index) => ({
+        content: `The service supports a ${mode} deployment.`,
+        evidenceRefs: [evidenceRefs[index]],
+      }));
+      const draft = decodeAnswerModelResponse({
+        conflictGroups: [],
+        statements,
+        status: "answered",
+      }, evidenceRefs);
+
+      expect(draft).toMatchObject({
+        statements: deploymentModes.map(() => ({
+          presentation: "bullet",
+          section: "answer",
+        })),
+        status: "answered",
+      });
+    },
+  );
+
+  it("uses semantic answer shape for a single set statement", () => {
+    const draft = decodeAnswerModelResponse({
+      conflictGroups: [],
+      statements: [{
+        content: "The supported modes are regional and global.",
+        evidenceRefs: ["EVID_A"],
+      }],
+      status: "answered",
+    }, createEvidenceReferences(1), "set");
+
+    expect(draft).toMatchObject({
+      statements: [{
+        presentation: "bullet",
+        section: "answer",
+      }],
+      status: "answered",
+    });
+  });
+
+  it("keeps a multi-statement explanation in prose", () => {
+    const draft = decodeAnswerModelResponse({
+      conflictGroups: [],
+      statements: [
+        {
+          content: "The first mechanism blocks the receptor.",
+          evidenceRefs: ["EVID_A"],
+        },
+        {
+          content: "The second mechanism blocks the proton pump.",
+          evidenceRefs: ["EVID_B"],
+        },
+      ],
+      status: "answered",
+    }, createEvidenceReferences(2), "prose");
+
+    expect(draft).toMatchObject({
+      statements: [
+        { presentation: "paragraph", section: "answer" },
+        { presentation: "paragraph", section: "answer" },
+      ],
       status: "answered",
     });
   });
@@ -478,6 +574,29 @@ describe("published answer compilation", () => {
     expect(renderPublishedAnswerSpeech(document)).toBe([
       "Part 2 says revenue increased by 10% (estimated) [estimate]. See cited resource 1.",
       "The estimate remains limited. See cited resource 1.",
+    ].join("\n"));
+  });
+
+  it("continues to render historical key-points presentation", () => {
+    const draft = decodeAnswerDraft({
+      conflictGroups: [],
+      statements: [{
+        content: "Revenue increased.",
+        evidenceRefs: ["EVID_A"],
+        presentation: "bullet",
+        section: "key-points",
+      }],
+      status: "answered",
+    }, createEvidenceReferences(1));
+    const document = compileAnswerDraft(
+      draft,
+      [buildRetrievedElement("a", "b", 3)],
+    );
+
+    expect(renderPublishedAnswerMarkdown(document)).toBe([
+      "## Key points",
+      "",
+      "- Revenue increased\\. [1]",
     ].join("\n"));
   });
 

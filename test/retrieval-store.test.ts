@@ -63,6 +63,9 @@ describe("retrieval telemetry", () => {
     };
     const documentId = "a".repeat(64);
     const elementId = "b".repeat(64);
+    const evidenceContent = (
+      "This relevant English evidence window explains the requested policy."
+    );
     const queryExecutor: SqlQueryExecutor = {
       execute: async (name) => {
         if (name === "retrieve-description-lexical-candidates") {
@@ -71,11 +74,11 @@ describe("retrieval telemetry", () => {
         return [{
           bm25Score: 3,
           documentId,
-          evidenceContent: "Relevant exact window",
+          evidenceContent,
           evidenceRetrievalId: elementId,
           kind: "text",
           parentId: elementId,
-          representationContent: "Relevant exact window",
+          representationContent: evidenceContent,
           representationId: elementId,
           sourceFile: "/documents/source.pdf",
         }];

@@ -139,7 +139,7 @@ describe("non-overlapping candidate budgeting", () => {
     expect(selected).toEqual([first, second]);
   });
 
-  it("preserves document allocation after parent representatives are selected", () => {
+  it("preserves fused order after parent representatives are selected", () => {
     const documentAFirst = buildCandidate(
       "window-a1",
       "parent-a1",
@@ -179,8 +179,8 @@ describe("non-overlapping candidate budgeting", () => {
 
     expect(selected).toEqual([
       documentAFirst,
-      documentBFirst,
       documentASecond,
+      documentBFirst,
     ]);
   });
 

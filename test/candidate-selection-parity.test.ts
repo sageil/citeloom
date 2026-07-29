@@ -80,7 +80,7 @@ describe("production and prepared candidate-selection parity", () => {
       .toEqual([null, null, null, "candidate-budget"]);
   });
 
-  it("replays intentional document allocation for other questions", () => {
+  it("replays fused ordering for other questions", () => {
     const rankings = buildRepeatedParentRankings();
     const question = "Which passages explain the subject?";
     const production = selectRerankingCandidatesWithTrace(
@@ -96,11 +96,11 @@ describe("production and prepared candidate-selection parity", () => {
       fusion,
     );
 
-    expect(production.allocationPolicy).toBe("document-round-robin");
+    expect(production.allocationPolicy).toBe("fused-order");
     expect(readSelectedWindows(production.selected)).toEqual([
       retrievalId("1"),
-      retrievalId("4"),
       retrievalId("3"),
+      retrievalId("4"),
     ]);
     expect(prepared).toEqual(production);
   });
@@ -280,7 +280,9 @@ function buildDenseCandidate(
   distance: number,
   sourceFile: string,
 ): DenseCandidate {
-  const content = `Summary ${retrievalCharacter}`;
+  const content = (
+    `This English evidence summary explains the relevant policy for section ${retrievalCharacter}.`
+  );
   const windowId = retrievalId(retrievalCharacter);
   return {
     distance,

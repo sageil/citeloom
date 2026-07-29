@@ -166,7 +166,7 @@ describe("HTTP AI SDK reranker adapter", () => {
     expect(result.retrieved).toEqual([candidates[1], candidates[0]]);
   });
 
-  it("does not promote diversity from outside the relevance-qualified prefix", async () => {
+  it("promotes source diversity beyond a maximum-context prefix", async () => {
     const model = new MockRerankingModelV4({
       doRerank: async (options) => {
         expect(options.topN).toBe(4);
@@ -198,7 +198,7 @@ describe("HTTP AI SDK reranker adapter", () => {
       3,
     );
 
-    expect(result).toEqual([candidates[0], candidates[1], candidates[2]]);
+    expect(result).toEqual([candidates[0], candidates[1], candidates[3]]);
   });
 
   it("keeps strict relevance order for source discovery", async () => {
@@ -236,6 +236,25 @@ describe("HTTP AI SDK reranker adapter", () => {
     const model = new MockRerankingModelV4({ doRerank });
 
     const result = await rerankRetrievedElementsByRelevance(
+      {
+        metrics: new InferenceMetricsReporter({ enabled: false }),
+        model,
+        timeoutMs: 1_000,
+      },
+      "question",
+      [],
+      2,
+    );
+
+    expect(result).toEqual([]);
+    expect(doRerank).not.toHaveBeenCalled();
+  });
+
+  it("does not call the reranker for an empty answer candidate pool", async () => {
+    const doRerank = vi.fn();
+    const model = new MockRerankingModelV4({ doRerank });
+
+    const result = await rerankRetrievedElements(
       {
         metrics: new InferenceMetricsReporter({ enabled: false }),
         model,

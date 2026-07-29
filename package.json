@@ -54,6 +54,7 @@
     "test:backup-restore": "./infra/scripts/test-backup-restore.sh",
     "test:integration": "vitest run --no-file-parallelism test/database.integration.test.ts test/auth-database.integration.test.ts",
     "test:live": "HHEM_LIVE_TEST=true vitest run test/hhem-live.integration.test.ts",
+    "test:vision:qwen": "QWEN_VISION_LIVE_TEST=true vitest run --no-file-parallelism test/qwen-vision-live.integration.test.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "validate:evaluations": "node --import tsx scripts/validate-evaluations.ts",

@@ -49,6 +49,7 @@ import {
   InvalidAnswerDraftError,
   streamAnswerQuestion,
 } from "../src/answers/inference.js";
+import { classifyAnswerSemanticShape } from "../src/answers/presentation-inference.js";
 import {
   noopRunTelemetry,
   type RunTelemetry,
@@ -302,24 +303,51 @@ describe("query expansion boundary", () => {
     ]);
   });
 
-  it("rejects a trivial restatement of the original question", () => {
+  it("does not guess that a differently normalized query is a restatement", () => {
     expect(decodeQueryExpansions(
       "list of suppletive rules\nsuppletive rule exceptions\nsuppletive rule conditions",
       "List all suppletive rules",
       3,
     )).toEqual([
+      "list of suppletive rules",
       "suppletive rule exceptions",
       "suppletive rule conditions",
     ]);
   });
 
-  it("rejects command-to-question rewrites", () => {
+  it("does not apply English command-to-question rules", () => {
     expect(decodeQueryExpansions(
       "What are human rights?\nhuman rights historical development",
       "Explain human rights",
       2,
     )).toEqual([
+      "What are human rights?",
       "human rights historical development",
+    ]);
+  });
+
+  it("does not apply English relationship-word rules", () => {
+    expect(decodeQueryExpansions(
+      [
+        "causes of transient high blood pressure in domestic animals",
+        "situational hypertension etiology in cats and dogs",
+      ].join("\n"),
+      "What causes situational hypertension in cats and dogs?",
+      2,
+    )).toEqual([
+      "causes of transient high blood pressure in domestic animals",
+      "situational hypertension etiology in cats and dogs",
+    ]);
+  });
+
+  it("leaves semantic drift detection to the planner boundary", () => {
+    expect(decodeQueryExpansions(
+      "cats stopping eating condition\ndogs stopping eating condition",
+      "What is situational hypertension in cats and dogs?",
+      2,
+    )).toEqual([
+      "cats stopping eating condition",
+      "dogs stopping eating condition",
     ]);
   });
 
@@ -1102,6 +1130,38 @@ describe("answer generation", () => {
     });
   });
 
+  it("ignores model-authored summary presentation for a direct causal question", async () => {
+    const answerModel = new MockLanguageModelV4({
+      doGenerate: buildTextGeneration(JSON.stringify({
+        conflictGroups: [],
+        statements: [{
+          content: "A configuration failure stopped the service.",
+          evidenceRefs: ["EVID_A"],
+          presentation: "bullet",
+          section: "key-points",
+        }],
+        status: "answered",
+      }), "stop"),
+      modelId: "answer-model:answer",
+    });
+
+    const result = await answerQuestion(
+      buildModelRegistry(answerModel),
+      "Why did the service stop?",
+      [buildRetrievedElement("a", "b")],
+      new TaskLimiter(1),
+      generationSettings,
+    );
+
+    expect(result.outcome).toBe("answered");
+    expect(answerModel.doGenerateCalls).toHaveLength(1);
+    expect(result.answerDocument.statements[0]).toMatchObject({
+      presentation: "paragraph",
+      section: "answer",
+    });
+    expect(result.answer).not.toContain("## Key points");
+  });
+
   it("sends every budget-selected source for a document-specific question", async () => {
     const privacySource = buildRetrievedElement(
       "a",
@@ -1589,6 +1649,74 @@ describe("answer generation", () => {
       new TaskLimiter(1),
       generationSettings,
     )).rejects.toThrow("provider finish reason content-filter");
+  });
+});
+
+describe("answer semantic shape classification", () => {
+  const generationSettings = { seed: 42, temperature: 0 };
+
+  it("decodes a valid semantic shape at one inference boundary", async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: buildTextGeneration("set", "stop"),
+    });
+
+    await expect(classifyAnswerSemanticShape(
+      buildModelRegistry(model),
+      "Which modes are supported?",
+      new TaskLimiter(1),
+      new AbortController().signal,
+      generationSettings,
+    )).resolves.toBe("set");
+    expect(model.doGenerateCalls).toHaveLength(1);
+  });
+
+  it("falls back without an answer correction for invalid shape output", async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: buildTextGeneration("unknown", "stop"),
+    });
+
+    await expect(classifyAnswerSemanticShape(
+      buildModelRegistry(model),
+      "Which modes are supported?",
+      new TaskLimiter(1),
+      new AbortController().signal,
+      generationSettings,
+    )).resolves.toBeNull();
+    expect(model.doGenerateCalls).toHaveLength(1);
+  });
+
+  it("falls back when shape classification is unavailable", async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => {
+        throw new Error("provider unavailable");
+      },
+    });
+
+    await expect(classifyAnswerSemanticShape(
+      buildModelRegistry(model),
+      "Which modes are supported?",
+      new TaskLimiter(1),
+      new AbortController().signal,
+      generationSettings,
+    )).resolves.toBeNull();
+    expect(model.doGenerateCalls).toHaveLength(1);
+  });
+
+  it("does not convert cancellation into a presentation fallback", async () => {
+    const model = new MockLanguageModelV4({
+      doGenerate: buildTextGeneration("set", "stop"),
+    });
+    const controller = new AbortController();
+    controller.abort(new Error("cancelled"));
+
+    await expect(classifyAnswerSemanticShape(
+      buildModelRegistry(model),
+      "Which modes are supported?",
+      new TaskLimiter(1),
+      controller.signal,
+      generationSettings,
+    )).rejects.toThrow("cancelled");
+    expect(model.doGenerateCalls).toHaveLength(0);
   });
 });
 
