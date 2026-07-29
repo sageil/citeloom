@@ -480,11 +480,13 @@ function readAskDashboard(value) {
   const dashboard = readObject(value, "dashboard");
   const summary = readObject(dashboard.documentSummary, "document summary");
   const tagValues = readArray(summary.queryableTags, "queryable tags");
-  const availableTags = [];
+  const availableTagFacets = [];
   for (const tagValue of tagValues) {
     const facet = readObject(tagValue, "queryable tag");
-    availableTags.push(readNonEmptyString(facet.tag, "queryable tag name"));
-    readNonNegativeInteger(facet.count, "queryable tag count");
+    availableTagFacets.push({
+      count: readNonNegativeInteger(facet.count, "queryable tag count"),
+      tag: readNonEmptyString(facet.tag, "queryable tag name"),
+    });
   }
   const features = readObject(dashboard.features, "dashboard features");
   const inferenceRuntime = readObject(
@@ -492,7 +494,7 @@ function readAskDashboard(value) {
     "inference runtime",
   );
   return {
-    availableTags,
+    availableTagFacets,
     inferenceRuntimeName: readNonEmptyString(
       inferenceRuntime.name,
       "inference runtime name",
@@ -1186,7 +1188,7 @@ function readEvidenceInspectorViewport() {
 export function registerPage(alpine) {
   alpine.data("citeloomAskPage", () => ({
     answer: null,
-    availableTags: [],
+    availableTagFacets: [],
     citationAbortController: null,
     citationError: "",
     citationInspectorExpanded: false,
@@ -1237,6 +1239,7 @@ export function registerPage(alpine) {
     scopeKind: "all",
     selectedCitation: null,
     selectedDiscoveryDocuments: [],
+    selectedTags: [],
     speechAbortController: null,
     speechAudioError: "",
     speechAudioLoading: false,
@@ -1244,7 +1247,8 @@ export function registerPage(alpine) {
     speechState: "idle",
     speechStatus: "Voice input is ready. Audio is sent to the configured transcription provider.",
     speechToTextEnabled: false,
-    tag: "",
+    tagPickerOpen: false,
+    tagSearchQuery: "",
     textToSpeechEnabled: false,
     textToSpeechPreloadEnabled: false,
     thread: null,
@@ -1339,7 +1343,8 @@ export function registerPage(alpine) {
           "Dashboard request",
           readAskDashboard,
         );
-        this.availableTags = snapshot.availableTags;
+        this.availableTagFacets = snapshot.availableTagFacets;
+        this.retainAvailableSelectedTags();
         this.inferenceRuntimeName = snapshot.inferenceRuntimeName;
         this.queryableDocumentCount = snapshot.queryableDocumentCount;
         this.speechToTextEnabled = snapshot.speechToTextEnabled;
@@ -1588,7 +1593,8 @@ export function registerPage(alpine) {
       }
       this.scopeKind = value;
       if (value === "all") {
-        this.tag = "";
+        this.selectedTags = [];
+        this.closeTagPicker();
       }
     },
 
@@ -1597,6 +1603,79 @@ export function registerPage(alpine) {
         return;
       }
       this.changeScope(value);
+    },
+
+    closeTagPicker() {
+      this.tagPickerOpen = false;
+      this.tagSearchQuery = "";
+    },
+
+    filteredAvailableTagFacets() {
+      const query = this.tagSearchQuery.trim().toLocaleLowerCase();
+      if (query === "") {
+        return this.availableTagFacets;
+      }
+      const matches = [];
+      for (const facet of this.availableTagFacets) {
+        if (facet.tag.toLocaleLowerCase().includes(query)) {
+          matches.push(facet);
+        }
+      }
+      return matches;
+    },
+
+    isTagSelected(tag) {
+      return this.selectedTags.includes(tag);
+    },
+
+    openTagPicker() {
+      this.tagPickerOpen = true;
+      this.$nextTick(() => {
+        this.$refs.tagScopeSearch?.focus();
+      });
+    },
+
+    removeSelectedTag(tag) {
+      const remainingTags = [];
+      for (const selectedTag of this.selectedTags) {
+        if (selectedTag !== tag) {
+          remainingTags.push(selectedTag);
+        }
+      }
+      this.selectedTags = remainingTags;
+    },
+
+    retainAvailableSelectedTags() {
+      const availableTags = new Set();
+      for (const facet of this.availableTagFacets) {
+        availableTags.add(facet.tag);
+      }
+      const retainedTags = [];
+      for (const selectedTag of this.selectedTags) {
+        if (availableTags.has(selectedTag)) {
+          retainedTags.push(selectedTag);
+        }
+      }
+      this.selectedTags = retainedTags;
+      if (this.availableTagFacets.length === 0) {
+        this.closeTagPicker();
+      }
+    },
+
+    toggleTagPicker() {
+      if (this.tagPickerOpen) {
+        this.closeTagPicker();
+        return;
+      }
+      this.openTagPicker();
+    },
+
+    toggleTagSelection(tag) {
+      if (this.isTagSelected(tag)) {
+        this.removeSelectedTag(tag);
+        return;
+      }
+      this.selectedTags.push(tag);
     },
 
     buildScope(questionDocuments) {
@@ -1611,11 +1690,17 @@ export function registerPage(alpine) {
         return { kind: "sourceFiles", sourceFiles };
       }
       if (this.scopeKind === "tag") {
-        const tag = this.tag.trim();
-        if (tag === "") {
-          throw new Error("Select a tag for this search scope.");
+        const tags = [];
+        for (const selectedTag of this.selectedTags) {
+          const tag = selectedTag.trim();
+          if (tag !== "" && !tags.includes(tag)) {
+            tags.push(tag);
+          }
         }
-        return { kind: "tags", tags: [tag] };
+        if (tags.length === 0) {
+          throw new Error("Select at least one tag for this search scope.");
+        }
+        return { kind: "tags", tags };
       }
       return { kind: "all" };
     },

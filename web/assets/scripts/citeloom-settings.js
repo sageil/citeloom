@@ -95,7 +95,7 @@ const textToSpeechAdapters = Object.freeze([
 const capabilityLabels = Object.freeze({
   answer: "Answer generation",
   embedding: "Embedding",
-  queryExpansion: "Extra search queries",
+  queryExpansion: "Extra search queries (Query Expansion)",
   reranking: "Reranking",
   speechToText: "Speech-to-text",
   summarization: "Summarization",

@@ -161,18 +161,13 @@ function normalizeQueryExpansions(
 ): string[] {
   const expansions: string[] = [];
   const seenQueries = new Set([normalizeQueryText(originalQuestion)]);
-  const seenEvidenceNeeds = new Set([
-    createEvidenceNeedFingerprint(originalQuestion),
-  ]);
   for (const value of values) {
     const query = value.trim();
     const normalized = normalizeQueryText(query);
-    const evidenceNeed = createEvidenceNeedFingerprint(query);
-    if (seenQueries.has(normalized) || seenEvidenceNeeds.has(evidenceNeed)) {
+    if (seenQueries.has(normalized)) {
       continue;
     }
     seenQueries.add(normalized);
-    seenEvidenceNeeds.add(evidenceNeed);
     expansions.push(query);
     if (expansions.length === expansionCount) {
       break;
@@ -198,21 +193,16 @@ export function decodeQueryExpansions(
 ): string[] {
   const expansions: string[] = [];
   const seenQueries = new Set([normalizeQueryText(originalQuestion)]);
-  const seenEvidenceNeeds = new Set([
-    createEvidenceNeedFingerprint(originalQuestion),
-  ]);
   for (const rawLine of value.split(/\r?\n/)) {
     const line = rawLine.replace(/^\s*(?:[-*]|\d+[.)])\s+/, "").trim();
     if (line === "" || line.length > 500) {
       continue;
     }
     const normalized = normalizeQueryText(line);
-    const evidenceNeed = createEvidenceNeedFingerprint(line);
-    if (seenQueries.has(normalized) || seenEvidenceNeeds.has(evidenceNeed)) {
+    if (seenQueries.has(normalized)) {
       continue;
     }
     seenQueries.add(normalized);
-    seenEvidenceNeeds.add(evidenceNeed);
     expansions.push(line);
     if (expansions.length === expansionCount) {
       break;
@@ -220,55 +210,6 @@ export function decodeQueryExpansions(
   }
   return expansions;
 }
-
-const queryScaffoldingWords = new Set([
-  "a",
-  "all",
-  "an",
-  "are",
-  "be",
-  "been",
-  "being",
-  "can",
-  "complete",
-  "comprehensive",
-  "could",
-  "describe",
-  "details",
-  "did",
-  "do",
-  "does",
-  "enumerate",
-  "explain",
-  "find",
-  "for",
-  "give",
-  "how",
-  "identify",
-  "information",
-  "is",
-  "list",
-  "me",
-  "name",
-  "of",
-  "overview",
-  "please",
-  "provide",
-  "search",
-  "show",
-  "tell",
-  "the",
-  "to",
-  "was",
-  "were",
-  "what",
-  "when",
-  "where",
-  "which",
-  "who",
-  "why",
-  "would",
-]);
 
 function normalizeQueryText(value: string): string {
   return value
@@ -278,69 +219,70 @@ function normalizeQueryText(value: string): string {
     ?.join(" ") ?? "";
 }
 
-function createEvidenceNeedFingerprint(value: string): string {
-  const normalized = normalizeQueryText(value);
-  const words = normalized === "" ? [] : normalized.split(" ");
-  const substantiveWords: string[] = [];
-  for (const word of words) {
-    if (!queryScaffoldingWords.has(word)) {
-      substantiveWords.push(word);
-    }
-  }
-  const fingerprintWords = substantiveWords.length > 0
-    ? substantiveWords
-    : words;
-  const uniqueWords = [...new Set(fingerprintWords)];
-  uniqueWords.sort();
-  return uniqueWords.join("\0");
-}
-
 function buildQueryExpansionSystemPrompt(
   expansionCount: number,
 ): string {
   return [
-    "You write extra search queries for CiteLoom document retrieval.",
+    "You are CiteLoom's retrieval query planner.",
     "",
-    "The original question is always searched unchanged and remains the question CiteLoom will answer.",
+    "Your only responsibility is to produce extra document-search queries that improve recall while preserving the original question's intent exactly.",
     "",
-    "Return only extra search queries that are likely to find different evidence from the original question.",
+    "Do not answer, summarize, explain, or reason aloud.",
     "",
-    `Return between zero and ${expansionCount} extra search queries.`,
+    "The original question is always searched unchanged and remains the only question CiteLoom will answer.",
     "",
-    "Return zero extra search queries when the original question is sufficient.",
+    "Expand vocabulary, never intent.",
     "",
-    "Each extra search query must be self-contained, immediately searchable, and focused on one distinct evidence need.",
+    "Treat the original question as retrieval constraints. Preserve every applicable entity, requested relationship or action, comparison target, exclusion, scope, condition, product, version, environment, jurisdiction, language, location, and time period.",
     "",
-    "Preserve important entities, dates, locations, versions, organizations, and constraints.",
+    "Never weaken, remove, replace, broaden, or invent a constraint. Leave unspecified information unspecified.",
     "",
-    "Use genuinely different terminology only when it may locate evidence that the original wording would miss.",
+    "An extra query is allowed only when it does one of these:",
     "",
-    "For an exhaustive request such as “List all...”, add searches only for distinct categories, exceptions, conditions, limitations, or other evidence that may appear separately.",
+    "- expresses the same evidence need with exactly equivalent terminology",
+    "- searches one explicitly requested part of a multi-part question",
+    "- searches one comparison target for the exact property being compared",
     "",
-    "Do not:",
+    "A subquery may isolate an explicit part of the original question, but it must not introduce a new part.",
     "",
-    "- repeat or lightly restate the original question",
-    "- turn a command into a grammatical question",
-    "- replace the original question",
-    "- return synonymous searches that seek the same evidence",
-    "- invent facts, entities, dates, categories, or assumptions",
-    "- answer the original question",
-    "- explain your reasoning",
+    "Preserve the requested relationship. A definition must remain a definition, a cause must remain a cause, a mechanism must remain a mechanism, a procedure must remain a procedure, and a requested list must remain that same requested set.",
+    "",
+    "Use only exact synonyms, official terminology, abbreviations, acronym expansions, spelling variants, singular or plural forms, and reordered phrasing.",
+    "",
+    "Do not use background knowledge to guess causes, mechanisms, categories, list members, exceptions, products, versions, or likely follow-up questions.",
+    "",
+    "For a comparison, search each compared subject independently with the exact requested comparison property. Do not mention the other comparison target in that subquery.",
+    "",
+    "For a broad causal request, do not invent causal categories or narrower causes. Return only an exact terminology expansion, or return no extra query.",
+    "",
+    "For a list or exhaustive request, do not guess list members. Search a distinct condition, exception, or limitation only when the original wording explicitly requests exhaustive coverage.",
+    "",
+    "Reject queries that seek related, similar, broader, narrower, or merely likely evidence.",
+    "",
+    "Reject trivial restatements and multiple queries that seek the same evidence.",
+    "",
+    `Return between zero and ${expansionCount} extra search queries. Return zero when no useful intent-preserving query exists.`,
+    "",
+    "Each query must be self-contained and immediately searchable.",
     "",
     "Examples:",
     "",
     "Original question: When was Project Northstar launched?",
     'Output: { "queries": [] }',
     "",
-    "Original question: Compare PostgreSQL and MySQL.",
-    'Output: { "queries": ["PostgreSQL features and capabilities", "MySQL features and capabilities"] }',
+    "Original question: How do optimistic and pessimistic locks differ in how they control concurrent writes?",
+    'Output: { "queries": ["optimistic locking control of concurrent writes", "pessimistic locking control of concurrent writes"] }',
     "",
     "Original question: How do I configure single sign-on and what license is required?",
-    'Output: { "queries": ["Single sign-on configuration steps", "Single sign-on licensing requirements"] }',
+    'Output: { "queries": ["single sign-on configuration procedure", "single sign-on license requirement"] }',
     "",
-    "Original question: List all supported deployment modes.",
-    'Good output: { "queries": ["Deployment mode exceptions and conditions", "Deprecated deployment modes"] }',
-    'Bad output: { "queries": ["List of supported deployment modes"] }',
+    "Original question: What is a workspace access token?",
+    'Good output: { "queries": ["workspace access token definition"] }',
+    'Bad output: { "queries": ["workspace access token permissions"] }',
+    "",
+    "Original question: Why did the scheduled job stop?",
+    'Good output: { "queries": ["scheduled job termination cause"] }',
+    'Bad output: { "queries": ["scheduled job monitoring limitations", "common scheduling failures"] }',
     "",
     'Return only JSON in this form: { "queries": ["extra search query"] }',
   ].join("\n");

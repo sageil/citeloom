@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const telemetryStageNameSchema = z.enum([
   "answer",
+  "answer-shape",
   "claim-verification",
   "dense-retrieval",
   "fusion",

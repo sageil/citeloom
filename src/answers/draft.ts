@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  readAnswerPresentationPolicy,
+  type AnswerSemanticShape,
+} from "./presentation.js";
+
 export const ANSWER_SECTIONS = [
   "answer",
   "key-points",
@@ -74,9 +79,14 @@ export type AnswerDraft =
     status: "answered";
   };
 
+interface AnswerModelStatement {
+  content: string;
+  evidenceRefs: EvidenceReference[];
+}
+
 interface AnswerModelResponse {
   conflictGroups: AnswerDraftConflictGroup[];
-  statements: AnswerDraftStatement[];
+  statements: AnswerModelStatement[];
   status: "answered" | "no_answer";
 }
 
@@ -134,17 +144,21 @@ export function createAnswerDraftSchema(
 export function createAnswerModelResponseSchema(
   allowedEvidenceRefs: readonly EvidenceReference[],
 ): z.ZodType<AnswerModelResponse> {
-  const parts = buildAnswerSchemaParts(
+  const evidenceReferenceSchema = createEvidenceReferenceSchema(
     allowedEvidenceRefs,
+  );
+  const evidenceReferencesSchema = z.array(evidenceReferenceSchema).min(1);
+  const statementSchema: z.ZodType<AnswerModelStatement> = z.object({
+    content: answerModelContentSchema,
+    evidenceRefs: evidenceReferencesSchema,
+  });
+  const conflictGroups = buildAnswerConflictGroupsSchema(
+    evidenceReferencesSchema,
     answerModelContentSchema,
-    {
-      presentation: answerPresentationSchema.default("paragraph"),
-      section: answerDraftSectionSchema.default("answer"),
-    },
   );
   return z.object({
-    conflictGroups: parts.conflictGroups,
-    statements: parts.statements,
+    conflictGroups,
+    statements: z.array(statementSchema),
     status: z.enum(["answered", "no_answer"]),
   }).strict().superRefine((response, context) => {
     if (response.status === "no_answer") {
@@ -228,6 +242,19 @@ function buildAnswerSchemaParts(
     presentation: statementFields.presentation,
     section: statementFields.section,
   }).strict();
+  return {
+    conflictGroups: buildAnswerConflictGroupsSchema(
+      evidenceReferencesSchema,
+      modelContentSchema,
+    ),
+    statements: z.array(statementSchema),
+  };
+}
+
+function buildAnswerConflictGroupsSchema(
+  evidenceReferencesSchema: z.ZodType<EvidenceReference[]>,
+  modelContentSchema: z.ZodType<string>,
+): z.ZodType<AnswerDraftConflictGroup[]> {
   const conflictPositionSchema: z.ZodType<AnswerDraftConflictPosition> = z.object({
     claim: modelContentSchema,
     evidenceRefs: evidenceReferencesSchema,
@@ -259,14 +286,11 @@ function buildAnswerSchemaParts(
       claims.add(normalizedClaim);
     }
   });
-  return {
-    conflictGroups: z.array(conflictGroupSchema),
-    statements: z.array(statementSchema),
-  };
+  return z.array(conflictGroupSchema);
 }
 
 function countAnswerContent(
-  statements: readonly AnswerDraftStatement[],
+  statements: readonly unknown[],
   conflictGroups: readonly AnswerDraftConflictGroup[],
 ): number {
   let statementCount = statements.length;
@@ -310,6 +334,7 @@ export function decodeAnswerDraft(
 export function decodeAnswerModelResponse(
   value: unknown,
   allowedEvidenceRefs: readonly EvidenceReference[],
+  semanticShape: AnswerSemanticShape | null = null,
 ): AnswerDraft {
   const modelResult = createAnswerModelResponseSchema(
     allowedEvidenceRefs,
@@ -327,17 +352,17 @@ export function decodeAnswerModelResponse(
   }
 
   const normalized = structuredClone(modelResult.data);
-  const statements: AnswerDraftStatement[] = [];
+  const normalizedStatements: AnswerModelStatement[] = [];
   for (const statement of normalized.statements) {
     const content = readCanonicalModelText(statement.content);
     if (content === null) {
       continue;
     }
-    statement.content = content;
-    statement.evidenceRefs = uniqueEvidenceReferences(statement.evidenceRefs);
-    statements.push(statement);
+    normalizedStatements.push({
+      content,
+      evidenceRefs: uniqueEvidenceReferences(statement.evidenceRefs),
+    });
   }
-  normalized.statements = statements;
   const conflictGroups: AnswerDraftConflictGroup[] = [];
   for (const group of normalized.conflictGroups) {
     group.explanation = normalizeModelText(group.explanation);
@@ -354,8 +379,7 @@ export function decodeAnswerModelResponse(
     }
     conflictGroups.push(group);
   }
-  normalized.conflictGroups = conflictGroups;
-  if (countAnswerContent(normalized.statements, normalized.conflictGroups) === 0) {
+  if (countAnswerContent(normalizedStatements, conflictGroups) === 0) {
     throw new AnswerDraftDecodeError(
       "Invalid answer model response: no valid answer content remained.",
       "invalid-content",
@@ -366,7 +390,25 @@ export function decodeAnswerModelResponse(
       0,
     );
   }
-  return normalized;
+  const statements: AnswerDraftStatement[] = [];
+  if (normalizedStatements.length > 0) {
+    const presentationPolicy = readAnswerPresentationPolicy(
+      normalizedStatements.length,
+      semanticShape,
+    );
+    for (const statement of normalizedStatements) {
+      statements.push({
+        ...statement,
+        presentation: presentationPolicy.presentation,
+        section: presentationPolicy.section,
+      });
+    }
+  }
+  return {
+    conflictGroups,
+    statements,
+    status: "answered",
+  };
 }
 
 function modelNormalizationInvalidatedConflictGroup(

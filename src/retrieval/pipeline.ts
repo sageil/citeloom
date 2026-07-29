@@ -24,6 +24,8 @@ import {
   type AnswerResult,
   type GeneratedAnswerResult,
 } from "../answers/inference.js";
+import { classifyAnswerSemanticShape } from "../answers/presentation-inference.js";
+import type { AnswerSemanticShape } from "../answers/presentation.js";
 import { AnswerCapacityError } from "../answers/context-budget.js";
 import {
   readInferenceApiFailure,
@@ -99,6 +101,7 @@ import {
 
 export interface PreparedRetrieval {
   answerScheduler: TaskScheduler;
+  answerSemanticShape: AnswerSemanticShape | null;
   generationSettings: TurnGenerationSettings;
   models: InferenceModelRegistry;
   rerankingScheduler: TaskScheduler | null;
@@ -198,6 +201,7 @@ export async function askIndexedDocuments(
       prepared.answerScheduler,
       prepared.generationSettings.answer,
       runTelemetry,
+      prepared.answerSemanticShape,
     );
     if (result.outcome === "answered") {
       reportProgress("Verifying factual claims against cited evidence");
@@ -398,6 +402,7 @@ export async function prepareRetrieval(
     scope,
     abortSignal,
     runTelemetry,
+    workload,
   );
 }
 
@@ -426,6 +431,7 @@ export async function prepareRetrievalWithRuntime(
     scope,
     abortSignal,
     runTelemetry,
+    workload,
   );
 }
 
@@ -442,6 +448,7 @@ async function prepareRetrievalWithResources(
   scope: QueryScope,
   abortSignal: AbortSignal,
   runTelemetry: RunTelemetry,
+  workload: WorkloadClass,
 ): Promise<PreparedRetrieval> {
   const catalog = new DocumentCatalog(databaseSession.database);
   const scopeStage = runTelemetry.startStage({
@@ -475,6 +482,7 @@ async function prepareRetrievalWithResources(
     runTelemetry.setHydratedContextCount(0);
     return {
       answerScheduler,
+      answerSemanticShape: null,
       generationSettings,
       models,
       rerankingScheduler,
@@ -523,8 +531,20 @@ async function prepareRetrievalWithResources(
       retrieval.strongestRerankerScore,
     );
   }
+  const answerSemanticShape = workload === "interactive-answer"
+    && retrieval.retrieved.length > 0
+    ? await classifyAnswerSemanticShape(
+      models,
+      question,
+      queryExpansionScheduler,
+      abortSignal,
+      generationSettings.queryExpansion,
+      runTelemetry,
+    )
+    : null;
   return {
     answerScheduler,
+    answerSemanticShape,
     generationSettings,
     models,
     rerankingScheduler,
@@ -746,6 +766,7 @@ export async function writeStreamedAnswer(
         abortSignal,
         prepared.generationSettings.answer,
         runTelemetry,
+        prepared.answerSemanticShape,
       );
     }
     let verifiedClaims: ClaimVerificationResult[] = [];

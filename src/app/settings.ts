@@ -244,7 +244,7 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   featureSetting(numberSetting("rerankDiscoveryMinimumScore", "Reranking", "Semantic discovery minimum", "The lowest provider-specific reranker score that Find Sources accepts as a semantic match.", -1_000, 1_000, 0.01), "reranking"),
   numberSetting("retrievalCandidates", "Retrieval", "Candidate count", "How many meaning-based and exact-word matches CiteLoom considers before choosing evidence.", 1, 200, 1),
   numberSetting("retrievalVariantConcurrency", "Retrieval", "Parallel searches", "How many searches CiteLoom may run at the same time for one original question.", 1, 16, 1),
-  numberSetting("queryExpansions", "Retrieval", "Extra search queries", "The maximum number of extra search queries the AI may write for each original question.", 0, 4, 1),
+  numberSetting("queryExpansions", "Retrieval", "Extra search queries (Query Expansion)", "The maximum number of extra search queries the AI may write for each original question.", 0, 4, 1),
   numberSetting("queryExpansionTemperature", "Retrieval", "Extra search query variation", "How much the wording of extra search queries may vary between runs.", 0, 2, 0.01),
   numberSetting("answerTemperature", "Retrieval", "Answer variation", "How much the wording of grounded answers may vary between runs.", 0, 2, 0.01),
   selectSetting("generationSeedMode", "Retrieval", "Repeatable generation", "Choose whether CiteLoom asks providers for repeatable model output or lets them choose.", [

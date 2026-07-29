@@ -58,6 +58,7 @@ import {
   type RunTelemetry,
 } from "../observability/run.js";
 import type { AppliedGenerationSettings } from "../inference/generation-settings.js";
+import type { AnswerSemanticShape } from "./presentation.js";
 
 export type AnswerSource = PublishedAnswerCitation;
 
@@ -196,6 +197,7 @@ export async function answerQuestion(
   scheduler: TaskScheduler,
   generationSettings: AppliedGenerationSettings,
   runTelemetry: RunTelemetry = noopRunTelemetry,
+  semanticShape: AnswerSemanticShape | null = null,
 ): Promise<GeneratedAnswerResult> {
   return generateAnswer(
     models,
@@ -206,6 +208,7 @@ export async function answerQuestion(
     generationSettings,
     "answer",
     runTelemetry,
+    semanticShape,
   );
 }
 
@@ -217,6 +220,7 @@ export async function streamAnswerQuestion(
   abortSignal: AbortSignal,
   generationSettings: AppliedGenerationSettings,
   runTelemetry: RunTelemetry = noopRunTelemetry,
+  semanticShape: AnswerSemanticShape | null = null,
 ): Promise<GeneratedAnswerResult> {
   return generateAnswer(
     models,
@@ -227,6 +231,7 @@ export async function streamAnswerQuestion(
     generationSettings,
     "answer-stream",
     runTelemetry,
+    semanticShape,
   );
 }
 
@@ -239,6 +244,7 @@ async function generateAnswer(
   generationSettings: AppliedGenerationSettings,
   metricOperation: AnswerMetricOperation,
   runTelemetry: RunTelemetry,
+  semanticShape: AnswerSemanticShape | null,
 ): Promise<GeneratedAnswerResult> {
   if (retrieved.length === 0) {
     return createNoRelevantAnswer();
@@ -365,6 +371,7 @@ async function generateAnswer(
       initialResponse = decodeAnswerResponse(
         result.output,
         allowedEvidenceRefs,
+        semanticShape,
       );
     } catch (error: unknown) {
       if (!NoObjectGeneratedError.isInstance(error)) {
@@ -424,6 +431,7 @@ async function generateAnswer(
         budget,
         runTelemetry,
         stage.timingObserver,
+        semanticShape,
       );
     } catch (error: unknown) {
       recordAnswerResponseDiagnostic(
@@ -512,6 +520,7 @@ async function correctAnswerDraft(
   budget: AnswerRequestBudget,
   runTelemetry: RunTelemetry,
   timingObserver: Parameters<TaskScheduler["run"]>[2],
+  semanticShape: AnswerSemanticShape | null,
 ): Promise<DecodedAnswerResponse> {
   abortSignal.throwIfAborted();
   const content = buildAnswerCorrectionContent(
@@ -557,12 +566,17 @@ async function correctAnswerDraft(
   if (!isExpectedContractFinishReason(result.finishReason)) {
     throw new UnexpectedAnswerFinishReasonError(result.finishReason);
   }
-  return decodeAnswerResponse(result.output, allowedEvidenceRefs);
+  return decodeAnswerResponse(
+    result.output,
+    allowedEvidenceRefs,
+    semanticShape,
+  );
 }
 
 function decodeAnswerResponse(
   value: unknown,
   allowedEvidenceRefs: readonly EvidenceReference[],
+  semanticShape: AnswerSemanticShape | null,
 ): DecodedAnswerResponse {
   const rejectedResponse = serializeResponse(value);
   const responseSha256 = hashResponse(rejectedResponse);
@@ -571,7 +585,11 @@ function decodeAnswerResponse(
   }
   try {
     return {
-      draft: decodeAnswerModelResponse(value, allowedEvidenceRefs),
+      draft: decodeAnswerModelResponse(
+        value,
+        allowedEvidenceRefs,
+        semanticShape,
+      ),
       failure: null,
       responseSha256,
     };
@@ -1210,7 +1228,7 @@ export function createAnswerSystemPrompt(): string {
     "",
     "Otherwise:",
     "",
-    '{ "status": "answered", "statements": [{ "content": "...", "evidenceRefs": ["EVID_A"], "presentation": "paragraph", "section": "answer" }], "conflictGroups": [] }',
+    '{ "status": "answered", "statements": [{ "content": "...", "evidenceRefs": ["EVID_A"] }], "conflictGroups": [] }',
   ].join("\n");
 }
 

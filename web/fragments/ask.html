@@ -3,7 +3,7 @@
   aria-label="Ask page"
   x-data="citeloomAskPage"
   x-init="initialize()"
-  @keydown.escape.window="deleteThreadConfirmationOpen = false"
+  @keydown.escape.window="deleteThreadConfirmationOpen = false; closeTagPicker()"
 >
   <section
     class="question-section"
@@ -166,7 +166,7 @@
                   x-text="`Selected documents (${questionDocuments.length})`"
                 ></option>
                 <option value="all">All ready documents</option>
-                <option value="tag" :disabled="availableTags.length === 0">One tag</option>
+                <option value="tag" :disabled="availableTagFacets.length === 0">Tags</option>
               </select>
             </div>
             <div class="selected-question-scope-summary">
@@ -199,22 +199,122 @@
                 @change="changeScope($event.target.value)"
               >
                 <option value="all">All ready documents</option>
-                <option value="tag" :disabled="availableTags.length === 0">One tag</option>
+                <option value="tag" :disabled="availableTagFacets.length === 0">Tags</option>
               </select>
             </div>
-            <label
-              class="field-label compact-field"
+            <div
+              class="tag-scope-field"
               x-cloak
               x-show="scopeKind === 'tag'"
             >
-              Tag
-              <select x-model="tag">
-                <option value="">Select a tag</option>
-                <template x-for="availableTag in availableTags" :key="availableTag">
-                  <option :value="availableTag" x-text="availableTag"></option>
-                </template>
-              </select>
-            </label>
+              <span class="tag-scope-label">Tags</span>
+              <div
+                class="tag-scope-picker"
+                @click.outside="closeTagPicker()"
+              >
+                <div
+                  class="tag-scope-control"
+                  :class="{ open: tagPickerOpen }"
+                  @click.self="openTagPicker()"
+                >
+                  <div
+                    class="tag-scope-chips"
+                    @click.self="openTagPicker()"
+                  >
+                    <span
+                      class="tag-scope-placeholder"
+                      x-show="selectedTags.length === 0"
+                    >Select tags</span>
+                    <template x-for="selectedTag in selectedTags" :key="selectedTag">
+                      <span class="tag-chip tag-scope-chip">
+                        <span x-text="selectedTag"></span>
+                        <button
+                          type="button"
+                          :aria-label="`Remove ${selectedTag} tag`"
+                          @click.stop="removeSelectedTag(selectedTag)"
+                        >
+                          <svg aria-hidden="true" class="citeloom-icon">
+                            <use href="./assets/images/citeloom-icons.svg#citeloom-close"></use>
+                          </svg>
+                        </button>
+                      </span>
+                    </template>
+                  </div>
+                  <button
+                    class="tag-scope-toggle"
+                    type="button"
+                    aria-controls="question-tag-options"
+                    :aria-expanded="tagPickerOpen"
+                    :aria-label="tagPickerOpen ? 'Close tag choices' : 'Choose tags'"
+                    x-ref="tagScopeTrigger"
+                    @click="toggleTagPicker()"
+                  >
+                    <svg aria-hidden="true" class="citeloom-icon">
+                      <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+                    </svg>
+                  </button>
+                </div>
+                <div
+                  class="tag-scope-menu"
+                  id="question-tag-options"
+                  x-cloak
+                  x-show="tagPickerOpen"
+                  @keydown.escape.stop.prevent="closeTagPicker(); $refs.tagScopeTrigger.focus()"
+                >
+                  <label class="tag-scope-search">
+                    <svg aria-hidden="true" class="citeloom-icon">
+                      <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
+                    </svg>
+                    <span class="visually-hidden">Find a tag</span>
+                    <input
+                      type="search"
+                      autocomplete="off"
+                      placeholder="Find a tag"
+                      x-model="tagSearchQuery"
+                      x-ref="tagScopeSearch"
+                    />
+                  </label>
+                  <div
+                    class="tag-scope-options"
+                    role="group"
+                    aria-label="Available tags"
+                  >
+                    <template
+                      x-for="facet in filteredAvailableTagFacets()"
+                      :key="facet.tag"
+                    >
+                      <label class="tag-scope-option">
+                        <input
+                          type="checkbox"
+                          :checked="isTagSelected(facet.tag)"
+                          @change="toggleTagSelection(facet.tag)"
+                        />
+                        <span x-text="facet.tag"></span>
+                        <span
+                          class="tag-scope-count"
+                          x-text="`${facet.count.toLocaleString()} ${facet.count === 1 ? 'document' : 'documents'}`"
+                        ></span>
+                      </label>
+                    </template>
+                    <p
+                      class="tag-scope-empty"
+                      x-show="filteredAvailableTagFacets().length === 0"
+                    >No tags match your search.</p>
+                  </div>
+                  <div class="tag-scope-menu-footer">
+                    <span
+                      x-text="`${selectedTags.length} ${selectedTags.length === 1 ? 'tag' : 'tags'} selected`"
+                    ></span>
+                    <button
+                      class="button primary"
+                      type="button"
+                      @click="closeTagPicker(); $refs.tagScopeTrigger.focus()"
+                    >Done</button>
+                  </div>
+                </div>
+              </div>
+              <span class="tag-scope-help">Searches documents that have any selected tag.</span>
+            </div>
           </div>
         </template>
 

@@ -16,7 +16,6 @@ import {
   selectNonOverlappingCandidatesWithTrace,
   selectSourceDiverseCandidates,
   selectSourceDiverseElements,
-  type CandidateAllocationPolicy,
   type NonOverlappingCandidateSelection,
 } from "../document-retrieval.js";
 import type { RetrievedElement } from "../document-retrieval.js";
@@ -38,7 +37,6 @@ import type {
 } from "../ranking/candidate-selection.js";
 import { readEmbedding } from "./index-store.js";
 import { matchesResolvedQueryScope } from "./query-scope-filter.js";
-import { isBroadDocumentQuestionForSource } from "../intent.js";
 import { queryDenseCandidates } from "./vector-query-store.js";
 import {
   queryDenseEvidenceCandidates,
@@ -428,31 +426,15 @@ export function selectRerankingCandidates(
 }
 
 export function selectRerankingCandidatesWithTrace(
-  question: string,
+  _question: string,
   rankedCandidates: FusedCandidate[],
   limit: number,
 ): NonOverlappingCandidateSelection {
-  const allocationPolicy = resolveCandidateAllocationPolicy(
-    question,
-    rankedCandidates,
-  );
   return selectNonOverlappingCandidatesWithTrace(
     rankedCandidates,
     limit,
-    allocationPolicy,
+    "fused-order",
   );
-}
-
-export function resolveCandidateAllocationPolicy(
-  question: string,
-  rankedCandidates: readonly FusedCandidate[],
-): CandidateAllocationPolicy {
-  for (const candidate of rankedCandidates) {
-    if (isBroadDocumentQuestionForSource(question, candidate.sourceFile)) {
-      return "fused-order";
-    }
-  }
-  return "document-round-robin";
 }
 
 export async function queryRetrievalCandidateRankings(
