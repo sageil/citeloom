@@ -49,11 +49,34 @@ export async function readEvaluationCodeIdentity(
   paths.sort();
   const digest = createHash("sha256");
   for (const path of paths) {
-    const content = await readFile(resolve(workingDirectory, path));
     digest.update(path);
     digest.update("\0");
-    digest.update(content);
+    const content = await readEvaluationCodePath(
+      resolve(workingDirectory, path),
+    );
+    if (content === null) {
+      digest.update("deleted");
+    } else {
+      digest.update("file");
+      digest.update("\0");
+      digest.update(content);
+    }
     digest.update("\0");
   }
   return `${commit}:${digest.digest("hex")}`;
+}
+
+async function readEvaluationCodePath(path: string): Promise<Buffer | null> {
+  try {
+    return await readFile(path);
+  } catch (error: unknown) {
+    if (
+      error instanceof Error
+      && "code" in error
+      && error.code === "ENOENT"
+    ) {
+      return null;
+    }
+    throw error;
+  }
 }

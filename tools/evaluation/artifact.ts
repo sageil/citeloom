@@ -95,6 +95,7 @@ const candidateSelectionDecisionSchema = z.object({
   exclusionReason: z.enum([
     "candidate-budget",
     "duplicate-evidence",
+    "unsupported-language",
   ]).nullable(),
   fusedRank: z.number().int().positive(),
   representativeRetrievalWindowId: sha256Schema,
@@ -189,6 +190,7 @@ const telemetryStageSnapshotSchema = z.object({
   modelId: z.string().min(1).nullable(),
   name: z.enum([
     "answer",
+    "answer-shape",
     "dense-retrieval",
     "fusion",
     "hydration",

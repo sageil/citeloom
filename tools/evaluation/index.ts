@@ -437,6 +437,9 @@ export function derivePreparedRerankedSelection(
         sourceFile: score.sourceFile,
       },
       item: candidate,
+      queryIndexes: [...new Set(
+        candidate.representationHits.map((hit) => hit.queryIndex),
+      )].sort((left, right) => left - right),
       relevanceScore: score.relevanceScore,
       rerankerInputRank: index + 1,
     });

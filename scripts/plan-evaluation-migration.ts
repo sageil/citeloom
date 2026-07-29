@@ -1,5 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { basename, resolve } from "node:path";
 
 import { readStartupConfig } from "../src/config/index.js";
 import { ApplicationSettingsRepository } from "../src/app/settings.js";
@@ -37,7 +44,11 @@ const knownDatasetPaths = [
 ] as const;
 const verbose = process.argv.includes("--verbose");
 const applyChanges = process.argv.includes("--apply");
-const requestedDatasetPaths = readRequestedDatasetPaths(process.argv.slice(2));
+const migrationArguments = readMigrationArguments(process.argv.slice(2));
+if (applyChanges && migrationArguments.outputDirectory !== null) {
+  throw new Error("--apply and --output-directory cannot be used together.");
+}
+const requestedDatasetPaths = migrationArguments.datasetPaths;
 const datasetPaths = knownDatasetPaths.filter((datasetPath) => {
   return requestedDatasetPaths.size === 0 || requestedDatasetPaths.has(datasetPath);
 });
@@ -61,11 +72,29 @@ interface StagedDatasetMigration extends DatasetMigrationPlan {
   temporaryPath: string;
 }
 
-function readRequestedDatasetPaths(arguments_: string[]): Set<string> {
+interface MigrationArguments {
+  datasetPaths: Set<string>;
+  outputDirectory: string | null;
+}
+
+function readMigrationArguments(arguments_: string[]): MigrationArguments {
   const paths = new Set<string>();
+  let outputDirectory: string | null = null;
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
     if (argument === "--apply" || argument === "--verbose") {
+      continue;
+    }
+    if (argument === "--output-directory") {
+      const path = arguments_[index + 1];
+      if (path === undefined) {
+        throw new Error("--output-directory requires a path.");
+      }
+      if (outputDirectory !== null) {
+        throw new Error("--output-directory was provided more than once.");
+      }
+      outputDirectory = resolve(path);
+      index += 1;
       continue;
     }
     if (argument !== "--dataset") {
@@ -81,7 +110,7 @@ function readRequestedDatasetPaths(arguments_: string[]): Set<string> {
     paths.add(path);
     index += 1;
   }
-  return paths;
+  return { datasetPaths: paths, outputDirectory };
 }
 
 const startup = readStartupConfig();
@@ -110,9 +139,12 @@ async function reportMigrationCandidates(
   );
   const indexedByDocumentId = new Map<string, IndexedDocument>();
   for (const document of indexed) {
-    if (document.sourceFile.includes("/evaluation-corpora/")) {
-      indexedByDocumentId.set(document.documentId, document);
+    if (indexedByDocumentId.has(document.documentId)) {
+      throw new Error(
+        `Active embedding space contains duplicate document ID ${document.documentId}.`,
+      );
     }
+    indexedByDocumentId.set(document.documentId, document);
   }
   const store = new SourceDocumentStore(database);
   const currentElementsByDocumentId = new Map<string, SourceElement[]>();
@@ -220,7 +252,28 @@ async function reportMigrationCandidates(
       process.stdout.write(`${plan.datasetPath}: migrated to current corpus provenance.\n`);
     }
   }
+  if (migrationArguments.outputDirectory !== null) {
+    await writeMigrationPlanCopies(
+      plans,
+      migrationArguments.outputDirectory,
+    );
+  }
   process.stderr.write(`${JSON.stringify({ currentCount, staleCount })}\n`);
+}
+
+async function writeMigrationPlanCopies(
+  plans: DatasetMigrationPlan[],
+  outputDirectory: string,
+): Promise<void> {
+  await mkdir(outputDirectory, { recursive: true });
+  for (const plan of plans) {
+    const outputPath = resolve(outputDirectory, basename(plan.datasetPath));
+    await writeFile(outputPath, plan.serializedDataset, {
+      encoding: "utf8",
+      flag: "wx",
+    });
+    process.stdout.write(`${outputPath}: wrote remapped evaluation copy.\n`);
+  }
 }
 
 async function writeMigrationPlansWithRollback(
@@ -359,7 +412,7 @@ function migrateDatasetProvenance(
       documentId: document.documentId,
       domain: expected.domain,
       modality,
-      sourceFile: expected.sourceFile,
+      sourceFile: document.sourceFile,
     });
   }
   for (const evaluationCase of dataset.cases) {
@@ -378,6 +431,7 @@ function migrateDatasetProvenance(
     if (element === undefined) {
       throw new Error(`Migrated origin element is not current: ${origin.elementId}.`);
     }
+    origin.sourceFile = document.sourceFile;
     if (element.kind === "image" && evaluationCase.metadata.source.kind === "image") {
       evaluationCase.metadata.source.visualIdentitySha256 = createVisualIdentity(
         element.content,
