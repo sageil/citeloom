@@ -496,7 +496,7 @@ function buildCandidateSelection(
     });
   }
   return {
-    allocationPolicy: "document-round-robin" as const,
+    allocationPolicy: "fused-order" as const,
     candidateK: 2,
     decisions,
     rerankerInputRetrievalIds: candidates.map((candidate) => (
