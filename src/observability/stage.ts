@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const telemetryStageNameSchema = z.enum([
   "answer",
+  // Retained so stored runs from the removed classifier remain readable.
   "answer-shape",
   "claim-verification",
   "dense-retrieval",

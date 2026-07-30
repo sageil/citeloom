@@ -49,7 +49,6 @@ import {
   InvalidAnswerDraftError,
   streamAnswerQuestion,
 } from "../src/answers/inference.js";
-import { classifyAnswerSemanticShape } from "../src/answers/presentation-inference.js";
 import {
   noopRunTelemetry,
   type RunTelemetry,
@@ -1649,74 +1648,6 @@ describe("answer generation", () => {
       new TaskLimiter(1),
       generationSettings,
     )).rejects.toThrow("provider finish reason content-filter");
-  });
-});
-
-describe("answer semantic shape classification", () => {
-  const generationSettings = { seed: 42, temperature: 0 };
-
-  it("decodes a valid semantic shape at one inference boundary", async () => {
-    const model = new MockLanguageModelV4({
-      doGenerate: buildTextGeneration("set", "stop"),
-    });
-
-    await expect(classifyAnswerSemanticShape(
-      buildModelRegistry(model),
-      "Which modes are supported?",
-      new TaskLimiter(1),
-      new AbortController().signal,
-      generationSettings,
-    )).resolves.toBe("set");
-    expect(model.doGenerateCalls).toHaveLength(1);
-  });
-
-  it("falls back without an answer correction for invalid shape output", async () => {
-    const model = new MockLanguageModelV4({
-      doGenerate: buildTextGeneration("unknown", "stop"),
-    });
-
-    await expect(classifyAnswerSemanticShape(
-      buildModelRegistry(model),
-      "Which modes are supported?",
-      new TaskLimiter(1),
-      new AbortController().signal,
-      generationSettings,
-    )).resolves.toBeNull();
-    expect(model.doGenerateCalls).toHaveLength(1);
-  });
-
-  it("falls back when shape classification is unavailable", async () => {
-    const model = new MockLanguageModelV4({
-      doGenerate: async () => {
-        throw new Error("provider unavailable");
-      },
-    });
-
-    await expect(classifyAnswerSemanticShape(
-      buildModelRegistry(model),
-      "Which modes are supported?",
-      new TaskLimiter(1),
-      new AbortController().signal,
-      generationSettings,
-    )).resolves.toBeNull();
-    expect(model.doGenerateCalls).toHaveLength(1);
-  });
-
-  it("does not convert cancellation into a presentation fallback", async () => {
-    const model = new MockLanguageModelV4({
-      doGenerate: buildTextGeneration("set", "stop"),
-    });
-    const controller = new AbortController();
-    controller.abort(new Error("cancelled"));
-
-    await expect(classifyAnswerSemanticShape(
-      buildModelRegistry(model),
-      "Which modes are supported?",
-      new TaskLimiter(1),
-      controller.signal,
-      generationSettings,
-    )).rejects.toThrow("cancelled");
-    expect(model.doGenerateCalls).toHaveLength(0);
   });
 });
 

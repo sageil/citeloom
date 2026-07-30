@@ -812,7 +812,7 @@ WITH canonical_settings AS (
       }
     },
     "runtime": {
-      "answerMaximumOutputTokens": 8192,
+      "answerMaximumOutputTokens": 20000,
       "answerMinimumOutputTokens": 256,
       "answerProviderSafetyMarginTokens": 2048,
       "answerTemperature": 0,
@@ -902,17 +902,22 @@ SET
       jsonb_set(
         jsonb_set(
           jsonb_set(
-            "application_settings"."defaults",
-            '{providers,routing}',
-            EXCLUDED."defaults"#>'{providers,routing}',
+            jsonb_set(
+              "application_settings"."defaults",
+              '{providers,routing}',
+              EXCLUDED."defaults"#>'{providers,routing}',
+              true
+            ),
+            '{providers,connections,omlx}',
+            EXCLUDED."defaults"#>'{providers,connections,omlx}',
             true
           ),
-          '{providers,connections,omlx}',
-          EXCLUDED."defaults"#>'{providers,connections,omlx}',
+          '{providers,connections,ollama}',
+          EXCLUDED."defaults"#>'{providers,connections,ollama}',
           true
         ),
-        '{providers,connections,ollama}',
-        EXCLUDED."defaults"#>'{providers,connections,ollama}',
+        '{runtime,answerMaximumOutputTokens}',
+        EXCLUDED."defaults"#>'{runtime,answerMaximumOutputTokens}',
         true
       ),
       '{runtime,embeddingInputFormatId}',
@@ -924,7 +929,20 @@ SET
     true
   ),
   "settings" = jsonb_set(
-    "application_settings"."settings",
+    jsonb_set(
+      "application_settings"."settings",
+      '{runtime,answerMaximumOutputTokens}',
+      CASE
+        WHEN
+          "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+            IS NULL
+          OR "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+            = "application_settings"."defaults"#>'{runtime,answerMaximumOutputTokens}'
+        THEN EXCLUDED."settings"#>'{runtime,answerMaximumOutputTokens}'
+        ELSE "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+      END,
+      true
+    ),
     '{sourceContent}',
     EXCLUDED."settings"->'sourceContent',
     true
@@ -938,6 +956,8 @@ WHERE
     IS DISTINCT FROM EXCLUDED."defaults"#>'{providers,connections,omlx}'
   OR "application_settings"."defaults"#>'{providers,connections,ollama}'
     IS DISTINCT FROM EXCLUDED."defaults"#>'{providers,connections,ollama}'
+  OR "application_settings"."defaults"#>'{runtime,answerMaximumOutputTokens}'
+    IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,answerMaximumOutputTokens}'
   OR "application_settings"."defaults"#>'{runtime,embeddingInputFormatId}'
     IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,embeddingInputFormatId}'
   OR "application_settings"."defaults"->'sourceContent'

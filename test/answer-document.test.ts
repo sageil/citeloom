@@ -100,7 +100,7 @@ describe("answer draft boundary", () => {
     ["three", ["regional", "global", "local"]],
     ["four", ["regional", "global", "local", "isolated"]],
   ])(
-    "uses bullet presentation for %s independently supported items",
+    "uses prose presentation for %s independently supported items",
     (_label, deploymentModes) => {
       const evidenceRefs = createEvidenceReferences(deploymentModes.length);
       const statements = deploymentModes.map((mode, index) => ({
@@ -115,7 +115,7 @@ describe("answer draft boundary", () => {
 
       expect(draft).toMatchObject({
         statements: deploymentModes.map(() => ({
-          presentation: "bullet",
+          presentation: "paragraph",
           section: "answer",
         })),
         status: "answered",
@@ -123,26 +123,7 @@ describe("answer draft boundary", () => {
     },
   );
 
-  it("uses semantic answer shape for a single set statement", () => {
-    const draft = decodeAnswerModelResponse({
-      conflictGroups: [],
-      statements: [{
-        content: "The supported modes are regional and global.",
-        evidenceRefs: ["EVID_A"],
-      }],
-      status: "answered",
-    }, createEvidenceReferences(1), "set");
-
-    expect(draft).toMatchObject({
-      statements: [{
-        presentation: "bullet",
-        section: "answer",
-      }],
-      status: "answered",
-    });
-  });
-
-  it("keeps a multi-statement explanation in prose", () => {
+  it("keeps a multi-statement answer in prose", () => {
     const draft = decodeAnswerModelResponse({
       conflictGroups: [],
       statements: [
@@ -156,7 +137,7 @@ describe("answer draft boundary", () => {
         },
       ],
       status: "answered",
-    }, createEvidenceReferences(2), "prose");
+    }, createEvidenceReferences(2));
 
     expect(draft).toMatchObject({
       statements: [

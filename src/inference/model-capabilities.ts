@@ -5,12 +5,21 @@ export interface ModelTokenCounter {
   countTextTokens: (text: string) => number;
 }
 
-export interface LanguageModelCapabilities {
+interface BaseLanguageModelCapabilities {
   contextCapacityTokens: number;
   modelId: string;
-  source: "configured";
   tokenCounter: ModelTokenCounter;
 }
+
+export type LanguageModelCapabilities =
+  | BaseLanguageModelCapabilities & {
+    source: "configured";
+  }
+  | BaseLanguageModelCapabilities & {
+    modelDigest: string;
+    modelFormat: "gguf";
+    source: "ollama-model";
+  };
 
 export function readLanguageModelCapabilities(
   config: LanguageInferenceConfig,

@@ -59,7 +59,7 @@ import {
   type RunTelemetry,
 } from "../observability/run.js";
 import type { AppliedGenerationSettings } from "../inference/generation-settings.js";
-import type { AnswerSemanticShape } from "./presentation.js";
+import type { LanguageModelCapabilities } from "../inference/model-capabilities.js";
 
 export type AnswerSource = PublishedAnswerCitation;
 
@@ -152,6 +152,13 @@ interface AnswerCompletion {
   outputTokens: number | null;
 }
 
+interface AdaptiveAnswerContext {
+  contextCapacityTokens: number;
+  inputTokenUpperBound: number;
+  modelDigest: string;
+  modelFormat: "gguf";
+}
+
 interface InvalidAnswerResponse {
   failureCategory: AnswerResponseFailureCategory;
   issues: AnswerDraftValidationIssue[];
@@ -184,6 +191,15 @@ export class InvalidAnswerDraftError extends Error {
   }
 }
 
+export class AnswerOutputTokenLimitError extends Error {
+  public constructor(public readonly outputTokenLimit: number) {
+    super(
+      `Answer generation reached the ${outputTokenLimit}-token output limit before producing a valid structured response.`,
+    );
+    this.name = "AnswerOutputTokenLimitError";
+  }
+}
+
 export class UnexpectedAnswerFinishReasonError extends Error {
   public constructor(finishReason: string | null) {
     super(`Answer generation ended with provider finish reason ${finishReason ?? "unknown"}.`);
@@ -198,7 +214,6 @@ export async function answerQuestion(
   scheduler: TaskScheduler,
   generationSettings: AppliedGenerationSettings,
   runTelemetry: RunTelemetry = noopRunTelemetry,
-  semanticShape: AnswerSemanticShape | null = null,
 ): Promise<GeneratedAnswerResult> {
   return generateAnswer(
     models,
@@ -209,7 +224,6 @@ export async function answerQuestion(
     generationSettings,
     "answer",
     runTelemetry,
-    semanticShape,
   );
 }
 
@@ -221,7 +235,6 @@ export async function streamAnswerQuestion(
   abortSignal: AbortSignal,
   generationSettings: AppliedGenerationSettings,
   runTelemetry: RunTelemetry = noopRunTelemetry,
-  semanticShape: AnswerSemanticShape | null = null,
 ): Promise<GeneratedAnswerResult> {
   return generateAnswer(
     models,
@@ -232,7 +245,6 @@ export async function streamAnswerQuestion(
     generationSettings,
     "answer-stream",
     runTelemetry,
-    semanticShape,
   );
 }
 
@@ -245,72 +257,11 @@ async function generateAnswer(
   generationSettings: AppliedGenerationSettings,
   metricOperation: AnswerMetricOperation,
   runTelemetry: RunTelemetry,
-  semanticShape: AnswerSemanticShape | null,
 ): Promise<GeneratedAnswerResult> {
   if (retrieved.length === 0) {
     return createNoRelevantAnswer();
   }
   const processingQuestion = createProcessingQuestion(question);
-  let budget: AnswerRequestBudget;
-  try {
-    const capabilities = await models.readAnswerCapabilities(abortSignal);
-    const availableEvidenceRefs = createEvidenceReferences(retrieved.length);
-    const fixedContent = buildAnswerFixedContent(processingQuestion);
-    const outputContract = buildAnswerOutputContract(availableEvidenceRefs);
-    const sourceContents = buildAnswerSourceContents(
-      retrieved,
-      availableEvidenceRefs,
-    );
-    budget = planAnswerRequest(
-      capabilities,
-      models.answerBudget,
-      [
-        { text: createAnswerSystemPrompt(), type: "text" },
-        { text: outputContract, type: "text" },
-        ...fixedContent,
-        { text: ANSWER_CORRECTION_BUDGET_INSTRUCTION, type: "text" },
-      ],
-      sourceContents,
-      retrieved,
-    );
-    runTelemetry.recordAnswerBudget({
-      availableInputTokens: budget.availableInputTokens,
-      contextCapacityTokens: budget.contextCapacityTokens,
-      failureReason: null,
-      inputTokenUpperBound: budget.inputTokenUpperBound,
-      outputBudgetTokens: budget.outputBudgetTokens,
-      providerSafetyMarginTokens: budget.providerSafetyMarginTokens,
-      requests: [],
-      responseDiagnostics: [],
-      windows: budget.decisions,
-    });
-  } catch (error: unknown) {
-    if (error instanceof AnswerCapacityError) {
-      runTelemetry.recordAnswerBudget({
-        availableInputTokens: null,
-        contextCapacityTokens: error.contextCapacityTokens,
-        failureReason: error.failureReason,
-        inputTokenUpperBound: null,
-        outputBudgetTokens: null,
-        providerSafetyMarginTokens: error.providerSafetyMarginTokens,
-        requests: [],
-        responseDiagnostics: [],
-        windows: [],
-      });
-    }
-    throw error;
-  }
-  const selectedRetrieved = budget.selected;
-  const allowedEvidenceRefs = createEvidenceReferences(selectedRetrieved.length);
-  const expandedRetrievalWindowIds = new Set(
-    budget.expandedRetrievalWindowIds,
-  );
-  const content = buildAnswerContentWithEvidence(
-    processingQuestion,
-    selectedRetrieved,
-    allowedEvidenceRefs,
-    expandedRetrievalWindowIds,
-  );
   const startedAt = performance.now();
   const stage = runTelemetry.startStage({
     model: {
@@ -338,146 +289,208 @@ async function generateAnswer(
     completion = value;
     finishMetricOnce(value);
   };
+  let selectedRetrieved: RetrievedElement[] = [];
   try {
-    let initialResponse: DecodedAnswerResponse;
-    let initialCompletion: AnswerCompletion;
-    const runGeneration = (requestSignal: AbortSignal) => {
-      recordAnswerRequest(runTelemetry, "initial", selectedRetrieved);
-      return requestAnswerDraft(
-        models,
-        content,
-        allowedEvidenceRefs,
-        requestSignal,
-        generationSettings,
-        recordCompletion,
+    const runGeneration = async (requestSignal: AbortSignal) => {
+      const capabilities = await models.readAnswerCapabilities(requestSignal);
+      const availableEvidenceRefs = createEvidenceReferences(retrieved.length);
+      const fixedContent = buildAnswerFixedContent(processingQuestion);
+      const outputContract = buildAnswerOutputContract(availableEvidenceRefs);
+      const sourceContents = buildAnswerSourceContents(
+        retrieved,
+        availableEvidenceRefs,
+      );
+      const budget = planAnswerRequest(
+        capabilities,
+        models.answerBudget,
+        [
+          { text: createAnswerSystemPrompt(), type: "text" },
+          { text: outputContract, type: "text" },
+          ...fixedContent,
+          { text: ANSWER_CORRECTION_BUDGET_INSTRUCTION, type: "text" },
+        ],
+        sourceContents,
+        retrieved,
+      );
+      runTelemetry.recordAnswerBudget({
+        availableInputTokens: budget.availableInputTokens,
+        contextCapacityTokens: budget.contextCapacityTokens,
+        failureReason: null,
+        inputTokenUpperBound: budget.inputTokenUpperBound,
+        outputBudgetTokens: budget.outputBudgetTokens,
+        providerSafetyMarginTokens: budget.providerSafetyMarginTokens,
+        requests: [],
+        responseDiagnostics: [],
+        windows: budget.decisions,
+      });
+      const adaptiveContext = createAdaptiveAnswerContext(
+        capabilities,
         budget,
       );
-    };
-    try {
-      const result = await scheduler.run(
-        runGeneration,
-        abortSignal,
-        stage.timingObserver,
-      );
-      abortSignal.throwIfAborted();
-      initialCompletion = {
-        finishReason: result.finishReason,
-        inputTokens: result.totalUsage.inputTokens ?? null,
-        outputTokens: result.totalUsage.outputTokens ?? null,
-      };
-      if (!isExpectedContractFinishReason(initialCompletion.finishReason)) {
-        throw new UnexpectedAnswerFinishReasonError(
-          initialCompletion.finishReason,
-        );
-      }
-      initialResponse = decodeAnswerResponse(
-        result.output,
-        allowedEvidenceRefs,
-        semanticShape,
-      );
-    } catch (error: unknown) {
-      if (!NoObjectGeneratedError.isInstance(error)) {
-        throw error;
-      }
-      initialCompletion = readAnswerCompletion(error, completion);
-      finishMetricOnce(initialCompletion);
-      if (!isExpectedContractFinishReason(initialCompletion.finishReason)) {
-        throw new UnexpectedAnswerFinishReasonError(
-          initialCompletion.finishReason,
-        );
-      }
-      initialResponse = {
-        draft: null,
-        failure: createInvalidJsonResponse(error),
-        responseSha256: hashResponse(error.text ?? null),
-      };
-    }
-    const runDetails = createAnswerRunDetails(
-      models,
-      startedAt,
-      initialCompletion,
-      runTelemetry.runId,
-    );
-    if (initialResponse.draft !== null) {
-      recordAnswerResponseDiagnostic(
-        runTelemetry,
-        models,
-        "initial",
-        initialResponse,
-        "not-needed",
-      );
-      const finalized = finalizeAnswerDraft(
-        initialResponse.draft,
-        selectedRetrieved,
-        runDetails,
-      );
-      await finishAnswerStage(
-        stage,
-        finalized,
+      selectedRetrieved = budget.selected;
+      const allowedEvidenceRefs = createEvidenceReferences(
         selectedRetrieved.length,
-        initialCompletion,
       );
-      return finalized;
-    }
-    let correctedResponse: DecodedAnswerResponse;
-    try {
-      correctedResponse = await correctAnswerDraft(
-        models,
+      const expandedRetrievalWindowIds = new Set(
+        budget.expandedRetrievalWindowIds,
+      );
+      const content = buildAnswerContentWithEvidence(
         processingQuestion,
         selectedRetrieved,
         allowedEvidenceRefs,
-        initialResponse.failure,
-        scheduler,
-        abortSignal,
-        generationSettings,
-        budget,
-        runTelemetry,
-        stage.timingObserver,
-        semanticShape,
+        expandedRetrievalWindowIds,
       );
-    } catch (error: unknown) {
+      recordAnswerRequest(runTelemetry, "initial", selectedRetrieved);
+      let initialResponse: DecodedAnswerResponse;
+      let initialCompletion: AnswerCompletion;
+      try {
+        const result = await requestAnswerDraft(
+          models,
+          content,
+          allowedEvidenceRefs,
+          requestSignal,
+          generationSettings,
+          recordCompletion,
+          budget,
+          adaptiveContext,
+        );
+        requestSignal.throwIfAborted();
+        initialCompletion = {
+          finishReason: result.finishReason,
+          inputTokens: result.totalUsage.inputTokens ?? null,
+          outputTokens: result.totalUsage.outputTokens ?? null,
+        };
+        if (!isExpectedContractFinishReason(initialCompletion.finishReason)) {
+          throw new UnexpectedAnswerFinishReasonError(
+            initialCompletion.finishReason,
+          );
+        }
+        initialResponse = decodeAnswerResponse(
+          result.output,
+          allowedEvidenceRefs,
+        );
+      } catch (error: unknown) {
+        if (!NoObjectGeneratedError.isInstance(error)) {
+          throw error;
+        }
+        initialCompletion = readAnswerCompletion(error, completion);
+        finishMetricOnce(initialCompletion);
+        if (initialCompletion.finishReason === "length") {
+          throw new AnswerOutputTokenLimitError(budget.outputBudgetTokens);
+        }
+        if (!isExpectedContractFinishReason(initialCompletion.finishReason)) {
+          throw new UnexpectedAnswerFinishReasonError(
+            initialCompletion.finishReason,
+          );
+        }
+        initialResponse = {
+          draft: null,
+          failure: createInvalidJsonResponse(error),
+          responseSha256: hashResponse(error.text ?? null),
+        };
+      }
+      const runDetails = createAnswerRunDetails(
+        models,
+        startedAt,
+        initialCompletion,
+        runTelemetry.runId,
+      );
+      if (initialResponse.draft !== null) {
+        recordAnswerResponseDiagnostic(
+          runTelemetry,
+          models,
+          "initial",
+          initialResponse,
+          "not-needed",
+        );
+        return {
+          completion: initialCompletion,
+          result: finalizeAnswerDraft(
+            initialResponse.draft,
+            selectedRetrieved,
+            runDetails,
+          ),
+        };
+      }
+      let correctedResponse: DecodedAnswerResponse;
+      try {
+        correctedResponse = await correctAnswerDraft(
+          models,
+          processingQuestion,
+          selectedRetrieved,
+          allowedEvidenceRefs,
+          initialResponse.failure,
+          requestSignal,
+          generationSettings,
+          budget,
+          adaptiveContext,
+          runTelemetry,
+        );
+      } catch (error: unknown) {
+        recordAnswerResponseDiagnostic(
+          runTelemetry,
+          models,
+          "initial",
+          initialResponse,
+          "transport-error",
+        );
+        throw error;
+      }
+      const correctionOutcome = correctedResponse.draft === null
+        ? "invalid"
+        : "succeeded";
       recordAnswerResponseDiagnostic(
         runTelemetry,
         models,
         "initial",
         initialResponse,
-        "transport-error",
+        correctionOutcome,
       );
-      throw error;
-    }
-    const correctionOutcome = correctedResponse.draft === null
-      ? "invalid"
-      : "succeeded";
-    recordAnswerResponseDiagnostic(
-      runTelemetry,
-      models,
-      "initial",
-      initialResponse,
-      correctionOutcome,
-    );
-    recordAnswerResponseDiagnostic(
-      runTelemetry,
-      models,
-      "correction",
-      correctedResponse,
-      correctionOutcome,
-    );
-    if (correctedResponse.draft === null) {
-      throw new InvalidAnswerDraftError();
-    }
-    const finalized = finalizeAnswerDraft(
-      correctedResponse.draft,
-      selectedRetrieved,
-      runDetails,
+      recordAnswerResponseDiagnostic(
+        runTelemetry,
+        models,
+        "correction",
+        correctedResponse,
+        correctionOutcome,
+      );
+      if (correctedResponse.draft === null) {
+        throw new InvalidAnswerDraftError();
+      }
+      return {
+        completion: initialCompletion,
+        result: finalizeAnswerDraft(
+          correctedResponse.draft,
+          selectedRetrieved,
+          runDetails,
+        ),
+      };
+    };
+    const generated = await scheduler.run(
+      runGeneration,
+      abortSignal,
+      stage.timingObserver,
     );
     await finishAnswerStage(
       stage,
-      finalized,
+      generated.result,
       selectedRetrieved.length,
-      initialCompletion,
+      generated.completion,
     );
-    return finalized;
+    return generated.result;
   } catch (error: unknown) {
+    if (error instanceof AnswerCapacityError) {
+      runTelemetry.recordAnswerBudget({
+        availableInputTokens: null,
+        contextCapacityTokens: error.contextCapacityTokens,
+        failureReason: error.failureReason,
+        inputTokenUpperBound: null,
+        outputBudgetTokens: null,
+        providerSafetyMarginTokens: error.providerSafetyMarginTokens,
+        requests: [],
+        responseDiagnostics: [],
+        windows: [],
+      });
+    }
     if (abortSignal.aborted) {
       finishMetricOnce({
         finishReason: "aborted",
@@ -490,7 +503,10 @@ async function generateAnswer(
       ));
       throw error;
     }
-    if (error instanceof InvalidAnswerDraftError) {
+    if (
+      error instanceof AnswerOutputTokenLimitError
+      || error instanceof InvalidAnswerDraftError
+    ) {
       await stage.finish(createTelemetryStageResult(
         "error",
         { inputCount: selectedRetrieved.length },
@@ -516,13 +532,11 @@ async function correctAnswerDraft(
   retrieved: RetrievedElement[],
   allowedEvidenceRefs: readonly EvidenceReference[],
   initialFailure: InvalidAnswerResponse,
-  scheduler: TaskScheduler,
   abortSignal: AbortSignal,
   generationSettings: AppliedGenerationSettings,
   budget: AnswerRequestBudget,
+  adaptiveContext: AdaptiveAnswerContext | null,
   runTelemetry: RunTelemetry,
-  timingObserver: Parameters<TaskScheduler["run"]>[2],
-  semanticShape: AnswerSemanticShape | null,
 ): Promise<DecodedAnswerResponse> {
   abortSignal.throwIfAborted();
   const content = buildAnswerCorrectionContent(
@@ -542,18 +556,18 @@ async function correctAnswerDraft(
       generationSettings,
       () => undefined,
       budget,
+      adaptiveContext,
     );
   };
   let result: Awaited<ReturnType<typeof requestAnswerDraft>>;
   try {
-    result = await scheduler.run(
-      runGeneration,
-      abortSignal,
-      timingObserver,
-    );
+    result = await runGeneration(abortSignal);
   } catch (error: unknown) {
     if (NoObjectGeneratedError.isInstance(error)) {
       const completion = readAnswerCompletion(error, null);
+      if (completion.finishReason === "length") {
+        throw new AnswerOutputTokenLimitError(budget.outputBudgetTokens);
+      }
       if (isExpectedContractFinishReason(completion.finishReason)) {
         return {
           draft: null,
@@ -571,14 +585,12 @@ async function correctAnswerDraft(
   return decodeAnswerResponse(
     result.output,
     allowedEvidenceRefs,
-    semanticShape,
   );
 }
 
 function decodeAnswerResponse(
   value: unknown,
   allowedEvidenceRefs: readonly EvidenceReference[],
-  semanticShape: AnswerSemanticShape | null,
 ): DecodedAnswerResponse {
   const rejectedResponse = serializeResponse(value);
   const responseSha256 = hashResponse(rejectedResponse);
@@ -590,7 +602,6 @@ function decodeAnswerResponse(
       draft: decodeAnswerModelResponse(
         value,
         allowedEvidenceRefs,
-        semanticShape,
       ),
       failure: null,
       responseSha256,
@@ -693,6 +704,7 @@ async function requestAnswerDraft(
   generationSettings: AppliedGenerationSettings,
   recordCompletion: (completion: AnswerCompletion) => void,
   budget: AnswerRequestBudget,
+  adaptiveContext: AdaptiveAnswerContext | null,
 ) {
   const output = createAnswerModelOutput(allowedEvidenceRefs);
   const telemetry = createInferenceTelemetryOptions(models, "citeloom.answer");
@@ -700,8 +712,19 @@ async function requestAnswerDraft(
   const signals = createInferenceRequestSignal(timeoutMs, abortSignal);
   try {
     const samplingSettings = buildAnswerSamplingSettings(generationSettings);
+    const providerOptions = adaptiveContext !== null
+      ? {
+        citeloomAdaptiveContext: {
+          contextCapacityTokens: adaptiveContext.contextCapacityTokens,
+          inputTokenUpperBound: adaptiveContext.inputTokenUpperBound,
+          modelDigest: adaptiveContext.modelDigest,
+          modelFormat: adaptiveContext.modelFormat,
+        },
+      }
+      : null;
     return await generateText({
       ...samplingSettings,
+      ...(providerOptions === null ? {} : { providerOptions }),
       abortSignal: signals.requestSignal,
       maxRetries: 1,
       maxOutputTokens: budget.outputBudgetTokens,
@@ -727,6 +750,21 @@ async function requestAnswerDraft(
       abortSignal,
     );
   }
+}
+
+function createAdaptiveAnswerContext(
+  capabilities: LanguageModelCapabilities,
+  budget: AnswerRequestBudget,
+): AdaptiveAnswerContext | null {
+  if (capabilities.source !== "ollama-model") {
+    return null;
+  }
+  return {
+    contextCapacityTokens: capabilities.contextCapacityTokens,
+    inputTokenUpperBound: budget.inputTokenUpperBound,
+    modelDigest: capabilities.modelDigest,
+    modelFormat: capabilities.modelFormat,
+  };
 }
 
 export function createAnswerModelOutput(

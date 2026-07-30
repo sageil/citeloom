@@ -16,6 +16,7 @@ import type {
 } from "../answers/stream.js";
 import {
   applyVerifiedAnswerPublication,
+  AnswerOutputTokenLimitError,
   answerQuestion,
   createNoRelevantAnswer,
   InvalidAnswerDraftError,
@@ -24,8 +25,6 @@ import {
   type AnswerResult,
   type GeneratedAnswerResult,
 } from "../answers/inference.js";
-import { classifyAnswerSemanticShape } from "../answers/presentation-inference.js";
-import type { AnswerSemanticShape } from "../answers/presentation.js";
 import { AnswerCapacityError } from "../answers/context-budget.js";
 import {
   readInferenceApiFailure,
@@ -108,7 +107,6 @@ import {
 
 export interface PreparedRetrieval {
   answerScheduler: TaskScheduler;
-  answerSemanticShape: AnswerSemanticShape | null;
   generationSettings: TurnGenerationSettings;
   models: InferenceModelRegistry;
   rerankingScheduler: TaskScheduler | null;
@@ -178,6 +176,7 @@ type AnswerStreamFailure =
   | { kind: "answer-capacity" }
   | { kind: "answer-finish" }
   | { kind: "answer-invalid" }
+  | { kind: "answer-output-limit"; outputTokenLimit: number }
   | { kind: "answer-timeout"; message: string }
   | { kind: "claim-verification"; category: HhemClientError["category"] }
   | { kind: "provider"; error: Error; failure: InferenceApiFailure }
@@ -222,7 +221,6 @@ export async function askIndexedDocuments(
       prepared.answerScheduler,
       prepared.generationSettings.answer,
       runTelemetry,
-      prepared.answerSemanticShape,
     );
     if (result.outcome === "answered") {
       reportProgress("Verifying factual claims against cited evidence");
@@ -427,7 +425,6 @@ export async function prepareRetrieval(
     scope,
     abortSignal,
     runTelemetry,
-    workload,
   );
 }
 
@@ -457,7 +454,6 @@ export async function prepareRetrievalWithRuntime(
     scope,
     abortSignal,
     runTelemetry,
-    workload,
   );
 }
 
@@ -474,7 +470,6 @@ async function prepareRetrievalWithResources(
   scope: QueryScope,
   abortSignal: AbortSignal,
   runTelemetry: RunTelemetry,
-  workload: WorkloadClass,
 ): Promise<PreparedRetrieval> {
   const catalog = new DocumentCatalog(databaseSession.database);
   const scopeStage = runTelemetry.startStage({
@@ -508,7 +503,6 @@ async function prepareRetrievalWithResources(
     runTelemetry.setHydratedContextCount(0);
     return {
       answerScheduler,
-      answerSemanticShape: null,
       generationSettings,
       models,
       rerankingScheduler,
@@ -562,20 +556,8 @@ async function prepareRetrievalWithResources(
       retrieval.strongestRerankerScore,
     );
   }
-  const answerSemanticShape = workload === "interactive-answer"
-    && retrieval.retrieved.length > 0
-    ? await classifyAnswerSemanticShape(
-      models,
-      question.processing,
-      queryExpansionScheduler,
-      abortSignal,
-      generationSettings.queryExpansion,
-      runTelemetry,
-    )
-    : null;
   return {
     answerScheduler,
-    answerSemanticShape,
     generationSettings,
     models,
     rerankingScheduler,
@@ -799,7 +781,6 @@ export async function writeStreamedAnswer(
         abortSignal,
         prepared.generationSettings.answer,
         runTelemetry,
-        prepared.answerSemanticShape,
       );
     }
     let verifiedClaims: ClaimVerificationResult[] = [];
@@ -940,6 +921,11 @@ function readDirectAnswerStreamFailure(
       return { kind: "reranking-timeout", message: error.message };
     case error instanceof AnswerCapacityError:
       return { kind: "answer-capacity" };
+    case error instanceof AnswerOutputTokenLimitError:
+      return {
+        kind: "answer-output-limit",
+        outputTokenLimit: error.outputTokenLimit,
+      };
     case error instanceof InvalidAnswerDraftError:
       return { kind: "answer-invalid" };
     case error instanceof UnexpectedAnswerFinishReasonError:
@@ -964,6 +950,8 @@ function formatAnswerStreamFailure(failure: AnswerStreamFailure): string {
       return failure.message;
     case "answer-capacity":
       return "The selected answer model cannot fit the answer instructions and retrieved evidence. Increase its configured context capacity or select a model with a larger context window.";
+    case "answer-output-limit":
+      return `The answer model reached this request's ${failure.outputTokenLimit.toLocaleString("en-CA")}-token output limit before completing the answer. Increase Maximum answer tokens in Settings if the model has enough context capacity, or select a model with a larger context window.`;
     case "answer-finish":
       return "The answer provider stopped before producing a complete answer. Try again or select another answer model.";
     case "answer-invalid":
@@ -1060,6 +1048,7 @@ function readAnswerFailureOrigin(failure: AnswerStreamFailure) {
     case "answer-timeout":
     case "answer-finish":
     case "answer-invalid":
+    case "answer-output-limit":
     case "claim-verification":
     case "reranking-timeout":
       return "inference-provider" as const;
@@ -1084,6 +1073,7 @@ function readAnswerFailureRetryability(
       return failure.category === "timeout"
         || failure.category === "service-unavailable";
     case "answer-capacity":
+    case "answer-output-limit":
       return false;
     case "answer-finish":
     case "answer-invalid":
@@ -1122,6 +1112,8 @@ function readAnswerFailureCategory(failure: AnswerStreamFailure): string {
       return `claim-verification-${failure.category}`;
     case "answer-capacity":
       return "answer-capacity";
+    case "answer-output-limit":
+      return "inference-provider-output-limit";
     case "answer-finish":
       return "inference-provider-finish";
     case "answer-invalid":
@@ -1150,6 +1142,8 @@ function readAnswerFailureCode(
       return readClaimVerificationFailureCode(failure.category);
     case "answer-capacity":
       return "answer_context_capacity_exceeded";
+    case "answer-output-limit":
+      return "answer_output_token_limit_reached";
     case "answer-finish":
       return "answer_provider_incomplete";
     case "answer-invalid":
@@ -1187,6 +1181,7 @@ function readSafeAnswerFailureMessage(
     case "answer-capacity":
     case "answer-finish":
     case "answer-invalid":
+    case "answer-output-limit":
     case "scheduler-lease":
     case "settings-changed":
       return truncateAnswerFailureMessage(readErrorMessage(error));

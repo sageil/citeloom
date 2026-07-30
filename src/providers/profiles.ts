@@ -80,6 +80,7 @@ export interface CustomProviderAdapters {
 }
 
 export interface ProviderConnection {
+  adaptiveContextEnabled: boolean;
   apiToken: string | null;
   baseUrl: string | null;
   customAdapters: CustomProviderAdapters;
@@ -150,6 +151,7 @@ export interface ProviderTextToSpeechConfiguration
 }
 
 export interface ProviderConnectionConfiguration {
+  adaptiveContextEnabled: boolean;
   baseUrl: string | null;
   customAdapters: CustomProviderAdapters;
   maximumParallelRequests: number;
@@ -206,6 +208,7 @@ export interface ResolvedProviderCapability {
 }
 
 export interface ResolvedLanguageProvider extends ResolvedProviderCapability {
+  adaptiveContextEnabled: boolean;
   adapter: LanguageModelAdapter;
   contextCapacityTokens: number;
 }
@@ -290,6 +293,7 @@ const providerModelConnectionSchema = providerCapabilityConnectionSchema.extend(
   contextCapacityTokens: z.number().int().positive().nullable(),
 }).strict();
 const providerConnectionSchema = z.object({
+  adaptiveContextEnabled: z.boolean().default(false),
   apiToken: providerCredentialSchema,
   baseUrl: httpUrlSchema.nullable(),
   customAdapters: z.object({
@@ -334,6 +338,7 @@ export const providerFeatureOverridesSchema = z.object({
 }).strict();
 
 export const providerConnectionConfigurationSchema = z.object({
+  adaptiveContextEnabled: z.boolean().default(false),
   baseUrl: httpUrlSchema.nullable(),
   customAdapters: z.object({
     answer: customLanguageModelAdapterSchema,
@@ -394,6 +399,7 @@ export const providerSettingsSchema = z.object({
     textToSpeech: providerIdSchema.nullable(),
   }).strict(),
 }).strict().superRefine((settings, context) => {
+  validateAdaptiveContextConfiguration(settings, context);
   validateSelectedProvider(settings, "answer", context);
   validateSelectedProvider(settings, "queryExpansion", context);
   validateSelectedProvider(settings, "summarization", context);
@@ -535,6 +541,7 @@ export function readProviderConnectionConfiguration(
   connection: ProviderConnection,
 ): ProviderConnectionConfiguration {
   return {
+    adaptiveContextEnabled: connection.adaptiveContextEnabled,
     answer: readModelConfiguration(connection.answer),
     baseUrl: connection.baseUrl,
     customAdapters: { ...connection.customAdapters },
@@ -611,6 +618,8 @@ export function resolveLanguageProvider(
   }
   return {
     ...provider,
+    adaptiveContextEnabled:
+      settings.connections[provider.providerId].adaptiveContextEnabled,
     adapter: provider.adapter,
     contextCapacityTokens: readEffectiveModelContextCapacity(
       settings,
@@ -618,6 +627,31 @@ export function resolveLanguageProvider(
       capability,
     ),
   };
+}
+
+function validateAdaptiveContextConfiguration(
+  settings: ProviderSettings,
+  context: z.RefinementCtx,
+): void {
+  for (const [providerId, connection] of Object.entries(settings.connections)) {
+    if (!connection.adaptiveContextEnabled) {
+      continue;
+    }
+    if (providerId !== "ollama") {
+      context.addIssue({
+        code: "custom",
+        message: "Adaptive inference is available only for the Ollama provider.",
+        path: ["connections", providerId, "adaptiveContextEnabled"],
+      });
+    }
+    if (connection.maximumParallelRequests !== 1) {
+      context.addIssue({
+        code: "custom",
+        message: "Adaptive inference requires maximum parallel requests to be 1.",
+        path: ["connections", providerId, "maximumParallelRequests"],
+      });
+    }
+  }
 }
 
 export function resolveEmbeddingProvider(

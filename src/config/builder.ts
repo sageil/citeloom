@@ -381,6 +381,7 @@ function buildLanguageInferenceConfig(
   timeoutMs: number,
 ): LanguageInferenceConfig {
   return {
+    adaptiveContextEnabled: provider.adaptiveContextEnabled,
     adapter: provider.adapter,
     apiToken: provider.apiToken,
     baseUrl: provider.baseUrl,

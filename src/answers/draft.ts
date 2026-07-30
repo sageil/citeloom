@@ -1,9 +1,6 @@
 import { z } from "zod";
 
-import {
-  readAnswerPresentationPolicy,
-  type AnswerSemanticShape,
-} from "./presentation.js";
+import { readAnswerPresentationPolicy } from "./presentation.js";
 
 export const ANSWER_SECTIONS = [
   "answer",
@@ -334,7 +331,6 @@ export function decodeAnswerDraft(
 export function decodeAnswerModelResponse(
   value: unknown,
   allowedEvidenceRefs: readonly EvidenceReference[],
-  semanticShape: AnswerSemanticShape | null = null,
 ): AnswerDraft {
   const modelResult = createAnswerModelResponseSchema(
     allowedEvidenceRefs,
@@ -394,7 +390,6 @@ export function decodeAnswerModelResponse(
   if (normalizedStatements.length > 0) {
     const presentationPolicy = readAnswerPresentationPolicy(
       normalizedStatements.length,
-      semanticShape,
     );
     for (const statement of normalizedStatements) {
       statements.push({

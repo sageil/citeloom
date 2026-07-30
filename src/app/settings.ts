@@ -1100,6 +1100,7 @@ function configureProviderConnection(
 ): ProviderConnection {
   validateOpenAICodexConnectionConfiguration(providerId, configuration);
   return {
+    adaptiveContextEnabled: configuration.adaptiveContextEnabled,
     apiToken: current.apiToken,
     answer: configureModelConnection(
       current.answer,

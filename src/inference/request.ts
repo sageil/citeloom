@@ -1,3 +1,5 @@
+import { formatDurationMilliseconds } from "../shared/duration.js";
+
 export type InferenceFeature =
   | "answer"
   | "embedding"
@@ -14,7 +16,8 @@ export class InferenceFeatureTimeoutError extends Error {
     public readonly feature: InferenceFeature,
     public readonly timeoutMs: number,
   ) {
-    super(`${formatInferenceFeature(feature)} timed out after ${timeoutMs} ms.`);
+    const duration = formatDurationMilliseconds(timeoutMs);
+    super(`${formatInferenceFeature(feature)} timed out after ${duration}.`);
     this.name = "InferenceFeatureTimeoutError";
   }
 }

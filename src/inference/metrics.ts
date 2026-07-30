@@ -2,7 +2,6 @@ import type { InferenceMetricsConfig } from "../config/index.js";
 
 export type InferenceOperation =
   | "answer"
-  | "answer-shape"
   | "answer-stream"
   | "claim-verification"
   | "describe-image"

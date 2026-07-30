@@ -40,6 +40,7 @@ export type EmbeddingModelAdapter =
   | "openai-compatible-embedding";
 
 export interface LanguageInferenceConfig extends ProviderRuntimeConfig {
+  adaptiveContextEnabled: boolean;
   adapter: LanguageModelAdapter;
   contextCapacityTokens: number;
   model: string;

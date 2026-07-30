@@ -421,6 +421,10 @@ function readCapabilityCredentialStates(value) {
 function readProviderConfiguration(value) {
   const configuration = readPlainObject(value, "provider configuration");
   return {
+    adaptiveContextEnabled: readBoolean(
+      configuration.adaptiveContextEnabled,
+      "adaptive inference state",
+    ),
     answer: readProviderModelConfiguration(
       configuration.answer,
       "answer configuration",
@@ -2117,6 +2121,27 @@ export function registerPage(alpine) {
         ?? null;
     },
 
+    providerAdaptiveContextEnabled() {
+      return this.selectedProviderId === "ollama"
+        && (
+          this.selectedProviderConnection
+            ?.configuration.adaptiveContextEnabled
+          ?? false
+        );
+    },
+
+    writeProviderAdaptiveContextEnabled(value) {
+      if (this.selectedProviderId !== "ollama") {
+        return;
+      }
+      this.updateSelectedProviderConfiguration((configuration) => {
+        configuration.adaptiveContextEnabled = value;
+        if (value) {
+          configuration.maximumParallelRequests = 1;
+        }
+      });
+    },
+
     writeProviderMaximumParallelRequests(value) {
       const maximumParallelRequests = readPositiveInteger(
         Number(value),
@@ -2125,6 +2150,14 @@ export function registerPage(alpine) {
       if (maximumParallelRequests > 16) {
         this.errorMessage =
           "Maximum parallel requests must be a whole number from 1 to 16.";
+        return;
+      }
+      if (
+        this.providerAdaptiveContextEnabled()
+        && maximumParallelRequests !== 1
+      ) {
+        this.errorMessage =
+          "Adaptive inference requires maximum parallel requests to remain 1.";
         return;
       }
       this.updateSelectedProviderConfiguration((configuration) => {

@@ -151,7 +151,7 @@ async function requestQueryExpansions(
 function createQueryExpansionSchema(expansionCount: number) {
   return z.object({
     queries: z
-      .array(z.string().trim().min(1).max(500))
+      .array(z.string().trim().min(1))
       .max(expansionCount),
   });
 }
@@ -197,7 +197,7 @@ export function decodeQueryExpansions(
   const seenQueries = new Set([normalizeQueryText(originalQuestion)]);
   for (const rawLine of value.split(/\r?\n/)) {
     const line = rawLine.replace(/^\s*(?:[-*]|\d+[.)])\s+/, "").trim();
-    if (line === "" || line.length > 500) {
+    if (line === "") {
       continue;
     }
     const normalized = normalizeQueryText(line);

@@ -190,6 +190,7 @@ const telemetryStageSnapshotSchema = z.object({
   modelId: z.string().min(1).nullable(),
   name: z.enum([
     "answer",
+    // Retained so stored artifacts from the removed classifier remain readable.
     "answer-shape",
     "dense-retrieval",
     "fusion",

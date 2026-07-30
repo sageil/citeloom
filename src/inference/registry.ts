@@ -40,6 +40,11 @@ import {
   readLanguageModelCapabilities,
   type LanguageModelCapabilities,
 } from "./model-capabilities.js";
+import {
+  createOllamaLanguageModelRuntime,
+  type OllamaAdaptiveWorkload,
+  type OllamaLanguageModelRuntime,
+} from "./ollama-context.js";
 import type { AnswerBudgetConfiguration } from "../answers/context-budget.js";
 import type { CiteLoomDatabase } from "../database/client.js";
 import { createOpenAICodexLanguageModel } from "../providers/openai-codex-language-model.js";
@@ -70,24 +75,33 @@ export function createInferenceModelRegistry(
   database?: CiteLoomDatabase,
 ): InferenceModelRegistry {
   const metrics = new InferenceMetricsReporter(config.inferenceMetrics);
-  const baseLanguageModel = createLanguageModel(
+  const answerRuntime = createLanguageModel(
     config.inference.answer,
     INFERENCE_PROVIDER_OPTIONS_KEY,
     true,
     database,
+    "answer",
+    config.inference.answerBudget.providerSafetyMarginTokens,
   );
-  const baseSummaryModel = createLanguageModel(
+  const summaryRuntime = createLanguageModel(
     config.inference.summary,
     INFERENCE_PROVIDER_OPTIONS_KEY,
     true,
     database,
+    "summary",
+    0,
   );
-  const baseQueryExpansionModel = createLanguageModel(
+  const queryExpansionRuntime = createLanguageModel(
     config.inference.queryExpansion,
     INFERENCE_PROVIDER_OPTIONS_KEY,
     true,
     database,
+    "query-expansion",
+    0,
   );
+  const baseLanguageModel = answerRuntime.model;
+  const baseSummaryModel = summaryRuntime.model;
+  const baseQueryExpansionModel = queryExpansionRuntime.model;
   const answerThinkingProviderOptions = buildLanguageThinkingProviderOptions(
     config.inference.answer,
     config.inference.thinkingMode,
@@ -216,10 +230,7 @@ export function createInferenceModelRegistry(
     metrics,
     queryEmbedding: registry.embeddingModel("inference:query"),
     queryExpansion: registry.languageModel("inference:queryExpansion"),
-    readAnswerCapabilities: (abortSignal) => readLanguageModelCapabilities(
-      config.inference.answer,
-      abortSignal,
-    ),
+    readAnswerCapabilities: answerRuntime.readCapabilities,
     reranker,
     summary: registry.languageModel("inference:summary"),
     timeouts: {
@@ -439,27 +450,37 @@ function createLanguageModel(
   providerName: string,
   supportsStructuredOutputs: boolean,
   database: CiteLoomDatabase | undefined,
-): LanguageModelV4 {
+  workload: OllamaAdaptiveWorkload,
+  providerSafetyMarginTokens: number,
+): OllamaLanguageModelRuntime {
   if (config.adapter === "openai-codex-language") {
     if (database === undefined) {
       throw new Error(
         "OpenAI Codex requires an application database for device credentials.",
       );
     }
-    return createOpenAICodexLanguageModel(config, database);
+    const model = createOpenAICodexLanguageModel(config, database);
+    return createFixedLanguageModelRuntime(config, model);
   }
   if (config.adapter === "cohere-language") {
     const provider = createCohereProvider(config);
-    return provider(config.model);
+    return createFixedLanguageModelRuntime(config, provider(config.model));
   }
   if (config.adapter === "ollama-language") {
     const provider = createOllamaProvider(config);
-    return provider(config.model, {
-      options: {
-        num_ctx: config.contextCapacityTokens,
-      },
-      reliableObjectGeneration: false,
-      structuredOutputs: supportsStructuredOutputs,
+    const createModel = (contextCapacityTokens: number): LanguageModelV4 => {
+      return provider(config.model, {
+        options: {
+          num_ctx: contextCapacityTokens,
+        },
+        reliableObjectGeneration: false,
+        structuredOutputs: supportsStructuredOutputs,
+      });
+    };
+    return createOllamaLanguageModelRuntime(config, {
+      createModel,
+      providerSafetyMarginTokens,
+      workload,
     });
   }
   const provider = createOpenAICompatible(
@@ -469,7 +490,19 @@ function createLanguageModel(
       supportsStructuredOutputs,
     ),
   );
-  return provider(config.model);
+  return createFixedLanguageModelRuntime(config, provider(config.model));
+}
+
+function createFixedLanguageModelRuntime(
+  config: LanguageInferenceConfig,
+  model: LanguageModelV4,
+): OllamaLanguageModelRuntime {
+  return {
+    model,
+    readCapabilities: (abortSignal) => {
+      return readLanguageModelCapabilities(config, abortSignal);
+    },
+  };
 }
 
 function createEmbeddingModel(

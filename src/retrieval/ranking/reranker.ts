@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import type { InferenceMetricsReporter } from "../../inference/metrics.js";
 import type { RerankerConfig } from "../../config/index.js";
+import { formatDurationMilliseconds } from "../../shared/duration.js";
 import { selectSourceDiverseElements } from "../document-retrieval.js";
 import type { RetrievedElement } from "../document-retrieval.js";
 import { buildRerankDocument } from "../content.js";
@@ -68,7 +69,8 @@ interface RankedRetrieval {
 
 export class RerankingTimeoutError extends Error {
   public constructor(timeoutMs: number) {
-    super(`Reranking timed out after ${timeoutMs} ms.`);
+    const duration = formatDurationMilliseconds(timeoutMs);
+    super(`Reranking timed out after ${duration}.`);
     this.name = "RerankingTimeoutError";
   }
 }

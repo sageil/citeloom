@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { ClaimVerifierConfig } from "../config/index.js";
 import { readBoundedResponseText } from "../providers/http-response.js";
+import { formatDurationMilliseconds } from "../shared/duration.js";
 
 export const HHEM_MODEL_ID = "vectara/hallucination_evaluation_model";
 export const HHEM_MODEL_REVISION =
@@ -190,9 +191,10 @@ export class HttpHhemClient implements HhemClient {
         throw error;
       }
       if (timeoutSignal.aborted) {
+        const duration = formatDurationMilliseconds(this.config.timeoutMs);
         throw new HhemClientError(
           "timeout",
-          `${this.config.runtimeName} timed out after ${this.config.timeoutMs} ms.`,
+          `${this.config.runtimeName} timed out after ${duration}.`,
           true,
           null,
           error,
