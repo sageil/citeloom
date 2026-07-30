@@ -6,6 +6,7 @@ import {
 import type { LanguageInferenceConfig } from "../src/config/index.js";
 
 const config: LanguageInferenceConfig = {
+  adaptiveContextEnabled: false,
   adapter: "openai-compatible-language",
   apiToken: null,
   baseUrl: "http://localhost:1234/v1",

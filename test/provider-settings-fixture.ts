@@ -171,6 +171,7 @@ export function createTestProviderSettings(
 
 function createProviderConnection(baseUrl: string | null): ProviderConnection {
   return {
+    adaptiveContextEnabled: false,
     answer: createModelConnection(null, null),
     apiToken: null,
     baseUrl,
