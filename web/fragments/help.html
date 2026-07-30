@@ -46,6 +46,17 @@
           </a>
         </li>
         <li>
+          <a href="#chat-with-documents">
+            <svg aria-hidden="true" class="citeloom-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-book"></use>
+            </svg>
+            <strong>Chat with documents</strong>
+            <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+            </svg>
+          </a>
+        </li>
+        <li>
           <a href="#find-sources">
             <svg aria-hidden="true" class="citeloom-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-book"></use>
@@ -145,6 +156,7 @@
               <li>Upload PDF, HTML, DOCX, XLSX, PPTX, JPEG, PNG, WebP, or another readable UTF-8 text file from Overview or Documents.</li>
               <li>Wait until each document shows Ready.</li>
               <li>Use Ask to get an answer that combines evidence and includes citations.</li>
+              <li>Use Chat for a private follow-up conversation that remains grounded in document evidence.</li>
               <li>Use Find Sources to locate documents or passages without generating an answer.</li>
             </ol>
           </div>
@@ -165,7 +177,7 @@
             <p>CiteLoom indexes the saved results of Excel formulas, not the formulas themselves. Recalculate and save a workbook before uploading it.</p>
             <p>PowerPoint slide text, tables, pictures, speaker notes, and comments can be indexed.</p>
             <ul>
-              <li>A document must be Ready before it can appear in Ask or Find Sources.</li>
+              <li>A document must be Ready before it can appear in Ask, Chat, or Find Sources.</li>
               <li>If a document shows Reindex required, process it again before searching it with the current embedding model.</li>
               <li>Use tags to create reusable groups of related documents.</li>
               <li>Clear headings and selectable text help CiteLoom create useful section names and excerpts.</li>
@@ -186,6 +198,22 @@
             </ul>
             <p>For a complete answer, ask a complete question instead of entering one broad term.</p>
             <p>Use Find Sources first for queries such as <code>termination</code>, <code>arthritis</code>, or <code>data retention</code>.</p>
+          </div>
+        </section>
+
+        <section aria-labelledby="chat-with-documents" class="help-section">
+          <h2 id="chat-with-documents" tabindex="-1">Chat with documents</h2>
+          <div>
+            <p>Use Chat when later questions should build on a saved document-grounded conversation.</p>
+            <ul>
+              <li>Each chat is private to its creator in the current workspace.</li>
+              <li>CiteLoom stores every user message and completed assistant response.</li>
+              <li>For long conversations, CiteLoom retrieves relevant earlier complete turns instead of sending the entire history.</li>
+              <li>Earlier messages provide context only. Every factual response still requires newly retrieved document evidence and citations.</li>
+              <li>If a library document is deleted or replaced, existing chat messages and their retained citation evidence remain unchanged.</li>
+              <li>Deleting the chat removes its messages, embeddings, and retained citation records.</li>
+            </ul>
+            <p>Administrators can configure Chat separately from Answer and Summary in Settings.</p>
           </div>
         </section>
 

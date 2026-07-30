@@ -164,6 +164,18 @@ import {
 import type {
   EmbeddingInputFormatDefinition,
 } from "../embedding/input-format-model.js";
+import type { QueryScope } from "../domain/query-scope.js";
+import {
+  answerChatMessageWithRuntime,
+  type ChatMessageRequest,
+  type ChatMessageResponse,
+} from "../chat/pipeline.js";
+import { ChatStore } from "../chat/store.js";
+import type {
+  ChatConversation,
+  ChatConversationSummary,
+  StoredChatCitation,
+} from "../chat/types.js";
 
 export interface RuntimeWebServices {
   readonly config: AppConfig;
@@ -187,7 +199,21 @@ export interface RuntimeWebServices {
     previousVersionId: string,
     currentVersionId: string,
   ) => Promise<DocumentVersionDifference | null>;
+  answerChatMessage?: (
+    principal: AuthenticatedPrincipal,
+    request: ChatMessageRequest,
+    abortSignal: AbortSignal,
+  ) => Promise<ChatMessageResponse>;
+  createChatConversation?: (
+    principal: AuthenticatedPrincipal,
+    title: string,
+    scope: QueryScope,
+  ) => Promise<ChatConversation>;
   createResearchThread: (title: string) => Promise<ResearchThread>;
+  deleteChatConversation?: (
+    principal: AuthenticatedPrincipal,
+    id: string,
+  ) => Promise<void>;
   deleteResearchThread: (id: string) => Promise<void>;
   deleteIndexedDocument?: (
     request: ReindexDocumentRequest,
@@ -207,6 +233,9 @@ export interface RuntimeWebServices {
     uploadedByUserId: string,
   ) => Promise<BulkIngestResult>;
   listDocumentVersions: (sourceFile: string) => Promise<DocumentVersionRecord[]>;
+  listChatConversations?: (
+    principal: AuthenticatedPrincipal,
+  ) => Promise<ChatConversationSummary[]>;
   listResearchThreads: () => Promise<ResearchThreadSummary[]>;
   readCitationEvidence: (id: string) => Promise<StoredCitationRecord | null>;
   readCitationHighlightedPdf: (id: string) => Promise<IndexedDocumentFile | null>;
@@ -214,6 +243,29 @@ export interface RuntimeWebServices {
     content: Buffer;
     mediaType: string;
   } | null>;
+  readChatCitationEvidence?: (
+    principal: AuthenticatedPrincipal,
+    id: string,
+  ) => Promise<StoredChatCitation | null>;
+  readChatCitationFile?: (
+    principal: AuthenticatedPrincipal,
+    id: string,
+  ) => Promise<IndexedDocumentFile | null>;
+  readChatCitationHighlightedPdf?: (
+    principal: AuthenticatedPrincipal,
+    id: string,
+  ) => Promise<IndexedDocumentFile | null>;
+  readChatCitationImage?: (
+    principal: AuthenticatedPrincipal,
+    id: string,
+  ) => Promise<{
+    content: Buffer;
+    mediaType: string;
+  } | null>;
+  readChatConversation?: (
+    principal: AuthenticatedPrincipal,
+    id: string,
+  ) => Promise<ChatConversation | null>;
   readDocumentFile: (
     request: ReadDocumentFileRequest,
   ) => Promise<IndexedDocumentFile | null>;
@@ -739,6 +791,7 @@ function createRuntimeWebServices(
   runtime: ApplicationRuntime,
 ): RuntimeWebServices {
   const research = new ResearchStore(runtime.database, runtime.config);
+  const chat = new ChatStore(runtime.database, runtime.config);
   const services: RuntimeWebServices = {
     addResearchFeedback: async (input, userId) => research.addFeedback(input, userId),
     browseDocuments: async (request) => {
@@ -747,8 +800,23 @@ function createRuntimeWebServices(
     compareDocumentVersions: async (previousVersionId, currentVersionId) => {
       return research.compareDocumentVersions(previousVersionId, currentVersionId);
     },
+    answerChatMessage: async (principal, request, abortSignal) => {
+      return answerChatMessageWithRuntime(
+        runtime,
+        principal,
+        request,
+        abortSignal,
+        reportWebProgress,
+      );
+    },
     config: runtime.config,
+    createChatConversation: async (principal, title, scope) => {
+      return chat.createConversation(principal, title, scope);
+    },
     createResearchThread: async (title) => research.createThread(title),
+    deleteChatConversation: async (principal, id) => {
+      return chat.deleteConversation(principal, id);
+    },
     deleteResearchThread: async (id) => research.deleteThread(id),
     deleteIndexedDocument: async (request) => {
       return deleteIndexedDocumentWithRuntime(runtime, request);
@@ -792,6 +860,9 @@ function createRuntimeWebServices(
     },
     listDocumentVersions: async (sourceFile) => {
       return research.listDocumentVersions(sourceFile);
+    },
+    listChatConversations: async (principal) => {
+      return chat.listConversations(principal);
     },
     listResearchThreads: async () => research.listThreads(),
     readCitationEvidence: async (id) => {
@@ -845,6 +916,77 @@ function createRuntimeWebServices(
         content: Buffer.from(record.element.content, "base64"),
         mediaType: record.element.mimeType,
       };
+    },
+    readChatCitationEvidence: async (principal, id) => {
+      const record = await chat.readCitation(principal, id);
+      return record?.citation ?? null;
+    },
+    readChatCitationFile: async (principal, id) => {
+      const [record, document] = await Promise.all([
+        chat.readCitation(principal, id),
+        chat.readCitationFile(principal, id),
+      ]);
+      if (record === null || document === null) {
+        return null;
+      }
+      return {
+        content: document.content,
+        documentId: record.citation.documentId,
+        filename: basename(record.citation.sourceFile),
+        mediaType: document.mediaType,
+        sourceFile: record.citation.sourceFile,
+      };
+    },
+    readChatCitationHighlightedPdf: async (principal, id) => {
+      const [record, document] = await Promise.all([
+        chat.readCitation(principal, id),
+        chat.readCitationFile(principal, id),
+      ]);
+      if (record === null || document === null) {
+        return null;
+      }
+      if (document.mediaType !== "application/pdf") {
+        throw new ResearchInputConflictError(
+          "Highlighted evidence files are available only for PDF sources.",
+        );
+      }
+      if (record.citation.regions.length === 0) {
+        throw new ResearchInputConflictError(
+          "The selected citation has no stored PDF regions to highlight.",
+        );
+      }
+      const content = await renderHighlightedPdf(
+        document.content,
+        record.citation.regions,
+      );
+      return {
+        content,
+        documentId: record.citation.documentId,
+        filename: basename(record.citation.sourceFile),
+        mediaType: document.mediaType,
+        sourceFile: record.citation.sourceFile,
+      };
+    },
+    readChatCitationImage: async (principal, id) => {
+      const record = await chat.readCitation(principal, id);
+      if (record === null) {
+        return null;
+      }
+      if (
+        record.citation.evidence.kind !== "image"
+        || record.imageContent === null
+      ) {
+        throw new ResearchInputConflictError(
+          "The selected citation is not image evidence.",
+        );
+      }
+      return {
+        content: record.imageContent,
+        mediaType: record.citation.evidence.mimeType,
+      };
+    },
+    readChatConversation: async (principal, id) => {
+      return chat.readConversation(principal, id);
     },
     readDocumentFile: async (request) => {
       return readIndexedDocumentFileWithRuntime(runtime, request);

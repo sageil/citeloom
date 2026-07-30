@@ -100,6 +100,21 @@
                 </span>
                 <span>Ask</span>
               </a>
+              <a
+                class="primary-navigation-button citeloom-navigation-link"
+                data-view="chat"
+                href="./index.html?view=chat"
+                hx-get="./fragments/chat.html"
+                hx-push-url="./index.html?view=chat"
+                :aria-current="currentPage('chat')"
+              >
+                <span class="primary-navigation-icon">
+                  <svg aria-hidden="true" class="citeloom-icon">
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use>
+                  </svg>
+                </span>
+                <span>Chat</span>
+              </a>
             </nav>
           </div>
 
@@ -296,6 +311,28 @@
               <span class="task-button-copy">
                 <strong>Ask and verify</strong>
                 <small>Ask questions and review evidence</small>
+              </span>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+              </svg>
+            </a>
+            <a
+              class="task-button citeloom-task-link"
+              data-view="chat"
+              href="./index.html?view=chat"
+              hx-get="./fragments/chat.html"
+              hx-push-url="./index.html?view=chat"
+              :class="{ active: activeView === 'chat' }"
+              :aria-current="currentPage('chat')"
+            >
+              <span class="task-button-icon">
+                <svg aria-hidden="true" class="citeloom-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use>
+                </svg>
+              </span>
+              <span class="task-button-copy">
+                <strong>Chat with documents</strong>
+                <small>Continue a grounded, cited conversation</small>
               </span>
               <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
                 <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>

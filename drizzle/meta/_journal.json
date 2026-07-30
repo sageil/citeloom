@@ -15,6 +15,13 @@
       "when": 1785265111089,
       "tag": "0001_wonderful_toxin",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785390847474,
+      "tag": "0002_lovely_butterfly",
+      "breakpoints": true
     }
   ]
 }

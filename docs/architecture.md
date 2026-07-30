@@ -17,7 +17,7 @@ Migration saves its path in PostgreSQL, which becomes the shared location used b
 | Local source content store | Immutable raw source bytes addressed by SHA-256 |
 | PostgreSQL | Source records, processing results, jobs, settings, search indexes, and shared model-request limits |
 | Docling | Document conversion that preserves reading order, tables, page locations, and image regions |
-| Model providers | Summaries, embeddings, extra search queries, reranking, answers, and optional speech |
+| Model providers | Summaries, embeddings, extra search queries, reranking, answers, chat, and optional speech |
 | HHEM service | Support scores for individual answer claims and their cited evidence |
 | Offline evaluation tools | Dataset generation, corpus management, scoring, tuning, and configuration freezes outside the production build |
 
@@ -92,6 +92,7 @@ The application builds one typed runtime configuration and then applies the sele
 flowchart LR
     Settings[(Provider settings<br/>in PostgreSQL)] --> Builder[Configuration builder]
     Builder --> Answer[Answer]
+    Builder --> Chat[Chat]
     Builder --> Expansion[Extra search queries]
     Builder --> Summary[Summarization]
     Builder --> Embedding[Embedding]
@@ -100,6 +101,7 @@ flowchart LR
     Builder --> TTS[Text-to-speech]
 
     Answer --> Adapter[Selected provider adapter]
+    Chat --> Adapter
     Expansion --> Adapter
     Summary --> Adapter
     Embedding --> Adapter
@@ -113,7 +115,7 @@ flowchart LR
 ```
 
 Routing is capability-specific, but concurrency is provider-specific.
-If answer generation, summarization, and embeddings all use one provider, they share that provider's configured request limit.
+If answer generation, chat, summarization, and embeddings all use one provider, they share that provider's configured request limit.
 See [Provider reference](configuration.md#provider-reference) for the complete capability matrix and endpoint conventions.
 
 ## Document ingestion
@@ -222,6 +224,37 @@ It can remove unsupported citation links or statements before publication, while
 Only answers that pass validation are published.
 Cancellations and service failures keep their own status.
 
+## Document chat
+
+Chat is separate from Ask and is available only to the conversation creator in the active workspace.
+Chat owns its system prompt, user-prompt framing, and direct-answer response contract.
+Each user message is stored before retrieval or generation begins.
+Each completed assistant response stores its rendered answer, citation snapshots, retained image evidence, retrieval trace, memory trace, and run configuration.
+User and assistant messages are embedded in the active embedding space for conversation-memory retrieval, but those embeddings are an index rather than evidence.
+
+Short conversations use complete prior user and assistant turns in chronological order.
+When the conversation exceeds its memory budget, CiteLoom combines the most recent complete turns with semantically relevant earlier complete turns.
+Each selected prior assistant answer includes a citation source map built from its stored citation snapshots so its numeric citation markers retain their document identity.
+Conversation memory can clarify a follow-up, but it cannot support a factual claim or replace currently retrieved document evidence.
+If document retrieval finds no relevant evidence, Chat publishes a no-answer response instead of using model knowledge.
+An answered Chat response must begin with a direct answer and may then provide supporting reasoning, comparison criteria, limitations, exceptions, and conflicts.
+The Chat model contract represents the direct answer separately from criteria, findings, limitations, and disagreements.
+Each answer or analysis point carries exact request-local evidence references.
+The model may cite only request-local evidence references, and the server resolves those references to stored source elements before publication.
+Chat sends only `analysis.findings` to HHEM because those entries contain atomic facts stated by the retrieved sources.
+The direct answer, criteria, limitations, and disagreements are not HHEM inputs.
+Chat stores the resulting checks as diagnostic metadata and never uses them to reject, remove, or rewrite the answer.
+
+Chat run leases are renewable and retry attempts are fenced by an attempt number.
+This prevents an expired worker from publishing after a newer attempt has taken ownership.
+Assistant publication is atomic, so a completed run cannot expose a response without its embeddings, citation evidence, traces, and configuration.
+
+Deleting a library document does not alter any chat, even when that document was the only source used by a response.
+The chat retains the cited evidence snapshot and an independent reference to the immutable source bytes.
+When a response cites multiple documents, every citation remains readable regardless of which library documents are later removed.
+The retained source bytes become eligible for cleanup only after no library, ingestion, index, document-version, or chat-evidence record references them.
+Deleting the chat removes its messages, embeddings, and citation records, then queues any source bytes that have no remaining references for durable cleanup.
+
 ## Persistence and concurrency
 
 PostgreSQL leases coordinate background workers and model-request capacity across processes.
@@ -234,3 +267,4 @@ Every new turn has a retrieval trace, while older turns remain readable without 
 Submitting a question creates a new run.
 Opening a saved turn returns the stored result without searching or generating it again.
 The server remains the source of truth for citation identity and source metadata.
+Saved chats keep their original messages and retained citation evidence independently of the current library.

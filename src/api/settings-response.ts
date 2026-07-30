@@ -85,6 +85,7 @@ export interface ProviderConnectionResponse {
   apiTokenConfigured: boolean;
   capabilityApiTokensConfigured: {
     answer: boolean;
+    chat: boolean;
     embedding: boolean;
     queryExpansion: boolean;
     reranking: boolean;
@@ -249,6 +250,7 @@ function buildProviderSettingsResponse(
       apiTokenConfigured: connection.apiToken !== null,
       capabilityApiTokensConfigured: {
         answer: connection.answer.apiToken !== null,
+        chat: (connection.chat ?? connection.answer).apiToken !== null,
         embedding: connection.embedding.apiToken !== null,
         queryExpansion: connection.queryExpansion.apiToken !== null,
         reranking: connection.reranking.apiToken !== null,
@@ -271,7 +273,9 @@ function buildProviderSettingsResponse(
   return {
     catalog,
     connections,
-    featureOverrides: structuredClone(settings.providerSettings.featureOverrides),
+    featureOverrides: structuredClone(
+      settings.providerSettings.featureOverrides,
+    ),
     routing: { ...settings.providerSettings.routing },
   };
 }

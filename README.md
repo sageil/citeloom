@@ -21,6 +21,7 @@ It generates structured answers using exact evidence references, converts them i
 - Search original evidence with meaning-based and keyword retrieval.
 - Use generated text and table summaries to improve discovery without citing those summaries as source evidence.
 - Ask questions across all ready documents, selected files, or tags.
+- Hold private document-grounded chats that retrieve relevant earlier turns while keeping every original message and citation snapshot.
 - Inspect text, table, image, and highlighted PDF evidence for validated citations.
 - Save and export research threads that keep their original answers, citations, and run settings.
 - Reproduce retrieval runs with saved settings, stable seeds calculated from each request, consistent tie-breaking, and retrieval traces.
@@ -31,7 +32,7 @@ It generates structured answers using exact evidence references, converts them i
 - Docker with Docker Compose.
 - Bash and curl for the local installer.
 - Node.js 26.5.0 for source-based development outside Docker.
-- Configured model providers for language, summarization, embeddings, and any enabled reranking or speech features.
+- Configured model providers for answers, chat, summarization, embeddings, and any enabled reranking or speech features.
 - Enough local memory and storage for the selected models, PostgreSQL data, document artifacts, and extracted images.
 
 The included Compose services provide PostgreSQL, Docling document conversion, and HHEM claim-support checks.
@@ -68,7 +69,7 @@ docker compose --env-file .env -f compose.dockerhub.yml up -d --wait
 Open `https://localhost:3443` and sign in with the administrator account.
 If the browser warns about the local development certificate, use its trust or continue flow for this local site.
 
-A fresh database routes answers, summaries, extra search queries, and embeddings to Ollama.
+A fresh database routes answers, chat, summaries, extra search queries, and embeddings to Ollama.
 Open Settings to use different providers or to enable reranking, speech-to-text, or text-to-speech.
 See [Deployment](docs/deployment.md) for storage paths, restart behavior, and building the images locally.
 
@@ -87,18 +88,18 @@ The installer creates `.env` when needed, asks for the initial administrator cre
 Provider routing is configured per capability in Settings.
 A provider can serve one capability while another provider serves the rest.
 
-| Provider | Answers | Extra search queries | Summaries | Embeddings | Reranking | Speech-to-text | Text-to-speech |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| oMLX | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Ollama | Yes | Yes | Yes | Yes | - | - | - |
-| LM Studio | Yes | Yes | Yes | Yes | - | - | - |
-| OpenAI | Yes | Yes | Yes | Yes | - | Yes | Yes |
-| OpenAI Codex | Yes | Yes | Yes | - | - | - | - |
-| DeepSeek | Yes | Yes | Yes | - | - | - | - |
-| Groq | Yes | Yes | Yes | - | - | Yes | Yes |
-| Cohere | Yes | Yes | Yes | Yes | Yes | - | - |
-| Jina | - | - | - | Yes | Yes | - | - |
-| Custom | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Provider | Answers | Chat | Extra search queries | Summaries | Embeddings | Reranking | Speech-to-text | Text-to-speech |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| oMLX | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Ollama | Yes | Yes | Yes | Yes | Yes | - | - | - |
+| LM Studio | Yes | Yes | Yes | Yes | Yes | - | - | - |
+| OpenAI | Yes | Yes | Yes | Yes | Yes | - | Yes | Yes |
+| OpenAI Codex | Yes | Yes | Yes | Yes | - | - | - | - |
+| DeepSeek | Yes | Yes | Yes | Yes | - | - | - | - |
+| Groq | Yes | Yes | Yes | Yes | - | - | Yes | Yes |
+| Cohere | Yes | Yes | Yes | Yes | Yes | Yes | - | - |
+| Jina | - | - | - | - | Yes | Yes | - | - |
+| Custom | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 The table shows the provider adapters available for each capability.
 Choose a model and endpoint that implement the selected capability.
@@ -108,7 +109,7 @@ See [Configuration](docs/configuration.md#provider-reference) for endpoint conve
 ## Fresh-install provider defaults
 
 CiteLoom services run in Docker Compose while local model servers run on the host.
-Fresh settings use Ollama for answers, extra search queries, summaries, and embeddings, and include oMLX model suggestions for optional reranking and speech.
+Fresh settings use Ollama for answers, chat, extra search queries, summaries, and embeddings, and include oMLX model suggestions for optional reranking and speech.
 Adaptive inference is enabled by default for native Ollama GGUF language models.
 It uses a 65,536-token floor capped by the model maximum, grows bounded answer requests when their calculated requirement is larger, and reuses larger resident runners without shrinking them.
 Summaries, vision, tools, reasoning, and unbounded answers use the model maximum reported by Ollama.
@@ -119,7 +120,7 @@ Users can optionally enable reranking with oMLX, Cohere, Jina, or Custom.
 
 | Runtime | Model | Status and use |
 | --- | --- | --- |
-| Ollama | `gemma4:e4b-mlx` | Answer generation, summarization, and extra search queries |
+| Ollama | `gemma4:e4b-mlx` | Answer generation, chat, summarization, and extra search queries |
 | Ollama | `snowflake-arctic-embed:137m` | Document and query embeddings |
 | oMLX | `gte-reranker-modernbert-base` | Available for optional retrieval reranking when routed |
 | oMLX | `Qwen3-ASR-1.7B-8bit` | Available for speech-to-text transcription when routed |

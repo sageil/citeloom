@@ -20,11 +20,13 @@ import type {
   NormalizedProviderSettingsChange,
   ProviderCapability,
   ProviderCapabilityConnection,
+  ProviderCapabilityFeatureOverrides,
   ProviderConnection,
   ProviderConnectionConfiguration,
   ProviderCredentialTarget,
   ProviderId,
   ProviderModelConnection,
+  ProviderModelFeatureOverrides,
   ProviderSettings,
 } from "../providers/profiles.js";
 import {
@@ -1018,6 +1020,7 @@ export function applyProviderSettingsChanges(
     return structuredClone(defaults);
   }
   const next = structuredClone(current);
+  materializeChatSettings(next);
   for (const change of changes) {
     if (change.action === "configure") {
       next.connections[change.providerId] = configureProviderConnection(
@@ -1046,16 +1049,21 @@ export function applyProviderSettingsChanges(
     }
     if (change.action === "route") {
       next.routing[change.capability] = change.providerId;
-      next.featureOverrides[change.capability].modelOverride = null;
+      readMutableFeatureOverrides(
+        next,
+        change.capability,
+      ).modelOverride = null;
       if (
         change.capability === "answer"
+        || change.capability === "chat"
         || change.capability === "embedding"
         || change.capability === "queryExpansion"
         || change.capability === "summarization"
       ) {
-        next.featureOverrides[
-          change.capability
-        ].contextCapacityTokensOverride = null;
+        readMutableModelFeatureOverrides(
+          next,
+          change.capability,
+        ).contextCapacityTokensOverride = null;
       }
       if (change.capability === "textToSpeech") {
         next.featureOverrides.textToSpeech.voiceOverride = null;
@@ -1074,17 +1082,19 @@ function configureApplicationFeature(
 ): void {
   const capability = configuration.capability;
   settings.routing[capability] = configuration.providerId;
-  settings.featureOverrides[capability].modelOverride =
+  readMutableFeatureOverrides(settings, capability).modelOverride =
     configuration.modelOverride;
   if (
     configuration.capability === "answer"
+    || configuration.capability === "chat"
     || configuration.capability === "embedding"
     || configuration.capability === "queryExpansion"
     || configuration.capability === "summarization"
   ) {
-    settings.featureOverrides[
-      configuration.capability
-    ].contextCapacityTokensOverride =
+    readMutableModelFeatureOverrides(
+      settings,
+      configuration.capability,
+    ).contextCapacityTokensOverride =
       configuration.contextCapacityTokensOverride;
   }
   if (configuration.capability === "textToSpeech") {
@@ -1105,6 +1115,10 @@ function configureProviderConnection(
     answer: configureModelConnection(
       current.answer,
       configuration.answer,
+    ),
+    chat: configureModelConnection(
+      current.chat ?? current.answer,
+      configuration.chat ?? configuration.answer,
     ),
     baseUrl: configuration.baseUrl,
     customAdapters: { ...configuration.customAdapters },
@@ -1150,12 +1164,27 @@ function validateOpenAICodexConnectionConfiguration(
   if (
     configuration.baseUrl !== "https://chatgpt.com/backend-api/codex"
     || configuration.answer.baseUrl !== null
+    || (configuration.chat?.baseUrl ?? null) !== null
     || configuration.queryExpansion.baseUrl !== null
     || configuration.summarization.baseUrl !== null
   ) {
     throw new SettingsValidationError(
       "The OpenAI Codex device credential can only use the fixed ChatGPT Codex endpoint.",
     );
+  }
+}
+
+function materializeChatSettings(settings: ProviderSettings): void {
+  settings.routing.chat = settings.routing.chat ?? settings.routing.answer;
+  settings.featureOverrides.chat = {
+    ...(settings.featureOverrides.chat ?? settings.featureOverrides.answer),
+  };
+  for (const connection of Object.values(settings.connections)) {
+    connection.chat = {
+      ...(connection.chat ?? connection.answer),
+    };
+    connection.customAdapters.chat = connection.customAdapters.chat
+      ?? connection.customAdapters.answer;
   }
 }
 
@@ -1188,6 +1217,7 @@ function setProviderCredential(
   if (target === "shared") {
     connection.apiToken = value;
     connection.answer.apiToken = null;
+    readMutableChatConnection(connection).apiToken = null;
     connection.embedding.apiToken = null;
     connection.queryExpansion.apiToken = null;
     connection.reranking.apiToken = null;
@@ -1196,7 +1226,49 @@ function setProviderCredential(
     connection.textToSpeech.apiToken = null;
     return;
   }
+  if (target === "chat") {
+    readMutableChatConnection(connection).apiToken = value;
+    return;
+  }
   connection[target].apiToken = value;
+}
+
+function readMutableFeatureOverrides(
+  settings: ProviderSettings,
+  capability: ProviderCapability,
+): ProviderCapabilityFeatureOverrides {
+  if (capability === "chat") {
+    settings.featureOverrides.chat ??= {
+      ...settings.featureOverrides.answer,
+    };
+    return settings.featureOverrides.chat;
+  }
+  return settings.featureOverrides[capability];
+}
+
+function readMutableModelFeatureOverrides(
+  settings: ProviderSettings,
+  capability:
+    | "answer"
+    | "chat"
+    | "embedding"
+    | "queryExpansion"
+    | "summarization",
+): ProviderModelFeatureOverrides {
+  if (capability === "chat") {
+    settings.featureOverrides.chat ??= {
+      ...settings.featureOverrides.answer,
+    };
+    return settings.featureOverrides.chat;
+  }
+  return settings.featureOverrides[capability];
+}
+
+function readMutableChatConnection(
+  connection: ProviderConnection,
+): ProviderModelConnection {
+  connection.chat ??= { ...connection.answer };
+  return connection.chat;
 }
 
 function runtimeSettingsSchemaForKey(

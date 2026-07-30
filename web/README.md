@@ -44,6 +44,7 @@ Set `CITELOOM_API_ORIGIN` if the backend runs at a different origin.
 - `assets/scripts/citeloom-app.js` registers the Alpine shell component and loads each route's JavaScript before HTMX requests its HTML fragment.
 - `assets/scripts/citeloom-ask.js` loads on the first Ask visit.
   It manages research threads, scoped questions, source discovery, streamed answers, citations, feedback, speech playback, and dictation.
+- `assets/scripts/citeloom-chat.js` loads on the first Chat visit and manages private grounded conversations, retained citation evidence, and message submission.
 - `assets/scripts/citeloom-account.js` owns authenticated account and password changes.
 - `assets/scripts/citeloom-documents.js` loads on the first Documents visit.
   It manages catalog validation, filtering, pagination, inspection, version history, retry, and reindex behavior.

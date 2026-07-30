@@ -359,7 +359,7 @@ function requiresReauthentication(error: unknown): boolean {
 }
 
 function readActiveOpenAICodexCapabilities(
-  routing: Record<ProviderCapability, string | null>,
+  routing: Partial<Record<ProviderCapability, string | null | undefined>>,
 ): ProviderCapability[] {
   const active: ProviderCapability[] = [];
   for (const capability of PROVIDER_CAPABILITIES) {

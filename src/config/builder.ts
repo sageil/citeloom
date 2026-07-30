@@ -278,6 +278,7 @@ function buildSchedulingConfig(
   const targets: SchedulingConfig["targets"] = {};
   const scheduledCapabilities: ScheduledProviderCapability[] = [
     "answer",
+    "chat",
     "embedding",
     "queryExpansion",
     "reranking",
@@ -286,7 +287,9 @@ function buildSchedulingConfig(
     "textToSpeech",
   ];
   for (const capability of scheduledCapabilities) {
-    const providerId = providerSettings.routing[capability];
+    const providerId = capability === "chat"
+      ? providerSettings.routing.chat ?? providerSettings.routing.answer
+      : providerSettings.routing[capability];
     if (providerId === null) {
       continue;
     }
@@ -343,6 +346,7 @@ function buildInferenceConfig(
   embeddingInputFormat: EmbeddingInputFormatContract,
 ): InferenceConfig {
   const answer = resolveLanguageProvider(providerSettings, "answer");
+  const chat = resolveLanguageProvider(providerSettings, "chat");
   const embedding = resolveEmbeddingProvider(providerSettings);
   const queryExpansion = resolveLanguageProvider(
     providerSettings,
@@ -359,6 +363,10 @@ function buildInferenceConfig(
       minimumOutputTokens: settings.answerMinimumOutputTokens,
       providerSafetyMarginTokens: settings.answerProviderSafetyMarginTokens,
     },
+    chat: buildLanguageInferenceConfig(
+      chat,
+      secondsToMilliseconds(settings.answerTimeoutSeconds),
+    ),
     embedding: buildEmbeddingInferenceConfig(
       embedding,
       embeddingInputFormat,

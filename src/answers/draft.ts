@@ -17,24 +17,12 @@ export const ANSWER_PRESENTATIONS = ["paragraph", "bullet"] as const;
 
 const numericCitationDecorationPattern = /(?:[\[【]\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\s*[\]】]|\(\s*(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\s*\)|\b(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\b)/gi;
 const evidenceReferenceDecorationPattern = /(?:[\[【]\s*EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\s*[\]】]|\(\s*(?:evidence\s+)?references?\s*EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\s*\)|\b(?:evidence\s+)?references?\s*EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\b)/gi;
-const htmlTagPattern = /<\/?[A-Za-z][^>]*>/;
-const markdownLinkPattern = /!?\[[^\]]*\]\([^)]*\)/;
-const markdownBlockPattern = /^(?:\s{0,3}(?:#{1,6}|>|\||[-+*]\s|\d+[.)]\s|```|~~~))/;
-const markdownInlineDelimiterPattern = /(?:__|~~|_[^_]+_)/;
-
 export const answerSectionSchema = z.enum(ANSWER_SECTIONS);
 export const answerDraftSectionSchema = z.enum(ANSWER_DRAFT_SECTIONS);
 export const answerPresentationSchema = z.enum(ANSWER_PRESENTATIONS);
 export const answerStatementContentSchema = z.string()
-  .min(1)
-  .refine((value) => value === value.trim(), "must not have surrounding whitespace")
-  .refine((value) => !/[\r\n]/.test(value), "must be one plain-text line")
-  .refine((value) => !htmlTagPattern.test(value), "must not contain HTML")
-  .refine((value) => !markdownLinkPattern.test(value), "must not contain Markdown links")
-  .refine((value) => !markdownBlockPattern.test(value), "must not contain Markdown blocks")
-  .refine((value) => !value.includes("*"), "must not contain Markdown emphasis delimiters")
-  .refine((value) => !markdownInlineDelimiterPattern.test(value), "must not contain Markdown inline delimiters")
-  .refine((value) => !value.includes("`"), "must not contain Markdown code delimiters");
+  .trim()
+  .min(1);
 
 const answerModelContentSchema = z.string();
 
@@ -350,7 +338,7 @@ export function decodeAnswerModelResponse(
   const normalized = structuredClone(modelResult.data);
   const normalizedStatements: AnswerModelStatement[] = [];
   for (const statement of normalized.statements) {
-    const content = readCanonicalModelText(statement.content);
+    const content = readNormalizedModelText(statement.content);
     if (content === null) {
       continue;
     }
@@ -361,16 +349,16 @@ export function decodeAnswerModelResponse(
   }
   const conflictGroups: AnswerDraftConflictGroup[] = [];
   for (const group of normalized.conflictGroups) {
-    group.explanation = normalizeModelText(group.explanation);
-    group.sharedScope.conditions = normalizeModelText(group.sharedScope.conditions);
-    group.sharedScope.context = normalizeModelText(group.sharedScope.context);
-    group.sharedScope.scope = normalizeModelText(group.sharedScope.scope);
-    group.sharedScope.timePeriod = normalizeModelText(group.sharedScope.timePeriod);
+    group.explanation = normalizeAnswerModelText(group.explanation);
+    group.sharedScope.conditions = normalizeAnswerModelText(group.sharedScope.conditions);
+    group.sharedScope.context = normalizeAnswerModelText(group.sharedScope.context);
+    group.sharedScope.scope = normalizeAnswerModelText(group.sharedScope.scope);
+    group.sharedScope.timePeriod = normalizeAnswerModelText(group.sharedScope.timePeriod);
     for (const position of group.positions) {
-      position.claim = normalizeModelText(position.claim);
+      position.claim = normalizeAnswerModelText(position.claim);
       position.evidenceRefs = uniqueEvidenceReferences(position.evidenceRefs);
     }
-    if (modelNormalizationInvalidatedConflictGroup(group)) {
+    if (hasInvalidNormalizedConflictGroup(group)) {
       continue;
     }
     conflictGroups.push(group);
@@ -406,7 +394,7 @@ export function decodeAnswerModelResponse(
   };
 }
 
-function modelNormalizationInvalidatedConflictGroup(
+function hasInvalidNormalizedConflictGroup(
   group: AnswerDraftConflictGroup,
 ): boolean {
   const groupText = [
@@ -417,13 +405,13 @@ function modelNormalizationInvalidatedConflictGroup(
     group.sharedScope.timePeriod,
   ];
   for (const value of groupText) {
-    if (!isCanonicalAnswerText(value)) {
+    if (!hasAnswerText(value)) {
       return true;
     }
   }
   const claims = new Set<string>();
   for (const position of group.positions) {
-    if (!isCanonicalAnswerText(position.claim)) {
+    if (!hasAnswerText(position.claim)) {
       return true;
     }
     const claim = position.claim.toLocaleLowerCase();
@@ -435,9 +423,9 @@ function modelNormalizationInvalidatedConflictGroup(
   return false;
 }
 
-function readCanonicalModelText(value: string): string | null {
-  const normalized = normalizeModelText(value);
-  if (!isCanonicalAnswerText(normalized)) {
+function readNormalizedModelText(value: string): string | null {
+  const normalized = normalizeAnswerModelText(value);
+  if (normalized.length === 0) {
     return null;
   }
   return normalized;
@@ -458,7 +446,7 @@ function uniqueEvidenceReferences(
   return unique;
 }
 
-function normalizeModelText(value: string): string {
+export function normalizeAnswerModelText(value: string): string {
   const withoutNumericCitations = value.replace(
     numericCitationDecorationPattern,
     " ",
@@ -498,16 +486,8 @@ function createAlphabeticLabel(index: number): string {
   return label;
 }
 
-function isCanonicalAnswerText(value: string): boolean {
-  return value.length > 0
-    && value === value.trim()
-    && !/[\r\n]/.test(value)
-    && !htmlTagPattern.test(value)
-    && !markdownLinkPattern.test(value)
-    && !markdownBlockPattern.test(value)
-    && !value.includes("*")
-    && !markdownInlineDelimiterPattern.test(value)
-    && !value.includes("`");
+function hasAnswerText(value: string): boolean {
+  return value.trim().length > 0;
 }
 
 function createAnswerDraftDecodeError(

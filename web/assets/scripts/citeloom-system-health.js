@@ -17,6 +17,7 @@ deactivateSystemHealthDashboard,
 const telemetryRequestKinds = Object.freeze([
   "answer",
   "benchmark",
+  "chat",
   "retrieval",
   "search",
 ]);

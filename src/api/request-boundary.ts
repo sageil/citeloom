@@ -65,6 +65,10 @@ import {
   ResearchRecordNotFoundError,
   ResearchThreadNotFoundError,
 } from "../research/store.js";
+import {
+  ChatConflictError,
+  ChatNotFoundError,
+} from "../chat/store.js";
 import { contentIdSchema, tagSchema } from "../domain/validation.js";
 import {
   readEmbeddingInputFormatDefinition,
@@ -80,6 +84,16 @@ export interface QuestionRequest {
   question: string;
   scope: QueryScope;
   threadId: string;
+}
+
+export interface CreateChatConversationRequest {
+  scope: QueryScope;
+  title: string;
+}
+
+export interface CreateChatMessageRequest {
+  content: string;
+  requestId: string;
 }
 
 export interface RetryIngestionRequest {
@@ -119,6 +133,15 @@ const sourceFileSchema = z.string()
 const researchThreadTitleSchema = z.object({
   title: z.string().trim().min(1).max(500),
 }).strict();
+const createChatConversationSchema = z.object({
+  scope: queryScopeSchema,
+  title: z.string().trim().min(1).max(500),
+}).strict();
+const createChatMessageSchema = z.object({
+  content: z.string().trim().min(1).max(8_000),
+  requestId: z.uuid(),
+}).strict();
+const chatParamsSchema = z.object({ conversationId: z.uuid() }).strict();
 const uuidParamsSchema = z.object({ id: z.uuid() }).strict();
 const threadParamsSchema = z.object({ threadId: z.uuid() }).strict();
 const researchExportQuerySchema = z.object({
@@ -232,6 +255,7 @@ const providerSettingsChangeSchema = z.discriminatedUnion("action", [
       z.object({
         capability: z.enum([
           "answer",
+          "chat",
           "embedding",
           "queryExpansion",
           "summarization",
@@ -503,6 +527,34 @@ export function decodeCreateResearchThreadRequest(value: unknown): string {
   return result.data.title;
 }
 
+export function decodeCreateChatConversationRequest(
+  value: unknown,
+): CreateChatConversationRequest {
+  const result = createChatConversationSchema.safeParse(value);
+  if (!result.success) {
+    throw new WebRequestError(400, "A valid chat title and document scope are required.");
+  }
+  return result.data;
+}
+
+export function decodeCreateChatMessageRequest(
+  value: unknown,
+): CreateChatMessageRequest {
+  const result = createChatMessageSchema.safeParse(value);
+  if (!result.success) {
+    throw new WebRequestError(400, "A valid chat message and request ID are required.");
+  }
+  return result.data;
+}
+
+export function decodeChatConversationId(value: unknown): string {
+  const result = chatParamsSchema.safeParse(value);
+  if (!result.success) {
+    throw new WebRequestError(400, "A valid chat ID is required.");
+  }
+  return result.data.conversationId;
+}
+
 export function decodeResearchThreadId(value: unknown): string {
   const result = threadParamsSchema.safeParse(value);
   if (!result.success) {
@@ -712,6 +764,9 @@ function formatProviderCapability(
   if (capability === "answer") {
     return "answer generation";
   }
+  if (capability === "chat") {
+    return "chat";
+  }
   if (capability === "speechToText") {
     return "speech-to-text";
   }
@@ -823,6 +878,12 @@ export function readErrorStatus(error: unknown): number {
     return 404;
   }
   if (error instanceof ResearchInputConflictError) {
+    return 409;
+  }
+  if (error instanceof ChatNotFoundError) {
+    return 404;
+  }
+  if (error instanceof ChatConflictError) {
     return 409;
   }
   const result = z.object({ statusCode: z.number().int().min(400).max(599) })

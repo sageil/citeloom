@@ -71,6 +71,15 @@ const routes = Object.freeze({
     pageStyles: ["./assets/styles/citeloom-ask.css"],
     title: "Ask | CiteLoom",
   },
+  chat: {
+    fragment: "./fragments/chat.html",
+    pageScript: {
+      id: "chat",
+      source: "./citeloom-chat.js",
+    },
+    pageStyles: ["./assets/styles/citeloom-chat.css"],
+    title: "Chat | CiteLoom",
+  },
   documents: {
     fragment: "./fragments/documents.html",
     pageScript: {
@@ -145,6 +154,7 @@ const routes = Object.freeze({
 const pathViews = Object.freeze({
   "/account": "account",
   "/ask": "ask",
+  "/chat": "chat",
   "/documents": "documents",
   "/errors": "errors",
   "/help": "help",
@@ -620,7 +630,8 @@ function registerShell(alpine) {
     get showTaskLaunchpad() {
       return this.activeView === "overview"
         || this.activeView === "documents"
-        || this.activeView === "ask";
+        || this.activeView === "ask"
+        || this.activeView === "chat";
     },
 
     get showWorkflowProgress() {

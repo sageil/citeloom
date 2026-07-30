@@ -1,0 +1,223 @@
+<section class="chat-feature-page" x-data="citeloomChatPage" x-init="initialize()">
+  <aside class="chat-sidebar" aria-label="Document chats">
+    <header>
+      <div>
+        <p class="section-kicker">Grounded conversations</p>
+        <h1>Chat</h1>
+      </div>
+      <button class="chat-icon-button" type="button" aria-label="Create chat" @click="openNewChat()">
+        <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
+      </button>
+    </header>
+
+    <button class="chat-new-button" type="button" @click="openNewChat()">
+      <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
+      <span>New document chat</span>
+    </button>
+
+    <p class="chat-sidebar-status" x-show="loading">Loading chats…</p>
+    <p class="chat-sidebar-status" x-show="!loading &amp;&amp; conversations.length === 0">No chats yet.</p>
+
+    <nav class="chat-conversation-list" aria-label="Saved chats">
+      <template x-for="item in conversations" :key="item.id">
+        <button
+          type="button"
+          :class="{ active: conversation?.id === item.id }"
+          :aria-current="conversation?.id === item.id ? 'page' : null"
+          @click="selectConversation(item.id)"
+        >
+          <strong x-text="item.title"></strong>
+          <span>
+            <span x-text="`${item.messageCount} messages`"></span>
+            <time :datetime="item.updatedAt" x-text="formatTime(item.updatedAt)"></time>
+          </span>
+        </button>
+      </template>
+    </nav>
+  </aside>
+
+  <main class="chat-workspace">
+    <template x-if="conversation === null">
+      <section class="chat-empty-state">
+        <span class="chat-empty-icon">
+          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
+        </span>
+        <h2>Start a grounded conversation</h2>
+        <p>Chat answers only from indexed documents and keeps the cited evidence with the conversation.</p>
+        <button class="chat-primary-button" type="button" @click="openNewChat()">Create a chat</button>
+      </section>
+    </template>
+
+    <template x-if="conversation !== null">
+      <div class="chat-conversation">
+        <header class="chat-conversation-header">
+          <div>
+            <p class="section-kicker">Private to you in this workspace</p>
+            <h2 x-text="conversation.title"></h2>
+            <p x-text="scopeLabel()"></p>
+          </div>
+          <button class="chat-delete-button" type="button" :disabled="busy" @click="deleteConversation()">
+            <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use></svg>
+            <span>Delete chat</span>
+          </button>
+        </header>
+
+        <div class="chat-thread" x-ref="thread" aria-live="polite">
+          <section class="chat-grounding-note">
+            <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-shield-check"></use></svg>
+            <p><strong>Document-grounded only.</strong> Conversation memory helps interpret follow-ups, but every factual answer must be supported by currently retrieved document evidence.</p>
+          </section>
+
+          <template x-for="run in conversation.runs" :key="run.id">
+            <article class="chat-turn">
+              <template x-for="message in run.messages" :key="message.id">
+                <div class="chat-message" :class="`chat-message-${message.role}`">
+                  <header>
+                    <strong x-text="message.role === 'user' ? 'You' : 'CiteLoom'"></strong>
+                    <time :datetime="message.createdAt" x-text="formatTime(message.createdAt)"></time>
+                  </header>
+
+                  <template x-if="message.role === 'user'">
+                    <p class="chat-user-content" x-text="message.content"></p>
+                  </template>
+
+                  <template x-if="message.role === 'assistant'">
+                    <div class="chat-assistant-content">
+                      <template x-if="message.answerDocument.status === 'no_answer'">
+                        <p x-text="message.content"></p>
+                      </template>
+                      <template x-for="(statement, statementIndex) in message.answerDocument.statements" :key="`${message.id}-${statementIndex}`">
+                        <div class="chat-statement" :class="`chat-statement-${statement.presentation}`">
+                          <p x-text="statement.content"></p>
+                          <div
+                            class="chat-statement-citations"
+                            x-show="findingCheckForStatement(message, statementIndex) !== null"
+                          >
+                            <template x-for="citationId in statement.citationIds" :key="citationId">
+                              <button
+                                type="button"
+                                x-show="citationVerificationStatus(message, statementIndex, citationId) !== null"
+                                :class="citationVerificationStatus(message, statementIndex, citationId)"
+                                x-text="citationLabel(citationForId(message, citationId))"
+                                :title="citationVerificationDescription(message, statementIndex, citationId)"
+                                :aria-label="statementCitationLabel(message, statementIndex, citationId)"
+                                @click="openCitation(citationForId(message, citationId))"
+                              ></button>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </template>
+
+              <div class="chat-run-error" role="status" x-show="run.state === 'failed' || run.state === 'canceled'">
+                <strong x-text="runStatusLabel(run)"></strong>
+                <span x-text="run.errorMessage ?? 'The request was canceled before a response was published.'"></span>
+              </div>
+            </article>
+          </template>
+
+          <article class="chat-turn chat-turn-pending" x-show="pendingContent !== ''">
+            <div class="chat-message chat-message-user">
+              <header><strong>You</strong><span>Now</span></header>
+              <p class="chat-user-content" x-text="pendingContent"></p>
+            </div>
+            <div class="chat-message chat-message-assistant chat-thinking">
+              <span class="chat-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span>Retrieving evidence and preparing a cited response…</span>
+            </div>
+          </article>
+        </div>
+
+        <form class="chat-composer" @submit.prevent="sendMessage()">
+          <label for="chat-message">Message</label>
+          <div>
+            <textarea
+              id="chat-message"
+              maxlength="8000"
+              placeholder="Ask a follow-up about your documents…"
+              rows="2"
+              x-model="draft"
+              :disabled="busy"
+              @keydown.meta.enter.prevent="sendMessage()"
+              @keydown.ctrl.enter.prevent="sendMessage()"
+            ></textarea>
+            <button class="chat-send-button" type="submit" :disabled="busy || draft.trim() === ''">
+              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use></svg>
+              <span x-text="busy ? 'Working…' : 'Send'"></span>
+            </button>
+          </div>
+          <small>Chat uses indexed documents only. Press Ctrl+Enter or Command+Enter to send.</small>
+        </form>
+      </div>
+    </template>
+  </main>
+
+  <aside class="chat-evidence-panel" x-cloak x-show="selectedCitation !== null" aria-label="Citation evidence">
+    <header>
+      <div>
+        <p class="section-kicker">Retained evidence</p>
+        <h2 x-text="selectedCitation === null ? '' : citationLabel(selectedCitation)"></h2>
+      </div>
+      <button class="chat-icon-button" type="button" aria-label="Close evidence" @click="closeCitation()">
+        <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg>
+      </button>
+    </header>
+
+    <template x-if="selectedCitation !== null">
+      <div class="chat-evidence-content">
+        <div class="chat-evidence-source">
+          <strong x-text="selectedCitation.sourceFile"></strong>
+          <span
+            :class="{ removed: !selectedCitation.sourceAvailable }"
+            x-text="selectedCitation.sourceAvailable ? 'Current in library' : 'No longer current in library - evidence retained by chat'"
+          ></span>
+        </div>
+
+        <template x-if="selectedCitation.evidence.kind === 'image'">
+          <img :src="imageUrl(selectedCitation)" alt="Retained citation evidence" />
+        </template>
+        <template x-if="selectedCitation.evidence.kind !== 'image'">
+          <pre x-text="evidenceText(selectedCitation)"></pre>
+        </template>
+
+        <dl>
+          <div><dt>Pages</dt><dd x-text="selectedCitation.pageNumbers.length === 0 ? 'Not specified' : selectedCitation.pageNumbers.join(', ')"></dd></div>
+          <div><dt>Section</dt><dd x-text="selectedCitation.sectionPath.length === 0 ? 'Not specified' : selectedCitation.sectionPath.join(' / ')"></dd></div>
+        </dl>
+
+        <div class="chat-evidence-actions">
+          <a :href="sourceFileUrl(selectedCitation)" target="_blank" rel="noopener">Open retained source</a>
+          <a
+            x-show="selectedCitation.mediaType === 'application/pdf' &amp;&amp; selectedCitation.regions.length > 0"
+            :href="highlightedFileUrl(selectedCitation)"
+            target="_blank"
+            rel="noopener"
+          >Open highlighted PDF</a>
+        </div>
+      </div>
+    </template>
+  </aside>
+
+  <div class="chat-modal-backdrop" x-cloak x-show="newChatOpen" @click.self="closeNewChat()">
+    <form class="chat-modal" role="dialog" aria-modal="true" aria-labelledby="new-chat-title" @submit.prevent="createConversation()">
+      <header>
+        <div><p class="section-kicker">New conversation</p><h2 id="new-chat-title">Create a document chat</h2></div>
+        <button class="chat-icon-button" type="button" aria-label="Close" @click="closeNewChat()">
+          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg>
+        </button>
+      </header>
+      <label>
+        <span>Chat title</span>
+        <input x-ref="newChatTitle" maxlength="500" placeholder="Quarterly research" required type="text" x-model="newChatTitle" />
+      </label>
+      <p>Version one searches all currently indexed documents. Each response keeps its own citation evidence even if a source is later removed from the library.</p>
+      <footer>
+        <button class="chat-secondary-button" type="button" :disabled="busy" @click="closeNewChat()">Cancel</button>
+        <button class="chat-primary-button" type="submit" :disabled="busy" x-text="busy ? 'Creating…' : 'Create chat'"></button>
+      </footer>
+    </form>
+  </div>
+</section>

@@ -93,6 +93,7 @@ export interface EmbeddingSpaceConfig {
 
 export type ScheduledProviderCapability =
   | "answer"
+  | "chat"
   | "embedding"
   | "queryExpansion"
   | "reranking"
@@ -134,6 +135,7 @@ export interface InferenceConfig {
     minimumOutputTokens: number;
     providerSafetyMarginTokens: number;
   };
+  chat: LanguageInferenceConfig;
   embedding: EmbeddingInferenceConfig;
   queryExpansion: LanguageInferenceConfig;
   summary: LanguageInferenceConfig;

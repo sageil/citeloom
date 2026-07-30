@@ -54,7 +54,10 @@ const INFERENCE_PROVIDER_OPTIONS_KEY = "citeloomInference";
 export interface InferenceModelRegistry {
   answer: LanguageModelV4;
   answerBudget: AnswerBudgetConfiguration;
+  chat?: LanguageModelV4;
+  chatBudget?: AnswerBudgetConfiguration;
   readAnswerCapabilities: (abortSignal: AbortSignal) => Promise<LanguageModelCapabilities>;
+  readChatCapabilities?: (abortSignal: AbortSignal) => Promise<LanguageModelCapabilities>;
   claimVerifier: HhemClient;
   documentEmbedding: EmbeddingModelV4;
   metrics: InferenceMetricsReporter;
@@ -64,6 +67,7 @@ export interface InferenceModelRegistry {
   summary: LanguageModelV4;
   timeouts: {
     answerMs: number;
+    chatMs?: number;
     embeddingMs: number;
     summarizationMs: number;
     queryExpansionMs: number;
@@ -75,12 +79,21 @@ export function createInferenceModelRegistry(
   database?: CiteLoomDatabase,
 ): InferenceModelRegistry {
   const metrics = new InferenceMetricsReporter(config.inferenceMetrics);
+  const chatConfig = config.inference.chat;
   const answerRuntime = createLanguageModel(
     config.inference.answer,
     INFERENCE_PROVIDER_OPTIONS_KEY,
     true,
     database,
     "answer",
+    config.inference.answerBudget.providerSafetyMarginTokens,
+  );
+  const chatRuntime = createLanguageModel(
+    chatConfig,
+    INFERENCE_PROVIDER_OPTIONS_KEY,
+    true,
+    database,
+    "chat",
     config.inference.answerBudget.providerSafetyMarginTokens,
   );
   const summaryRuntime = createLanguageModel(
@@ -100,10 +113,15 @@ export function createInferenceModelRegistry(
     0,
   );
   const baseLanguageModel = answerRuntime.model;
+  const baseChatModel = chatRuntime.model;
   const baseSummaryModel = summaryRuntime.model;
   const baseQueryExpansionModel = queryExpansionRuntime.model;
   const answerThinkingProviderOptions = buildLanguageThinkingProviderOptions(
     config.inference.answer,
+    config.inference.thinkingMode,
+  );
+  const chatThinkingProviderOptions = buildLanguageThinkingProviderOptions(
+    chatConfig,
     config.inference.thinkingMode,
   );
   const summaryThinkingProviderOptions = buildLanguageThinkingProviderOptions(
@@ -117,6 +135,10 @@ export function createInferenceModelRegistry(
     );
   const answerReasoning = buildLanguageReasoning(
     config.inference.answer,
+    config.inference.thinkingMode,
+  );
+  const chatReasoning = buildLanguageReasoning(
+    chatConfig,
     config.inference.thinkingMode,
   );
   const summaryReasoning = buildLanguageReasoning(
@@ -138,6 +160,18 @@ export function createInferenceModelRegistry(
     }),
     model: baseLanguageModel,
     modelId: `${config.inference.answer.model}:answer`,
+  });
+  const chatModel = wrapLanguageModel({
+    middleware: defaultSettingsMiddleware({
+      settings: buildLanguageModelSettings(
+        null,
+        0.1,
+        chatThinkingProviderOptions,
+        chatReasoning,
+      ),
+    }),
+    model: baseChatModel,
+    modelId: `${chatConfig.model}:chat`,
   });
   const summaryModel = wrapLanguageModel({
     middleware: defaultSettingsMiddleware({
@@ -192,6 +226,7 @@ export function createInferenceModelRegistry(
     },
     languageModels: {
       answer: answerModel,
+      chat: chatModel,
       queryExpansion: queryExpansionModel,
       summary: summaryModel,
     },
@@ -225,19 +260,47 @@ export function createInferenceModelRegistry(
       providerSafetyMarginTokens:
         config.inference.answerBudget.providerSafetyMarginTokens,
     },
+    chat: registry.languageModel("inference:chat"),
+    chatBudget: {
+      maximumOutputTokens: config.inference.answerBudget.maximumOutputTokens,
+      minimumOutputTokens: config.inference.answerBudget.minimumOutputTokens,
+      providerSafetyMarginTokens:
+        config.inference.answerBudget.providerSafetyMarginTokens,
+    },
     claimVerifier,
     documentEmbedding: registry.embeddingModel("inference:document"),
     metrics,
     queryEmbedding: registry.embeddingModel("inference:query"),
     queryExpansion: registry.languageModel("inference:queryExpansion"),
     readAnswerCapabilities: answerRuntime.readCapabilities,
+    readChatCapabilities: chatRuntime.readCapabilities,
     reranker,
     summary: registry.languageModel("inference:summary"),
     timeouts: {
       answerMs: config.inference.answer.timeoutMs,
+      chatMs: chatConfig.timeoutMs,
       embeddingMs: config.inference.embedding.timeoutMs,
       summarizationMs: config.inference.summary.timeoutMs,
       queryExpansionMs: config.inference.queryExpansion.timeoutMs,
+    },
+  };
+}
+
+export function selectChatInferenceModels(
+  models: InferenceModelRegistry,
+): InferenceModelRegistry {
+  const chat = models.chat ?? models.answer;
+  const chatBudget = models.chatBudget ?? models.answerBudget;
+  const readChatCapabilities = models.readChatCapabilities
+    ?? models.readAnswerCapabilities;
+  return {
+    ...models,
+    answer: chat,
+    answerBudget: chatBudget,
+    readAnswerCapabilities: readChatCapabilities,
+    timeouts: {
+      ...models.timeouts,
+      answerMs: models.timeouts.chatMs ?? models.timeouts.answerMs,
     },
   };
 }

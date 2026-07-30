@@ -12,8 +12,10 @@ Each job and answer run keeps the settings it started with.
 
 After CiteLoom starts, open Settings.
 Configure a provider connection, then assign it to one or more capabilities.
-Answers, extra search queries, summaries, and embeddings require a provider.
+Answers, chat, extra search queries, summaries, and embeddings require a provider.
 Reranking, speech-to-text, and text-to-speech are optional.
+Answer, Chat, and Summary appear as separate feature settings, so each can use its own provider, model, context capacity, endpoint override, and capability-specific credential.
+Existing installations initially copy their Answer route and model settings into Chat, after which later Chat changes are independent.
 
 A fresh database uses Ollama for the required capabilities.
 Optional capabilities start unassigned and can be enabled at any time.
@@ -91,18 +93,18 @@ If validation fails, the previous setting remains active.
 [`providerCatalog`](../src/providers/profiles.ts) is the source of truth for built-in provider profiles and capabilities.
 Each capability is routed independently, so one provider can generate answers while other providers supply embeddings, reranking, or speech.
 
-| Provider | Answers | Extra search queries | Summaries | Embeddings | Reranking | Speech-to-text | Text-to-speech |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| oMLX | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| Ollama | Yes | Yes | Yes | Yes | - | - | - |
-| LM Studio | Yes | Yes | Yes | Yes | - | - | - |
-| OpenAI | Yes | Yes | Yes | Yes | - | Yes | Yes |
-| OpenAI Codex | Yes | Yes | Yes | - | - | - | - |
-| DeepSeek | Yes | Yes | Yes | - | - | - | - |
-| Groq | Yes | Yes | Yes | - | - | Yes | Yes |
-| Cohere | Yes | Yes | Yes | Yes | Yes | - | - |
-| Jina | - | - | - | Yes | Yes | - | - |
-| Custom | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Provider | Answers | Chat | Extra search queries | Summaries | Embeddings | Reranking | Speech-to-text | Text-to-speech |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| oMLX | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Ollama | Yes | Yes | Yes | Yes | Yes | - | - | - |
+| LM Studio | Yes | Yes | Yes | Yes | Yes | - | - | - |
+| OpenAI | Yes | Yes | Yes | Yes | Yes | - | Yes | Yes |
+| OpenAI Codex | Yes | Yes | Yes | Yes | - | - | - | - |
+| DeepSeek | Yes | Yes | Yes | Yes | - | - | - | - |
+| Groq | Yes | Yes | Yes | Yes | - | - | Yes | Yes |
+| Cohere | Yes | Yes | Yes | Yes | Yes | Yes | - | - |
+| Jina | - | - | - | - | Yes | Yes | - | - |
+| Custom | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
 Assign models that support their selected capabilities.
 The Custom profile lets administrators choose the adapter used for each capability.
@@ -136,7 +138,7 @@ Confirm current details in the official documentation for [oMLX](https://github.
 
 ### Fresh-install routes and models
 
-Fresh installs use Ollama for answers, extra search queries, summaries, and embeddings.
+Fresh installs use Ollama for answers, chat, extra search queries, summaries, and embeddings.
 Reranking and both speech capabilities start unassigned.
 The saved oMLX models are ready to use if an administrator selects oMLX for one of those capabilities.
 The saved oMLX URL uses port 9000 and can be changed in Settings.
@@ -144,6 +146,7 @@ The saved oMLX URL uses port 9000 and can be changed in Settings.
 | Feature | Bootstrap provider | Bootstrap model |
 | --- | --- | --- |
 | Answers | Ollama | `gemma4:e4b-mlx` |
+| Chat | Ollama | `gemma4:e4b-mlx` |
 | Extra search queries | Ollama | `gemma4:e4b-mlx` |
 | Summaries | Ollama | `gemma4:e4b-mlx` |
 | Embeddings | Ollama | `snowflake-arctic-embed:137m` |
@@ -156,7 +159,7 @@ Work already in progress keeps its saved settings snapshot when a model, endpoin
 ### Ollama Adaptive inference
 
 Adaptive inference is enabled by default for Ollama language workloads.
-It applies only to native Ollama GGUF language models used for answers, extra search queries, and summaries.
+It applies only to native Ollama GGUF language models used for answers, chat, extra search queries, and summaries.
 It does not change embedding requests, other providers, or MLX runners.
 
 For a bounded answer, CiteLoom calculates the requested context as:

@@ -14,6 +14,7 @@ import { dispatchNotice } from "./citeloom-notices.js";
 
 const providerCapabilities = Object.freeze([
   "answer",
+  "chat",
   "queryExpansion",
   "summarization",
   "embedding",
@@ -28,6 +29,7 @@ const optionalProviderCapabilities = Object.freeze([
 ]);
 const modelProviderCapabilities = Object.freeze([
   "answer",
+  "chat",
   "embedding",
   "queryExpansion",
   "summarization",
@@ -94,6 +96,7 @@ const textToSpeechAdapters = Object.freeze([
 ]);
 const capabilityLabels = Object.freeze({
   answer: "Answer generation",
+  chat: "Chat",
   embedding: "Embedding",
   queryExpansion: "Extra search queries (Query Expansion)",
   reranking: "Reranking",
@@ -360,6 +363,7 @@ function readProviderCapabilityProfiles(value) {
 function readCapabilityAdapter(value, capability) {
   if (
     capability === "answer"
+    || capability === "chat"
     || capability === "queryExpansion"
     || capability === "summarization"
   ) {
@@ -428,6 +432,10 @@ function readProviderConfiguration(value) {
     answer: readProviderModelConfiguration(
       configuration.answer,
       "answer configuration",
+    ),
+    chat: readProviderModelConfiguration(
+      configuration.chat,
+      "chat configuration",
     ),
     baseUrl: readNullableNonEmptyString(
       configuration.baseUrl,
@@ -516,6 +524,11 @@ function readCustomAdapters(value) {
       adapters.answer,
       customLanguageAdapters,
       "answer adapter",
+    ),
+    chat: readEnum(
+      adapters.chat,
+      customLanguageAdapters,
+      "chat adapter",
     ),
     embedding: readEnum(
       adapters.embedding,
@@ -688,6 +701,10 @@ function readNullablePositiveInteger(value, label) {
 function buildEmptyFeatureOverrides() {
   return {
     answer: {
+      contextCapacityTokensOverride: null,
+      modelOverride: null,
+    },
+    chat: {
       contextCapacityTokensOverride: null,
       modelOverride: null,
     },
@@ -1823,6 +1840,7 @@ export function registerPage(alpine) {
     selectedFeatureDescription() {
       const descriptions = {
         answer: "Configure the provider and behavior used when generating answers.",
+        chat: "Configure the provider and behavior used for grounded document conversations.",
         embedding: "Configure the provider and model used to create retrieval embeddings.",
         queryExpansion: "Configure the provider and model used to expand retrieval queries.",
         reranking: "Configure the provider and model used to rerank retrieved evidence.",
@@ -2307,6 +2325,7 @@ export function registerPage(alpine) {
     adapterOptions(capability) {
       if (
         capability === "answer"
+        || capability === "chat"
         || capability === "queryExpansion"
         || capability === "summarization"
       ) {

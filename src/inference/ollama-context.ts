@@ -17,6 +17,7 @@ export const OLLAMA_ADAPTIVE_CONTEXT_FLOOR_TOKENS = 65_536;
 
 export type OllamaAdaptiveWorkload =
   | "answer"
+  | "chat"
   | "query-expansion"
   | "summary";
 

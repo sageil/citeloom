@@ -108,7 +108,7 @@ export interface TelemetrySchedulingSample {
 const runSampleSchema = z.object({
   durationMs: z.number().int().nonnegative(),
   fallbackCount: z.number().int().nonnegative(),
-  kind: z.enum(["answer", "benchmark", "retrieval", "search"]),
+  kind: z.enum(["answer", "benchmark", "chat", "retrieval", "search"]),
   outcome: z.enum(["abort", "error", "success"]),
   streamDurationMs: z.number().int().nonnegative().nullable(),
   timeToFirstTokenMs: z.number().int().nonnegative().nullable(),

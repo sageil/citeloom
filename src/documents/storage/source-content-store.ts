@@ -22,6 +22,7 @@ import {
   asc,
   eq,
   gt,
+  inArray,
   like,
   lte,
   notExists,
@@ -32,6 +33,8 @@ import { z } from "zod";
 import type { SourceContentConfig } from "../../config/index.js";
 import type { CiteLoomDatabase } from "../../database/client.js";
 import {
+  chatCitationRecords,
+  chatEvidenceDocuments,
   documentVersions,
   indexedDocuments,
   ingestionJobs,
@@ -566,6 +569,51 @@ export class SourceContentStore {
   private async queueAbandonedContent(): Promise<void> {
     const cutoff = new Date(Date.now() - UNREFERENCED_CONTENT_GRACE_MS);
     await this.database.transaction(async (transaction) => {
+      const orphanedChatEvidence = await transaction
+        .select({
+          documentId: chatEvidenceDocuments.documentId,
+          documentVersionId: chatEvidenceDocuments.documentVersionId,
+        })
+        .from(chatEvidenceDocuments)
+        .where(notExists(
+          transaction
+            .select({ id: chatCitationRecords.id })
+            .from(chatCitationRecords)
+            .where(eq(
+              chatCitationRecords.documentVersionId,
+              chatEvidenceDocuments.documentVersionId,
+            )),
+        ))
+        .orderBy(asc(chatEvidenceDocuments.createdAt))
+        .limit(RECONCILIATION_BATCH_SIZE);
+      const orphanedDocumentIds = [
+        ...new Set(orphanedChatEvidence.map((row) => row.documentId)),
+      ].sort();
+      for (const documentId of orphanedDocumentIds) {
+        await lockSourceContent(transaction, documentId);
+      }
+      const orphanedVersionIds = orphanedChatEvidence.map((row) => {
+        return row.documentVersionId;
+      });
+      if (orphanedVersionIds.length > 0) {
+        await transaction
+          .delete(chatEvidenceDocuments)
+          .where(and(
+            inArray(
+              chatEvidenceDocuments.documentVersionId,
+              orphanedVersionIds,
+            ),
+            notExists(
+              transaction
+                .select({ id: chatCitationRecords.id })
+                .from(chatCitationRecords)
+                .where(eq(
+                  chatCitationRecords.documentVersionId,
+                  chatEvidenceDocuments.documentVersionId,
+                )),
+            ),
+          ));
+      }
       const rows = await transaction
         .select({ documentId: sourceDocuments.documentId })
         .from(sourceDocuments)
@@ -588,6 +636,15 @@ export class SourceContentStore {
               .select({ documentId: documentVersions.documentId })
               .from(documentVersions)
               .where(eq(documentVersions.documentId, sourceDocuments.documentId)),
+          ),
+          notExists(
+            transaction
+              .select({ documentId: chatEvidenceDocuments.documentId })
+              .from(chatEvidenceDocuments)
+              .where(eq(
+                chatEvidenceDocuments.documentId,
+                sourceDocuments.documentId,
+              )),
           ),
         ))
         .orderBy(asc(sourceDocuments.lastPublishedAt))
@@ -752,6 +809,14 @@ export async function queueSourceContentDeletion(
     .where(eq(sourceDocuments.documentId, normalizedDocumentId));
 }
 
+export async function lockSourceContentReference(
+  transaction: SourceContentTransaction,
+  documentId: string,
+): Promise<void> {
+  const normalizedDocumentId = readDocumentId(documentId);
+  await lockSourceContent(transaction, normalizedDocumentId);
+}
+
 async function hasSourceContentReferences(
   transaction: SourceContentTransaction,
   documentId: string,
@@ -777,7 +842,15 @@ async function hasSourceContentReferences(
     .from(documentVersions)
     .where(eq(documentVersions.documentId, documentId))
     .limit(1);
-  return version.length > 0;
+  if (version.length > 0) {
+    return true;
+  }
+  const chatEvidence = await transaction
+    .select({ documentId: chatEvidenceDocuments.documentId })
+    .from(chatEvidenceDocuments)
+    .where(eq(chatEvidenceDocuments.documentId, documentId))
+    .limit(1);
+  return chatEvidence.length > 0;
 }
 
 async function lockSourceContent(

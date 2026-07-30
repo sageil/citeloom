@@ -1,6 +1,7 @@
 const supportedViews = new Set([
   "account",
   "ask",
+  "chat",
   "documents",
   "errors",
   "help",

@@ -27,6 +27,7 @@ export type { TelemetryStageName } from "./stage.js";
 export type TelemetryRunKind =
   | "answer"
   | "benchmark"
+  | "chat"
   | "retrieval"
   | "search";
 

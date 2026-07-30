@@ -23,6 +23,7 @@ export const PROVIDER_IDS = [
 
 export const PROVIDER_CAPABILITIES = [
   "answer",
+  "chat",
   "queryExpansion",
   "summarization",
   "embedding",
@@ -40,6 +41,7 @@ export type CustomLanguageModelAdapter = Exclude<
 
 export type ProviderCapabilityProfile =
   | { adapter: LanguageModelAdapter; capability: "answer" }
+  | { adapter: LanguageModelAdapter; capability: "chat" }
   | { adapter: LanguageModelAdapter; capability: "queryExpansion" }
   | { adapter: LanguageModelAdapter; capability: "summarization" }
   | { adapter: EmbeddingModelAdapter; capability: "embedding" }
@@ -71,6 +73,7 @@ export interface ProviderTextToSpeechConnection
 
 export interface CustomProviderAdapters {
   answer: CustomLanguageModelAdapter;
+  chat?: CustomLanguageModelAdapter | undefined;
   embedding: EmbeddingModelAdapter;
   queryExpansion: CustomLanguageModelAdapter;
   reranking: RerankerAdapter;
@@ -87,6 +90,7 @@ export interface ProviderConnection {
   maximumParallelRequests: number;
   name: string | null;
   answer: ProviderModelConnection;
+  chat?: ProviderModelConnection | undefined;
   embedding: ProviderModelConnection;
   queryExpansion: ProviderModelConnection;
   reranking: ProviderCapabilityConnection;
@@ -97,6 +101,7 @@ export interface ProviderConnection {
 
 export interface ProviderRouting {
   answer: ProviderId | null;
+  chat?: ProviderId | null | undefined;
   embedding: ProviderId | null;
   queryExpansion: ProviderId | null;
   reranking: ProviderId | null;
@@ -121,6 +126,7 @@ export interface ProviderTextToSpeechFeatureOverrides
 
 export interface ProviderFeatureOverrides {
   answer: ProviderModelFeatureOverrides;
+  chat?: ProviderModelFeatureOverrides | undefined;
   embedding: ProviderModelFeatureOverrides;
   queryExpansion: ProviderModelFeatureOverrides;
   reranking: ProviderCapabilityFeatureOverrides;
@@ -157,6 +163,7 @@ export interface ProviderConnectionConfiguration {
   maximumParallelRequests: number;
   name: string | null;
   answer: ProviderModelConfiguration;
+  chat?: ProviderModelConfiguration | undefined;
   embedding: ProviderModelConfiguration;
   queryExpansion: ProviderModelConfiguration;
   reranking: ProviderCapabilityConfiguration;
@@ -169,7 +176,12 @@ export type ProviderCredentialTarget = "shared" | ProviderCapability;
 
 export type ProviderFeatureConfiguration =
   | {
-    capability: "answer" | "embedding" | "queryExpansion" | "summarization";
+    capability:
+      | "answer"
+      | "chat"
+      | "embedding"
+      | "queryExpansion"
+      | "summarization";
     contextCapacityTokensOverride: number | null;
     modelOverride: string | null;
     providerId: ProviderId | null;
@@ -298,6 +310,7 @@ const providerConnectionSchema = z.object({
   baseUrl: httpUrlSchema.nullable(),
   customAdapters: z.object({
     answer: customLanguageModelAdapterSchema,
+    chat: customLanguageModelAdapterSchema.optional(),
     embedding: embeddingModelAdapterSchema,
     queryExpansion: customLanguageModelAdapterSchema,
     reranking: rerankerAdapterSchema,
@@ -308,6 +321,7 @@ const providerConnectionSchema = z.object({
   maximumParallelRequests: z.number().int().min(1).max(16),
   name: z.string().trim().min(1).max(100).nullable(),
   answer: providerModelConnectionSchema,
+  chat: providerModelConnectionSchema.optional(),
   embedding: providerModelConnectionSchema,
   queryExpansion: providerModelConnectionSchema,
   reranking: providerCapabilityConnectionSchema,
@@ -327,6 +341,7 @@ const providerModelFeatureOverridesSchema =
   }).strict();
 export const providerFeatureOverridesSchema = z.object({
   answer: providerModelFeatureOverridesSchema,
+  chat: providerModelFeatureOverridesSchema.optional(),
   embedding: providerModelFeatureOverridesSchema,
   queryExpansion: providerModelFeatureOverridesSchema,
   reranking: providerCapabilityFeatureOverridesSchema,
@@ -337,11 +352,12 @@ export const providerFeatureOverridesSchema = z.object({
   }).strict(),
 }).strict();
 
-export const providerConnectionConfigurationSchema = z.object({
+const providerConnectionConfigurationInputSchema = z.object({
   adaptiveContextEnabled: z.boolean().default(false),
   baseUrl: httpUrlSchema.nullable(),
   customAdapters: z.object({
     answer: customLanguageModelAdapterSchema,
+    chat: customLanguageModelAdapterSchema.optional(),
     embedding: embeddingModelAdapterSchema,
     queryExpansion: customLanguageModelAdapterSchema,
     reranking: rerankerAdapterSchema,
@@ -356,6 +372,11 @@ export const providerConnectionConfigurationSchema = z.object({
     contextCapacityTokens: z.number().int().positive().nullable(),
     model: providerConfigurationTextSchema,
   }).strict(),
+  chat: z.object({
+    baseUrl: httpUrlSchema.nullable(),
+    contextCapacityTokens: z.number().int().positive().nullable(),
+    model: providerConfigurationTextSchema,
+  }).strict().optional(),
   embedding: z.object({
     baseUrl: httpUrlSchema.nullable(),
     contextCapacityTokens: z.number().int().positive().nullable(),
@@ -386,11 +407,17 @@ export const providerConnectionConfigurationSchema = z.object({
   }).strict(),
 }).strict();
 
-export const providerSettingsSchema = z.object({
+export const providerConnectionConfigurationSchema =
+  providerConnectionConfigurationInputSchema.transform(
+    materializeProviderConnectionConfiguration,
+  );
+
+const providerSettingsInputSchema = z.object({
   connections: z.record(providerIdSchema, providerConnectionSchema),
   featureOverrides: providerFeatureOverridesSchema,
   routing: z.object({
     answer: providerIdSchema.nullable(),
+    chat: providerIdSchema.nullable().optional(),
     embedding: providerIdSchema.nullable(),
     queryExpansion: providerIdSchema.nullable(),
     reranking: providerIdSchema.nullable(),
@@ -398,21 +425,27 @@ export const providerSettingsSchema = z.object({
     summarization: providerIdSchema.nullable(),
     textToSpeech: providerIdSchema.nullable(),
   }).strict(),
-}).strict().superRefine((settings, context) => {
-  validateAdaptiveContextConfiguration(settings, context);
-  validateSelectedProvider(settings, "answer", context);
-  validateSelectedProvider(settings, "queryExpansion", context);
-  validateSelectedProvider(settings, "summarization", context);
-  validateSelectedProvider(settings, "embedding", context);
-  validateSelectedProvider(settings, "reranking", context);
-  validateSelectedProvider(settings, "speechToText", context);
-  validateSelectedProvider(settings, "textToSpeech", context);
-});
+}).strict();
+
+export const providerSettingsSchema = providerSettingsInputSchema
+  .transform(materializeChatProviderSettings)
+  .superRefine((settings, context) => {
+    validateAdaptiveContextConfiguration(settings, context);
+    validateSelectedProvider(settings, "answer", context);
+    validateSelectedProvider(settings, "chat", context);
+    validateSelectedProvider(settings, "queryExpansion", context);
+    validateSelectedProvider(settings, "summarization", context);
+    validateSelectedProvider(settings, "embedding", context);
+    validateSelectedProvider(settings, "reranking", context);
+    validateSelectedProvider(settings, "speechToText", context);
+    validateSelectedProvider(settings, "textToSpeech", context);
+  });
 
 export const providerCatalog: readonly ProviderProfile[] = [
   {
     capabilities: [
       { adapter: "openai-compatible-language", capability: "answer" },
+      { adapter: "openai-compatible-language", capability: "chat" },
       { adapter: "openai-compatible-language", capability: "queryExpansion" },
       { adapter: "openai-compatible-language", capability: "summarization" },
       { adapter: "openai-compatible-embedding", capability: "embedding" },
@@ -426,6 +459,7 @@ export const providerCatalog: readonly ProviderProfile[] = [
   {
     capabilities: [
       { adapter: "ollama-language", capability: "answer" },
+      { adapter: "ollama-language", capability: "chat" },
       { adapter: "ollama-language", capability: "queryExpansion" },
       { adapter: "ollama-embedding", capability: "embedding" },
       { adapter: "ollama-language", capability: "summarization" },
@@ -436,6 +470,7 @@ export const providerCatalog: readonly ProviderProfile[] = [
   {
     capabilities: [
       { adapter: "openai-compatible-language", capability: "answer" },
+      { adapter: "openai-compatible-language", capability: "chat" },
       { adapter: "openai-compatible-language", capability: "queryExpansion" },
       { adapter: "openai-compatible-language", capability: "summarization" },
       { adapter: "openai-compatible-embedding", capability: "embedding" },
@@ -446,6 +481,7 @@ export const providerCatalog: readonly ProviderProfile[] = [
   {
     capabilities: [
       { adapter: "openai-compatible-language", capability: "answer" },
+      { adapter: "openai-compatible-language", capability: "chat" },
       { adapter: "openai-compatible-language", capability: "queryExpansion" },
       { adapter: "openai-compatible-language", capability: "summarization" },
       { adapter: "openai-compatible-embedding", capability: "embedding" },
@@ -458,6 +494,7 @@ export const providerCatalog: readonly ProviderProfile[] = [
   {
     capabilities: [
       { adapter: "openai-codex-language", capability: "answer" },
+      { adapter: "openai-codex-language", capability: "chat" },
       { adapter: "openai-codex-language", capability: "queryExpansion" },
       { adapter: "openai-codex-language", capability: "summarization" },
     ],
@@ -467,6 +504,7 @@ export const providerCatalog: readonly ProviderProfile[] = [
   {
     capabilities: [
       { adapter: "deepseek-language", capability: "answer" },
+      { adapter: "deepseek-language", capability: "chat" },
       { adapter: "deepseek-language", capability: "queryExpansion" },
       { adapter: "deepseek-language", capability: "summarization" },
     ],
@@ -476,6 +514,7 @@ export const providerCatalog: readonly ProviderProfile[] = [
   {
     capabilities: [
       { adapter: "openai-compatible-language", capability: "answer" },
+      { adapter: "openai-compatible-language", capability: "chat" },
       { adapter: "openai-compatible-language", capability: "queryExpansion" },
       { adapter: "openai-compatible-language", capability: "summarization" },
       { adapter: "openai-transcription", capability: "speechToText" },
@@ -487,6 +526,7 @@ export const providerCatalog: readonly ProviderProfile[] = [
   {
     capabilities: [
       { adapter: "cohere-language", capability: "answer" },
+      { adapter: "cohere-language", capability: "chat" },
       { adapter: "cohere-language", capability: "queryExpansion" },
       { adapter: "cohere-language", capability: "summarization" },
       { adapter: "cohere-embedding", capability: "embedding" },
@@ -506,6 +546,7 @@ export const providerCatalog: readonly ProviderProfile[] = [
   {
     capabilities: [
       { adapter: "openai-compatible-language", capability: "answer" },
+      { adapter: "openai-compatible-language", capability: "chat" },
       { adapter: "openai-compatible-language", capability: "queryExpansion" },
       { adapter: "openai-compatible-language", capability: "summarization" },
       { adapter: "openai-compatible-embedding", capability: "embedding" },
@@ -540,11 +581,16 @@ export function parseProviderSettings(value: unknown): ProviderSettings {
 export function readProviderConnectionConfiguration(
   connection: ProviderConnection,
 ): ProviderConnectionConfiguration {
+  const chat = readChatConnection(connection);
   return {
     adaptiveContextEnabled: connection.adaptiveContextEnabled,
     answer: readModelConfiguration(connection.answer),
     baseUrl: connection.baseUrl,
-    customAdapters: { ...connection.customAdapters },
+    chat: readModelConfiguration(chat),
+    customAdapters: {
+      ...connection.customAdapters,
+      chat: readChatAdapter(connection),
+    },
     embedding: readModelConfiguration(connection.embedding),
     queryExpansion: readModelConfiguration(connection.queryExpansion),
     maximumParallelRequests: connection.maximumParallelRequests,
@@ -605,7 +651,7 @@ export function resolveProviderCapability(
 
 export function resolveLanguageProvider(
   settings: ProviderSettings,
-  capability: "answer" | "queryExpansion" | "summarization",
+  capability: "answer" | "chat" | "queryExpansion" | "summarization",
 ): ResolvedLanguageProvider {
   const provider = resolveConfiguredProvider(settings, capability);
   if (provider === null) {
@@ -679,17 +725,20 @@ function resolveConfiguredProvider(
   settings: ProviderSettings,
   capability: ProviderCapability,
 ): ResolvedProviderCapability | null {
-  const providerId = settings.routing[capability];
+  const providerId = readProviderRoute(settings, capability);
   if (providerId === null) {
     return null;
   }
   const profile = requireProviderProfile(providerId);
   const connection = settings.connections[providerId];
-  const capabilityConnection = connection[capability];
+  const capabilityConnection = readCapabilityConnection(
+    connection,
+    capability,
+  );
   const adapter = readAdapter(profile, connection, capability);
   const baseUrl = capabilityConnection.baseUrl
     ?? connection.baseUrl;
-  const model = settings.featureOverrides[capability].modelOverride
+  const model = readFeatureOverrides(settings, capability).modelOverride
     ?? capabilityConnection.model;
   if (baseUrl === null || model === null) {
     throw new Error(
@@ -778,7 +827,7 @@ function validateSelectedProvider(
   capability: ProviderCapability,
   context: z.RefinementCtx,
 ): void {
-  const providerId = settings.routing[capability];
+  const providerId = readProviderRoute(settings, capability);
   if (providerId === null) {
     return;
   }
@@ -792,7 +841,10 @@ function validateSelectedProvider(
     return;
   }
   const connection = settings.connections[providerId];
-  const capabilityConnection = connection[capability];
+  const capabilityConnection = readCapabilityConnection(
+    connection,
+    capability,
+  );
   const baseUrl = capabilityConnection.baseUrl
     ?? connection.baseUrl;
   if (baseUrl === null) {
@@ -802,7 +854,7 @@ function validateSelectedProvider(
       path: ["connections", providerId, capability, "baseUrl"],
     });
   }
-  const model = settings.featureOverrides[capability].modelOverride
+  const model = readFeatureOverrides(settings, capability).modelOverride
     ?? capabilityConnection.model;
   if (model === null) {
     context.addIssue({
@@ -814,8 +866,9 @@ function validateSelectedProvider(
   if (
     isModelCapability(capability)
     && (
-      settings.featureOverrides[capability].contextCapacityTokensOverride
-      ?? connection[capability].contextCapacityTokens
+      readModelFeatureOverrides(settings, capability)
+        .contextCapacityTokensOverride
+      ?? readModelConnection(connection, capability).contextCapacityTokens
     ) === null
   ) {
     context.addIssue({
@@ -858,6 +911,9 @@ function readAdapter(
   | SpeechToTextAdapter
   | TextToSpeechAdapter {
   if (profile.id === "custom") {
+    if (capability === "chat") {
+      return readChatAdapter(connection);
+    }
     return connection.customAdapters[capability];
   }
   const capabilityProfile = profile.capabilities.find((candidate) => {
@@ -961,6 +1017,9 @@ function formatCapability(capability: ProviderCapability): string {
   if (capability === "summarization") {
     return "summarization";
   }
+  if (capability === "chat") {
+    return "chat";
+  }
   if (capability === "queryExpansion") {
     return "extra search queries";
   }
@@ -975,8 +1034,14 @@ function formatCapability(capability: ProviderCapability): string {
 
 function isModelCapability(
   capability: ProviderCapability,
-): capability is "answer" | "embedding" | "queryExpansion" | "summarization" {
+): capability is
+  | "answer"
+  | "chat"
+  | "embedding"
+  | "queryExpansion"
+  | "summarization" {
   return capability === "answer"
+    || capability === "chat"
     || capability === "embedding"
     || capability === "queryExpansion"
     || capability === "summarization";
@@ -985,17 +1050,155 @@ function isModelCapability(
 function readEffectiveModelContextCapacity(
   settings: ProviderSettings,
   providerId: ProviderId,
-  capability: "answer" | "embedding" | "queryExpansion" | "summarization",
+  capability:
+    | "answer"
+    | "chat"
+    | "embedding"
+    | "queryExpansion"
+    | "summarization",
 ): number {
   const contextCapacityTokens =
-    settings.featureOverrides[capability].contextCapacityTokensOverride
-    ?? settings.connections[providerId][capability].contextCapacityTokens;
+    readModelFeatureOverrides(settings, capability)
+      .contextCapacityTokensOverride
+    ?? readModelConnection(settings.connections[providerId], capability)
+      .contextCapacityTokens;
   if (contextCapacityTokens === null) {
     throw new Error(
       `${formatCapability(capability)} requires a context capacity.`,
     );
   }
   return contextCapacityTokens;
+}
+
+function materializeChatProviderSettings(
+  settings: z.output<typeof providerSettingsInputSchema>,
+): ProviderSettings {
+  const entries: Array<[ProviderId, ProviderConnection]> = [];
+  for (const providerId of PROVIDER_IDS) {
+    const connection = settings.connections[providerId];
+    entries.push([
+      providerId,
+      {
+        ...connection,
+        chat: {
+          ...(connection.chat ?? connection.answer),
+        },
+        customAdapters: {
+          ...connection.customAdapters,
+          chat: connection.customAdapters.chat
+            ?? connection.customAdapters.answer,
+        },
+      },
+    ]);
+  }
+  const connections = Object.fromEntries(entries) as Record<
+    ProviderId,
+    ProviderConnection
+  >;
+  return {
+    connections,
+    featureOverrides: {
+      ...settings.featureOverrides,
+      chat: {
+        ...(settings.featureOverrides.chat
+          ?? settings.featureOverrides.answer),
+      },
+    },
+    routing: {
+      ...settings.routing,
+      chat: settings.routing.chat ?? settings.routing.answer,
+    },
+  };
+}
+
+function materializeProviderConnectionConfiguration(
+  configuration: z.output<typeof providerConnectionConfigurationInputSchema>,
+): ProviderConnectionConfiguration {
+  return {
+    ...configuration,
+    chat: {
+      ...(configuration.chat ?? configuration.answer),
+    },
+    customAdapters: {
+      ...configuration.customAdapters,
+      chat: configuration.customAdapters.chat
+        ?? configuration.customAdapters.answer,
+    },
+  };
+}
+
+function readProviderRoute(
+  settings: ProviderSettings,
+  capability: ProviderCapability,
+): ProviderId | null {
+  if (capability === "chat") {
+    return settings.routing.chat ?? settings.routing.answer;
+  }
+  return settings.routing[capability];
+}
+
+function readChatConnection(
+  connection: ProviderConnection,
+): ProviderModelConnection {
+  return connection.chat ?? connection.answer;
+}
+
+function readChatAdapter(
+  connection: ProviderConnection,
+): CustomLanguageModelAdapter {
+  return connection.customAdapters.chat ?? connection.customAdapters.answer;
+}
+
+function readCapabilityConnection(
+  connection: ProviderConnection,
+  capability: ProviderCapability,
+): ProviderCapabilityConnection {
+  if (capability === "chat") {
+    return readChatConnection(connection);
+  }
+  return connection[capability];
+}
+
+function readModelConnection(
+  connection: ProviderConnection,
+  capability:
+    | "answer"
+    | "chat"
+    | "embedding"
+    | "queryExpansion"
+    | "summarization",
+): ProviderModelConnection {
+  if (capability === "chat") {
+    return readChatConnection(connection);
+  }
+  return connection[capability];
+}
+
+function readFeatureOverrides(
+  settings: ProviderSettings,
+  capability: ProviderCapability,
+): ProviderCapabilityFeatureOverrides {
+  if (capability === "chat") {
+    return settings.featureOverrides.chat
+      ?? settings.featureOverrides.answer;
+  }
+  return settings.featureOverrides[capability];
+}
+
+function readModelFeatureOverrides(
+  settings: ProviderSettings,
+  capability:
+    | "answer"
+    | "chat"
+    | "embedding"
+    | "queryExpansion"
+    | "summarization",
+): ProviderModelFeatureOverrides {
+  if (capability === "chat") {
+    return settings.featureOverrides.chat
+      ?? settings.featureOverrides.answer;
+  }
+  return settings.featureOverrides[capability];
 }
 
 function removeTrailingSlash(value: string): string {

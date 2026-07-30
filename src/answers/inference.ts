@@ -89,7 +89,7 @@ const ANSWER_OUTPUT_NAME = "answer_draft";
 const ANSWER_CORRECTION_BUDGET_INSTRUCTION = [
   "CORRECTION REQUEST:",
   "Preserve supported answer content while fixing the response contract.",
-  "Use the same original question and retrieved evidence.",
+  "Use the same question and retrieved evidence.",
   "Return only one object matching the required output schema and allowed evidence references.",
 ].join("\n");
 
@@ -171,7 +171,9 @@ type DecodedAnswerResponse =
   | {
     draft: AnswerDraft;
     failure: null;
+    noAnswerContent: string | null;
     responseSha256: string;
+    verificationStatementIndexes: readonly number[] | null;
   }
   | {
     draft: null;
@@ -207,6 +209,68 @@ export class UnexpectedAnswerFinishReasonError extends Error {
   }
 }
 
+export interface AnswerConversationTurn {
+  assistant: string;
+  user: string;
+}
+
+export interface AnswerUserPromptFrame {
+  afterSources: string | null;
+  beforeSources: string;
+  correctionPlacement: "after-sources" | "before-sources";
+}
+
+export interface AnswerGenerationPrompt {
+  buildUserPromptFrame(
+    question: string,
+    conversationTurns: readonly AnswerConversationTurn[],
+  ): AnswerUserPromptFrame;
+  responseContract: AnswerResponseContract;
+  systemPrompt: string;
+}
+
+export interface AnswerResponseContract {
+  createSchema(
+    allowedEvidenceRefs: readonly EvidenceReference[],
+  ): z.ZodType<unknown>;
+  decode(
+    value: unknown,
+    allowedEvidenceRefs: readonly EvidenceReference[],
+  ): AnswerResponseDecodeResult;
+  description: string;
+  name: string;
+}
+
+export interface AnswerResponseDecodeResult {
+  draft: AnswerDraft;
+  noAnswerContent: string | null;
+  verificationStatementIndexes: readonly number[] | null;
+}
+
+const defaultAnswerResponseContract: AnswerResponseContract = {
+  createSchema: createAnswerModelResponseSchema,
+  decode: decodeDefaultAnswerModelResponse,
+  description: ANSWER_OUTPUT_DESCRIPTION,
+  name: ANSWER_OUTPUT_NAME,
+};
+
+function decodeDefaultAnswerModelResponse(
+  value: unknown,
+  allowedEvidenceRefs: readonly EvidenceReference[],
+): AnswerResponseDecodeResult {
+  return {
+    draft: decodeAnswerModelResponse(value, allowedEvidenceRefs),
+    noAnswerContent: null,
+    verificationStatementIndexes: null,
+  };
+}
+
+const defaultAnswerGenerationPrompt: AnswerGenerationPrompt = {
+  buildUserPromptFrame: buildAnswerUserPromptFrame,
+  responseContract: defaultAnswerResponseContract,
+  systemPrompt: createAnswerSystemPrompt(),
+};
+
 export async function answerQuestion(
   models: InferenceModelRegistry,
   question: string,
@@ -214,6 +278,8 @@ export async function answerQuestion(
   scheduler: TaskScheduler,
   generationSettings: AppliedGenerationSettings,
   runTelemetry: RunTelemetry = noopRunTelemetry,
+  conversationTurns: readonly AnswerConversationTurn[] = [],
+  prompt: AnswerGenerationPrompt = defaultAnswerGenerationPrompt,
 ): Promise<GeneratedAnswerResult> {
   return generateAnswer(
     models,
@@ -224,6 +290,8 @@ export async function answerQuestion(
     generationSettings,
     "answer",
     runTelemetry,
+    conversationTurns,
+    prompt,
   );
 }
 
@@ -235,6 +303,8 @@ export async function streamAnswerQuestion(
   abortSignal: AbortSignal,
   generationSettings: AppliedGenerationSettings,
   runTelemetry: RunTelemetry = noopRunTelemetry,
+  conversationTurns: readonly AnswerConversationTurn[] = [],
+  prompt: AnswerGenerationPrompt = defaultAnswerGenerationPrompt,
 ): Promise<GeneratedAnswerResult> {
   return generateAnswer(
     models,
@@ -245,6 +315,8 @@ export async function streamAnswerQuestion(
     generationSettings,
     "answer-stream",
     runTelemetry,
+    conversationTurns,
+    prompt,
   );
 }
 
@@ -257,6 +329,8 @@ async function generateAnswer(
   generationSettings: AppliedGenerationSettings,
   metricOperation: AnswerMetricOperation,
   runTelemetry: RunTelemetry,
+  conversationTurns: readonly AnswerConversationTurn[],
+  prompt: AnswerGenerationPrompt,
 ): Promise<GeneratedAnswerResult> {
   if (retrieved.length === 0) {
     return createNoRelevantAnswer();
@@ -294,8 +368,15 @@ async function generateAnswer(
     const runGeneration = async (requestSignal: AbortSignal) => {
       const capabilities = await models.readAnswerCapabilities(requestSignal);
       const availableEvidenceRefs = createEvidenceReferences(retrieved.length);
-      const fixedContent = buildAnswerFixedContent(processingQuestion);
-      const outputContract = buildAnswerOutputContract(availableEvidenceRefs);
+      const promptFrame = prompt.buildUserPromptFrame(
+        processingQuestion,
+        conversationTurns,
+      );
+      const fixedContent = buildAnswerFixedContent(promptFrame);
+      const outputContract = buildAnswerOutputContract(
+        availableEvidenceRefs,
+        prompt.responseContract,
+      );
       const sourceContents = buildAnswerSourceContents(
         retrieved,
         availableEvidenceRefs,
@@ -304,7 +385,7 @@ async function generateAnswer(
         capabilities,
         models.answerBudget,
         [
-          { text: createAnswerSystemPrompt(), type: "text" },
+          { text: prompt.systemPrompt, type: "text" },
           { text: outputContract, type: "text" },
           ...fixedContent,
           { text: ANSWER_CORRECTION_BUDGET_INSTRUCTION, type: "text" },
@@ -339,6 +420,8 @@ async function generateAnswer(
         selectedRetrieved,
         allowedEvidenceRefs,
         expandedRetrievalWindowIds,
+        conversationTurns,
+        prompt,
       );
       recordAnswerRequest(runTelemetry, "initial", selectedRetrieved);
       let initialResponse: DecodedAnswerResponse;
@@ -353,6 +436,8 @@ async function generateAnswer(
           recordCompletion,
           budget,
           adaptiveContext,
+          prompt.systemPrompt,
+          prompt.responseContract,
         );
         requestSignal.throwIfAborted();
         initialCompletion = {
@@ -368,6 +453,7 @@ async function generateAnswer(
         initialResponse = decodeAnswerResponse(
           result.output,
           allowedEvidenceRefs,
+          prompt.responseContract,
         );
       } catch (error: unknown) {
         if (!NoObjectGeneratedError.isInstance(error)) {
@@ -409,6 +495,8 @@ async function generateAnswer(
             initialResponse.draft,
             selectedRetrieved,
             runDetails,
+            initialResponse.noAnswerContent,
+            initialResponse.verificationStatementIndexes,
           ),
         };
       }
@@ -425,6 +513,8 @@ async function generateAnswer(
           budget,
           adaptiveContext,
           runTelemetry,
+          conversationTurns,
+          prompt,
         );
       } catch (error: unknown) {
         recordAnswerResponseDiagnostic(
@@ -462,6 +552,8 @@ async function generateAnswer(
           correctedResponse.draft,
           selectedRetrieved,
           runDetails,
+          correctedResponse.noAnswerContent,
+          correctedResponse.verificationStatementIndexes,
         ),
       };
     };
@@ -537,6 +629,8 @@ async function correctAnswerDraft(
   budget: AnswerRequestBudget,
   adaptiveContext: AdaptiveAnswerContext | null,
   runTelemetry: RunTelemetry,
+  conversationTurns: readonly AnswerConversationTurn[],
+  prompt: AnswerGenerationPrompt,
 ): Promise<DecodedAnswerResponse> {
   abortSignal.throwIfAborted();
   const content = buildAnswerCorrectionContent(
@@ -545,6 +639,8 @@ async function correctAnswerDraft(
     allowedEvidenceRefs,
     new Set(budget.expandedRetrievalWindowIds),
     initialFailure,
+    conversationTurns,
+    prompt,
   );
   const runGeneration = (requestSignal: AbortSignal) => {
     recordAnswerRequest(runTelemetry, "correction", retrieved);
@@ -557,6 +653,8 @@ async function correctAnswerDraft(
       () => undefined,
       budget,
       adaptiveContext,
+      prompt.systemPrompt,
+      prompt.responseContract,
     );
   };
   let result: Awaited<ReturnType<typeof requestAnswerDraft>>;
@@ -585,12 +683,14 @@ async function correctAnswerDraft(
   return decodeAnswerResponse(
     result.output,
     allowedEvidenceRefs,
+    prompt.responseContract,
   );
 }
 
 function decodeAnswerResponse(
   value: unknown,
   allowedEvidenceRefs: readonly EvidenceReference[],
+  responseContract: AnswerResponseContract,
 ): DecodedAnswerResponse {
   const rejectedResponse = serializeResponse(value);
   const responseSha256 = hashResponse(rejectedResponse);
@@ -598,13 +698,17 @@ function decodeAnswerResponse(
     throw new Error("The answer provider returned an unserializable response.");
   }
   try {
+    const decoded = responseContract.decode(
+      value,
+      allowedEvidenceRefs,
+    );
     return {
-      draft: decodeAnswerModelResponse(
-        value,
-        allowedEvidenceRefs,
-      ),
+      draft: decoded.draft,
       failure: null,
+      noAnswerContent: decoded.noAnswerContent,
       responseSha256,
+      verificationStatementIndexes:
+        decoded.verificationStatementIndexes,
     };
   } catch (error: unknown) {
     if (!(error instanceof AnswerDraftDecodeError)) {
@@ -705,8 +809,13 @@ async function requestAnswerDraft(
   recordCompletion: (completion: AnswerCompletion) => void,
   budget: AnswerRequestBudget,
   adaptiveContext: AdaptiveAnswerContext | null,
+  systemPrompt: string,
+  responseContract: AnswerResponseContract,
 ) {
-  const output = createAnswerModelOutput(allowedEvidenceRefs);
+  const output = createAnswerModelOutput(
+    allowedEvidenceRefs,
+    responseContract,
+  );
   const telemetry = createInferenceTelemetryOptions(models, "citeloom.answer");
   const timeoutMs = models.timeouts.answerMs;
   const signals = createInferenceRequestSignal(timeoutMs, abortSignal);
@@ -738,7 +847,7 @@ async function requestAnswerDraft(
         });
       },
       output,
-      system: createAnswerSystemPrompt(),
+      system: systemPrompt,
       telemetry,
     });
   } catch (error: unknown) {
@@ -769,11 +878,12 @@ function createAdaptiveAnswerContext(
 
 export function createAnswerModelOutput(
   allowedEvidenceRefs: readonly EvidenceReference[],
+  responseContract: AnswerResponseContract = defaultAnswerResponseContract,
 ): ReturnType<typeof Output.object<unknown>> {
-  const responseSchema = createAnswerModelResponseSchema(allowedEvidenceRefs);
+  const responseSchema = responseContract.createSchema(allowedEvidenceRefs);
   return Output.object({
-    description: ANSWER_OUTPUT_DESCRIPTION,
-    name: ANSWER_OUTPUT_NAME,
+    description: responseContract.description,
+    name: responseContract.name,
     schema: jsonSchema<unknown>(z.toJSONSchema(responseSchema)),
   });
 }
@@ -796,6 +906,8 @@ export function buildAnswerContent(
   question: string,
   retrieved: RetrievedElement[],
   expandedRetrievalWindowIds: ReadonlySet<string> = new Set(),
+  conversationTurns: readonly AnswerConversationTurn[] = [],
+  prompt: AnswerGenerationPrompt = defaultAnswerGenerationPrompt,
 ): UserContent {
   const allowedEvidenceRefs = createEvidenceReferences(retrieved.length);
   return buildAnswerContentWithEvidence(
@@ -803,6 +915,8 @@ export function buildAnswerContent(
     retrieved,
     allowedEvidenceRefs,
     expandedRetrievalWindowIds,
+    conversationTurns,
+    prompt,
   );
 }
 
@@ -811,17 +925,19 @@ function buildAnswerContentWithEvidence(
   retrieved: RetrievedElement[],
   allowedEvidenceRefs: readonly EvidenceReference[],
   expandedRetrievalWindowIds: ReadonlySet<string>,
+  conversationTurns: readonly AnswerConversationTurn[],
+  prompt: AnswerGenerationPrompt,
 ): UserContent {
-  const content: AnswerContentPart[] = [
-    ...buildAnswerFixedContent(question),
-    ...buildAnswerSourceContents(
-      retrieved,
-      allowedEvidenceRefs,
-      expandedRetrievalWindowIds,
-    )
-      .flatMap((source) => source.primary),
-  ];
-  return content;
+  const promptFrame = prompt.buildUserPromptFrame(
+    question,
+    conversationTurns,
+  );
+  const sources = buildAnswerSourceContents(
+    retrieved,
+    allowedEvidenceRefs,
+    expandedRetrievalWindowIds,
+  ).flatMap((source) => source.primary);
+  return assembleAnswerContent(promptFrame, sources, null);
 }
 
 function buildAnswerCorrectionContent(
@@ -830,20 +946,23 @@ function buildAnswerCorrectionContent(
   allowedEvidenceRefs: readonly EvidenceReference[],
   expandedRetrievalWindowIds: ReadonlySet<string>,
   failure: InvalidAnswerResponse,
+  conversationTurns: readonly AnswerConversationTurn[],
+  prompt: AnswerGenerationPrompt,
 ): UserContent {
-  return [
-    ...buildAnswerFixedContent(question),
-    {
-      text: buildAnswerCorrectionInstruction(failure, allowedEvidenceRefs),
-      type: "text",
-    },
-    ...buildAnswerSourceContents(
-      retrieved,
-      allowedEvidenceRefs,
-      expandedRetrievalWindowIds,
-    )
-      .flatMap((source) => source.primary),
-  ];
+  const promptFrame = prompt.buildUserPromptFrame(
+    question,
+    conversationTurns,
+  );
+  const sources = buildAnswerSourceContents(
+    retrieved,
+    allowedEvidenceRefs,
+    expandedRetrievalWindowIds,
+  ).flatMap((source) => source.primary);
+  const correction = buildAnswerCorrectionInstruction(
+    failure,
+    allowedEvidenceRefs,
+  );
+  return assembleAnswerContent(promptFrame, sources, correction);
 }
 
 function buildAnswerCorrectionInstruction(
@@ -854,7 +973,7 @@ function buildAnswerCorrectionInstruction(
     "CORRECTION REQUEST:",
     "The previous response did not match the required answer contract.",
     "Preserve all supported answer content while fixing only the contract errors.",
-    "Use the same original question and the same retrieved evidence supplied below.",
+    "Use the same question and the same retrieved evidence supplied below.",
     `The exact allowed evidence references are: ${allowedEvidenceRefs.join(", ")}.`,
     "",
     "Validation errors:",
@@ -877,9 +996,13 @@ function buildAnswerCorrectionInstruction(
   return lines.join("\n");
 }
 
-function buildAnswerFixedContent(question: string): AnswerContentPart[] {
-  return [{
-    text: [
+function buildAnswerUserPromptFrame(
+  question: string,
+  _conversationTurns: readonly AnswerConversationTurn[],
+): AnswerUserPromptFrame {
+  return {
+    afterSources: null,
+    beforeSources: [
       "ORIGINAL QUESTION:",
       question,
       "",
@@ -888,18 +1011,63 @@ function buildAnswerFixedContent(question: string): AnswerContentPart[] {
       "Use the exact evidence reference on each retrieved item.",
       "Do not invent, change, or guess evidence references.",
     ].join("\n"),
+    correctionPlacement: "before-sources",
+  };
+}
+
+function buildAnswerFixedContent(
+  frame: AnswerUserPromptFrame,
+): AnswerContentPart[] {
+  const content: AnswerContentPart[] = [{
+    text: frame.beforeSources,
     type: "text",
   }];
+  if (frame.afterSources !== null) {
+    content.push({
+      text: frame.afterSources,
+      type: "text",
+    });
+  }
+  return content;
+}
+
+function assembleAnswerContent(
+  frame: AnswerUserPromptFrame,
+  sources: readonly AnswerContentPart[],
+  correction: string | null,
+): UserContent {
+  const content: AnswerContentPart[] = [{
+    text: frame.beforeSources,
+    type: "text",
+  }];
+  if (
+    correction !== null
+    && frame.correctionPlacement === "before-sources"
+  ) {
+    content.push({ text: correction, type: "text" });
+  }
+  content.push(...sources);
+  if (frame.afterSources !== null) {
+    content.push({ text: frame.afterSources, type: "text" });
+  }
+  if (
+    correction !== null
+    && frame.correctionPlacement === "after-sources"
+  ) {
+    content.push({ text: correction, type: "text" });
+  }
+  return content;
 }
 
 function buildAnswerOutputContract(
   allowedEvidenceRefs: readonly EvidenceReference[],
+  responseContract: AnswerResponseContract,
 ): string {
   return JSON.stringify({
-    description: ANSWER_OUTPUT_DESCRIPTION,
-    name: ANSWER_OUTPUT_NAME,
+    description: responseContract.description,
+    name: responseContract.name,
     schema: z.toJSONSchema(
-      createAnswerModelResponseSchema(allowedEvidenceRefs),
+      responseContract.createSchema(allowedEvidenceRefs),
     ),
   });
 }
@@ -979,22 +1147,29 @@ function finalizeAnswerDraft(
   draft: AnswerDraft,
   retrieved: RetrievedElement[],
   runDetails: AnswerRunDetails,
+  noAnswerContent: string | null,
+  verificationStatementIndexes: readonly number[] | null,
 ): AnsweredGeneratedAnswerResult | FallbackGeneratedAnswerResult {
   if (draft.status === "no_answer") {
     return createGeneratedFallback(
       retrieved,
       runDetails,
       "model-no-answer",
+      noAnswerContent ?? NO_ANSWER_TEXT,
     );
   }
   const answerDocument = compileAnswerDraft(draft, retrieved);
   if (answerDocument.status !== "answered") {
     throw new Error("Answered draft compiled into a no-answer document.");
   }
+  const claims = readPublishedAnswerClaims(answerDocument);
   return {
     answer: renderPublishedAnswerMarkdown(answerDocument),
     answerDocument,
-    claims: readPublishedAnswerClaims(answerDocument),
+    claims: selectVerificationClaims(
+      claims,
+      verificationStatementIndexes,
+    ),
     matchedDocuments: buildMatchedDocuments(retrieved),
     outcome: "answered",
     runDetails,
@@ -1002,14 +1177,51 @@ function finalizeAnswerDraft(
   };
 }
 
+function selectVerificationClaims(
+  claims: readonly AnswerClaim[],
+  statementIndexes: readonly number[] | null,
+): AnswerClaim[] {
+  if (statementIndexes === null) {
+    return [...claims];
+  }
+  const selected: AnswerClaim[] = [];
+  const seen = new Set<number>();
+  for (const statementIndex of statementIndexes) {
+    if (
+      !Number.isInteger(statementIndex)
+      || statementIndex < 0
+      || statementIndex >= claims.length
+    ) {
+      throw new Error(
+        `Answer verification statement index ${statementIndex} is unavailable.`,
+      );
+    }
+    if (seen.has(statementIndex)) {
+      throw new Error(
+        `Answer verification statement index ${statementIndex} is duplicated.`,
+      );
+    }
+    const claim = claims[statementIndex];
+    if (claim === undefined) {
+      throw new Error(
+        `Answer verification statement index ${statementIndex} is missing.`,
+      );
+    }
+    seen.add(statementIndex);
+    selected.push(claim);
+  }
+  return selected;
+}
+
 function createGeneratedFallback(
   retrieved: RetrievedElement[],
   runDetails: AnswerRunDetails,
   reason: GeneratedAnswerFallbackReason,
+  answer: string,
 ): FallbackGeneratedAnswerResult {
   const answerDocument = createNoAnswerDocument();
   const fallback: FallbackGeneratedAnswerResult = {
-    answer: NO_ANSWER_TEXT,
+    answer,
     answerDocument,
     claims: [],
     matchedDocuments: buildMatchedDocuments(retrieved),

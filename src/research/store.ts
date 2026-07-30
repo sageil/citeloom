@@ -1866,7 +1866,7 @@ function readRequiredCitationElementSetId(
   return elementSetId;
 }
 
-function validateCitationSnapshot(
+export function validateCitationSnapshot(
   citation: PublishedAnswerCitation,
   element: SourceElement,
 ): void {

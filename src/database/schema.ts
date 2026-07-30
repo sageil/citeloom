@@ -34,6 +34,8 @@ import type { EmbeddingSpaceRowCounts } from "../embedding/space/types.js";
 import type { QueryScope } from "../domain/query-scope.js";
 import type {
   CitationEvidence,
+  ClaimVerificationResult,
+  ResearchRetrievalTrace,
   StoredResearchRetrievalTrace,
   ResearchRunConfiguration,
 } from "../research/types.js";
@@ -42,6 +44,11 @@ import type {
   CandidateBudgetTelemetry,
   ContextSelectionTelemetry,
 } from "../observability/run.js";
+import type {
+  ChatMemoryTrace,
+  ChatRunConfiguration,
+} from "../chat/types.js";
+import type { PublishedAnswerDocument } from "../answers/published.js";
 import type {
   RetrievalSourceElement,
   SourceRegion,
@@ -109,6 +116,23 @@ export const researchOutputState = pgEnum("research_output_state", [
   "published",
 ]);
 
+export const chatMessageRole = pgEnum("chat_message_role", [
+  "user",
+  "assistant",
+]);
+
+export const chatRunState = pgEnum("chat_run_state", [
+  "accepted",
+  "embedding",
+  "retrieving",
+  "generating",
+  "verifying",
+  "publishing",
+  "completed",
+  "failed",
+  "canceled",
+]);
+
 export const inferenceWorkload = pgEnum("inference_workload", [
   "offline-tool",
   "ingestion",
@@ -152,6 +176,7 @@ export const applicationErrorOrigin = pgEnum("application_error_origin", [
 export const telemetryRunKind = pgEnum("telemetry_run_kind", [
   "answer",
   "benchmark",
+  "chat",
   "retrieval",
   "search",
 ]);
@@ -1080,6 +1105,313 @@ export const researchThreads = pgTable("research_threads", {
     .notNull()
     .defaultNow(),
 });
+
+export const chatConversations = pgTable(
+  "chat_conversations",
+  {
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    id: uuid("id").primaryKey(),
+    ownerUserId: uuid("owner_user_id").notNull(),
+    scope: jsonb("scope").$type<QueryScope>().notNull(),
+    title: text("title").notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    workspaceId: uuid("workspace_id").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.workspaceId, table.ownerUserId],
+      foreignColumns: [
+        workspaceMemberships.workspaceId,
+        workspaceMemberships.userId,
+      ],
+      name: "chat_conversations_owner_membership_fk",
+    }).onDelete("cascade"),
+    check(
+      "chat_conversations_title_check",
+      sql`length(trim(${table.title})) > 0`,
+    ),
+    index("chat_conversations_owner_updated_idx").on(
+      table.workspaceId,
+      table.ownerUserId,
+      table.updatedAt,
+    ),
+  ],
+);
+
+export const chatRuns = pgTable(
+  "chat_runs",
+  {
+    attemptCount: integer("attempt_count").notNull().default(1),
+    completedAt: timestamp("completed_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => chatConversations.id, { onDelete: "cascade" }),
+    errorMessage: text("error_message"),
+    id: uuid("id").primaryKey(),
+    leaseExpiresAt: timestamp("lease_expires_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    memoryTrace: jsonb("memory_trace").$type<ChatMemoryTrace>(),
+    retrievalTrace: jsonb("retrieval_trace").$type<ResearchRetrievalTrace>(),
+    runConfiguration: jsonb("run_configuration").$type<ChatRunConfiguration>(),
+    sequence: integer("sequence").notNull(),
+    state: chatRunState("state").notNull().default("accepted"),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "chat_runs_values_check",
+      sql`${table.attemptCount} > 0 AND ${table.sequence} > 0`,
+    ),
+    check(
+      "chat_runs_completion_check",
+      sql`(
+          ${table.state} IN ('completed', 'failed', 'canceled')
+          AND ${table.completedAt} IS NOT NULL
+          AND ${table.leaseExpiresAt} IS NULL
+        ) OR (
+          ${table.state} NOT IN ('completed', 'failed', 'canceled')
+          AND ${table.completedAt} IS NULL
+          AND ${table.leaseExpiresAt} IS NOT NULL
+        )`,
+    ),
+    check(
+      "chat_runs_error_check",
+      sql`(${table.state} = 'failed' AND ${table.errorMessage} IS NOT NULL)
+        OR (${table.state} <> 'failed' AND ${table.errorMessage} IS NULL)`,
+    ),
+    check(
+      "chat_runs_publication_check",
+      sql`(
+          ${table.state} = 'completed'
+          AND ${table.memoryTrace} IS NOT NULL
+          AND ${table.retrievalTrace} IS NOT NULL
+          AND ${table.runConfiguration} IS NOT NULL
+        ) OR (
+          ${table.state} <> 'completed'
+          AND ${table.memoryTrace} IS NULL
+          AND ${table.retrievalTrace} IS NULL
+          AND ${table.runConfiguration} IS NULL
+        )`,
+    ),
+    uniqueIndex("chat_runs_conversation_sequence_idx").on(
+      table.conversationId,
+      table.sequence,
+    ),
+    index("chat_runs_conversation_state_idx").on(
+      table.conversationId,
+      table.state,
+    ),
+  ],
+);
+
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    answerDocument: jsonb("answer_document").$type<PublishedAnswerDocument>(),
+    claims: jsonb("claims").$type<ClaimVerificationResult[]>(),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    id: uuid("id").primaryKey(),
+    role: chatMessageRole("role").notNull(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => chatRuns.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    check(
+      "chat_messages_content_check",
+      sql`length(trim(${table.content})) > 0`,
+    ),
+    check(
+      "chat_messages_output_check",
+      sql`(
+          ${table.role} = 'user'
+          AND ${table.answerDocument} IS NULL
+          AND ${table.claims} IS NULL
+        ) OR (
+          ${table.role} = 'assistant'
+          AND ${table.answerDocument} IS NOT NULL
+          AND ${table.claims} IS NOT NULL
+        )`,
+    ),
+    uniqueIndex("chat_messages_run_role_idx").on(table.runId, table.role),
+    index("chat_messages_run_created_idx").on(table.runId, table.createdAt),
+  ],
+);
+
+export const chatEvidenceDocuments = pgTable(
+  "chat_evidence_documents",
+  {
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    documentId: varchar("document_id", { length: 64 })
+      .notNull()
+      .references(() => sourceDocuments.documentId, { onDelete: "restrict" }),
+    documentVersionId: uuid("document_version_id").primaryKey(),
+    fileExtension: varchar("file_extension", { length: 33 }).notNull(),
+    mediaType: text("media_type").notNull(),
+    sourceFile: text("source_file").notNull(),
+    version: integer("version").notNull(),
+  },
+  (table) => [
+    check(
+      "chat_evidence_documents_values_check",
+      sql`length(trim(${table.sourceFile})) > 0 AND ${table.version} > 0`,
+    ),
+    index("chat_evidence_documents_document_idx").on(table.documentId),
+  ],
+);
+
+export const chatCitationRecords = pgTable(
+  "chat_citation_records",
+  {
+    assistantMessageId: uuid("assistant_message_id")
+      .notNull()
+      .references(() => chatMessages.id, { onDelete: "cascade" }),
+    citationNumber: integer("citation_number").notNull(),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    documentVersionId: uuid("document_version_id")
+      .notNull()
+      .references(() => chatEvidenceDocuments.documentVersionId, {
+        onDelete: "restrict",
+      }),
+    elementId: varchar("element_id", { length: 64 }).notNull(),
+    evidence: jsonb("evidence").$type<CitationEvidence>().notNull(),
+    id: uuid("id").primaryKey(),
+    imageContent: customType<{ data: Buffer }>({
+      dataType: () => "bytea",
+    })("image_content"),
+    pageNumbers: integer("page_numbers").array().notNull(),
+    regions: jsonb("regions").$type<SourceRegion[]>().notNull(),
+    sectionPath: text("section_path").array().notNull(),
+    sourceFile: text("source_file").notNull(),
+  },
+  (table) => [
+    check(
+      "chat_citation_records_values_check",
+      sql`${table.citationNumber} > 0
+        AND length(trim(${table.sourceFile})) > 0
+        AND (
+          (${table.evidence}->>'kind' = 'image' AND ${table.imageContent} IS NOT NULL)
+          OR (
+            ${table.evidence}->>'kind' IN ('table', 'text')
+            AND ${table.imageContent} IS NULL
+          )
+        )`,
+    ),
+    unique("chat_citation_records_message_identity_unique").on(
+      table.assistantMessageId,
+      table.id,
+    ),
+    uniqueIndex("chat_citation_records_message_number_idx").on(
+      table.assistantMessageId,
+      table.citationNumber,
+    ),
+    index("chat_citation_records_version_idx").on(table.documentVersionId),
+  ],
+);
+
+function createChatMessageEmbeddingColumns() {
+  return {
+    content: text("content").notNull(),
+    embeddingSpaceId: text("embedding_space_id")
+      .notNull()
+      .references(() => embeddingSpaces.id, { onDelete: "cascade" }),
+    inputTokens: integer("input_tokens").notNull(),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => chatMessages.id, { onDelete: "cascade" }),
+    partOrdinal: integer("part_ordinal").notNull(),
+  };
+}
+
+export const chatMessageEmbeddings384 = pgTable(
+  "chat_message_embeddings_384",
+  {
+    ...createChatMessageEmbeddingColumns(),
+    embedding: vector("embedding", { dimensions: 384 }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.embeddingSpaceId,
+        table.messageId,
+        table.partOrdinal,
+      ],
+    }),
+    check(
+      "chat_message_embeddings_384_values_check",
+      sql`${table.inputTokens} > 0 AND ${table.partOrdinal} >= 0`,
+    ),
+    index("chat_message_embeddings_384_message_idx").on(table.messageId),
+    index("chat_message_embeddings_384_hnsw_idx")
+      .using("hnsw", table.embedding.op("vector_cosine_ops")),
+  ],
+);
+
+export const chatMessageEmbeddings768 = pgTable(
+  "chat_message_embeddings_768",
+  {
+    ...createChatMessageEmbeddingColumns(),
+    embedding: vector("embedding", { dimensions: 768 }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.embeddingSpaceId,
+        table.messageId,
+        table.partOrdinal,
+      ],
+    }),
+    check(
+      "chat_message_embeddings_768_values_check",
+      sql`${table.inputTokens} > 0 AND ${table.partOrdinal} >= 0`,
+    ),
+    index("chat_message_embeddings_768_message_idx").on(table.messageId),
+    index("chat_message_embeddings_768_hnsw_idx")
+      .using("hnsw", table.embedding.op("vector_cosine_ops")),
+  ],
+);
+
+export const chatMessageEmbeddings1024 = pgTable(
+  "chat_message_embeddings_1024",
+  {
+    ...createChatMessageEmbeddingColumns(),
+    embedding: vector("embedding", { dimensions: 1024 }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.embeddingSpaceId,
+        table.messageId,
+        table.partOrdinal,
+      ],
+    }),
+    check(
+      "chat_message_embeddings_1024_values_check",
+      sql`${table.inputTokens} > 0 AND ${table.partOrdinal} >= 0`,
+    ),
+    index("chat_message_embeddings_1024_message_idx").on(table.messageId),
+    index("chat_message_embeddings_1024_hnsw_idx")
+      .using("hnsw", table.embedding.op("vector_cosine_ops")),
+  ],
+);
 
 export const researchTurns = pgTable(
   "research_turns",

@@ -1,6 +1,7 @@
 export const APP_SECTION_PATHS = {
   account: "/account",
   ask: "/ask",
+  chat: "/chat",
   documents: "/documents",
   errors: "/errors",
   help: "/help",
@@ -19,6 +20,7 @@ export function readAppSectionName(value: string | null): AppSectionName | null 
   switch (value) {
     case "account":
     case "ask":
+    case "chat":
     case "documents":
     case "errors":
     case "help":
@@ -39,6 +41,8 @@ export function readAppSectionPath(pathname: string): AppSectionName | null {
       return "account";
     case APP_SECTION_PATHS.ask:
       return "ask";
+    case APP_SECTION_PATHS.chat:
+      return "chat";
     case APP_SECTION_PATHS.documents:
       return "documents";
     case APP_SECTION_PATHS.errors:
