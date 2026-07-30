@@ -153,6 +153,43 @@ The saved oMLX URL uses port 9000 and can be changed in Settings.
 
 Work already in progress keeps its saved settings snapshot when a model, endpoint, or route changes.
 
+### Ollama Adaptive inference
+
+Adaptive inference is enabled by default for Ollama language workloads.
+It applies only to native Ollama GGUF language models used for answers, extra search queries, and summaries.
+It does not change embedding requests, other providers, or MLX runners.
+
+For a bounded answer, CiteLoom calculates the requested context as:
+
+```text
+conservative input upper bound + maximum answer output + provider safety margin
+```
+
+CiteLoom uses a 65,536-token floor unless the model maximum reported by Ollama is smaller, and it never requests more than that model maximum.
+The configured context capacity remains the fixed fallback when CiteLoom cannot inspect Ollama or the loaded model is not a native GGUF model.
+
+These examples assume Ollama reports a model maximum of at least 131,072 tokens and use the fresh-install 20,000-token answer output limit and 2,048-token safety margin:
+
+| Request | Calculation | Requested context |
+| --- | --- | --- |
+| Answer with a 27,544-token conservative input bound | `27,544 + 20,000 + 2,048 = 49,592` | `65,536`, because the calculated requirement is below the floor |
+| Answer with a 50,000-token conservative input bound | `50,000 + 20,000 + 2,048 = 72,048` | `72,048` |
+| Small answer while a 131,072-token runner is resident | Requirement is below `65,536`, but the resident runner is larger | Reuse `131,072`; a resident runner is never shrunk |
+| Extra search query generation | CiteLoom assigns the adaptive floor directly rather than using answer-output variables | `65,536` |
+| Summary, vision request, tool request, reasoning request, or answer without an output limit | CiteLoom cannot establish the same bounded answer requirement | The model maximum reported by Ollama |
+
+Adaptive inference requires CiteLoom's Ollama provider limit and Ollama's `OLLAMA_NUM_PARALLEL` setting to both be `1`.
+Use a dedicated Ollama endpoint, or coordinate every client that can load the same model, because another client can change the resident runner.
+The Settings page locks CiteLoom's provider limit to `1` while Adaptive inference is enabled.
+Turn Adaptive inference off to make every Ollama language request use the configured fixed context capacity.
+
+Fresh installations and provider resets enable Adaptive inference.
+An upgraded configuration with no saved Adaptive inference choice is enabled when its Ollama provider limit is already `1`.
+An explicit opt-out is preserved, and an older configuration with higher concurrency remains fixed-context instead of having its concurrency changed silently.
+
+The fresh Mac language model uses MLX, so it continues to use fixed-context fallback behavior even though the setting is enabled.
+Do not infer MLX context resizing from native GGUF behavior.
+
 ## Embedding input formats
 
 Embedding input formats control how CiteLoom presents documents and queries to the embedding model.

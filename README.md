@@ -109,6 +109,11 @@ See [Configuration](docs/configuration.md#provider-reference) for endpoint conve
 
 CiteLoom services run in Docker Compose while local model servers run on the host.
 Fresh settings use Ollama for answers, extra search queries, summaries, and embeddings, and include oMLX model suggestions for optional reranking and speech.
+Adaptive inference is enabled by default for native Ollama GGUF language models.
+It uses a 65,536-token floor capped by the model maximum, grows bounded answer requests when their calculated requirement is larger, and reuses larger resident runners without shrinking them.
+Summaries, vision, tools, reasoning, and unbounded answers use the model maximum reported by Ollama.
+Embeddings, MLX runners, and other providers remain outside adaptive allocation.
+See [Ollama Adaptive inference](docs/configuration.md#ollama-adaptive-inference) for sizing examples, operational requirements, fallback behavior, and opt-out instructions.
 Users can route speech-to-text and text-to-speech independently to oMLX, OpenAI, Groq, or Custom.
 Users can optionally enable reranking with oMLX, Cohere, Jina, or Custom.
 

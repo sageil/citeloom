@@ -553,6 +553,7 @@ WITH canonical_settings AS (
           }
         },
         "ollama": {
+          "adaptiveContextEnabled": true,
           "apiToken": null,
           "answer": {
             "apiToken": null,
@@ -930,16 +931,32 @@ SET
   ),
   "settings" = jsonb_set(
     jsonb_set(
-      "application_settings"."settings",
-      '{runtime,answerMaximumOutputTokens}',
+      jsonb_set(
+        "application_settings"."settings",
+        '{runtime,answerMaximumOutputTokens}',
+        CASE
+          WHEN
+            "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+              IS NULL
+            OR "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+              = "application_settings"."defaults"#>'{runtime,answerMaximumOutputTokens}'
+          THEN EXCLUDED."settings"#>'{runtime,answerMaximumOutputTokens}'
+          ELSE "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+        END,
+        true
+      ),
+      '{providers,connections,ollama,adaptiveContextEnabled}',
       CASE
         WHEN
-          "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
-            IS NULL
-          OR "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
-            = "application_settings"."defaults"#>'{runtime,answerMaximumOutputTokens}'
-        THEN EXCLUDED."settings"#>'{runtime,answerMaximumOutputTokens}'
-        ELSE "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+          "application_settings"."settings"#>'{providers,connections,ollama,adaptiveContextEnabled}'
+            IS NOT NULL
+        THEN
+          "application_settings"."settings"#>'{providers,connections,ollama,adaptiveContextEnabled}'
+        WHEN
+          "application_settings"."settings"#>>'{providers,connections,ollama,maximumParallelRequests}'
+            = '1'
+        THEN 'true'::jsonb
+        ELSE 'false'::jsonb
       END,
       true
     ),
@@ -962,6 +979,8 @@ WHERE
     IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,embeddingInputFormatId}'
   OR "application_settings"."defaults"->'sourceContent'
     IS DISTINCT FROM EXCLUDED."defaults"->'sourceContent'
+  OR "application_settings"."settings"#>'{providers,connections,ollama,adaptiveContextEnabled}'
+    IS NULL
   OR "application_settings"."settings"->'sourceContent'
     IS DISTINCT FROM EXCLUDED."settings"->'sourceContent';
 

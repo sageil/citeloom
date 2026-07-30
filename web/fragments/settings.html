@@ -509,7 +509,7 @@
                   <span aria-hidden="true"></span>
                   <strong x-text="providerAdaptiveContextEnabled() ? 'Enabled' : 'Off'"></strong>
                 </label>
-                <small>Opt in to load native GGUF language models at CiteLoom's verified floor, reuse larger resident runners, and grow only when a request requires it. CiteLoom locks this provider to one parallel request. The dedicated Ollama server must also use OLLAMA_NUM_PARALLEL=1. Existing resident runners are never shrunk.</small>
+                <small>Enabled by default for native GGUF language models. CiteLoom uses a 65,536-token floor capped by the model maximum, reuses larger resident runners, and grows only when a request requires it. CiteLoom locks this provider to one parallel request. The dedicated Ollama server must also use OLLAMA_NUM_PARALLEL=1. Existing resident runners are never shrunk. Turn this off to always request the configured fixed context.</small>
               </div>
               <div class="settings-provider-authentication" x-show="providerUsesDeviceAuth()">
                 <div class="settings-provider-auth-heading">
