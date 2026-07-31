@@ -31,7 +31,7 @@ interface EmbeddingSource {
 
 export interface SelectedChatMemory {
   conversationTurns: AnswerConversationTurn[];
-  contextualRetrievalQuery: string;
+  questionContextTurns: AnswerConversationTurn[];
   trace: ChatMemoryTrace;
 }
 
@@ -97,7 +97,6 @@ export async function prepareChatMemory(
     return buildSelectedMemory(
       fullHistory.selected,
       queryMessageId,
-      question,
       runtime.config.embeddingSpace.id,
       maximumTokens,
     );
@@ -159,7 +158,6 @@ export async function prepareChatMemory(
   return buildSelectedMemory(
     selected.selected,
     queryMessageId,
-    question,
     runtime.config.embeddingSpace.id,
     maximumTokens,
   );
@@ -414,30 +412,24 @@ function buildSelectedMemory(
     turn: ChatMemoryTurnRecord;
   }[],
   queryMessageId: string,
-  question: string,
   embeddingSpaceId: string,
   maximumTokens: number,
 ): SelectedChatMemory {
   const conversationTurns: AnswerConversationTurn[] = [];
-  const priorQuestions: string[] = [];
+  const questionContextTurns: AnswerConversationTurn[] = [];
   for (const item of selected) {
     conversationTurns.push({
       assistant: formatAssistantMemoryContext(item.turn),
       user: item.turn.userContent,
     });
-    priorQuestions.push(item.turn.userContent);
+    questionContextTurns.push({
+      assistant: item.turn.assistantContent,
+      user: item.turn.userContent,
+    });
   }
-  const contextualRetrievalQuery = priorQuestions.length === 0
-    ? question
-    : [
-      question,
-      "",
-      "Relevant earlier questions in this document conversation:",
-      ...priorQuestions.map((value) => `- ${value}`),
-    ].join("\n");
   return {
     conversationTurns,
-    contextualRetrievalQuery,
+    questionContextTurns,
     trace: {
       embeddingSpaceId,
       maximumTokens,

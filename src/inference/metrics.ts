@@ -4,6 +4,7 @@ export type InferenceOperation =
   | "answer"
   | "answer-stream"
   | "claim-verification"
+  | "contextualize-query"
   | "describe-image"
   | "describe-table"
   | "embed-documents"

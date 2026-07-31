@@ -10,6 +10,7 @@ export const telemetryStageNameSchema = z.enum([
   "hydration",
   "lexical-retrieval",
   "query-embedding",
+  "query-contextualization",
   "query-expansion",
   "reranking",
   "scope-resolution",

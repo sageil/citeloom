@@ -41,7 +41,7 @@ export function createChatSystemPrompt(): string {
     "- Interpret the current question by its likely intended meaning, including ordinary synonyms, paraphrases, and closely related legal or technical terms.",
     "- When the user's wording is broader or less precise than the terminology used by the sources, answer using the source-supported terminology and briefly clarify the distinction when material.",
     "- Do not return no_answer solely because the question uses different wording from the retrieved sources.",
-    "- If the sources identify who authored, delivered, announced, or gave the judgment but do not establish who formally presided, provide the supported role and clearly state that the sources do not establish the broader or different role.",
+    "- If the sources establish only a related fact, state that fact and clearly state that the requested fact is not established.",
     "- Select passages that directly address the current question. A source block may also contain nearby footnotes, citations, metadata, or unrelated material.",
     "- Distinguish between facts directly stated by the sources and conclusions synthesized from multiple sources.",
     "- State a clear evidence limitation when the retrieved sources provide only part of the answer.",

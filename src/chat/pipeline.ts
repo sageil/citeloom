@@ -6,6 +6,7 @@ import {
   type GeneratedAnswerResult,
 } from "../answers/inference.js";
 import type { ApplicationRuntime } from "../app/runtime.js";
+import type { AppConfig } from "../config/index.js";
 import {
   selectChatInferenceModels,
 } from "../inference/registry.js";
@@ -29,6 +30,7 @@ import {
   ChatStore,
 } from "./store.js";
 import { CHAT_GENERATION_PROMPT } from "./prompt.js";
+import { contextualizeChatQuestion } from "./question-contextualization.js";
 import type {
   ChatAssistantMessage,
   ChatConversation,
@@ -36,6 +38,7 @@ import type {
 } from "./types.js";
 
 const CHAT_LEASE_HEARTBEAT_MS = 30_000;
+const CHAT_QUERY_EXPANSIONS = 0;
 
 export interface ChatMessageRequest {
   content: string;
@@ -126,15 +129,28 @@ export async function answerChatMessageWithRuntime(
       "embedding",
       "retrieving",
     );
+    const retrievalQuestion = await contextualizeChatQuestion(
+      runtime.models,
+      accepted.userMessage.content,
+      memory.questionContextTurns,
+      runtime.scheduler("queryExpansion", "interactive-answer"),
+      lease.signal,
+      {
+        seedMode: runtime.config.retrieval.generationSeedMode,
+        temperature: runtime.config.retrieval.queryExpansionTemperature,
+      },
+      reportProgress,
+      runTelemetry,
+    );
     reportProgress("Retrieving evidence from indexed documents");
     const prepared = await prepareRetrievalWithRuntime(
       runtime,
-      memory.contextualRetrievalQuery,
+      retrievalQuestion,
       reportProgress,
       accepted.conversation.scope,
       lease.signal,
       runTelemetry,
-      runtime.config,
+      createChatRetrievalConfig(runtime.config),
       "interactive-answer",
     );
 
@@ -319,6 +335,20 @@ function buildChatRunConfiguration(
       embedding: research.models.embedding,
       reranker: research.models.reranker,
       verifier: research.models.verifier,
+    },
+    retrieval: {
+      ...research.retrieval,
+      queryExpansions: CHAT_QUERY_EXPANSIONS,
+    },
+  };
+}
+
+function createChatRetrievalConfig(config: AppConfig): AppConfig {
+  return {
+    ...config,
+    retrieval: {
+      ...config.retrieval,
+      queryExpansions: CHAT_QUERY_EXPANSIONS,
     },
   };
 }
