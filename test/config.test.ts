@@ -112,6 +112,7 @@ describe("application configuration", () => {
     expect(config.scheduling.settingsVersion).toBe(7);
     expect(config.scheduling.targets).toEqual({
       answer: { providerId: "lmstudio" },
+      chat: { providerId: "lmstudio" },
       embedding: { providerId: "lmstudio" },
       queryExpansion: { providerId: "lmstudio" },
       summarization: { providerId: "lmstudio" },

@@ -272,17 +272,29 @@ describe("answer draft boundary", () => {
         status: "answered",
       },
     },
-    {
-      label: "model-authored Markdown",
-      value: buildDraftWithContent("**Revenue increased.**"),
-    },
-    {
-      label: "model-authored HTML",
-      value: buildDraftWithContent("<strong>Revenue increased.</strong>"),
-    },
   ])("rejects $label", ({ value }) => {
     expect(() => decodeAnswerDraft(value, createEvidenceReferences(2)))
       .toThrow("Invalid answer draft");
+  });
+
+  it.each([
+    {
+      content: "**Revenue increased.**",
+      label: "model-authored Markdown",
+    },
+    {
+      content: "<strong>Revenue increased.</strong>",
+      label: "model-authored HTML",
+    },
+  ])("preserves $label as answer content", ({ content }) => {
+    const draft = decodeAnswerDraft(
+      buildDraftWithContent(content),
+      createEvidenceReferences(2),
+    );
+    if (draft.status !== "answered") {
+      throw new Error("Expected an answered draft.");
+    }
+    expect(draft.statements[0]?.content).toBe(content);
   });
 
   it("rejects independent conflicting-evidence statement classification", () => {
@@ -412,7 +424,7 @@ describe("answer draft boundary", () => {
     expect(draft.statements[0]?.evidenceRefs).toEqual(["EVID_B", "EVID_A"]);
   });
 
-  it("omits statements emptied by model-text normalization", () => {
+  it("omits only statements emptied by model-text normalization", () => {
     const value = {
       conflictGroups: [],
       statements: [
@@ -453,12 +465,20 @@ describe("answer draft boundary", () => {
     if (draft.status !== "answered") {
       throw new Error("Expected an answered draft.");
     }
-    expect(draft.statements).toEqual([{
-      content: "Revenue increased.",
-      evidenceRefs: ["EVID_A"],
-      presentation: "paragraph",
-      section: "answer",
-    }]);
+    expect(draft.statements).toEqual([
+      {
+        content: "**Model formatting**",
+        evidenceRefs: ["EVID_A"],
+        presentation: "paragraph",
+        section: "answer",
+      },
+      {
+        content: "Revenue increased.",
+        evidenceRefs: ["EVID_A"],
+        presentation: "paragraph",
+        section: "answer",
+      },
+    ]);
   });
 
   it("omits a conflict group invalidated by model-text normalization", () => {
