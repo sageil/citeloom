@@ -51,10 +51,14 @@
     <template x-if="conversation !== null">
       <div class="chat-conversation">
         <header class="chat-conversation-header">
-          <div>
+          <div class="chat-conversation-heading">
             <p class="section-kicker">Private to you in this workspace</p>
             <h2 x-text="conversation.title"></h2>
             <p x-text="scopeLabel()"></p>
+            <div class="chat-grounding-note">
+              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-shield-check"></use></svg>
+              <p>Answers are grounded in your documents. CiteLoom may make mistakes - verify important information.</p>
+            </div>
           </div>
           <button class="chat-delete-button" type="button" :disabled="busy" @click="deleteConversation()">
             <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use></svg>
@@ -63,50 +67,75 @@
         </header>
 
         <div class="chat-thread" x-ref="thread" aria-live="polite">
-          <section class="chat-grounding-note">
-            <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-shield-check"></use></svg>
-            <p><strong>Document-grounded only.</strong> Conversation memory helps interpret follow-ups, but every factual answer must be supported by currently retrieved document evidence.</p>
-          </section>
-
           <template x-for="run in conversation.runs" :key="run.id">
             <article class="chat-turn">
               <template x-for="message in run.messages" :key="message.id">
                 <div class="chat-message" :class="`chat-message-${message.role}`">
-                  <header>
-                    <strong x-text="message.role === 'user' ? 'You' : 'CiteLoom'"></strong>
-                    <time :datetime="message.createdAt" x-text="formatTime(message.createdAt)"></time>
-                  </header>
-
                   <template x-if="message.role === 'user'">
-                    <p class="chat-user-content" x-text="message.content"></p>
+                    <div class="chat-user-message">
+                      <p class="chat-user-content" x-text="message.content"></p>
+                      <time :datetime="message.createdAt" x-text="formatTime(message.createdAt)"></time>
+                    </div>
                   </template>
 
                   <template x-if="message.role === 'assistant'">
-                    <div class="chat-assistant-content">
-                      <template x-if="message.answerDocument.status === 'no_answer'">
-                        <p x-text="message.content"></p>
-                      </template>
-                      <template x-for="(statement, statementIndex) in message.answerDocument.statements" :key="`${message.id}-${statementIndex}`">
-                        <div class="chat-statement" :class="`chat-statement-${statement.presentation}`">
-                          <p x-text="statement.content"></p>
-                          <div
-                            class="chat-statement-citations"
-                            x-show="findingCheckForStatement(message, statementIndex) !== null"
-                          >
-                            <template x-for="citationId in statement.citationIds" :key="citationId">
-                              <button
-                                type="button"
-                                x-show="citationVerificationStatus(message, statementIndex, citationId) !== null"
-                                :class="citationVerificationStatus(message, statementIndex, citationId)"
-                                x-text="citationLabel(citationForId(message, citationId))"
-                                :title="citationVerificationDescription(message, statementIndex, citationId)"
-                                :aria-label="statementCitationLabel(message, statementIndex, citationId)"
-                                @click="openCitation(citationForId(message, citationId))"
-                              ></button>
+                    <div class="chat-assistant-message">
+                      <header>
+                        <span class="chat-assistant-avatar">
+                          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
+                        </span>
+                        <strong>CiteLoom</strong>
+                        <time :datetime="message.createdAt" x-text="formatTime(message.createdAt)"></time>
+                      </header>
+                      <div class="chat-assistant-content">
+                        <template x-if="message.answerDocument.status === 'no_answer'">
+                          <p x-text="message.content"></p>
+                        </template>
+                        <template x-for="(statement, statementIndex) in message.answerDocument.statements" :key="`${message.id}-${statementIndex}`">
+                          <div class="chat-statement" :class="`chat-statement-${statement.presentation}`">
+                            <p x-text="statement.content"></p>
+                            <div
+                              class="chat-statement-citations"
+                              x-show="findingCheckForStatement(message, statementIndex) !== null"
+                            >
+                              <template x-for="citationId in statement.citationIds" :key="citationId">
+                                <button
+                                  type="button"
+                                  x-show="citationVerificationStatus(message, statementIndex, citationId) !== null"
+                                  :class="citationVerificationClasses(message, statementIndex, citationId)"
+                                  x-text="citationLabel(citationForId(message, citationId))"
+                                  :title="citationVerificationDescription(message, statementIndex, citationId)"
+                                  :aria-label="statementCitationLabel(message, statementIndex, citationId)"
+                                  @click="openCitation(citationForId(message, citationId))"
+                                ></button>
+                              </template>
+                            </div>
+                          </div>
+                        </template>
+
+                        <section class="chat-answer-evidence" x-show="message.citations.length > 0">
+                          <header>
+                            <strong>Evidence used in this answer</strong>
+                            <span x-text="`· ${evidenceSources(message).length} ${evidenceSources(message).length === 1 ? 'source' : 'sources'}`"></span>
+                          </header>
+                          <div class="chat-answer-evidence-list">
+                            <template x-for="(source, sourceIndex) in evidenceSources(message)" :key="source.citation.id">
+                              <div class="chat-answer-evidence-row">
+                                <span class="chat-answer-evidence-icon">
+                                  <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
+                                </span>
+                                <span class="chat-answer-evidence-number" x-text="sourceIndex + 1"></span>
+                                <strong x-text="sourceTitle(source.citation.sourceFile)"></strong>
+                                <span x-text="sourcePageLabel(source)"></span>
+                                <button type="button" @click="openCitation(source.citation)">
+                                  <span>View evidence</span>
+                                  <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-external"></use></svg>
+                                </button>
+                              </div>
                             </template>
                           </div>
-                        </div>
-                      </template>
+                        </section>
+                      </div>
                     </div>
                   </template>
                 </div>

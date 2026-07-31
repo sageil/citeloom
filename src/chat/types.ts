@@ -20,6 +20,18 @@ export type ChatRunState =
 
 export type ChatMessageRole = "assistant" | "user";
 
+export type ChatVerificationState =
+  | "not-applicable"
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed";
+
+export interface ChatClaimVerificationResult
+  extends Omit<ClaimVerificationResult, "status"> {
+  status: ClaimVerificationResult["status"] | "collectively-supported";
+}
+
 export interface ChatMemorySelection {
   assistantMessageId: string;
   reason: "recent" | "semantic";
@@ -75,12 +87,13 @@ export interface ChatUserMessage {
 export interface ChatAssistantMessage {
   answerDocument: PublishedAnswerDocument;
   citations: StoredChatCitation[];
-  claims: ClaimVerificationResult[];
+  claims: ChatClaimVerificationResult[];
   content: string;
   createdAt: string;
   id: string;
   role: "assistant";
   runId: string;
+  verificationState: ChatVerificationState;
 }
 
 export type ChatMessage = ChatAssistantMessage | ChatUserMessage;

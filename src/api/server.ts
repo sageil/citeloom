@@ -279,10 +279,11 @@ export async function buildWebServer(
   const requestPrincipals = new WeakMap<object, AuthenticatedPrincipal>();
   const loginRateLimiter = new LoginRateLimiter();
   let services = options.services;
+  let closeOwnedServices: (() => Promise<void>) | null = null;
   if (services === undefined) {
     const ownedServices = await startWebServices(config);
     services = ownedServices.services;
-    server.addHook("onClose", async () => ownedServices.close());
+    closeOwnedServices = ownedServices.close;
   }
   const openAICodexDeviceAuth = new OpenAICodexDeviceAuthController({
     persistCredentials: async (credentials) => {
@@ -331,6 +332,63 @@ export async function buildWebServer(
       await cancellationReconciliation;
     }
   });
+  const chatVerificationController = new AbortController();
+  let chatVerificationDispatch: Promise<void> | null = null;
+  const dispatchChatVerifications = (): void => {
+    if (
+      chatVerificationController.signal.aborted
+      || chatVerificationDispatch !== null
+    ) {
+      return;
+    }
+    chatVerificationDispatch = services.run(async (runtime) => {
+      if (runtime.processNextChatVerification === undefined) {
+        return;
+      }
+      let processed = true;
+      while (processed && !chatVerificationController.signal.aborted) {
+        processed = await runtime.processNextChatVerification(
+          chatVerificationController.signal,
+        );
+      }
+    }).catch(async (error: unknown) => {
+      if (chatVerificationController.signal.aborted) {
+        return;
+      }
+      const result = await services.reportApplicationError(error, {
+        category: "background-task",
+        code: "chat_verification_dispatch_failed",
+        instance: hostname(),
+        operation: "dispatch-chat-verification",
+        origin: "background-task",
+        retryable: true,
+        service: "web",
+        severity: "error",
+      });
+      server.log.error(
+        { errorId: result.id },
+        "Could not dispatch Chat verification.",
+      );
+    }).finally(() => {
+      chatVerificationDispatch = null;
+    });
+  };
+  const chatVerificationTimer = setInterval(
+    dispatchChatVerifications,
+    500,
+  );
+  chatVerificationTimer.unref();
+  dispatchChatVerifications();
+  server.addHook("onClose", async () => {
+    clearInterval(chatVerificationTimer);
+    chatVerificationController.abort();
+    if (chatVerificationDispatch !== null) {
+      await chatVerificationDispatch;
+    }
+  });
+  if (closeOwnedServices !== null) {
+    server.addHook("onClose", closeOwnedServices);
+  }
   const staticDirectory = options.staticDirectory === undefined
     ? defaultStaticDirectory
     : options.staticDirectory;

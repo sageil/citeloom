@@ -114,6 +114,56 @@ export interface VerifiedPublishedAnswer {
   claims: ClaimVerificationResult[];
 }
 
+export function createPendingAnswerClaimChecks(
+  models: InferenceModelRegistry,
+  claims: readonly AnswerClaim[],
+  sources: readonly ClaimEvidenceSource[],
+): ClaimVerificationResult[] {
+  if (claims.length === 0) {
+    return [];
+  }
+  const preparedClaims = prepareClaimVerifications(claims, sources);
+  const verifierModel = models.claimVerifier.modelId;
+  const unitsByClaimIndex = new Map<
+    number,
+    ClaimVerificationResult["evidenceUnits"]
+  >();
+  for (const prepared of preparedClaims) {
+    const claimIndex = prepared.claim.claimIndex;
+    const units = unitsByClaimIndex.get(claimIndex) ?? [];
+    if (prepared.citationNumber !== null) {
+      const outcome = prepared.kind === "direct"
+        ? prepared.outcome
+        : "not-evaluated";
+      const rationale = prepared.kind === "direct"
+        ? prepared.rationale
+        : "Automated evidence verification is pending.";
+      units.push({
+        citationNumber: prepared.citationNumber,
+        outcome,
+        rationale,
+        supportProbability: null,
+        unitId: buildClaimItemId(claimIndex, prepared.citationNumber),
+      });
+    }
+    unitsByClaimIndex.set(claimIndex, units);
+  }
+  const pending: ClaimVerificationResult[] = [];
+  for (const claim of readUniqueClaims(preparedClaims)) {
+    const evidenceUnits = unitsByClaimIndex.get(claim.claimIndex) ?? [];
+    pending.push({
+      ...claim,
+      evidenceUnits,
+      rationale: evidenceUnits.length === 0
+        ? "The claim has no citation to verify."
+        : "Automated evidence verification is pending.",
+      status: "unverified",
+      verifierModel,
+    });
+  }
+  return pending;
+}
+
 export function readAnswerClaims(answer: string): AnswerClaim[] {
   const markup = parseAnswerMarkup(answer);
   return readClaimsFromAnswerMarkup(markup);
@@ -257,6 +307,23 @@ export async function verifyAnswerClaims(
       verifier.modelId,
       verifier.supportThreshold,
     );
+    const pendingSets = prepareRetainedCollectiveCitationSetVerifications(
+      checks,
+      sources,
+    );
+    const setScores = await scorePendingCitationSets(
+      pendingSets,
+      verifier.score.bind(verifier),
+      scheduler,
+      abortSignal,
+      stage.timingObserver,
+    );
+    const retainedChecks = resolveRetainedCollectiveSupport(
+      checks,
+      pendingSets,
+      setScores,
+      verifier.supportThreshold,
+    );
     finishMetric({
       finishReason: "stop",
       inputTokens: null,
@@ -264,9 +331,9 @@ export async function verifyAnswerClaims(
     });
     await stage.finish(createTelemetryStageResult("success", {
       inputCount: claims.length,
-      outputCount: checks.length,
+      outputCount: retainedChecks.length,
     }));
-    return checks;
+    return retainedChecks;
   } catch (error: unknown) {
     const failure = readClaimVerificationFailure(error, abortSignal);
     finishMetric({
@@ -494,6 +561,47 @@ function prepareCitationSetVerifications(
   return pending;
 }
 
+function prepareRetainedCollectiveCitationSetVerifications(
+  checks: readonly ClaimVerificationResult[],
+  sources: readonly ClaimEvidenceSource[],
+): Extract<PendingCitationSetVerification, { kind: "model" }>[] {
+  const sourceByNumber = new Map<number, ClaimEvidenceSource>();
+  for (const source of sources) {
+    sourceByNumber.set(source.citationNumber, source);
+  }
+  const pending: Extract<
+    PendingCitationSetVerification,
+    { kind: "model" }
+  >[] = [];
+  for (const check of checks) {
+    if (check.citationNumbers.length < 2) {
+      continue;
+    }
+    const unsupportedNumbers = readCitationNumbersByOutcome(
+      check,
+      "unsupported",
+    );
+    if (unsupportedNumbers.length !== check.citationNumbers.length) {
+      continue;
+    }
+    const candidateCitationNumbers = [...check.citationNumbers];
+    const item = buildCitationSetScoreItem(
+      check,
+      candidateCitationNumbers,
+      sourceByNumber,
+    );
+    pending.push({
+      candidateCitationNumbers,
+      check,
+      item,
+      kind: "model",
+      limitFailure: readHhemScoreItemLimitFailure(item),
+      purpose: "collective-support",
+    });
+  }
+  return pending;
+}
+
 function readCitationNumbersByOutcome(
   check: ClaimVerificationResult,
   outcome: ClaimVerificationResult["evidenceUnits"][number]["outcome"],
@@ -659,6 +767,58 @@ function buildClaimVerificationResults(
     });
   }
   return results;
+}
+
+function resolveRetainedCollectiveSupport(
+  checks: readonly ClaimVerificationResult[],
+  pendingSets: readonly Extract<
+    PendingCitationSetVerification,
+    { kind: "model" }
+  >[],
+  setScores: readonly HhemScoreResult[],
+  supportThreshold: number,
+): ClaimVerificationResult[] {
+  const pendingByClaimIndex = new Map<
+    number,
+    Extract<PendingCitationSetVerification, { kind: "model" }>
+  >();
+  for (const pending of pendingSets) {
+    pendingByClaimIndex.set(pending.check.claimIndex, pending);
+  }
+  const scoreById = new Map<string, HhemScoreResult>();
+  for (const score of setScores) {
+    scoreById.set(score.id, score);
+  }
+  const resolved: ClaimVerificationResult[] = [];
+  for (const check of checks) {
+    const pending = pendingByClaimIndex.get(check.claimIndex);
+    if (pending === undefined || pending.limitFailure !== null) {
+      resolved.push(check);
+      continue;
+    }
+    const score = scoreById.get(pending.item.id);
+    if (score === undefined) {
+      throw new ClaimVerificationDataError(
+        `HHEM omitted citation-set score for claim ${check.claimIndex}.`,
+      );
+    }
+    if (
+      score.outcome === "model-context-capacity"
+      || score.supportProbability < supportThreshold
+    ) {
+      resolved.push(check);
+      continue;
+    }
+    resolved.push({
+      ...check,
+      rationale: buildCitationSetScoreRationale(
+        score.supportProbability,
+        supportThreshold,
+      ),
+      status: "supported",
+    });
+  }
+  return resolved;
 }
 
 function resolveClaimPublicationDecisions(

@@ -170,6 +170,9 @@ import {
   type ChatMessageRequest,
   type ChatMessageResponse,
 } from "../chat/pipeline.js";
+import {
+  processNextChatVerificationWithRuntime,
+} from "../chat/verification-dispatcher.js";
 import { ChatStore } from "../chat/store.js";
 import type {
   ChatConversation,
@@ -233,6 +236,9 @@ export interface RuntimeWebServices {
     uploadedByUserId: string,
   ) => Promise<BulkIngestResult>;
   listDocumentVersions: (sourceFile: string) => Promise<DocumentVersionRecord[]>;
+  processNextChatVerification?: (
+    abortSignal: AbortSignal,
+  ) => Promise<boolean>;
   listChatConversations?: (
     principal: AuthenticatedPrincipal,
   ) => Promise<ChatConversationSummary[]>;
@@ -847,6 +853,9 @@ function createRuntimeWebServices(
         completion: managedSpeech.completion,
         contentType: managedSpeech.value.contentType,
       };
+    },
+    processNextChatVerification: async (abortSignal) => {
+      return processNextChatVerificationWithRuntime(runtime, abortSignal);
     },
     ingest: async (documents, options, duplicateSourceRoot, uploadedByUserId) => {
       return ingestStagedDocumentsWithRuntime(

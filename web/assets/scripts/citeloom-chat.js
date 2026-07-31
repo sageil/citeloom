@@ -31,6 +31,20 @@ const evidenceUnitOutcomes = Object.freeze([
   "unsupported",
   "verifier-incompatible",
 ]);
+const findingSupportStatuses = Object.freeze([
+  "collectively-supported",
+  "partially-supported",
+  "supported",
+  "unsupported",
+  "unverified",
+]);
+const chatVerificationStates = Object.freeze([
+  "not-applicable",
+  "pending",
+  "running",
+  "completed",
+  "failed",
+]);
 
 function readChatSummaries(value) {
   return readArray(value, "chat list").map((item) => {
@@ -143,6 +157,11 @@ function readChatMessage(value) {
     citations: readArray(message.citations, "chat citations")
       .map(readChatCitation),
     claims: readChatFindingChecks(message.claims, answerDocument),
+    verificationState: readEnum(
+      message.verificationState,
+      chatVerificationStates,
+      "chat verification state",
+    ),
   };
 }
 
@@ -176,6 +195,11 @@ function readChatFindingChecks(value, answerDocument) {
         label,
       ),
       claimIndex,
+      status: readEnum(
+        candidate.status,
+        findingSupportStatuses,
+        `${label} status`,
+      ),
     });
   }
   return checks;
@@ -341,6 +365,7 @@ export function registerPage(alpine) {
     newChatTitle: "",
     pendingContent: "",
     selectedCitation: null,
+    verificationRefreshTimer: null,
 
     async initialize() {
       await this.refreshConversations();
@@ -348,6 +373,10 @@ export function registerPage(alpine) {
         await this.selectConversation(this.conversations[0].id);
       }
       this.loading = false;
+    },
+
+    destroy() {
+      this.clearVerificationRefresh();
     },
 
     async refreshConversations() {
@@ -364,6 +393,7 @@ export function registerPage(alpine) {
     },
 
     async selectConversation(id) {
+      this.clearVerificationRefresh();
       this.errorMessage = "";
       this.selectedCitation = null;
       try {
@@ -376,6 +406,7 @@ export function registerPage(alpine) {
           readChatConversation,
         );
         this.$nextTick(() => this.scrollToLatest());
+        this.scheduleVerificationRefresh();
       } catch (error) {
         this.reportError(error, "The chat could not be loaded.");
       }
@@ -449,6 +480,7 @@ export function registerPage(alpine) {
         }
         this.conversation = null;
         this.selectedCitation = null;
+        this.clearVerificationRefresh();
         await this.refreshConversations();
         if (this.conversations.length > 0) {
           await this.selectConversation(this.conversations[0].id);
@@ -525,19 +557,51 @@ export function registerPage(alpine) {
       return "unverified";
     },
 
+    citationVerificationClasses(message, statementIndex, citationId) {
+      const status = this.citationVerificationStatus(
+        message,
+        statementIndex,
+        citationId,
+      );
+      if (status === null) {
+        return "";
+      }
+      const check = this.findingCheckForStatement(message, statementIndex);
+      if (
+        status === "unsupported"
+        && check?.status === "collectively-supported"
+      ) {
+        return "unsupported collectively-supported";
+      }
+      return status;
+    },
+
     citationVerificationDescription(message, statementIndex, citationId) {
       const status = this.citationVerificationStatus(
         message,
         statementIndex,
         citationId,
       );
+      const check = this.findingCheckForStatement(message, statementIndex);
       if (status === "supported") {
         return "Automated evidence check: this citation supports the finding.";
       }
       if (status === "unsupported") {
+        if (check?.status === "collectively-supported") {
+          return "Automated evidence check: this citation does not independently support the complete finding, but the cited evidence supports it collectively.";
+        }
         return "Automated evidence check: this citation does not sufficiently support the finding.";
       }
       if (status === "unverified") {
+        if (
+          message.verificationState === "pending"
+          || message.verificationState === "running"
+        ) {
+          return "Automated evidence check is pending.";
+        }
+        if (message.verificationState === "failed") {
+          return "Automated evidence check could not be completed.";
+        }
         return "Automated evidence check: this citation could not be verified.";
       }
       return "This citation was not checked because the statement is not a finding.";
@@ -565,6 +629,47 @@ export function registerPage(alpine) {
       return page === undefined
         ? `[${citation.citationNumber}]`
         : `[${citation.citationNumber}] p. ${page}`;
+    },
+
+    sourcePageLabel(source) {
+      if (source.pageNumbers.length === 0) {
+        return "Page not specified";
+      }
+      const prefix = source.pageNumbers.length === 1 ? "p." : "pp.";
+      return `${prefix} ${source.pageNumbers.join(", ")}`;
+    },
+
+    evidenceSources(message) {
+      const sourcesByKey = new Map();
+      for (const citation of message.citations) {
+        const key = `${citation.documentVersionId}:${citation.sourceFile}`;
+        const existing = sourcesByKey.get(key);
+        if (existing !== undefined) {
+          for (const pageNumber of citation.pageNumbers) {
+            existing.pageNumberSet.add(pageNumber);
+          }
+          continue;
+        }
+        sourcesByKey.set(key, {
+          citation,
+          pageNumberSet: new Set(citation.pageNumbers),
+        });
+      }
+      const sources = [];
+      for (const source of sourcesByKey.values()) {
+        sources.push({
+          citation: source.citation,
+          pageNumbers: [...source.pageNumberSet].sort((left, right) => {
+            return left - right;
+          }),
+        });
+      }
+      return sources;
+    },
+
+    sourceTitle(sourceFile) {
+      const parts = sourceFile.split(/[\\/]/u);
+      return parts[parts.length - 1] ?? sourceFile;
     },
 
     openCitation(citation) {
@@ -611,6 +716,69 @@ export function registerPage(alpine) {
         return `${this.conversation.scope.sourceFiles.length} selected files`;
       }
       return `Documents tagged ${this.conversation?.scope.tags.join(", ")}`;
+    },
+
+    hasPendingVerification() {
+      if (this.conversation === null) {
+        return false;
+      }
+      for (const run of this.conversation.runs) {
+        for (const message of run.messages) {
+          if (
+            message.role === "assistant"
+            && (
+              message.verificationState === "pending"
+              || message.verificationState === "running"
+            )
+          ) {
+            return true;
+          }
+        }
+      }
+      return false;
+    },
+
+    scheduleVerificationRefresh() {
+      this.clearVerificationRefresh();
+      if (!this.hasPendingVerification()) {
+        return;
+      }
+      this.verificationRefreshTimer = window.setTimeout(() => {
+        this.verificationRefreshTimer = null;
+        void this.refreshVerification();
+      }, 800);
+    },
+
+    clearVerificationRefresh() {
+      if (this.verificationRefreshTimer === null) {
+        return;
+      }
+      window.clearTimeout(this.verificationRefreshTimer);
+      this.verificationRefreshTimer = null;
+    },
+
+    async refreshVerification() {
+      const conversationId = this.conversation?.id;
+      if (conversationId === undefined) {
+        return;
+      }
+      try {
+        const response = await fetch(
+          `/api/chat/conversations/${encodeURIComponent(conversationId)}`,
+        );
+        const conversation = await readJsonResponse(
+          response,
+          "Chat verification refresh",
+          readChatConversation,
+        );
+        if (this.conversation?.id === conversationId) {
+          this.conversation = conversation;
+        }
+      } catch {
+        // Verification refresh is best effort. The published answer remains usable.
+      } finally {
+        this.scheduleVerificationRefresh();
+      }
     },
 
     runStatusLabel(run) {

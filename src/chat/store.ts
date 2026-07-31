@@ -12,6 +12,7 @@ import {
   max,
   ne,
   notExists,
+  or,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -38,6 +39,7 @@ import {
   chatMessageEmbeddings1024,
   chatMessages,
   chatRuns,
+  chatVerificationJobs,
   documentElementSetMembers,
   documentVersions,
   indexedDocuments,
@@ -61,13 +63,15 @@ import {
   sourceRegionSchema,
 } from "../domain/validation.js";
 import type {
-  ClaimVerificationResult,
+  AnswerClaim,
   ResearchRetrievalTrace,
 } from "../research/types.js";
+import type { ClaimEvidenceSource } from "../answers/claim-verification.js";
 import { validateCitationSnapshot } from "../research/store.js";
 import type {
   ChatAssistantMessage,
   ChatCitationEvidenceRecord,
+  ChatClaimVerificationResult,
   ChatConversation,
   ChatConversationSummary,
   ChatMemoryTrace,
@@ -118,33 +122,35 @@ const runRowSchema = z.object({
     "canceled",
   ]),
 });
-const messageRowSchema = z.object({
-  answerDocument: publishedAnswerDocumentSchema.nullable(),
-  claims: z.array(z.object({
-    citationNumbers: z.array(z.number().int().positive()),
-    claim: z.string().trim().min(1),
-    claimIndex: z.number().int().nonnegative(),
-    evidenceUnits: z.array(z.object({
-      citationNumber: z.number().int().positive(),
-      outcome: z.enum([
-        "not-evaluated",
-        "supported",
-        "unsupported",
-        "verifier-incompatible",
-      ]),
-      rationale: z.string().trim().min(1),
-      supportProbability: z.number().min(0).max(1).nullable(),
-      unitId: z.string().trim().min(1),
-    }).strict()),
-    rationale: z.string().trim().min(1),
-    status: z.enum([
-      "partially-supported",
+const claimVerificationResultsSchema = z.array(z.object({
+  citationNumbers: z.array(z.number().int().positive()),
+  claim: z.string().trim().min(1),
+  claimIndex: z.number().int().nonnegative(),
+  evidenceUnits: z.array(z.object({
+    citationNumber: z.number().int().positive(),
+    outcome: z.enum([
+      "not-evaluated",
       "supported",
       "unsupported",
-      "unverified",
+      "verifier-incompatible",
     ]),
-    verifierModel: z.string().trim().min(1),
-  }).strict()).nullable(),
+    rationale: z.string().trim().min(1),
+    supportProbability: z.number().min(0).max(1).nullable(),
+    unitId: z.string().trim().min(1),
+  }).strict()),
+  rationale: z.string().trim().min(1),
+  status: z.enum([
+    "collectively-supported",
+    "partially-supported",
+    "supported",
+    "unsupported",
+    "unverified",
+  ]),
+  verifierModel: z.string().trim().min(1),
+}).strict());
+const messageRowSchema = z.object({
+  answerDocument: publishedAnswerDocumentSchema.nullable(),
+  claims: claimVerificationResultsSchema.nullable(),
   content: z.string().trim().min(1),
   createdAt: z.date(),
   id: z.uuid(),
@@ -216,6 +222,12 @@ const summaryRowSchema = z.object({
   title: z.string().trim().min(1),
   updatedAt: z.date(),
 });
+const verificationJobStateSchema = z.enum([
+  "pending",
+  "running",
+  "completed",
+  "failed",
+]);
 
 export interface AcceptedChatRun {
   conversation: {
@@ -269,11 +281,19 @@ export interface ChatSemanticMemoryHit {
   sequence: number;
 }
 
+export interface ClaimedChatVerificationJob {
+  assistantMessageId: string;
+  attemptCount: number;
+  claims: AnswerClaim[];
+  failureCount: number;
+  sources: ClaimEvidenceSource[];
+}
+
 export interface PublishChatAssistantInput {
   answerDocument: PublishedAnswerDocument;
   assistantEmbeddings: readonly ChatMessageEmbeddingPart[];
   attemptCount: number;
-  claims: readonly ClaimVerificationResult[];
+  claims: readonly ChatClaimVerificationResult[];
   completedAt: Date;
   content: string;
   memoryTrace: ChatMemoryTrace;
@@ -284,7 +304,7 @@ export interface PublishChatAssistantInput {
 
 function normalizePublishedChatContent(
   answerDocument: PublishedAnswerDocument,
-  claims: readonly ClaimVerificationResult[],
+  claims: readonly ChatClaimVerificationResult[],
   value: string,
 ): string {
   const content = z.string().trim().min(1).parse(value);
@@ -1075,6 +1095,16 @@ export class ChatStore {
         role: "assistant",
         runId: input.runId,
       });
+      if (input.claims.length > 0) {
+        await transaction.insert(chatVerificationJobs).values({
+          assistantMessageId,
+          attemptCount: 0,
+          availableAt: input.completedAt,
+          failureCount: 0,
+          state: "pending",
+          updatedAt: input.completedAt,
+        });
+      }
       if (input.assistantEmbeddings.length > 0) {
         const values = input.assistantEmbeddings.map((part) => ({
           content: part.content,
@@ -1144,7 +1174,199 @@ export class ChatStore {
       id: assistantMessageId,
       role: "assistant",
       runId: input.runId,
+      verificationState: input.claims.length > 0
+        ? "pending"
+        : "not-applicable",
     };
+  }
+
+  public async claimNextVerificationJob(
+    currentTime: Date,
+  ): Promise<ClaimedChatVerificationJob | null> {
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({
+          assistantMessageId: chatVerificationJobs.assistantMessageId,
+          attemptCount: chatVerificationJobs.attemptCount,
+          claims: chatMessages.claims,
+          failureCount: chatVerificationJobs.failureCount,
+        })
+        .from(chatVerificationJobs)
+        .innerJoin(
+          chatMessages,
+          eq(chatMessages.id, chatVerificationJobs.assistantMessageId),
+        )
+        .where(or(
+          and(
+            eq(chatVerificationJobs.state, "pending"),
+            lte(chatVerificationJobs.availableAt, currentTime),
+          ),
+          and(
+            eq(chatVerificationJobs.state, "running"),
+            lte(chatVerificationJobs.leaseExpiresAt, currentTime),
+          ),
+        ))
+        .orderBy(
+          asc(chatVerificationJobs.availableAt),
+          asc(chatVerificationJobs.updatedAt),
+        )
+        .limit(1)
+        .for("update", { skipLocked: true });
+      const row = rows[0];
+      if (row === undefined) {
+        return null;
+      }
+      const claims = claimVerificationResultsSchema.parse(row.claims);
+      const nextAttemptCount = row.attemptCount + 1;
+      const claimed = await transaction
+        .update(chatVerificationJobs)
+        .set({
+          attemptCount: nextAttemptCount,
+          errorMessage: null,
+          leaseExpiresAt: this.nextVerificationLease(),
+          state: "running",
+          updatedAt: currentTime,
+        })
+        .where(eq(
+          chatVerificationJobs.assistantMessageId,
+          row.assistantMessageId,
+        ))
+        .returning({
+          assistantMessageId: chatVerificationJobs.assistantMessageId,
+        });
+      if (claimed[0] === undefined) {
+        throw new Error(
+          `Could not claim Chat verification job ${row.assistantMessageId}.`,
+        );
+      }
+      const citationRows = await transaction
+        .select({
+          citationNumber: chatCitationRecords.citationNumber,
+          evidence: chatCitationRecords.evidence,
+          sectionPath: chatCitationRecords.sectionPath,
+        })
+        .from(chatCitationRecords)
+        .where(eq(
+          chatCitationRecords.assistantMessageId,
+          row.assistantMessageId,
+        ))
+        .orderBy(asc(chatCitationRecords.citationNumber));
+      const sources = citationRows.map((citation) => {
+        return {
+          citationNumber: citation.citationNumber,
+          evidence: citation.evidence,
+          sectionPath: citation.sectionPath,
+        };
+      });
+      const answerClaims = claims.map((claim) => {
+        return {
+          citationNumbers: [...claim.citationNumbers],
+          claim: claim.claim,
+          claimIndex: claim.claimIndex,
+        };
+      });
+      return {
+        assistantMessageId: row.assistantMessageId,
+        attemptCount: nextAttemptCount,
+        claims: answerClaims,
+        failureCount: row.failureCount,
+        sources,
+      };
+    });
+  }
+
+  public async completeVerificationJob(
+    assistantMessageId: string,
+    attemptCount: number,
+    claims: readonly ChatClaimVerificationResult[],
+    completedAt: Date,
+  ): Promise<boolean> {
+    const normalizedClaims = claimVerificationResultsSchema.parse(claims);
+    return this.database.transaction(async (transaction) => {
+      const completed = await transaction
+        .update(chatVerificationJobs)
+        .set({
+          completedAt,
+          errorMessage: null,
+          leaseExpiresAt: null,
+          state: "completed",
+          updatedAt: completedAt,
+        })
+        .where(and(
+          eq(chatVerificationJobs.assistantMessageId, assistantMessageId),
+          eq(chatVerificationJobs.attemptCount, attemptCount),
+          eq(chatVerificationJobs.state, "running"),
+        ))
+        .returning({
+          assistantMessageId: chatVerificationJobs.assistantMessageId,
+        });
+      if (completed[0] === undefined) {
+        return false;
+      }
+      await transaction
+        .update(chatMessages)
+        .set({ claims: normalizedClaims })
+        .where(eq(chatMessages.id, assistantMessageId));
+      return true;
+    });
+  }
+
+  public async settleVerificationFailure(
+    assistantMessageId: string,
+    attemptCount: number,
+    error: unknown,
+    retryAt: Date | null,
+  ): Promise<boolean> {
+    const now = new Date();
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const message = rawMessage.trim().slice(0, 4_000)
+      || "Automated evidence verification failed.";
+    const terminal = retryAt === null;
+    const settled = await this.database
+      .update(chatVerificationJobs)
+      .set({
+        availableAt: retryAt ?? now,
+        completedAt: terminal ? now : null,
+        errorMessage: message,
+        failureCount: sql`${chatVerificationJobs.failureCount} + 1`,
+        leaseExpiresAt: null,
+        state: terminal ? "failed" : "pending",
+        updatedAt: now,
+      })
+      .where(and(
+        eq(chatVerificationJobs.assistantMessageId, assistantMessageId),
+        eq(chatVerificationJobs.attemptCount, attemptCount),
+        eq(chatVerificationJobs.state, "running"),
+      ))
+      .returning({
+        assistantMessageId: chatVerificationJobs.assistantMessageId,
+      });
+    return settled[0] !== undefined;
+  }
+
+  public async releaseVerificationJob(
+    assistantMessageId: string,
+    attemptCount: number,
+  ): Promise<boolean> {
+    const now = new Date();
+    const released = await this.database
+      .update(chatVerificationJobs)
+      .set({
+        availableAt: now,
+        errorMessage: null,
+        leaseExpiresAt: null,
+        state: "pending",
+        updatedAt: now,
+      })
+      .where(and(
+        eq(chatVerificationJobs.assistantMessageId, assistantMessageId),
+        eq(chatVerificationJobs.attemptCount, attemptCount),
+        eq(chatVerificationJobs.state, "running"),
+      ))
+      .returning({
+        assistantMessageId: chatVerificationJobs.assistantMessageId,
+      });
+    return released[0] !== undefined;
   }
 
   public async readCitation(
@@ -1339,6 +1561,14 @@ export class ChatStore {
     return new Date(Date.now() + leaseMs);
   }
 
+  private nextVerificationLease(): Date {
+    const leaseMs = Math.max(
+      MINIMUM_CHAT_RUN_LEASE_MS,
+      this.config.claimVerifier.timeoutMs + 60_000,
+    );
+    return new Date(Date.now() + leaseMs);
+  }
+
   private async readMessages(runIds: string[]): Promise<ChatMessage[]> {
     if (runIds.length === 0) {
       return [];
@@ -1352,6 +1582,7 @@ export class ChatStore {
     const assistantIds = messages
       .filter((message) => message.role === "assistant")
       .map((message) => message.id);
+    const verificationStates = await this.readVerificationStates(assistantIds);
     const citationsByMessage = await this.readCitationsByMessage(assistantIds);
     const decoded: ChatMessage[] = [];
     for (const message of messages) {
@@ -1399,9 +1630,40 @@ export class ChatStore {
         id: message.id,
         role: "assistant",
         runId: message.runId,
+        verificationState: verificationStates.get(message.id)
+          ?? (message.claims.length > 0 ? "completed" : "not-applicable"),
       });
     }
     return decoded;
+  }
+
+  private async readVerificationStates(
+    assistantMessageIds: string[],
+  ): Promise<Map<string, z.infer<typeof verificationJobStateSchema>>> {
+    const states = new Map<
+      string,
+      z.infer<typeof verificationJobStateSchema>
+    >();
+    if (assistantMessageIds.length === 0) {
+      return states;
+    }
+    const rows = await this.database
+      .select({
+        assistantMessageId: chatVerificationJobs.assistantMessageId,
+        state: chatVerificationJobs.state,
+      })
+      .from(chatVerificationJobs)
+      .where(inArray(
+        chatVerificationJobs.assistantMessageId,
+        assistantMessageIds,
+      ));
+    for (const row of rows) {
+      states.set(
+        row.assistantMessageId,
+        verificationJobStateSchema.parse(row.state),
+      );
+    }
+    return states;
   }
 
   private async readCitationsByMessage(

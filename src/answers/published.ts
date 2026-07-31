@@ -69,11 +69,15 @@ interface RequestEvidence {
 export function compileAnswerDraft(
   draft: AnswerDraft,
   retrieved: readonly RetrievedElement[],
+  evidenceRefs: readonly EvidenceReference[] | null = null,
 ): PublishedAnswerDocument {
   if (draft.status === "no_answer") {
     return createNoAnswerDocument();
   }
-  const requestEvidence = createRequestEvidence(retrieved);
+  const requestEvidence = createRequestEvidence(
+    retrieved,
+    evidenceRefs ?? createEvidenceReferences(retrieved.length),
+  );
   const preparedStatements = prepareDraftStatements(draft, requestEvidence);
   const referencedEvidence = new Set<EvidenceReference>();
   for (const prepared of preparedStatements) {
@@ -272,8 +276,13 @@ function appendConflictStatements(
 
 function createRequestEvidence(
   retrieved: readonly RetrievedElement[],
+  evidenceRefs: readonly EvidenceReference[],
 ): RequestEvidence[] {
-  const evidenceRefs = createEvidenceReferences(retrieved.length);
+  if (evidenceRefs.length !== retrieved.length) {
+    throw new AnswerDraftSourceError(
+      "Answer evidence references must correspond to retrieved evidence.",
+    );
+  }
   const requestEvidence: RequestEvidence[] = [];
   for (let index = 0; index < retrieved.length; index += 1) {
     const item = retrieved[index];

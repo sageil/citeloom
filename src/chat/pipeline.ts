@@ -1,5 +1,5 @@
 import type { AuthenticatedPrincipal } from "../auth/model.js";
-import { verifyAnswerClaims } from "../answers/claim-verification.js";
+import { createPendingAnswerClaimChecks } from "../answers/claim-verification.js";
 import {
   createNoRelevantAnswer,
   streamAnswerQuestion,
@@ -170,17 +170,12 @@ export async function answerChatMessageWithRuntime(
       accepted.run.id,
       accepted.run.attemptCount,
       "generating",
-      "verifying",
+      "publishing",
     );
-    lease.signal.throwIfAborted();
-    reportProgress("Verifying source-backed findings");
-    const verifiedFindings = await verifyAnswerClaims(
+    const pendingFindings = createPendingAnswerClaimChecks(
       chatModels,
       result.claims,
       result.answerDocument.citations,
-      chatScheduler,
-      lease.signal,
-      runTelemetry,
     );
     lease.signal.throwIfAborted();
     const assistantContent = result.answer;
@@ -192,13 +187,6 @@ export async function answerChatMessageWithRuntime(
       lease.signal,
     );
 
-    await store.transitionRun(
-      principal,
-      accepted.run.id,
-      accepted.run.attemptCount,
-      "verifying",
-      "publishing",
-    );
     await lease.stop();
     lease.throwIfFailed();
     const assistantMessage = await store.publishAssistant(
@@ -207,7 +195,7 @@ export async function answerChatMessageWithRuntime(
         answerDocument: result.answerDocument,
         assistantEmbeddings,
         attemptCount: accepted.run.attemptCount,
-        claims: verifiedFindings,
+        claims: pendingFindings,
         completedAt: new Date(),
         content: assistantContent,
         memoryTrace: memory.trace,

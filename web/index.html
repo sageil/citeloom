@@ -242,6 +242,7 @@
 
         <div
           class="task-navigation-stage"
+          :class="{ 'task-navigation-stage-compact': activeView !== 'overview' }"
           x-cloak
           x-show="showTaskLaunchpad"
         >

@@ -225,6 +225,9 @@ export interface AnswerGenerationPrompt {
     question: string,
     conversationTurns: readonly AnswerConversationTurn[],
   ): AnswerUserPromptFrame;
+  createEvidenceReferences(
+    retrieved: readonly RetrievedElement[],
+  ): EvidenceReference[];
   responseContract: AnswerResponseContract;
   systemPrompt: string;
 }
@@ -267,9 +270,16 @@ function decodeDefaultAnswerModelResponse(
 
 const defaultAnswerGenerationPrompt: AnswerGenerationPrompt = {
   buildUserPromptFrame: buildAnswerUserPromptFrame,
+  createEvidenceReferences: createDefaultEvidenceReferences,
   responseContract: defaultAnswerResponseContract,
   systemPrompt: createAnswerSystemPrompt(),
 };
+
+function createDefaultEvidenceReferences(
+  retrieved: readonly RetrievedElement[],
+): EvidenceReference[] {
+  return createEvidenceReferences(retrieved.length);
+}
 
 export async function answerQuestion(
   models: InferenceModelRegistry,
@@ -367,7 +377,7 @@ async function generateAnswer(
   try {
     const runGeneration = async (requestSignal: AbortSignal) => {
       const capabilities = await models.readAnswerCapabilities(requestSignal);
-      const availableEvidenceRefs = createEvidenceReferences(retrieved.length);
+      const availableEvidenceRefs = prompt.createEvidenceReferences(retrieved);
       const promptFrame = prompt.buildUserPromptFrame(
         processingQuestion,
         conversationTurns,
@@ -409,8 +419,8 @@ async function generateAnswer(
         budget,
       );
       selectedRetrieved = budget.selected;
-      const allowedEvidenceRefs = createEvidenceReferences(
-        selectedRetrieved.length,
+      const allowedEvidenceRefs = prompt.createEvidenceReferences(
+        selectedRetrieved,
       );
       const expandedRetrievalWindowIds = new Set(
         budget.expandedRetrievalWindowIds,
@@ -494,6 +504,7 @@ async function generateAnswer(
           result: finalizeAnswerDraft(
             initialResponse.draft,
             selectedRetrieved,
+            allowedEvidenceRefs,
             runDetails,
             initialResponse.noAnswerContent,
             initialResponse.verificationStatementIndexes,
@@ -551,6 +562,7 @@ async function generateAnswer(
         result: finalizeAnswerDraft(
           correctedResponse.draft,
           selectedRetrieved,
+          allowedEvidenceRefs,
           runDetails,
           correctedResponse.noAnswerContent,
           correctedResponse.verificationStatementIndexes,
@@ -909,7 +921,7 @@ export function buildAnswerContent(
   conversationTurns: readonly AnswerConversationTurn[] = [],
   prompt: AnswerGenerationPrompt = defaultAnswerGenerationPrompt,
 ): UserContent {
-  const allowedEvidenceRefs = createEvidenceReferences(retrieved.length);
+  const allowedEvidenceRefs = prompt.createEvidenceReferences(retrieved);
   return buildAnswerContentWithEvidence(
     question,
     retrieved,
@@ -1146,6 +1158,7 @@ function createRetrievalFallback(
 function finalizeAnswerDraft(
   draft: AnswerDraft,
   retrieved: RetrievedElement[],
+  evidenceRefs: readonly EvidenceReference[],
   runDetails: AnswerRunDetails,
   noAnswerContent: string | null,
   verificationStatementIndexes: readonly number[] | null,
@@ -1158,7 +1171,7 @@ function finalizeAnswerDraft(
       noAnswerContent ?? NO_ANSWER_TEXT,
     );
   }
-  const answerDocument = compileAnswerDraft(draft, retrieved);
+  const answerDocument = compileAnswerDraft(draft, retrieved, evidenceRefs);
   if (answerDocument.status !== "answered") {
     throw new Error("Answered draft compiled into a no-answer document.");
   }
@@ -1544,8 +1557,14 @@ function createSourceLabel(
   const pages = element.pageNumbers.length === 0
     ? "unknown"
     : element.pageNumbers.join(", ");
+  let referenceLabel = `${evidenceRef} RETRIEVED EVIDENCE`;
+  if (evidenceRef.startsWith("SOURCE_")) {
+    referenceLabel = `Source reference: ${evidenceRef}\nRETRIEVED EVIDENCE`;
+  } else if (!evidenceRef.startsWith("EVID_")) {
+    referenceLabel = `Chunk ID: ${evidenceRef}\nRETRIEVED EVIDENCE`;
+  }
   const parts = [
-    `${evidenceRef} RETRIEVED EVIDENCE`,
+    referenceLabel,
     `Source file: ${element.sourceFile}`,
     `Source type: ${element.kind}; pages: ${pages}`,
   ];

@@ -15,21 +15,19 @@ import type {
   AnswerResponseDecodeResult,
 } from "../answers/inference.js";
 
-const internalEvidenceReferencePattern = /\bEVID_[A-Z]+\b/u;
-
-interface ChatGroundedPoint {
+interface ChatAnswerPoint {
   content: string;
-  evidenceRefs: EvidenceReference[];
+  source_refs: EvidenceReference[];
+}
+
+interface ChatGroundedClaim {
+  claim: string;
+  source_refs: EvidenceReference[];
 }
 
 interface ChatAnswerModelResponse {
-  analysis: {
-    criteria: ChatGroundedPoint[];
-    disagreements: ChatGroundedPoint[];
-    findings: ChatGroundedPoint[];
-    limitations: ChatGroundedPoint[];
-  };
-  answer: ChatGroundedPoint;
+  answer: ChatAnswerPoint;
+  findings: ChatGroundedClaim[];
   status: "answered" | "no_answer";
 }
 
@@ -37,32 +35,25 @@ export const CHAT_ANSWER_RESPONSE_CONTRACT: AnswerResponseContract = {
   createSchema: createChatAnswerModelResponseSchema,
   decode: decodeChatAnswerModelResponse,
   description:
-    "A private CiteLoom Chat answer with a direct answer, grounded analysis, and exact request-local evidence references.",
+    "A grounded Chat answer with a direct answer, findings, and request-local source references.",
   name: "chat_answer",
 };
 
 function createChatAnswerModelResponseSchema(
   allowedEvidenceRefs: readonly EvidenceReference[],
 ): z.ZodType<unknown> {
-  const evidenceReference = createEvidenceReferenceSchema(
-    allowedEvidenceRefs,
-  );
-  const groundedPoint: z.ZodType<ChatGroundedPoint> = z.object({
-    content: z.string().min(1),
-    evidenceRefs: z.array(evidenceReference).min(1),
+  const sourceReference = createSourceReferenceSchema(allowedEvidenceRefs);
+  const groundedClaim: z.ZodType<ChatGroundedClaim> = z.object({
+    claim: z.string().min(1),
+    source_refs: z.array(sourceReference).min(1),
   }).strict();
-  const answerPoint: z.ZodType<ChatGroundedPoint> = z.object({
+  const answerPoint: z.ZodType<ChatAnswerPoint> = z.object({
     content: z.string(),
-    evidenceRefs: z.array(evidenceReference),
+    source_refs: z.array(sourceReference),
   }).strict();
   return z.object({
-    analysis: z.object({
-      criteria: z.array(groundedPoint),
-      disagreements: z.array(groundedPoint),
-      findings: z.array(groundedPoint),
-      limitations: z.array(groundedPoint),
-    }).strict(),
     answer: answerPoint,
+    findings: z.array(groundedClaim),
     status: z.enum(["answered", "no_answer"]),
   }).strict().superRefine((response, context) => {
     if (response.status === "answered") {
@@ -73,11 +64,11 @@ function createChatAnswerModelResponseSchema(
           path: ["answer", "content"],
         });
       }
-      if (response.answer.evidenceRefs.length === 0) {
+      if (response.answer.source_refs.length === 0) {
         context.addIssue({
           code: "custom",
-          message: "An answered response requires answer evidence references.",
-          path: ["answer", "evidenceRefs"],
+          message: "An answered response requires answer source references.",
+          path: ["answer", "source_refs"],
         });
       }
     }
@@ -107,14 +98,9 @@ function decodeChatAnswerModelResponse(
     };
   }
   const statements: AnswerDraftStatement[] = [];
-  statements.push(createDraftStatement(
-    response.answer,
-    "paragraph",
-    "answer",
-  ));
-  appendAnalysisStatements(statements, response.analysis.criteria);
+  statements.push(createAnswerStatement(response.answer));
   const findingsStartIndex = statements.length;
-  appendAnalysisStatements(statements, response.analysis.findings);
+  appendGroundedClaims(statements, response.findings);
   const verificationStatementIndexes: number[] = [];
   for (
     let index = findingsStartIndex;
@@ -123,8 +109,6 @@ function decodeChatAnswerModelResponse(
   ) {
     verificationStatementIndexes.push(index);
   }
-  appendAnalysisStatements(statements, response.analysis.limitations);
-  appendAnalysisStatements(statements, response.analysis.disagreements);
   return {
     draft: decodeAnswerDraft(
       {
@@ -141,51 +125,62 @@ function decodeChatAnswerModelResponse(
 
 function normalizeNoAnswerContent(value: string): string {
   const normalized = value.replace(/\s+/gu, " ").trim();
-  if (
-    normalized.length === 0
-    || internalEvidenceReferencePattern.test(normalized)
-  ) {
+  if (normalized.length === 0) {
     return NO_ANSWER_TEXT;
   }
   return normalized;
 }
 
-function appendAnalysisStatements(
+function appendGroundedClaims(
   statements: AnswerDraftStatement[],
-  points: readonly ChatGroundedPoint[],
+  claims: readonly ChatGroundedClaim[],
 ): void {
-  for (const point of points) {
-    statements.push(createDraftStatement(
-      point,
-      "bullet",
-      "key-points",
-    ));
+  for (const claim of claims) {
+    statements.push({
+      content: normalizeAnswerModelText(claim.claim),
+      evidenceRefs: normalizeSourceReferences(claim.source_refs),
+      presentation: "bullet",
+      section: "key-points",
+    });
   }
 }
 
-function createDraftStatement(
-  point: ChatGroundedPoint,
-  presentation: AnswerDraftStatement["presentation"],
-  section: AnswerDraftStatement["section"],
+function createAnswerStatement(
+  answer: ChatAnswerPoint,
 ): AnswerDraftStatement {
   return {
-    content: normalizeAnswerModelText(point.content),
-    evidenceRefs: [...point.evidenceRefs],
-    presentation,
-    section,
+    content: normalizeAnswerModelText(answer.content),
+    evidenceRefs: normalizeSourceReferences(answer.source_refs),
+    presentation: "paragraph",
+    section: "answer",
   };
 }
 
-function createEvidenceReferenceSchema(
+function normalizeSourceReferences(
+  sourceReferences: readonly EvidenceReference[],
+): EvidenceReference[] {
+  const normalized: EvidenceReference[] = [];
+  const seen = new Set<EvidenceReference>();
+  for (const sourceReference of sourceReferences) {
+    if (seen.has(sourceReference)) {
+      continue;
+    }
+    seen.add(sourceReference);
+    normalized.push(sourceReference);
+  }
+  return normalized;
+}
+
+function createSourceReferenceSchema(
   allowedEvidenceRefs: readonly EvidenceReference[],
 ) {
   const first = allowedEvidenceRefs[0];
   if (first === undefined) {
-    throw new Error("Chat answer evidence references must not be empty.");
+    throw new Error("Chat answer source references must not be empty.");
   }
   const uniqueReferences = new Set(allowedEvidenceRefs);
   if (uniqueReferences.size !== allowedEvidenceRefs.length) {
-    throw new Error("Chat answer evidence references must be unique.");
+    throw new Error("Chat answer source references must be unique.");
   }
   return z.enum([first, ...allowedEvidenceRefs.slice(1)]);
 }
@@ -236,7 +231,7 @@ function countUnknownEvidenceReferences(
   }
   let count = 0;
   for (const [key, item] of Object.entries(value)) {
-    if (key === "evidenceRefs" && Array.isArray(item)) {
+    if (key === "source_refs" && Array.isArray(item)) {
       for (const evidenceRef of item) {
         if (
           typeof evidenceRef === "string"

@@ -34,7 +34,6 @@ import type { EmbeddingSpaceRowCounts } from "../embedding/space/types.js";
 import type { QueryScope } from "../domain/query-scope.js";
 import type {
   CitationEvidence,
-  ClaimVerificationResult,
   ResearchRetrievalTrace,
   StoredResearchRetrievalTrace,
   ResearchRunConfiguration,
@@ -45,6 +44,7 @@ import type {
   ContextSelectionTelemetry,
 } from "../observability/run.js";
 import type {
+  ChatClaimVerificationResult,
   ChatMemoryTrace,
   ChatRunConfiguration,
 } from "../chat/types.js";
@@ -132,6 +132,16 @@ export const chatRunState = pgEnum("chat_run_state", [
   "failed",
   "canceled",
 ]);
+
+export const chatVerificationJobState = pgEnum(
+  "chat_verification_job_state",
+  [
+    "pending",
+    "running",
+    "completed",
+    "failed",
+  ],
+);
 
 export const inferenceWorkload = pgEnum("inference_workload", [
   "offline-tool",
@@ -1219,7 +1229,7 @@ export const chatMessages = pgTable(
   "chat_messages",
   {
     answerDocument: jsonb("answer_document").$type<PublishedAnswerDocument>(),
-    claims: jsonb("claims").$type<ClaimVerificationResult[]>(),
+    claims: jsonb("claims").$type<ChatClaimVerificationResult[]>(),
     content: text("content").notNull(),
     createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
       .notNull()
@@ -1324,6 +1334,68 @@ export const chatCitationRecords = pgTable(
       table.citationNumber,
     ),
     index("chat_citation_records_version_idx").on(table.documentVersionId),
+  ],
+);
+
+export const chatVerificationJobs = pgTable(
+  "chat_verification_jobs",
+  {
+    assistantMessageId: uuid("assistant_message_id")
+      .primaryKey()
+      .references(() => chatMessages.id, { onDelete: "cascade" }),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    availableAt: timestamp("available_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    errorMessage: text("error_message"),
+    failureCount: integer("failure_count").notNull().default(0),
+    leaseExpiresAt: timestamp("lease_expires_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    state: chatVerificationJobState("state").notNull().default("pending"),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "chat_verification_jobs_counts_check",
+      sql`${table.attemptCount} >= 0 AND ${table.failureCount} >= 0`,
+    ),
+    check(
+      "chat_verification_jobs_state_check",
+      sql`(
+          ${table.state} = 'pending'
+          AND ${table.completedAt} IS NULL
+          AND ${table.leaseExpiresAt} IS NULL
+        ) OR (
+          ${table.state} = 'running'
+          AND ${table.completedAt} IS NULL
+          AND ${table.leaseExpiresAt} IS NOT NULL
+        ) OR (
+          ${table.state} IN ('completed', 'failed')
+          AND ${table.completedAt} IS NOT NULL
+          AND ${table.leaseExpiresAt} IS NULL
+        )`,
+    ),
+    check(
+      "chat_verification_jobs_error_check",
+      sql`(${table.state} = 'failed' AND ${table.errorMessage} IS NOT NULL)
+        OR ${table.state} <> 'failed'`,
+    ),
+    index("chat_verification_jobs_dispatch_idx").on(
+      table.state,
+      table.availableAt,
+      table.leaseExpiresAt,
+    ),
   ],
 );
 
