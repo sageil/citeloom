@@ -9,7 +9,7 @@ import { z } from "zod";
 import type { InferenceMetricsReporter } from "../../inference/metrics.js";
 import type { RerankerConfig } from "../../config/index.js";
 import { formatDurationMilliseconds } from "../../shared/duration.js";
-import { selectSourceDiverseElements } from "../document-retrieval.js";
+import { selectTopRetrievedElements } from "../document-retrieval.js";
 import type { RetrievedElement } from "../document-retrieval.js";
 import { buildRerankDocument } from "../content.js";
 import type { AnswerContextSelection } from "./context-selection.js";
@@ -213,7 +213,7 @@ export async function rerankRetrievedElementsAboveThreshold(
     }
     relevant.push(candidate);
   }
-  return selectSourceDiverseElements(relevant, topK);
+  return selectTopRetrievedElements(relevant, topK);
 }
 
 async function rankRetrievedElements(

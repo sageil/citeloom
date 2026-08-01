@@ -60,7 +60,7 @@ export interface ContextSelectionCandidateTelemetry {
   parentElementId: string;
   rerankerInputRank: number;
   reason:
-    | "duplicate-source-element"
+    | "duplicate-evidence"
     | "maximum-context"
     | "maximum-context-limit"
     | "relevance-cliff-tail"

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   allocateCandidatesByDocument,
   buildMatchedDocuments,
-  selectSourceDiverseElements,
+  selectTopRetrievedElements,
 } from "../src/retrieval/document-retrieval.js";
 import type { RetrievedElement } from "../src/retrieval/document-retrieval.js";
 import type { FusedCandidate } from "../src/retrieval/ranking/rank-fusion.js";
@@ -33,7 +33,7 @@ describe("document-aware retrieval", () => {
     ]);
   });
 
-  it("promotes a nearby alternative when one document dominates the context", () => {
+  it("preserves relevance order when one document dominates the context", () => {
     const ranked = [
       buildRetrievedElement("a", "1"),
       buildRetrievedElement("a", "2"),
@@ -42,14 +42,9 @@ describe("document-aware retrieval", () => {
       buildRetrievedElement("b", "5"),
     ];
 
-    const selected = selectSourceDiverseElements(ranked, 4);
+    const selected = selectTopRetrievedElements(ranked, 4);
 
-    expect(selected.map((item) => item.element.documentId)).toEqual([
-      "a".repeat(64),
-      "a".repeat(64),
-      "a".repeat(64),
-      "b".repeat(64),
-    ]);
+    expect(selected).toEqual(ranked.slice(0, 4));
   });
 
   it("does not force a distant alternative into focused context", () => {
@@ -59,7 +54,7 @@ describe("document-aware retrieval", () => {
     }
     ranked.push(buildRetrievedElement("b", "f"));
 
-    const selected = selectSourceDiverseElements(ranked, 3);
+    const selected = selectTopRetrievedElements(ranked, 3);
 
     expect(selected).toEqual(ranked.slice(0, 3));
   });
@@ -71,7 +66,7 @@ describe("document-aware retrieval", () => {
       buildRetrievedElement("a", "3"),
     ];
 
-    const selected = selectSourceDiverseElements(ranked, 2);
+    const selected = selectTopRetrievedElements(ranked, 2);
 
     expect(selected).toEqual(ranked.slice(0, 2));
   });
@@ -84,7 +79,7 @@ describe("document-aware retrieval", () => {
     secondWindow.provenance = buildRetrievedElementProvenance("f".repeat(64));
     const otherElement = buildRetrievedElement("a", "2");
 
-    const selected = selectSourceDiverseElements([
+    const selected = selectTopRetrievedElements([
       bestWindow,
       secondWindow,
       otherElement,
@@ -100,7 +95,7 @@ describe("document-aware retrieval", () => {
     overlappingWindow.evidenceContent = "matching evidence passage";
     const otherElement = buildRetrievedElement("a", "2");
 
-    const selected = selectSourceDiverseElements([
+    const selected = selectTopRetrievedElements([
       bestWindow,
       overlappingWindow,
       otherElement,

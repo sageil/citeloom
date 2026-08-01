@@ -166,7 +166,7 @@ describe("HTTP AI SDK reranker adapter", () => {
     expect(result.retrieved).toEqual([candidates[1], candidates[0]]);
   });
 
-  it("promotes source diversity beyond a maximum-context prefix", async () => {
+  it("preserves reranker order when one document dominates context", async () => {
     const model = new MockRerankingModelV4({
       doRerank: async (options) => {
         expect(options.topN).toBe(4);
@@ -198,7 +198,7 @@ describe("HTTP AI SDK reranker adapter", () => {
       3,
     );
 
-    expect(result).toEqual([candidates[0], candidates[1], candidates[3]]);
+    expect(result).toEqual(candidates.slice(0, 3));
   });
 
   it("keeps strict relevance order for source discovery", async () => {

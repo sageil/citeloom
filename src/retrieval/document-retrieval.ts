@@ -196,10 +196,11 @@ export function partitionCandidateWindowsByParentOccurrence(
   return batches;
 }
 
-export function selectSourceDiverseElements(
+export function selectTopRetrievedElements(
   rankedElements: RetrievedElement[],
   limit: number,
 ): RetrievedElement[] {
+  validateLimit(limit);
   const uniqueElements: RetrievedElement[] = [];
   const evidenceIdentities = new Set<string>();
   for (const item of rankedElements) {
@@ -210,67 +211,15 @@ export function selectSourceDiverseElements(
     evidenceIdentities.add(identity);
     uniqueElements.push(item);
   }
-  return selectSourceDiverseItems(
-    uniqueElements,
-    limit,
-    (item) => createDocumentKey(
-      item.element.documentId,
-      item.element.sourceFile,
-    ),
-  );
+  return uniqueElements.slice(0, limit);
 }
 
-export function selectSourceDiverseCandidates(
+export function selectTopCandidates(
   rankedCandidates: FusedCandidate[],
   limit: number,
 ): FusedCandidate[] {
-  return selectSourceDiverseItems(
-    rankedCandidates,
-    limit,
-    (candidate) => createDocumentKey(
-      candidate.documentId,
-      candidate.sourceFile,
-    ),
-  );
-}
-
-export function selectSourceDiverseItems<Item>(
-  rankedItems: Item[],
-  limit: number,
-  readDocumentKey: (item: Item) => string,
-): Item[] {
   validateLimit(limit);
-  const selected = rankedItems.slice(0, limit);
-  if (rankedItems.length <= limit || limit === 1) {
-    return selected;
-  }
-
-  const selectedDocumentKeys = new Set<string>();
-  for (const item of selected) {
-    selectedDocumentKeys.add(readDocumentKey(item));
-  }
-  if (selectedDocumentKeys.size !== 1) {
-    return selected;
-  }
-  const dominantDocumentKey = selectedDocumentKeys.values().next().value;
-  if (dominantDocumentKey === undefined) {
-    return selected;
-  }
-
-  const diversityWindowEnd = Math.min(rankedItems.length, limit * 3);
-  for (let index = limit; index < diversityWindowEnd; index += 1) {
-    const alternative = rankedItems[index];
-    if (alternative === undefined) {
-      continue;
-    }
-    const alternativeDocumentKey = readDocumentKey(alternative);
-    if (alternativeDocumentKey === dominantDocumentKey) {
-      continue;
-    }
-    selected[limit - 1] = alternative;
-    return selected;
-  }
-  return selected;
+  return rankedCandidates.slice(0, limit);
 }
 
 export function buildMatchedDocuments(

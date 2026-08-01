@@ -1,4 +1,3 @@
-import { selectSourceDiverseItems } from "../document-retrieval.js";
 import {
   answerContextSelectionConfig,
   selectAnswerContextCutoff,
@@ -23,9 +22,9 @@ export interface ScoredRerankerCandidate<Item> {
 export type ContextSelectionPolicy = "relevance-cliff" | "top-k";
 
 export type PostRerankCandidateExclusionReason =
+  | "duplicate-evidence"
   | "maximum-context"
-  | "relevance-cliff"
-  | "source-diversity";
+  | "relevance-cliff";
 
 export interface RankedRerankerCandidate<Item>
   extends ScoredRerankerCandidate<Item> {
@@ -54,20 +53,13 @@ export function selectRerankedContext<Item>(
   const ranking = rankRerankerCandidates(candidates);
   const cutoff = readContextCutoff(ranking, maximumContextSize, policy);
   const withinCutoff = ranking.slice(0, cutoff.cutoffRank);
-  const diversityCandidates = cutoff.reason === "maximum-context"
+  const selectionCandidates = cutoff.reason === "maximum-context"
     ? ranking
     : withinCutoff;
-  const uniqueDiversityCandidates = removeDuplicateElements(
-    diversityCandidates,
+  const uniqueCandidates = removeDuplicateEvidence(
+    selectionCandidates,
   );
-  let selected: RankedRerankerCandidate<Item>[] = [];
-  if (cutoff.cutoffRank > 0) {
-    selected = selectSourceDiverseItems(
-      uniqueDiversityCandidates,
-      cutoff.cutoffRank,
-      (candidate) => createDocumentIdentity(candidate.identity),
-    );
-  }
+  const selected = uniqueCandidates.slice(0, cutoff.cutoffRank);
   const selectedContextRankByCandidate = new Map<
     RankedRerankerCandidate<Item>,
     number
@@ -223,7 +215,7 @@ function readContextCutoff<Item>(
   };
 }
 
-function removeDuplicateElements<Item>(
+function removeDuplicateEvidence<Item>(
   ranking: readonly RankedRerankerCandidate<Item>[],
 ): RankedRerankerCandidate<Item>[] {
   const unique: RankedRerankerCandidate<Item>[] = [];
@@ -248,13 +240,9 @@ function readExclusionReason<Item>(
     return null;
   }
   if (candidate.rerankerRank <= cutoff.cutoffRank) {
-    return "source-diversity";
+    return "duplicate-evidence";
   }
   return cutoff.reason;
-}
-
-function createDocumentIdentity(identity: RerankerCandidateIdentity): string {
-  return `${identity.documentId}\u0000${identity.sourceFile}`;
 }
 
 function createEvidenceIdentity(identity: RerankerCandidateIdentity): string {

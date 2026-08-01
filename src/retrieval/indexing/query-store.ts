@@ -14,8 +14,8 @@ import { indexedDocuments } from "../../database/schema.js";
 import {
   createCandidateParentKey,
   selectNonOverlappingCandidatesWithTrace,
-  selectSourceDiverseCandidates,
-  selectSourceDiverseElements,
+  selectTopCandidates,
+  selectTopRetrievedElements,
   type NonOverlappingCandidateSelection,
 } from "../document-retrieval.js";
 import type { RetrievedElement } from "../document-retrieval.js";
@@ -319,7 +319,7 @@ export async function retrieveRelevantElementsWithScores(
   );
   runTelemetry.recordCandidateBudget(candidateBudget);
   if (config.mode !== "hybrid-reranked") {
-    const selected = selectSourceDiverseElements(retrieved, config.topK);
+    const selected = selectTopRetrievedElements(retrieved, config.topK);
     const contextualized = await addAdjacentRetrievalContext(
       database,
       space,
@@ -675,7 +675,7 @@ export function selectPreparedRetrievalCandidates(
   if (mode === "hybrid-reranked") {
     return candidates;
   }
-  return selectSourceDiverseCandidates(candidates, topK);
+  return selectTopCandidates(candidates, topK);
 }
 
 export function selectPreparedRerankingCandidatesWithTrace(
@@ -1242,17 +1242,17 @@ function buildContextSelectionCandidates(
 
 function readContextSelectionReason(
   exclusionReason:
+    | "duplicate-evidence"
     | "maximum-context"
     | "relevance-cliff"
-    | "source-diversity"
     | null,
   selectionReason: "maximum-context" | "relevance-cliff",
 ): ContextSelectionCandidateTelemetry["reason"] {
   if (exclusionReason === null) {
     return selectionReason;
   }
-  if (exclusionReason === "source-diversity") {
-    return "duplicate-source-element";
+  if (exclusionReason === "duplicate-evidence") {
+    return "duplicate-evidence";
   }
   if (exclusionReason === "relevance-cliff") {
     return "relevance-cliff-tail";
