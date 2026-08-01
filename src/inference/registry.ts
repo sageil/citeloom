@@ -26,7 +26,6 @@ import { InferenceMetricsReporter } from "./metrics.js";
 import type {
   AppConfig,
   EmbeddingInferenceConfig,
-  InferenceConfig,
   LanguageInferenceConfig,
   ProviderRuntimeConfig,
 } from "../config/index.js";
@@ -118,36 +117,36 @@ export function createInferenceModelRegistry(
   const baseQueryExpansionModel = queryExpansionRuntime.model;
   const answerThinkingProviderOptions = buildLanguageThinkingProviderOptions(
     config.inference.answer,
-    config.inference.thinkingMode,
+    config.inference.answer.thinkingMode,
   );
   const chatThinkingProviderOptions = buildLanguageThinkingProviderOptions(
     chatConfig,
-    config.inference.thinkingMode,
+    chatConfig.thinkingMode,
   );
   const summaryThinkingProviderOptions = buildLanguageThinkingProviderOptions(
     config.inference.summary,
-    config.inference.thinkingMode,
+    config.inference.summary.thinkingMode,
   );
   const queryExpansionThinkingProviderOptions =
     buildLanguageThinkingProviderOptions(
       config.inference.queryExpansion,
-      config.inference.thinkingMode,
+      config.inference.queryExpansion.thinkingMode,
     );
   const answerReasoning = buildLanguageReasoning(
     config.inference.answer,
-    config.inference.thinkingMode,
+    config.inference.answer.thinkingMode,
   );
   const chatReasoning = buildLanguageReasoning(
     chatConfig,
-    config.inference.thinkingMode,
+    chatConfig.thinkingMode,
   );
   const summaryReasoning = buildLanguageReasoning(
     config.inference.summary,
-    config.inference.thinkingMode,
+    config.inference.summary.thinkingMode,
   );
   const queryExpansionReasoning = buildLanguageReasoning(
     config.inference.queryExpansion,
-    config.inference.thinkingMode,
+    config.inference.queryExpansion.thinkingMode,
   );
   const answerModel = wrapLanguageModel({
     middleware: defaultSettingsMiddleware({
@@ -335,7 +334,7 @@ export function formatEmbeddingInputs(
 }
 
 export function buildThinkingProviderOptions(
-  thinkingMode: InferenceConfig["thinkingMode"],
+  thinkingMode: LanguageInferenceConfig["thinkingMode"],
 ): LanguageModelV4CallOptions["providerOptions"] {
   if (thinkingMode === "auto") {
     return undefined;
@@ -348,7 +347,7 @@ export function buildThinkingProviderOptions(
 
 function buildLanguageThinkingProviderOptions(
   config: LanguageInferenceConfig,
-  thinkingMode: InferenceConfig["thinkingMode"],
+  thinkingMode: LanguageInferenceConfig["thinkingMode"],
 ): LanguageModelV4CallOptions["providerOptions"] {
   if (config.adapter === "openai-codex-language") {
     return buildOpenAICodexProviderOptions(thinkingMode);
@@ -361,7 +360,7 @@ function buildLanguageThinkingProviderOptions(
 
 function buildLanguageReasoning(
   config: LanguageInferenceConfig,
-  thinkingMode: InferenceConfig["thinkingMode"],
+  thinkingMode: LanguageInferenceConfig["thinkingMode"],
 ): LanguageModelV4CallOptions["reasoning"] | undefined {
   if (
     isOpenAICompatibleLanguageAdapter(config.adapter)
@@ -384,7 +383,7 @@ function buildProviderReasoningOptions(
 }
 
 function buildOpenAICodexProviderOptions(
-  thinkingMode: InferenceConfig["thinkingMode"],
+  thinkingMode: LanguageInferenceConfig["thinkingMode"],
 ): LanguageModelV4CallOptions["providerOptions"] {
   const openaiOptions: {
     forceReasoning: true;

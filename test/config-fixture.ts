@@ -101,7 +101,6 @@ const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
   expansionDecay: 1,
   expansionQueryWeight: 1,
   generationSeedMode: "stable",
-  inferenceThinkingMode: "disabled",
   lexicalWeight: 1,
   maxAttempts: 3,
   maxDocumentMegabytes: 100,

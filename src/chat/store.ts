@@ -19,6 +19,8 @@ import { z } from "zod";
 
 import {
   decodePublishedAnswerDocument,
+  isPublishedAnsweredDocument,
+  isPublishedNoAnswerDocument,
   publishedAnswerDocumentSchema,
   renderPublishedAnswerMarkdown,
   type PublishedAnswerCitation,
@@ -308,7 +310,7 @@ function normalizePublishedChatContent(
   value: string,
 ): string {
   const content = z.string().trim().min(1).parse(value);
-  if (answerDocument.status === "answered") {
+  if (isPublishedAnsweredDocument(answerDocument)) {
     const renderedContent = renderPublishedAnswerMarkdown(answerDocument);
     if (content !== renderedContent) {
       throw new Error(
@@ -1606,7 +1608,7 @@ export class ChatStore {
         message.answerDocument,
       );
       if (
-        answerDocument.status === "no_answer"
+        isPublishedNoAnswerDocument(answerDocument)
         && message.claims.length > 0
       ) {
         throw new Error(
@@ -1614,7 +1616,7 @@ export class ChatStore {
         );
       }
       if (
-        answerDocument.status === "answered"
+        isPublishedAnsweredDocument(answerDocument)
         && renderPublishedAnswerMarkdown(answerDocument) !== message.content
       ) {
         throw new Error(

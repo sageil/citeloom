@@ -49,6 +49,7 @@ import {
   providerConnectionConfigurationSchema,
   providerCredentialSchema,
   providerIdSchema,
+  languageThinkingModeSchema,
   providerSupportsCapability,
 } from "../providers/profiles.js";
 import type {
@@ -256,10 +257,16 @@ const providerSettingsChangeSchema = z.discriminatedUnion("action", [
         capability: z.enum([
           "answer",
           "chat",
-          "embedding",
           "queryExpansion",
           "summarization",
         ]),
+        contextCapacityTokensOverride: z.number().int().positive().nullable(),
+        modelOverride: providerConfigurationTextSchema,
+        providerId: providerIdSchema.nullable(),
+        thinkingModeOverride: languageThinkingModeSchema.nullable(),
+      }).strict(),
+      z.object({
+        capability: z.literal("embedding"),
         contextCapacityTokensOverride: z.number().int().positive().nullable(),
         modelOverride: providerConfigurationTextSchema,
         providerId: providerIdSchema.nullable(),

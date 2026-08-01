@@ -254,6 +254,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
             "baseUrl": null,
@@ -309,6 +310,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
             "baseUrl": null,
@@ -364,6 +366,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
             "baseUrl": null,
@@ -419,6 +422,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
             "baseUrl": null,
@@ -474,6 +478,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
             "baseUrl": null,
@@ -529,6 +534,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
             "baseUrl": null,
@@ -585,6 +591,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
             "baseUrl": null,
@@ -640,6 +647,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
             "baseUrl": "http://host.docker.internal:9000/v1",
@@ -695,6 +703,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
             "baseUrl": null,
@@ -750,6 +759,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
             "baseUrl": null,
@@ -777,7 +787,8 @@ WITH canonical_settings AS (
       "featureOverrides": {
         "answer": {
           "contextCapacityTokensOverride": null,
-          "modelOverride": null
+          "modelOverride": null,
+          "thinkingModeOverride": null
         },
         "embedding": {
           "contextCapacityTokensOverride": null,
@@ -785,7 +796,8 @@ WITH canonical_settings AS (
         },
         "queryExpansion": {
           "contextCapacityTokensOverride": null,
-          "modelOverride": null
+          "modelOverride": null,
+          "thinkingModeOverride": null
         },
         "reranking": {
           "modelOverride": null
@@ -795,7 +807,8 @@ WITH canonical_settings AS (
         },
         "summarization": {
           "contextCapacityTokensOverride": null,
-          "modelOverride": null
+          "modelOverride": null,
+          "thinkingModeOverride": null
         },
         "textToSpeech": {
           "modelOverride": null,
@@ -847,7 +860,6 @@ WITH canonical_settings AS (
       "expansionDecay": 1,
       "expansionQueryWeight": 1,
       "generationSeedMode": "stable",
-      "inferenceThinkingMode": "disabled",
       "lexicalWeight": 1,
       "maxAttempts": 3,
       "maxDocumentMegabytes": 100,
@@ -855,7 +867,7 @@ WITH canonical_settings AS (
       "queryExpansionTemperature": 0,
       "queryExpansionTimeoutSeconds": 900,
       "queryExpansions": 2,
-      "rerankDiscoveryMinimumScore": 0.5,
+      "rerankDiscoveryMinimumScore": 0.9,
       "rerankTimeoutSeconds": 300,
       "retrievalCandidates": 50,
       "retrievalChunkTargetTokens": 512,

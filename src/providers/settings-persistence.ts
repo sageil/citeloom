@@ -9,7 +9,6 @@ import type {
 } from "../config/types.js";
 import {
   parseProviderSettings,
-  providerSettingsSchema,
   type ProviderSettings,
 } from "./profiles.js";
 
@@ -28,7 +27,7 @@ const sourceContentConfigSchema = z.object({
 }).strict();
 
 const storedApplicationSettingsSchema = z.object({
-  providers: providerSettingsSchema,
+  providers: z.unknown(),
   runtime: runtimeSettingsSchema,
   schemaVersion: z.literal(1),
   sourceContent: sourceContentConfigSchema,

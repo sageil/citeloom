@@ -57,7 +57,7 @@ const commandSchema = z.discriminatedUnion("name", [
     preparationPaths: z.array(z.string().min(1)).min(1),
   }),
   z.object({
-    atK: z.number().int().min(1).max(50),
+    atK: z.number().int().min(1),
     caseCount: z.number().int().min(1).max(1_000),
     domain: evaluationStableNameSchema,
     enrich: z.boolean(),

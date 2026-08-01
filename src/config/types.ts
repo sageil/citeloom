@@ -34,6 +34,8 @@ export type LanguageModelAdapter =
   | "openai-codex-language"
   | "openai-compatible-language";
 
+export type LanguageThinkingMode = "auto" | "disabled" | "enabled";
+
 export type EmbeddingModelAdapter =
   | "cohere-embedding"
   | "ollama-embedding"
@@ -44,6 +46,7 @@ export interface LanguageInferenceConfig extends ProviderRuntimeConfig {
   adapter: LanguageModelAdapter;
   contextCapacityTokens: number;
   model: string;
+  thinkingMode: LanguageThinkingMode;
   timeoutMs: number;
 }
 
@@ -139,7 +142,6 @@ export interface InferenceConfig {
   embedding: EmbeddingInferenceConfig;
   queryExpansion: LanguageInferenceConfig;
   summary: LanguageInferenceConfig;
-  thinkingMode: "auto" | "disabled" | "enabled";
 }
 
 export interface DoclingConfig {
@@ -299,7 +301,6 @@ export interface RuntimeSettings {
   expansionDecay: number;
   expansionQueryWeight: number;
   generationSeedMode: "random" | "stable";
-  inferenceThinkingMode: "auto" | "disabled" | "enabled";
   lexicalWeight: number;
   maxAttempts: number;
   maxDocumentMegabytes: number;

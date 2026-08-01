@@ -38,7 +38,7 @@ const fusionSchema = z.object({
 const tunedRetrievalConfigurationSchema = z.object({
   fusion: fusionSchema,
   queryExpansions: z.number().int().min(0).max(2),
-  rerankerCandidateDepth: z.number().int().min(1).max(200),
+  rerankerCandidateDepth: z.number().int().min(1),
   rrfK: z.number().int().min(1).max(1_000),
 }).strict();
 const uniquePositiveNumbersSchema = z.array(finitePositiveNumberSchema)
@@ -73,7 +73,7 @@ const evaluationTuningSpecificationSchema = z.object({
     expansionWeights: uniquePositiveNumbersSchema,
     lexicalWeights: uniquePositiveNumbersSchema,
     originalQuestionWeights: uniquePositiveNumbersSchema,
-    rerankerCandidateDepths: z.array(z.number().int().min(1).max(200))
+    rerankerCandidateDepths: z.array(z.number().int().min(1))
       .min(1)
       .max(20)
       .superRefine(requireUniqueNumbers),

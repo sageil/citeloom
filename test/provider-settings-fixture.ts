@@ -137,6 +137,7 @@ export function createTestProviderSettings(
       answer: {
         contextCapacityTokensOverride: null,
         modelOverride: null,
+        thinkingModeOverride: null,
       },
       embedding: {
         contextCapacityTokensOverride: null,
@@ -145,12 +146,14 @@ export function createTestProviderSettings(
       queryExpansion: {
         contextCapacityTokensOverride: null,
         modelOverride: null,
+        thinkingModeOverride: null,
       },
       reranking: { modelOverride: null },
       speechToText: { modelOverride: null },
       summarization: {
         contextCapacityTokensOverride: null,
         modelOverride: null,
+        thinkingModeOverride: null,
       },
       textToSpeech: {
         modelOverride: null,
@@ -187,6 +190,7 @@ function createProviderConnection(baseUrl: string | null): ProviderConnection {
     embedding: createModelConnection(null, null),
     maximumParallelRequests: 1,
     name: null,
+    thinkingMode: "disabled",
     reranking: createCapabilityConnection(),
     speechToText: createCapabilityConnection(),
     queryExpansion: createModelConnection(null, null),

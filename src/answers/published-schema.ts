@@ -38,19 +38,22 @@ export interface PublishedAnswerStatement {
   section: AnswerSection;
 }
 
+export interface PublishedNoAnswerDocument {
+  citations: [];
+  content: string;
+  schemaVersion: 1;
+  statements: [];
+}
+
+export interface PublishedAnsweredDocument {
+  citations: PublishedAnswerCitation[];
+  schemaVersion: 1;
+  statements: PublishedAnswerStatement[];
+}
+
 export type PublishedAnswerDocument =
-  | {
-    citations: [];
-    schemaVersion: 1;
-    statements: [];
-    status: "no_answer";
-  }
-  | {
-    citations: PublishedAnswerCitation[];
-    schemaVersion: 1;
-    statements: PublishedAnswerStatement[];
-    status: "answered";
-  };
+  | PublishedAnsweredDocument
+  | PublishedNoAnswerDocument;
 
 const evidenceSchema = z.discriminatedUnion("kind", [
   z.object({ excerpt: z.string().min(1), kind: z.literal("text") }).strict(),
@@ -111,21 +114,20 @@ const publishedAnswerStatementSchema: z.ZodType<PublishedAnswerStatement> = z.ob
   section: answerSectionSchema,
 }).strict();
 
-export const publishedAnswerDocumentSchema: z.ZodType<PublishedAnswerDocument> = z.discriminatedUnion("status", [
+export const publishedAnswerDocumentSchema: z.ZodType<PublishedAnswerDocument> = z.union([
   z.object({
     citations: z.tuple([]),
+    content: answerStatementContentSchema,
     schemaVersion: z.literal(1),
     statements: z.tuple([]),
-    status: z.literal("no_answer"),
   }).strict(),
   z.object({
     citations: z.array(publishedAnswerCitationSchema).min(1),
     schemaVersion: z.literal(1),
     statements: z.array(publishedAnswerStatementSchema).min(1),
-    status: z.literal("answered"),
   }).strict(),
 ]).superRefine((document, context) => {
-  if (document.status === "answered") {
+  if (isPublishedAnsweredDocument(document)) {
     validatePublishedDocumentReferences(document, context);
   }
 });
@@ -138,17 +140,31 @@ export function decodePublishedAnswerDocument(value: unknown): PublishedAnswerDo
   return result.data;
 }
 
-export function createNoAnswerDocument(): PublishedAnswerDocument {
+export function createNoAnswerDocument(
+  content = NO_ANSWER_TEXT,
+): PublishedNoAnswerDocument {
   return {
     citations: [],
+    content,
     schemaVersion: 1,
     statements: [],
-    status: "no_answer",
   };
 }
 
+export function isPublishedAnsweredDocument(
+  document: PublishedAnswerDocument,
+): document is PublishedAnsweredDocument {
+  return document.citations.length > 0;
+}
+
+export function isPublishedNoAnswerDocument(
+  document: PublishedAnswerDocument,
+): document is PublishedNoAnswerDocument {
+  return document.citations.length === 0;
+}
+
 function validatePublishedDocumentReferences(
-  document: Extract<PublishedAnswerDocument, { status: "answered" }>,
+  document: PublishedAnsweredDocument,
   context: z.RefinementCtx,
 ): void {
   const citationIds = new Set<string>();

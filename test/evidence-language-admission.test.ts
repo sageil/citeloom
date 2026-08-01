@@ -79,7 +79,7 @@ describe("English-compatible evidence admission", () => {
     ))).toEqual(["fra", "eng", "und", "eng"]);
   });
 
-  it("preserves duplicate-evidence decisions before language admission", () => {
+  it("preserves separately indexed windows with equivalent text", () => {
     const representative = buildCandidate("representative", englishPurpose);
     const duplicate = buildCandidate("duplicate", englishPurpose);
     duplicate.documentId = representative.documentId;
@@ -89,10 +89,10 @@ describe("English-compatible evidence admission", () => {
       duplicate,
     ], 2);
 
-    expect(admission.selection.selected).toEqual([representative]);
+    expect(admission.selection.selected).toEqual([representative, duplicate]);
     expect(admission.selection.decisions.map((decision) => (
       decision.exclusionReason
-    ))).toEqual([null, "duplicate-evidence"]);
+    ))).toEqual([null, null]);
   });
 
   it("admits undetermined evidence when no evidence is classified as English", () => {

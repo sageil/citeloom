@@ -158,7 +158,7 @@ describe("claim verification", () => {
     ]);
   });
 
-  it("removes an unsupported extra citation when one citation supports the whole statement", async () => {
+  it("reports partial support without changing the published answer", async () => {
     const verifier = buildProbabilityVerifier(new Map([
       ["claim-0-citation-1", 0.9],
       ["claim-0-citation-2", 0.1],
@@ -179,27 +179,29 @@ describe("claim verification", () => {
     );
 
     expect(verifier.scoreCalls).toHaveLength(1);
-    expect(verified.answerDocument.status).toBe("answered");
-    expect(verified.answerDocument.citations).toEqual([
-      expect.objectContaining({
-        citationNumber: 1,
-        evidence: { excerpt: "Revenue changed.", kind: "text" },
-      }),
-    ]);
+    expect(verified.answerDocument).toBe(document);
+    expect(verified.answerDocument.citations).toHaveLength(2);
     expect(verified.claims).toMatchObject([{
-      citationNumbers: [1],
+      citationNumbers: [1, 2],
       claim: "Revenue changed.",
       claimIndex: 0,
-      evidenceUnits: [{
-        citationNumber: 1,
-        outcome: "supported",
-        unitId: "claim-0-citation-1",
-      }],
-      status: "supported",
+      evidenceUnits: [
+        {
+          citationNumber: 1,
+          outcome: "supported",
+          unitId: "claim-0-citation-1",
+        },
+        {
+          citationNumber: 2,
+          outcome: "unsupported",
+          unitId: "claim-0-citation-2",
+        },
+      ],
+      status: "partially-supported",
     }]);
   });
 
-  it("validates the complete remaining evidence set before pruning multiple citations", async () => {
+  it("does not run a collective check when individual evidence is partially supported", async () => {
     const verifier = new FakeHhemClient(0.5, async (items) => {
       return items.map((item) => {
         let supportProbability = 0.1;
@@ -233,18 +235,11 @@ describe("claim verification", () => {
       new AbortController().signal,
     );
 
-    expect(verifier.scoreCalls).toHaveLength(2);
-    expect(verifier.scoreCalls[1]?.[0]).toMatchObject({
-      id: "claim-0-citation-set",
-    });
-    expect(verifier.scoreCalls[1]?.[0]?.evidence).toContain("Revenue changed.");
-    expect(verifier.scoreCalls[1]?.[0]?.evidence).not.toContain("expenses");
-    expect(verified.answerDocument.citations.map((citation) => {
-      return citation.citationNumber;
-    })).toEqual([1, 2]);
+    expect(verifier.scoreCalls).toHaveLength(1);
+    expect(verified.answerDocument).toBe(document);
     expect(verified.claims[0]).toMatchObject({
-      citationNumbers: [1, 2],
-      status: "supported",
+      citationNumbers: [1, 2, 3],
+      status: "partially-supported",
     });
   });
 
@@ -332,7 +327,7 @@ describe("claim verification", () => {
     expect(verified.claims[0]?.rationale).toContain("complete citation set");
   });
 
-  it("omits a statement when its complete evaluated citation set is unsupported", async () => {
+  it("retains a published statement when its complete citation set is unsupported", async () => {
     const verifier = new FakeHhemClient(0.5, async (items) => {
       return items.map((item) => ({
         id: item.id,
@@ -357,15 +352,51 @@ describe("claim verification", () => {
     );
 
     expect(verifier.scoreCalls).toHaveLength(2);
-    expect(verified).toEqual({
-      answerDocument: {
-        citations: [],
-        schemaVersion: 1,
-        statements: [],
-        status: "no_answer",
-      },
-      claims: [],
+    expect(verified.answerDocument).toBe(document);
+    expect(verified.claims).toMatchObject([{
+      citationNumbers: [1, 2],
+      status: "unsupported",
+    }]);
+  });
+
+  it("records unsupported evidence without changing published citations", async () => {
+    const verifier = buildProbabilityVerifier(new Map([
+      ["claim-0-citation-1", 0.1],
+    ]));
+    const document = buildPublishedAnswer([buildSource()], [1]);
+
+    const verified = await verifyPublishedAnswer(
+      buildModels(verifier),
+      document,
+      new TaskLimiter(1),
+      new AbortController().signal,
+    );
+
+    expect(verified.answerDocument).toBe(document);
+    expect(verified.claims).toMatchObject([{
+      citationNumbers: [1],
+      status: "unsupported",
+    }]);
+  });
+
+  it("returns no checks for a published no-answer document", async () => {
+    const verifier = new FakeHhemClient();
+    const document = decodePublishedAnswerDocument({
+      citations: [],
+      content: "The supplied source material does not identify the answer.",
+      schemaVersion: 1,
+      statements: [],
     });
+
+    const verified = await verifyPublishedAnswer(
+      buildModels(verifier),
+      document,
+      new TaskLimiter(1),
+      new AbortController().signal,
+    );
+
+    expect(verifier.scoreCalls).toHaveLength(0);
+    expect(verified).toEqual({ answerDocument: document, claims: [] });
   });
 
   it("preserves unsupported and verifier-incompatible evidence as unverified", async () => {
@@ -398,7 +429,7 @@ describe("claim verification", () => {
     expect(verified.answerDocument.citations).toHaveLength(2);
     expect(verified.claims[0]).toMatchObject({
       citationNumbers: [1, 2],
-      status: "unverified",
+      status: "unsupported",
     });
     expect(verified.claims[0]?.evidenceUnits.map((unit) => unit.outcome)).toEqual([
       "unsupported",
@@ -406,7 +437,7 @@ describe("claim verification", () => {
     ]);
   });
 
-  it("removes unsupported extras while preserving independently supported and incompatible evidence", async () => {
+  it("reports mixed support while preserving all published evidence", async () => {
     const verifier = buildProbabilityVerifier(new Map([
       ["claim-0-citation-1", 0.9],
       ["claim-0-citation-2", 0.1],
@@ -435,31 +466,18 @@ describe("claim verification", () => {
     );
 
     expect(verifier.scoreCalls).toHaveLength(1);
-    expect(verified.answerDocument.citations).toMatchObject([
-      {
-        citationNumber: 1,
-        evidence: {
-          excerpt: "The chart shows that revenue changed.",
-          kind: "text",
-        },
-      },
-      {
-        citationNumber: 2,
-        evidence: {
-          kind: "image",
-          mimeType: "image/png",
-        },
-      },
-    ]);
+    expect(verified.answerDocument).toBe(document);
+    expect(verified.answerDocument.citations).toHaveLength(3);
     expect(verified.claims[0]).toMatchObject({
-      citationNumbers: [1, 2],
+      citationNumbers: [1, 2, 3],
       evidenceUnits: [
         { citationNumber: 1, outcome: "supported" },
-        { citationNumber: 2, outcome: "verifier-incompatible" },
+        { citationNumber: 2, outcome: "unsupported" },
+        { citationNumber: 3, outcome: "verifier-incompatible" },
       ],
-      status: "supported",
+      status: "partially-supported",
     });
-    expect(JSON.stringify(verified)).not.toContain("expenses");
+    expect(JSON.stringify(verified)).toContain("expenses");
   });
 
   it("preserves unsupported and not-evaluated evidence as unverified", async () => {
@@ -497,7 +515,7 @@ describe("claim verification", () => {
     expect(verified.answerDocument.citations).toHaveLength(2);
     expect(verified.claims[0]).toMatchObject({
       citationNumbers: [1, 2],
-      status: "unverified",
+      status: "unsupported",
     });
     expect(verified.claims[0]?.evidenceUnits.map((unit) => unit.outcome)).toEqual([
       "unsupported",
@@ -505,7 +523,7 @@ describe("claim verification", () => {
     ]);
   });
 
-  it("omits an entire conflict group when one required position is unsupported", async () => {
+  it("retains a conflict group and records one unsupported position", async () => {
     const verifier = new FakeHhemClient(0.5, async (items) => {
       return items.map((item) => ({
         id: item.id,
@@ -522,8 +540,13 @@ describe("claim verification", () => {
       new AbortController().signal,
     );
 
-    expect(verified.answerDocument.status).toBe("no_answer");
-    expect(verified.claims).toEqual([]);
+    expect(verified.answerDocument).toBe(document);
+    expect(verified.claims.map((claim) => claim.status)).toEqual([
+      "supported",
+      "supported",
+      "unsupported",
+      "supported",
+    ]);
   });
 
   it("records final fallback counts in claim-verification telemetry", async () => {
@@ -553,8 +576,8 @@ describe("claim verification", () => {
     expect(finishStage).toHaveBeenCalledWith({
       inputCount: 1,
       inputTokens: null,
-      outcome: "fallback",
-      outputCount: 0,
+      outcome: "success",
+      outputCount: 1,
       outputTokens: null,
     });
   });
@@ -893,7 +916,6 @@ function buildPublishedAnswer(
       presentation: "paragraph",
       section: "answer",
     }],
-    status: "answered",
   });
 }
 
@@ -925,6 +947,5 @@ function buildPublishedConflictAnswer(): PublishedAnswerDocument {
       presentation: "paragraph",
       section: "conflicting-evidence",
     }],
-    status: "answered",
   });
 }

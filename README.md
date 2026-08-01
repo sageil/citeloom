@@ -12,7 +12,7 @@
 CiteLoom is an open-source, self-hosted Retrieval-Augmented Generation (RAG) system for private documents.
 It combines structure-aware document processing, embedding search with pgvector cosine similarity, BM25 keyword search, extra search queries, weighted Reciprocal Rank Fusion, and optional relevance-model reranking to find evidence across text, tables, and images.
 Generated descriptions can improve discovery, but citations always point back to original evidence.
-It generates structured answers using exact evidence references, converts them into server-owned citations, and independently checks whether the cited evidence supports each claim using the Hallucination Evaluation Model (HHEM) before publication.
+It generates structured answers using exact evidence references, converts them into server-owned citations, and stores advisory Hallucination Evaluation Model (HHEM) support checks alongside each cited claim without allowing those scores to change the answer.
 
 ## Features
 

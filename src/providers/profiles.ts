@@ -3,6 +3,7 @@ import { z } from "zod";
 import type {
   EmbeddingModelAdapter,
   LanguageModelAdapter,
+  LanguageThinkingMode,
   RerankerAdapter,
   SpeechToTextAdapter,
   TextToSpeechAdapter,
@@ -89,6 +90,7 @@ export interface ProviderConnection {
   customAdapters: CustomProviderAdapters;
   maximumParallelRequests: number;
   name: string | null;
+  thinkingMode: LanguageThinkingMode;
   answer: ProviderModelConnection;
   chat?: ProviderModelConnection | undefined;
   embedding: ProviderModelConnection;
@@ -119,19 +121,24 @@ export interface ProviderModelFeatureOverrides
   contextCapacityTokensOverride: number | null;
 }
 
+export interface ProviderLanguageFeatureOverrides
+  extends ProviderModelFeatureOverrides {
+  thinkingModeOverride: LanguageThinkingMode | null;
+}
+
 export interface ProviderTextToSpeechFeatureOverrides
   extends ProviderCapabilityFeatureOverrides {
   voiceOverride: string | null;
 }
 
 export interface ProviderFeatureOverrides {
-  answer: ProviderModelFeatureOverrides;
-  chat?: ProviderModelFeatureOverrides | undefined;
+  answer: ProviderLanguageFeatureOverrides;
+  chat?: ProviderLanguageFeatureOverrides | undefined;
   embedding: ProviderModelFeatureOverrides;
-  queryExpansion: ProviderModelFeatureOverrides;
+  queryExpansion: ProviderLanguageFeatureOverrides;
   reranking: ProviderCapabilityFeatureOverrides;
   speechToText: ProviderCapabilityFeatureOverrides;
-  summarization: ProviderModelFeatureOverrides;
+  summarization: ProviderLanguageFeatureOverrides;
   textToSpeech: ProviderTextToSpeechFeatureOverrides;
 }
 
@@ -162,6 +169,7 @@ export interface ProviderConnectionConfiguration {
   customAdapters: CustomProviderAdapters;
   maximumParallelRequests: number;
   name: string | null;
+  thinkingMode: LanguageThinkingMode;
   answer: ProviderModelConfiguration;
   chat?: ProviderModelConfiguration | undefined;
   embedding: ProviderModelConfiguration;
@@ -179,9 +187,15 @@ export type ProviderFeatureConfiguration =
     capability:
       | "answer"
       | "chat"
-      | "embedding"
       | "queryExpansion"
       | "summarization";
+    contextCapacityTokensOverride: number | null;
+    modelOverride: string | null;
+    providerId: ProviderId | null;
+    thinkingModeOverride: LanguageThinkingMode | null;
+  }
+  | {
+    capability: "embedding";
     contextCapacityTokensOverride: number | null;
     modelOverride: string | null;
     providerId: ProviderId | null;
@@ -223,6 +237,7 @@ export interface ResolvedLanguageProvider extends ResolvedProviderCapability {
   adaptiveContextEnabled: boolean;
   adapter: LanguageModelAdapter;
   contextCapacityTokens: number;
+  thinkingMode: LanguageThinkingMode;
 }
 
 export interface ResolvedEmbeddingProvider extends ResolvedProviderCapability {
@@ -268,6 +283,11 @@ export const providerCredentialSchema = z.string()
   .nullable();
 export const providerIdSchema = z.enum(PROVIDER_IDS);
 export const providerCapabilitySchema = z.enum(PROVIDER_CAPABILITIES);
+export const languageThinkingModeSchema = z.enum([
+  "auto",
+  "disabled",
+  "enabled",
+]);
 export const languageModelAdapterSchema = z.enum([
   "cohere-language",
   "deepseek-language",
@@ -320,6 +340,7 @@ const providerConnectionSchema = z.object({
   }).strict(),
   maximumParallelRequests: z.number().int().min(1).max(16),
   name: z.string().trim().min(1).max(100).nullable(),
+  thinkingMode: languageThinkingModeSchema,
   answer: providerModelConnectionSchema,
   chat: providerModelConnectionSchema.optional(),
   embedding: providerModelConnectionSchema,
@@ -339,14 +360,18 @@ const providerModelFeatureOverridesSchema =
   providerCapabilityFeatureOverridesSchema.extend({
     contextCapacityTokensOverride: z.number().int().positive().nullable(),
   }).strict();
+const providerLanguageFeatureOverridesSchema =
+  providerModelFeatureOverridesSchema.extend({
+    thinkingModeOverride: languageThinkingModeSchema.nullable(),
+  }).strict();
 export const providerFeatureOverridesSchema = z.object({
-  answer: providerModelFeatureOverridesSchema,
-  chat: providerModelFeatureOverridesSchema.optional(),
+  answer: providerLanguageFeatureOverridesSchema,
+  chat: providerLanguageFeatureOverridesSchema.optional(),
   embedding: providerModelFeatureOverridesSchema,
-  queryExpansion: providerModelFeatureOverridesSchema,
+  queryExpansion: providerLanguageFeatureOverridesSchema,
   reranking: providerCapabilityFeatureOverridesSchema,
   speechToText: providerCapabilityFeatureOverridesSchema,
-  summarization: providerModelFeatureOverridesSchema,
+  summarization: providerLanguageFeatureOverridesSchema,
   textToSpeech: providerCapabilityFeatureOverridesSchema.extend({
     voiceOverride: providerConfigurationTextSchema,
   }).strict(),
@@ -367,6 +392,7 @@ const providerConnectionConfigurationInputSchema = z.object({
   }).strict(),
   maximumParallelRequests: z.number().int().min(1).max(16),
   name: z.string().trim().min(1).max(100).nullable(),
+  thinkingMode: languageThinkingModeSchema,
   answer: z.object({
     baseUrl: httpUrlSchema.nullable(),
     contextCapacityTokens: z.number().int().positive().nullable(),
@@ -427,19 +453,25 @@ const providerSettingsInputSchema = z.object({
   }).strict(),
 }).strict();
 
-export const providerSettingsSchema = providerSettingsInputSchema
-  .transform(materializeChatProviderSettings)
-  .superRefine((settings, context) => {
-    validateAdaptiveContextConfiguration(settings, context);
-    validateSelectedProvider(settings, "answer", context);
-    validateSelectedProvider(settings, "chat", context);
-    validateSelectedProvider(settings, "queryExpansion", context);
-    validateSelectedProvider(settings, "summarization", context);
-    validateSelectedProvider(settings, "embedding", context);
-    validateSelectedProvider(settings, "reranking", context);
-    validateSelectedProvider(settings, "speechToText", context);
-    validateSelectedProvider(settings, "textToSpeech", context);
-  });
+function createProviderSettingsSchema() {
+  return providerSettingsInputSchema
+    .transform((settings) => {
+      return materializeProviderSettings(settings);
+    })
+    .superRefine((settings, context) => {
+      validateAdaptiveContextConfiguration(settings, context);
+      validateSelectedProvider(settings, "answer", context);
+      validateSelectedProvider(settings, "chat", context);
+      validateSelectedProvider(settings, "queryExpansion", context);
+      validateSelectedProvider(settings, "summarization", context);
+      validateSelectedProvider(settings, "embedding", context);
+      validateSelectedProvider(settings, "reranking", context);
+      validateSelectedProvider(settings, "speechToText", context);
+      validateSelectedProvider(settings, "textToSpeech", context);
+    });
+}
+
+export const providerSettingsSchema = createProviderSettingsSchema();
 
 export const providerCatalog: readonly ProviderProfile[] = [
   {
@@ -565,7 +597,7 @@ for (const profile of providerCatalog) {
 }
 
 export function parseProviderSettings(value: unknown): ProviderSettings {
-  const result = providerSettingsSchema.safeParse(value);
+  const result = createProviderSettingsSchema().safeParse(value);
   if (!result.success) {
     const details = result.error.issues.map((issue) => {
       const path = issue.path.length === 0
@@ -595,6 +627,7 @@ export function readProviderConnectionConfiguration(
     queryExpansion: readModelConfiguration(connection.queryExpansion),
     maximumParallelRequests: connection.maximumParallelRequests,
     name: connection.name,
+    thinkingMode: connection.thinkingMode,
     reranking: readCapabilityConfiguration(connection.reranking),
     speechToText: readCapabilityConfiguration(connection.speechToText),
     summarization: readModelConfiguration(connection.summarization),
@@ -668,6 +701,11 @@ export function resolveLanguageProvider(
       settings.connections[provider.providerId].adaptiveContextEnabled,
     adapter: provider.adapter,
     contextCapacityTokens: readEffectiveModelContextCapacity(
+      settings,
+      provider.providerId,
+      capability,
+    ),
+    thinkingMode: readEffectiveThinkingMode(
       settings,
       provider.providerId,
       capability,
@@ -1070,7 +1108,7 @@ function readEffectiveModelContextCapacity(
   return contextCapacityTokens;
 }
 
-function materializeChatProviderSettings(
+function materializeProviderSettings(
   settings: z.output<typeof providerSettingsInputSchema>,
 ): ProviderSettings {
   const entries: Array<[ProviderId, ProviderConnection]> = [];
@@ -1088,6 +1126,7 @@ function materializeChatProviderSettings(
           chat: connection.customAdapters.chat
             ?? connection.customAdapters.answer,
         },
+        thinkingMode: connection.thinkingMode,
       },
     ]);
   }
@@ -1125,6 +1164,16 @@ function materializeProviderConnectionConfiguration(
         ?? configuration.customAdapters.answer,
     },
   };
+}
+
+function readEffectiveThinkingMode(
+  settings: ProviderSettings,
+  providerId: ProviderId,
+  capability: "answer" | "chat" | "queryExpansion" | "summarization",
+): LanguageThinkingMode {
+  const override = readLanguageFeatureOverrides(settings, capability)
+    .thinkingModeOverride;
+  return override ?? settings.connections[providerId].thinkingMode;
 }
 
 function readProviderRoute(
@@ -1194,6 +1243,17 @@ function readModelFeatureOverrides(
     | "queryExpansion"
     | "summarization",
 ): ProviderModelFeatureOverrides {
+  if (capability === "chat") {
+    return settings.featureOverrides.chat
+      ?? settings.featureOverrides.answer;
+  }
+  return settings.featureOverrides[capability];
+}
+
+function readLanguageFeatureOverrides(
+  settings: ProviderSettings,
+  capability: "answer" | "chat" | "queryExpansion" | "summarization",
+): ProviderLanguageFeatureOverrides {
   if (capability === "chat") {
     return settings.featureOverrides.chat
       ?? settings.featureOverrides.answer;

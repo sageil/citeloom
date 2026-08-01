@@ -50,10 +50,6 @@ import {
   retrievalChunks1024,
   retrievalLexicalChunks,
   retrievalDescriptionArtifacts,
-  retrievalDescriptionChunks384,
-  retrievalDescriptionChunks768,
-  retrievalDescriptionChunks1024,
-  retrievalDescriptionLexicalChunks,
   sourceElements,
 } from "../../database/schema.js";
 import {
@@ -785,41 +781,6 @@ async function synchronizeRetrievalSourceFile(
     .set({ sourceFile: canonicalSourceFile })
     .where(lexicalCondition);
 
-  const descriptionCondition384 = and(
-    eq(retrievalDescriptionChunks384.documentId, documentId),
-    eq(retrievalDescriptionChunks384.sourceFile, previousSourceFile),
-  );
-  await transaction
-    .update(retrievalDescriptionChunks384)
-    .set({ sourceFile: canonicalSourceFile })
-    .where(descriptionCondition384);
-
-  const descriptionCondition768 = and(
-    eq(retrievalDescriptionChunks768.documentId, documentId),
-    eq(retrievalDescriptionChunks768.sourceFile, previousSourceFile),
-  );
-  await transaction
-    .update(retrievalDescriptionChunks768)
-    .set({ sourceFile: canonicalSourceFile })
-    .where(descriptionCondition768);
-
-  const descriptionCondition1024 = and(
-    eq(retrievalDescriptionChunks1024.documentId, documentId),
-    eq(retrievalDescriptionChunks1024.sourceFile, previousSourceFile),
-  );
-  await transaction
-    .update(retrievalDescriptionChunks1024)
-    .set({ sourceFile: canonicalSourceFile })
-    .where(descriptionCondition1024);
-
-  const descriptionLexicalCondition = and(
-    eq(retrievalDescriptionLexicalChunks.documentId, documentId),
-    eq(retrievalDescriptionLexicalChunks.sourceFile, previousSourceFile),
-  );
-  await transaction
-    .update(retrievalDescriptionLexicalChunks)
-    .set({ sourceFile: canonicalSourceFile })
-    .where(descriptionLexicalCondition);
 }
 
 async function readLatestDocumentVersion(

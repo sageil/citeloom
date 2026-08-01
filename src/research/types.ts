@@ -5,7 +5,9 @@ import type {
 import type {
   MatchedDocument,
 } from "../retrieval/document-retrieval.js";
-import type { PublishedAnswerDocument } from "../answers/published-schema.js";
+import type {
+  PublishedAnswerDocument,
+} from "../answers/published-schema.js";
 import type { DocumentFormat } from "../documents/format.js";
 import type { QueryScope } from "../domain/query-scope.js";
 import type {

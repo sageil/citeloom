@@ -31,6 +31,29 @@ describe("runtime setting contract", () => {
       "Invalid value for Answer context count",
     );
   });
+
+  it("shows the relationship between the retrieval counts without fixed maximums", () => {
+    const definitions = new Map(
+      runtimeSettingDefinitions.map((definition) => [definition.key, definition]),
+    );
+
+    expect(definitions.get("retrievalCandidates")).toMatchObject({
+      min: 1,
+      unit: "passages",
+    });
+    expect(definitions.get("retrievalCandidates")).not.toHaveProperty("max");
+    expect(definitions.get("retrievalCandidates")?.description).toContain(
+      "must be at least Answer context count",
+    );
+    expect(definitions.get("topK")).toMatchObject({
+      min: 1,
+      unit: "passages",
+    });
+    expect(definitions.get("topK")).not.toHaveProperty("max");
+    expect(definitions.get("topK")?.description).toContain(
+      "cannot exceed Candidate count",
+    );
+  });
 });
 
 describe("provider settings changes", () => {
@@ -133,6 +156,7 @@ describe("provider settings changes", () => {
           contextCapacityTokensOverride: 16_384,
           modelOverride: "feature-answer-model",
           providerId: "lmstudio",
+          thinkingModeOverride: "enabled",
         },
       }],
     );
@@ -140,6 +164,7 @@ describe("provider settings changes", () => {
     expect(updated.featureOverrides.answer).toEqual({
       contextCapacityTokensOverride: 16_384,
       modelOverride: "feature-answer-model",
+      thinkingModeOverride: "enabled",
     });
     expect(updated.routing.answer).toBe("lmstudio");
   });
@@ -158,6 +183,7 @@ describe("provider settings changes", () => {
           contextCapacityTokensOverride: 65_536,
           modelOverride: "query-expansion-model",
           providerId: "deepseek",
+          thinkingModeOverride: null,
         },
       }],
     );
@@ -165,6 +191,7 @@ describe("provider settings changes", () => {
     expect(updated.featureOverrides.queryExpansion).toEqual({
       contextCapacityTokensOverride: 65_536,
       modelOverride: "query-expansion-model",
+      thinkingModeOverride: null,
     });
     expect(updated.routing.queryExpansion).toBe("deepseek");
     expect(updated.routing.summarization).toBe("lmstudio");

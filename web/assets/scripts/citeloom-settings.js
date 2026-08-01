@@ -34,6 +34,13 @@ const modelProviderCapabilities = Object.freeze([
   "queryExpansion",
   "summarization",
 ]);
+const languageProviderCapabilities = Object.freeze([
+  "answer",
+  "chat",
+  "queryExpansion",
+  "summarization",
+]);
+const thinkingModes = Object.freeze(["auto", "disabled", "enabled"]);
 const providerIds = Object.freeze([
   "omlx",
   "ollama",
@@ -454,6 +461,11 @@ function readProviderConfiguration(value) {
       configuration.maximumParallelRequests,
     ),
     name: readNullableNonEmptyString(configuration.name, "provider name"),
+    thinkingMode: readEnum(
+      configuration.thinkingMode,
+      thinkingModes,
+      "provider thinking mode",
+    ),
     reranking: readProviderCapabilityConfiguration(
       configuration.reranking,
       "reranking configuration",
@@ -584,6 +596,16 @@ function readFeatureOverrides(value) {
           `${capability} context capacity override`,
         );
     }
+    if (languageProviderCapabilities.includes(capability)) {
+      const thinkingModeOverride = capabilityOverrides.thinkingModeOverride;
+      normalized[capability].thinkingModeOverride = thinkingModeOverride === null
+        ? null
+        : readEnum(
+          thinkingModeOverride,
+          thinkingModes,
+          `${capability} thinking mode override`,
+        );
+    }
   }
   const textToSpeech = readPlainObject(
     overrides.textToSpeech,
@@ -703,10 +725,12 @@ function buildEmptyFeatureOverrides() {
     answer: {
       contextCapacityTokensOverride: null,
       modelOverride: null,
+      thinkingModeOverride: null,
     },
     chat: {
       contextCapacityTokensOverride: null,
       modelOverride: null,
+      thinkingModeOverride: null,
     },
     embedding: {
       contextCapacityTokensOverride: null,
@@ -715,12 +739,14 @@ function buildEmptyFeatureOverrides() {
     queryExpansion: {
       contextCapacityTokensOverride: null,
       modelOverride: null,
+      thinkingModeOverride: null,
     },
     reranking: { modelOverride: null },
     speechToText: { modelOverride: null },
     summarization: {
       contextCapacityTokensOverride: null,
       modelOverride: null,
+      thinkingModeOverride: null,
     },
     textToSpeech: { modelOverride: null, voiceOverride: null },
   };
@@ -880,11 +906,22 @@ function buildFeatureConfiguration(providers, capability) {
       voiceOverride: providers.featureOverrides.textToSpeech.voiceOverride,
     };
   }
-  if (modelProviderCapabilities.includes(capability)) {
+  if (languageProviderCapabilities.includes(capability)) {
     return {
       capability,
       contextCapacityTokensOverride:
         providers.featureOverrides[capability].contextCapacityTokensOverride,
+      modelOverride,
+      providerId,
+      thinkingModeOverride:
+        providers.featureOverrides[capability].thinkingModeOverride,
+    };
+  }
+  if (capability === "embedding") {
+    return {
+      capability,
+      contextCapacityTokensOverride:
+        providers.featureOverrides.embedding.contextCapacityTokensOverride,
       modelOverride,
       providerId,
     };
@@ -1953,6 +1990,27 @@ export function registerPage(alpine) {
       return modelProviderCapabilities.includes(capability);
     },
 
+    capabilitySupportsThinking(capability) {
+      return languageProviderCapabilities.includes(capability);
+    },
+
+    featureThinkingModeOverride(capability) {
+      if (!this.capabilitySupportsThinking(capability)) {
+        return null;
+      }
+      return this.providerDrafts
+        ?.featureOverrides[capability].thinkingModeOverride ?? null;
+    },
+
+    featureEffectiveThinkingMode(capability) {
+      const override = this.featureThinkingModeOverride(capability);
+      if (override !== null) {
+        return override;
+      }
+      return this.featureConnection(capability)?.configuration.thinkingMode
+        ?? "disabled";
+    },
+
     featureDefaultContextCapacityTokens(capability) {
       if (!this.capabilityHasModelContext(capability)) {
         return null;
@@ -2006,6 +2064,9 @@ export function registerPage(alpine) {
           capability
         ].contextCapacityTokensOverride = null;
       }
+      if (languageProviderCapabilities.includes(capability)) {
+        draft.featureOverrides[capability].thinkingModeOverride = null;
+      }
       if (capability === "textToSpeech") {
         draft.featureOverrides.textToSpeech.voiceOverride = null;
       }
@@ -2041,6 +2102,23 @@ export function registerPage(alpine) {
       draft.featureOverrides[
         capability
       ].contextCapacityTokensOverride = contextCapacityTokensOverride;
+      this.replaceProviderDrafts(draft);
+      this.saved = false;
+    },
+
+    writeFeatureThinkingModeOverride(capability, value) {
+      if (
+        this.providerDrafts === null
+        || !languageProviderCapabilities.includes(capability)
+      ) {
+        return;
+      }
+      const thinkingModeOverride = value === ""
+        ? null
+        : readEnum(value, thinkingModes, "feature thinking mode override");
+      const draft = cloneProviderDrafts(this.providerDrafts, alpine);
+      draft.featureOverrides[capability].thinkingModeOverride =
+        thinkingModeOverride;
       this.replaceProviderDrafts(draft);
       this.saved = false;
     },
@@ -2137,6 +2215,28 @@ export function registerPage(alpine) {
       return this.selectedProviderConnection
         ?.configuration.maximumParallelRequests
         ?? null;
+    },
+
+    providerSupportsThinking() {
+      return this.selectedProviderProfile?.capabilities.some((entry) => {
+        return languageProviderCapabilities.includes(entry.capability);
+      }) ?? false;
+    },
+
+    providerThinkingMode() {
+      return this.selectedProviderConnection?.configuration.thinkingMode
+        ?? "disabled";
+    },
+
+    writeProviderThinkingMode(value) {
+      const thinkingMode = readEnum(
+        value,
+        thinkingModes,
+        "provider thinking mode",
+      );
+      this.updateSelectedProviderConfiguration((configuration) => {
+        configuration.thinkingMode = thinkingMode;
+      });
     },
 
     providerAdaptiveContextEnabled() {

@@ -157,6 +157,17 @@ describe("application configuration", () => {
     })).toThrow("retrievalChunkTargetTokens");
   });
 
+  it("accepts retrieval counts above the former fixed limits", () => {
+    const settings = parseRuntimeSettings({
+      ...createTestRuntimeSettings(),
+      retrievalCandidates: 501,
+      topK: 500,
+    });
+
+    expect(settings.retrievalCandidates).toBe(501);
+    expect(settings.topK).toBe(500);
+  });
+
   it("clamps the effective retrieval target and reports a warning", () => {
     const runtimeSettings = createTestRuntimeSettings({
       retrievalChunkTargetTokens: 4_096,

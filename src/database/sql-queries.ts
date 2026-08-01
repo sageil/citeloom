@@ -4,16 +4,13 @@ export type SqlQueryName =
   | "browse-document-catalog"
   | "match-keyword-documents"
   | "retrieve-keyword-discovery"
-  | "retrieve-lexical-candidates"
-  | "retrieve-description-lexical-candidates";
+  | "retrieve-lexical-candidates";
 
 const queryFiles: Record<SqlQueryName, string> = {
   "browse-document-catalog": "browse-document-catalog.sql",
   "match-keyword-documents": "match-keyword-documents.sql",
   "retrieve-keyword-discovery": "retrieve-keyword-discovery.sql",
   "retrieve-lexical-candidates": "retrieve-lexical-candidates.sql",
-  "retrieve-description-lexical-candidates":
-    "retrieve-description-lexical-candidates.sql",
 };
 
 export function readSqlQuery(name: SqlQueryName): string {

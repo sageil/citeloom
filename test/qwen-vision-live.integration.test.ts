@@ -203,7 +203,6 @@ function createQwenVisionModelRegistry(
     providerSettings,
     runtime: {
       aiMetricsEnabled: false,
-      inferenceThinkingMode: "disabled",
       summaryTimeoutSeconds: Math.ceil(config.timeoutMs / 1_000),
     },
   });

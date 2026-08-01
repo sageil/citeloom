@@ -17,7 +17,6 @@ const answerSections = Object.freeze([
   "conflicting-evidence",
   "limitations",
 ]);
-const answerStatuses = Object.freeze(["answered", "no_answer"]);
 const claimStatuses = Object.freeze([
   "partially-supported",
   "supported",
@@ -87,12 +86,14 @@ export function aggregateCitationStatus(claims, citationNumber) {
 
 export function formatClaimStatusLabel(status) {
   if (status === "partially-supported") {
-    return "Partially supported";
+    return "Verifier found mixed support";
   }
   if (status === "unsupported") {
-    return "Unsupported";
+    return "Possible unsupported content";
   }
-  return status === "supported" ? "Supported" : "Unverified";
+  return status === "supported"
+    ? "Supported by verifier"
+    : "Verifier uncertain";
 }
 
 function startVerificationFieldAnimation(canvas) {
@@ -593,7 +594,6 @@ function readAnswerCitation(value, label) {
 
 function readAnswerDocument(value) {
   const document = readObject(value, "answer document");
-  const status = readEnum(document.status, answerStatuses, "answer status");
   const schemaVersion = readPositiveInteger(
     document.schemaVersion,
     "answer schema version",
@@ -654,13 +654,20 @@ function readAnswerDocument(value) {
       ),
     });
   }
-  if (status === "no_answer" && (citations.length > 0 || statements.length > 0)) {
-    throw new Error("The no-answer response contains answer content.");
+  const hasCitations = citations.length > 0;
+  const hasStatements = statements.length > 0;
+  if (hasCitations !== hasStatements) {
+    throw new Error("The answer response is incomplete.");
   }
-  if (status === "answered" && (citations.length === 0 || statements.length === 0)) {
-    throw new Error("The answered response is missing answer content.");
+  if (!hasCitations) {
+    return {
+      citations,
+      content: readNonEmptyString(document.content, "no-answer content"),
+      schemaVersion,
+      statements,
+    };
   }
-  return { citations, schemaVersion, statements, status };
+  return { citations, schemaVersion, statements };
 }
 
 export function readAnswerPresentation(value) {
@@ -2533,7 +2540,10 @@ export function registerPage(alpine) {
     },
 
     answerSections() {
-      if (this.answer === null || this.answer.answerDocument.status === "no_answer") {
+      if (
+        this.answer === null
+        || this.answer.answerDocument.statements.length === 0
+      ) {
         return [];
       }
       const citationsById = new Map();

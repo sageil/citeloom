@@ -13,15 +13,15 @@ import type { CiteLoomDatabase, SqlQueryExecutor } from "../../database/client.j
 import { indexedDocuments } from "../../database/schema.js";
 import {
   createCandidateParentKey,
+  selectNonOverlappingCandidatesWithTrace,
   selectSourceDiverseCandidates,
   selectSourceDiverseElements,
   type NonOverlappingCandidateSelection,
 } from "../document-retrieval.js";
 import type { RetrievedElement } from "../document-retrieval.js";
-import {
-  selectEnglishCandidateAdmission,
-  type CandidateLanguageAdmissionTrace,
-  type EvidenceLanguageClassification,
+import type {
+  CandidateLanguageAdmissionTrace,
+  EvidenceLanguageClassification,
 } from "../evidence-language.js";
 import type { RetrievalSourceElement } from "../../domain/source-elements.js";
 import {
@@ -44,7 +44,7 @@ import { matchesResolvedQueryScope } from "./query-scope-filter.js";
 import { queryDenseCandidates } from "./vector-query-store.js";
 import {
   queryDenseEvidenceCandidates,
-  queryDenseDescriptionCandidates,
+  readActiveRetrievalWindows,
 } from "./vector-query-store.js";
 import {
   createTelemetryStageResult,
@@ -79,47 +79,34 @@ const passiveAbortSignal = new AbortController().signal;
 const retrievalIdentifierSchema = z.string().regex(
   /^[a-f0-9]{64}(?:-description)?$/u,
 );
-const exactDenseRetrievalRowSchema = z.object({
+const denseRetrievalRowBase = {
   distance: z.number().finite().nonnegative(),
   documentId: contentIdSchema,
   evidenceContent: z.string().min(1),
   evidenceRetrievalId: retrievalIdentifierSchema,
-  kind: z.enum(["table", "text"]),
-  parentId: contentIdSchema,
-  representationContent: z.string().min(1),
-  representationId: retrievalIdentifierSchema,
-  sourceFile: z.string().min(1),
-});
-const exactLexicalRetrievalRowSchema = z.object({
-  bm25Score: z.number().finite().nonnegative(),
-  documentId: contentIdSchema,
-  evidenceContent: z.string().min(1),
-  evidenceRetrievalId: retrievalIdentifierSchema,
-  kind: z.enum(["table", "text"]),
-  parentId: contentIdSchema,
-  representationContent: z.string().min(1),
-  representationId: retrievalIdentifierSchema,
-  sourceFile: z.string().min(1),
-});
-const descriptionDenseRetrievalRowBase = {
-  distance: z.number().finite().nonnegative(),
-  documentId: contentIdSchema,
   parentId: contentIdSchema,
   representationContent: z.string().min(1),
   representationId: retrievalIdentifierSchema,
   sourceFile: z.string().min(1),
 };
-const descriptionDenseRetrievalRowSchema = z.discriminatedUnion("kind", [
+const denseRetrievalRowSchema = z.discriminatedUnion("representationType", [
   z.object({
-    ...descriptionDenseRetrievalRowBase,
-    kind: z.literal("table"),
+    ...denseRetrievalRowBase,
+    kind: z.enum(["table", "text"]),
+    representationType: z.literal("exact-window"),
   }),
   z.object({
-    ...descriptionDenseRetrievalRowBase,
+    ...denseRetrievalRowBase,
     kind: z.literal("image"),
+    representationType: z.literal("image-description"),
+  }),
+  z.object({
+    ...denseRetrievalRowBase,
+    kind: z.literal("table"),
+    representationType: z.literal("table-description"),
   }),
 ]);
-const descriptionLexicalRetrievalRowBase = {
+const lexicalRetrievalRowBase = {
   bm25Score: z.number().finite().nonnegative(),
   documentId: contentIdSchema,
   evidenceContent: z.string().min(1),
@@ -129,16 +116,31 @@ const descriptionLexicalRetrievalRowBase = {
   representationId: retrievalIdentifierSchema,
   sourceFile: z.string().min(1),
 };
-const descriptionLexicalRetrievalRowSchema = z.discriminatedUnion("kind", [
-  z.object({
-    ...descriptionLexicalRetrievalRowBase,
-    kind: z.literal("table"),
-  }),
-  z.object({
-    ...descriptionLexicalRetrievalRowBase,
-    kind: z.literal("image"),
-  }),
-]);
+const lexicalRetrievalRowSchema = z.discriminatedUnion(
+  "representationType",
+  [
+    z.object({
+      ...lexicalRetrievalRowBase,
+      kind: z.enum(["table", "text"]),
+      representationType: z.literal("exact-window"),
+    }),
+    z.object({
+      ...lexicalRetrievalRowBase,
+      kind: z.literal("image"),
+      representationType: z.literal("image-description"),
+    }),
+    z.object({
+      ...lexicalRetrievalRowBase,
+      kind: z.literal("table"),
+      representationType: z.literal("table-description"),
+    }),
+  ],
+);
+type DenseRetrievalRow = z.output<typeof denseRetrievalRowSchema>;
+type DescriptionDenseRetrievalRow = Exclude<
+  DenseRetrievalRow,
+  { representationType: "exact-window" }
+>;
 const exactEvidenceRowSchema = z.object({
   distance: z.number().finite().nonnegative(),
   documentId: contentIdSchema,
@@ -274,11 +276,11 @@ export async function retrieveRelevantElementsWithScores(
     }));
     throw error;
   }
-  const candidateAdmission = selectEnglishCandidateAdmission(
+  const candidateSelection = selectNonOverlappingCandidatesWithTrace(
     rankedCandidates,
     config.candidateK,
+    "fused-order",
   );
-  const candidateSelection = candidateAdmission.selection;
   const candidatesToLoad = candidateSelection.selected;
   runTelemetry.setCandidateCount(candidatesToLoad.length);
   const hydrationStage = runTelemetry.startStage({
@@ -314,15 +316,19 @@ export async function retrieveRelevantElementsWithScores(
     space.retrievalWindow,
     candidateSelection,
     hydratedCandidates,
-    candidateAdmission.trace,
   );
   runTelemetry.recordCandidateBudget(candidateBudget);
   if (config.mode !== "hybrid-reranked") {
     const selected = selectSourceDiverseElements(retrieved, config.topK);
-    runTelemetry.setHydratedContextCount(selected.length);
+    const contextualized = await addAdjacentRetrievalContext(
+      database,
+      space,
+      selected,
+    );
+    runTelemetry.setHydratedContextCount(contextualized.length);
     return {
       rerankerModelId: null,
-      retrieved: selected,
+      retrieved: contextualized,
       strongestRerankerScore: null,
     };
   }
@@ -386,9 +392,14 @@ export async function retrieveRelevantElementsWithScores(
       policy: answerContextSelectionConfig.policy,
       recovery: { attempted: false, result: "not-applicable" },
     });
+    const contextualized = await addAdjacentRetrievalContext(
+      database,
+      space,
+      reranked.retrieved,
+    );
     return {
       rerankerModelId: reranker.model.modelId,
-      retrieved: reranked.retrieved,
+      retrieved: contextualized,
       strongestRerankerScore: readStrongestRerankerScore(reranked.ranking),
     };
   } catch (error: unknown) {
@@ -398,6 +409,135 @@ export async function retrieveRelevantElementsWithScores(
     ));
     throw error;
   }
+}
+
+async function addAdjacentRetrievalContext(
+  database: CiteLoomDatabase,
+  space: EmbeddingSpaceConfig,
+  retrieved: readonly RetrievedElement[],
+): Promise<RetrievedElement[]> {
+  const retrievalIds: string[] = [];
+  for (const item of retrieved) {
+    retrievalIds.push(item.provenance.retrievalWindowId);
+  }
+  const primaryRows = await readActiveRetrievalWindows(
+    database,
+    space,
+    retrievalIds,
+  );
+  const primaryById = new Map(primaryRows.map((row) => [row.id, row]));
+  const neighborIds = new Set<string>();
+  for (const row of primaryRows) {
+    if (row.previousRetrievalId !== null) {
+      neighborIds.add(row.previousRetrievalId);
+    }
+    if (row.nextRetrievalId !== null) {
+      neighborIds.add(row.nextRetrievalId);
+    }
+  }
+  const neighborRows = await readActiveRetrievalWindows(
+    database,
+    space,
+    [...neighborIds],
+  );
+  const neighborById = new Map(neighborRows.map((row) => [row.id, row]));
+  const selectedIds = new Set(retrievalIds);
+  const contextualized: RetrievedElement[] = [];
+  for (const item of retrieved) {
+    const retrievalId = item.provenance.retrievalWindowId;
+    const primary = primaryById.get(retrievalId);
+    if (primary === undefined) {
+      contextualized.push(item);
+      continue;
+    }
+    let preceding: string | null = null;
+    let following: string | null = null;
+    const contextWindowIds: string[] = [];
+    if (
+      primary.previousRetrievalId !== null
+      && !selectedIds.has(primary.previousRetrievalId)
+    ) {
+      const previous = neighborById.get(primary.previousRetrievalId);
+      if (previous !== undefined) {
+        preceding = readPrecedingContext(
+          previous.evidenceContent,
+          item.evidenceContent,
+        );
+        contextWindowIds.push(previous.id);
+      }
+    }
+    contextWindowIds.push(retrievalId);
+    if (
+      primary.nextRetrievalId !== null
+      && !selectedIds.has(primary.nextRetrievalId)
+    ) {
+      const next = neighborById.get(primary.nextRetrievalId);
+      if (next !== undefined) {
+        following = readFollowingContext(
+          next.evidenceContent,
+          item.evidenceContent,
+        );
+        contextWindowIds.push(next.id);
+      }
+    }
+    if (preceding === null && following === null) {
+      contextualized.push(item);
+      continue;
+    }
+    contextualized.push({
+      ...item,
+      adjacentContext: {
+        following,
+        preceding,
+        retrievalWindowIds: contextWindowIds,
+      },
+    });
+  }
+  return contextualized;
+}
+
+function readPrecedingContext(
+  candidate: string,
+  primary: string,
+): string | null {
+  const normalized = candidate.trim();
+  if (
+    normalized === ""
+    || primary.includes(normalized)
+    || normalized === primary.trim()
+  ) {
+    return null;
+  }
+  const overlapLength = readBoundaryOverlapLength(normalized, primary.trim());
+  const context = normalized.slice(0, normalized.length - overlapLength).trim();
+  return context === "" ? null : context;
+}
+
+function readFollowingContext(
+  candidate: string,
+  primary: string,
+): string | null {
+  const normalized = candidate.trim();
+  if (
+    normalized === ""
+    || primary.includes(normalized)
+    || normalized === primary.trim()
+  ) {
+    return null;
+  }
+  const overlapLength = readBoundaryOverlapLength(primary.trim(), normalized);
+  const context = normalized.slice(overlapLength).trim();
+  return context === "" ? null : context;
+}
+
+function readBoundaryOverlapLength(left: string, right: string): number {
+  const maximumLength = Math.min(left.length, right.length);
+  for (let length = maximumLength; length > 0; length -= 1) {
+    if (left.endsWith(right.slice(0, length))) {
+      return length;
+    }
+  }
+  return 0;
 }
 
 function readStrongestRerankerScore(
@@ -429,10 +569,11 @@ export function selectRerankingCandidatesWithTrace(
   rankedCandidates: FusedCandidate[],
   limit: number,
 ): NonOverlappingCandidateSelection {
-  return selectEnglishCandidateAdmission(
+  return selectNonOverlappingCandidatesWithTrace(
     rankedCandidates,
     limit,
-  ).selection;
+    "fused-order",
+  );
 }
 
 export async function queryRetrievalCandidateRankings(
@@ -525,8 +666,12 @@ export function selectPreparedRetrievalCandidates(
   fusion: RankFusionConfig,
 ): FusedCandidate[] {
   const ranked = rankRetrievalCandidates(mode, rankings, rrfK, fusion);
-  const admission = selectEnglishCandidateAdmission(ranked, candidateK);
-  const candidates = admission.selection.selected;
+  const admission = selectNonOverlappingCandidatesWithTrace(
+    ranked,
+    candidateK,
+    "fused-order",
+  );
+  const candidates = admission.selected;
   if (mode === "hybrid-reranked") {
     return candidates;
   }
@@ -1268,7 +1413,6 @@ async function queryRetrievalCandidates(
         database,
         space,
         normalizedEmbedding,
-        config.mode,
         config.candidateK,
         scopeTargets,
       ),
@@ -1392,37 +1536,27 @@ async function queryDenseRepresentationCandidates(
   database: CiteLoomDatabase,
   space: EmbeddingSpaceConfig,
   embedding: number[],
-  mode: RetrievalMode,
   candidateK: number,
   scopeTargets: ResolvedQueryScopeTarget[],
 ): Promise<DenseCandidate[]> {
-  const exactRowsPromise = queryDenseCandidates(
+  const rawRows = await queryDenseCandidates(
     database,
     space,
     embedding,
     candidateK,
     scopeTargets,
   );
-  let descriptionRowsPromise: Promise<unknown[]> = Promise.resolve([]);
-  if (retrievalModeUsesDescriptions(mode)) {
-    descriptionRowsPromise = queryDenseDescriptionCandidates(
-      database,
-      space,
-      embedding,
-      candidateK,
-      scopeTargets,
-    );
-  }
-  const [exactRows, descriptionRows] = await Promise.all([
-    exactRowsPromise,
-    descriptionRowsPromise,
-  ]);
-  const exact = decodeExactDenseCandidates(exactRows);
-  const descriptionMetadata = decodeRows(
-    descriptionDenseRetrievalRowSchema,
-    descriptionRows,
-    "dense description retrieval",
+  const rows = decodeRows(
+    denseRetrievalRowSchema,
+    rawRows,
+    "dense retrieval",
   );
+  const descriptionMetadata: DescriptionDenseRetrievalRow[] = [];
+  for (const row of rows) {
+    if (row.representationType !== "exact-window") {
+      descriptionMetadata.push(row);
+    }
+  }
   const evidenceByParent = await resolveDenseExactEvidence(
     database,
     space,
@@ -1430,26 +1564,32 @@ async function queryDenseRepresentationCandidates(
     scopeTargets,
     descriptionMetadata,
   );
-  const descriptions: DenseCandidate[] = [];
-  for (const row of descriptionMetadata) {
+  const candidates: DenseCandidate[] = [];
+  for (const row of rows) {
+    if (row.representationType === "exact-window") {
+      candidates.push({
+        distance: row.distance,
+        documentId: row.documentId,
+        evidenceContent: row.evidenceContent,
+        evidenceRetrievalId: row.evidenceRetrievalId,
+        parentId: row.parentId,
+        representation: buildExactRepresentation(row),
+        sourceFile: row.sourceFile,
+      });
+      continue;
+    }
     const evidence = readDescriptionEvidence(row, evidenceByParent);
-    descriptions.push({
+    candidates.push({
       distance: row.distance,
       documentId: row.documentId,
       evidenceContent: evidence.evidenceContent,
       evidenceRetrievalId: evidence.evidenceRetrievalId,
       parentId: row.parentId,
-      representation: {
-        content: row.representationContent,
-        id: row.representationId,
-        type: row.kind === "table"
-          ? "table-description"
-          : "image-description",
-      },
+      representation: buildDescriptionCandidateRepresentation(row),
       sourceFile: row.sourceFile,
     });
   }
-  return mergeRepresentationRankings(exact, descriptions, candidateK);
+  return selectStrongestRepresentations(candidates, candidateK);
 }
 
 async function queryLexicalRepresentationCandidates(
@@ -1460,7 +1600,7 @@ async function queryLexicalRepresentationCandidates(
   candidateK: number,
 ): Promise<LexicalCandidate[]> {
   const scopeColumns = splitResolvedQueryScopeTargets(scopeTargets);
-  const exactRowsPromise = queryExecutor.execute(
+  const rawRows = await queryExecutor.execute(
     "retrieve-lexical-candidates",
     [
       question,
@@ -1470,99 +1610,30 @@ async function queryLexicalRepresentationCandidates(
       candidateK,
     ],
   );
-  const descriptionRowsPromise = queryExecutor.execute(
-    "retrieve-description-lexical-candidates",
-    [
-      question,
-      space.id,
-      scopeColumns.documentIds,
-      scopeColumns.sourceFiles,
-      candidateK,
-    ],
-  );
-  const [exactRows, descriptionRows] = await Promise.all([
-    exactRowsPromise,
-    descriptionRowsPromise,
-  ]);
-  const decodedExact = decodeExactLexicalCandidates(exactRows);
-  const exact: LexicalCandidate[] = [];
-  for (const candidate of decodedExact) {
-    if (candidate.bm25Score > 0) {
-      exact.push(candidate);
-    }
-  }
-  const decodedDescriptionMetadata = decodeRows(
-    descriptionLexicalRetrievalRowSchema,
-    descriptionRows,
-    "lexical description retrieval",
-  );
-  const descriptionMetadata = [];
-  for (const row of decodedDescriptionMetadata) {
-    if (row.bm25Score > 0) {
-      descriptionMetadata.push(row);
-    }
-  }
-  const descriptions: LexicalCandidate[] = [];
-  for (const row of descriptionMetadata) {
-    descriptions.push({
-      bm25Score: row.bm25Score,
-      documentId: row.documentId,
-      evidenceContent: row.evidenceContent,
-      evidenceRetrievalId: row.evidenceRetrievalId,
-      parentId: row.parentId,
-      representation: {
-        content: row.representationContent,
-        id: row.representationId,
-        type: row.kind === "table"
-          ? "table-description"
-          : "image-description",
-      },
-      sourceFile: row.sourceFile,
-    });
-  }
-  return mergeRepresentationRankings(exact, descriptions, candidateK);
-}
-
-function decodeExactDenseCandidates(rows: unknown[]): DenseCandidate[] {
-  const decoded = decodeRows(
-    exactDenseRetrievalRowSchema,
-    rows,
-    "dense exact retrieval",
-  );
-  const candidates: DenseCandidate[] = [];
-  for (const row of decoded) {
-    candidates.push({
-      distance: row.distance,
-      documentId: row.documentId,
-      evidenceContent: row.evidenceContent,
-      evidenceRetrievalId: row.evidenceRetrievalId,
-      parentId: row.parentId,
-      representation: buildExactRepresentation(row),
-      sourceFile: row.sourceFile,
-    });
-  }
-  return candidates;
-}
-
-function decodeExactLexicalCandidates(rows: unknown[]): LexicalCandidate[] {
-  const decoded = decodeRows(
-    exactLexicalRetrievalRowSchema,
-    rows,
-    "lexical exact retrieval",
+  const rows = decodeRows(
+    lexicalRetrievalRowSchema,
+    rawRows,
+    "lexical retrieval",
   );
   const candidates: LexicalCandidate[] = [];
-  for (const row of decoded) {
+  for (const row of rows) {
+    if (row.bm25Score <= 0) {
+      continue;
+    }
+    const representation = row.representationType === "exact-window"
+      ? buildExactRepresentation(row)
+      : buildDescriptionCandidateRepresentation(row);
     candidates.push({
       bm25Score: row.bm25Score,
       documentId: row.documentId,
       evidenceContent: row.evidenceContent,
       evidenceRetrievalId: row.evidenceRetrievalId,
       parentId: row.parentId,
-      representation: buildExactRepresentation(row),
+      representation,
       sourceFile: row.sourceFile,
     });
   }
-  return candidates;
+  return selectStrongestRepresentations(candidates, candidateK);
 }
 
 function buildExactRepresentation(row: {
@@ -1571,12 +1642,28 @@ function buildExactRepresentation(row: {
 }): {
   content: string;
   id: string;
-  type: RetrievalRepresentationType;
+  type: "exact-window";
 } {
   return {
     content: row.representationContent,
     id: row.representationId,
     type: "exact-window",
+  };
+}
+
+function buildDescriptionCandidateRepresentation(row: {
+  representationContent: string;
+  representationId: string;
+  representationType: Exclude<RetrievalRepresentationType, "exact-window">;
+}): {
+  content: string;
+  id: string;
+  type: "image-description" | "table-description";
+} {
+  return {
+    content: row.representationContent,
+    id: row.representationId,
+    type: row.representationType,
   };
 }
 
@@ -1591,12 +1678,13 @@ async function resolveDenseExactEvidence(
     documentId: string;
     kind: "image" | "table";
     parentId: string;
+    representationType: Exclude<RetrievalRepresentationType, "exact-window">;
     sourceFile: string;
   }[],
 ): Promise<Map<string, ExactEvidenceRow>> {
   const parentIds: string[] = [];
   for (const row of descriptionRows) {
-    if (row.kind === "image") {
+    if (row.representationType === "image-description") {
       continue;
     }
     parentIds.push(row.parentId);
@@ -1629,11 +1717,12 @@ function readDescriptionEvidence(
     kind: "image" | "table";
     parentId: string;
     representationContent: string;
+    representationType: Exclude<RetrievalRepresentationType, "exact-window">;
     sourceFile: string;
   },
   evidenceByParent: ReadonlyMap<string, ExactEvidenceRow>,
 ): ExactEvidenceRow {
-  if (description.kind === "image") {
+  if (description.representationType === "image-description") {
     return {
       distance: 0,
       documentId: description.documentId,
@@ -1653,64 +1742,26 @@ function readDescriptionEvidence(
   return evidence;
 }
 
-function mergeRepresentationRankings<
+function selectStrongestRepresentations<
   Candidate extends DenseCandidate | LexicalCandidate,
 >(
-  exact: readonly Candidate[],
-  descriptions: readonly Candidate[],
+  ranking: readonly Candidate[],
   candidateK: number,
 ): Candidate[] {
-  const selectedByEvidence = new Map<string, RankedRepresentation<Candidate>>();
-  addRepresentationRanking(selectedByEvidence, exact, false);
-  addRepresentationRanking(selectedByEvidence, descriptions, true);
-  const selected = [...selectedByEvidence.values()];
-  selected.sort((left, right) => {
-    const rankDifference = left.rank - right.rank;
-    if (rankDifference !== 0) {
-      return rankDifference;
-    }
-    return createRepresentationEvidenceKey(left.candidate).localeCompare(
-      createRepresentationEvidenceKey(right.candidate),
-    );
-  });
-  const candidates: Candidate[] = [];
-  for (const entry of selected.slice(0, candidateK)) {
-    candidates.push(entry.candidate);
-  }
-  return candidates;
-}
-
-interface RankedRepresentation<
-  Candidate extends DenseCandidate | LexicalCandidate,
-> {
-  candidate: Candidate;
-  rank: number;
-  description: boolean;
-}
-
-function addRepresentationRanking<
-  Candidate extends DenseCandidate | LexicalCandidate,
->(
-  selectedByEvidence: Map<string, RankedRepresentation<Candidate>>,
-  ranking: readonly Candidate[],
-  description: boolean,
-): void {
-  for (let index = 0; index < ranking.length; index += 1) {
-    const candidate = ranking[index];
-    if (candidate === undefined) {
+  const selected: Candidate[] = [];
+  const selectedEvidence = new Set<string>();
+  for (const candidate of ranking) {
+    const evidenceKey = createRepresentationEvidenceKey(candidate);
+    if (selectedEvidence.has(evidenceKey)) {
       continue;
     }
-    const evidenceKey = createRepresentationEvidenceKey(candidate);
-    const existing = selectedByEvidence.get(evidenceKey);
-    const rank = index + 1;
-    if (
-      existing === undefined
-      || rank < existing.rank
-      || (rank === existing.rank && existing.description && !description)
-    ) {
-      selectedByEvidence.set(evidenceKey, { candidate, rank, description });
+    selectedEvidence.add(evidenceKey);
+    selected.push(candidate);
+    if (selected.length === candidateK) {
+      break;
     }
   }
+  return selected;
 }
 
 function createRepresentationEvidenceKey(candidate: {
@@ -1735,10 +1786,6 @@ function createRepresentationParentKey(candidate: {
     candidate.sourceFile,
     candidate.parentId,
   ].join("\0");
-}
-
-function retrievalModeUsesDescriptions(mode: RetrievalMode): boolean {
-  return mode !== "bm25";
 }
 
 function decodeRows<Output>(

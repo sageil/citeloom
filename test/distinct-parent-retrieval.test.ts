@@ -52,7 +52,7 @@ describe("non-overlapping candidate budgeting", () => {
     ]);
   });
 
-  it("removes contained evidence within one document and source", () => {
+  it("preserves separately indexed windows within one document and source", () => {
     const first = buildCandidate(
       "window-a",
       "shared-parent",
@@ -86,7 +86,12 @@ describe("non-overlapping candidate budgeting", () => {
       otherSourceFile,
     ], 4);
 
-    expect(selected).toEqual([first, otherDocument, otherSourceFile]);
+    expect(selected).toEqual([
+      first,
+      duplicate,
+      otherDocument,
+      otherSourceFile,
+    ]);
     const parentKeys = selected.map(createCandidateParentKey);
     expect(new Set(parentKeys).size).toBe(3);
   });
@@ -139,7 +144,7 @@ describe("non-overlapping candidate budgeting", () => {
     expect(selected).toEqual([first, second]);
   });
 
-  it("preserves fused order after parent representatives are selected", () => {
+  it("preserves fused window order before reranking", () => {
     const documentAFirst = buildCandidate(
       "window-a1",
       "parent-a1",
@@ -179,8 +184,8 @@ describe("non-overlapping candidate budgeting", () => {
 
     expect(selected).toEqual([
       documentAFirst,
+      documentAFirstDuplicate,
       documentASecond,
-      documentBFirst,
     ]);
   });
 

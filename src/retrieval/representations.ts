@@ -27,6 +27,8 @@ export type RetrievalRepresentationType =
   | "table-description"
   | "image-description";
 
+export const DOCUMENT_TITLE_EMBEDDING_WEIGHT = 0.1;
+
 export interface RetrievalRepresentation {
   content: string;
   documentId: string;
@@ -152,6 +154,58 @@ export function createRetrievalRepresentations(
   }
 
   return representations;
+}
+
+export function buildDocumentTitleEmbeddingContent(sourceFile: string): string {
+  return `Document title: ${readDocumentTitle(sourceFile)}`;
+}
+
+function readDocumentTitle(sourceFile: string): string {
+  const fileName = sourceFile.split(/[\\/]/u).at(-1) ?? sourceFile;
+  const withoutExtension = fileName.replace(/\.[^.]+$/u, "");
+  const readable = withoutExtension.replace(/[_-]+/gu, " ").trim();
+  return readable === "" ? fileName : readable;
+}
+
+export function blendRetrievalEmbeddingsWithDocumentTitle(
+  embeddings: readonly number[][],
+  titleEmbedding: readonly number[],
+  titleWeight = DOCUMENT_TITLE_EMBEDDING_WEIGHT,
+): number[][] {
+  if (!Number.isFinite(titleWeight) || titleWeight < 0 || titleWeight > 1) {
+    throw new Error("Document title embedding weight must be between zero and one.");
+  }
+  if (titleEmbedding.length === 0) {
+    throw new Error("Document title embedding cannot be empty.");
+  }
+  const contentWeight = 1 - titleWeight;
+  const blended: number[][] = [];
+  for (let embeddingIndex = 0; embeddingIndex < embeddings.length; embeddingIndex += 1) {
+    const embedding = embeddings[embeddingIndex];
+    if (embedding === undefined || embedding.length !== titleEmbedding.length) {
+      throw new Error(
+        `Retrieval embedding ${embeddingIndex + 1} and document title dimensions differ.`,
+      );
+    }
+    const vector: number[] = [];
+    for (let dimension = 0; dimension < embedding.length; dimension += 1) {
+      const contentValue = embedding[dimension];
+      const titleValue = titleEmbedding[dimension];
+      if (
+        contentValue === undefined
+        || titleValue === undefined
+        || !Number.isFinite(contentValue)
+        || !Number.isFinite(titleValue)
+      ) {
+        throw new Error(
+          `Retrieval embedding ${embeddingIndex + 1} contains an invalid value at dimension ${dimension + 1}.`,
+        );
+      }
+      vector.push((contentWeight * contentValue) + (titleWeight * titleValue));
+    }
+    blended.push(vector);
+  }
+  return blended;
 }
 
 export function addContextToImageRetrievalRepresentations(

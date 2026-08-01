@@ -149,7 +149,7 @@ export const evaluationProvenanceSchema = z.object({
   }).strict(),
   dataset: z.object({
     access: evaluationAccessSchema,
-    atK: z.number().int().min(1).max(50),
+    atK: z.number().int().min(1),
     configurationFreezeSha256: sha256Schema.nullable(),
     name: evaluationStableNameSchema,
     sha256: sha256Schema,

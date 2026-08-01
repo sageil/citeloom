@@ -30,7 +30,7 @@ export interface RepresentationHit {
   queryIndex: number;
   rank: number;
   representationId: string;
-  representationType: RetrievalRepresentationType;
+  representationType: CandidateRepresentation["type"];
 }
 
 export interface FusedCandidate {
@@ -140,13 +140,14 @@ function addRepresentationHit(
   ranking: WeightedRanking,
   index: number,
 ): void {
-  fused.representationHits.push({
+  const hit: RepresentationHit = {
     channel: ranking.channel,
     queryIndex: ranking.queryIndex,
     rank: index + 1,
     representationId: candidate.representation.id,
     representationType: candidate.representation.type,
-  });
+  };
+  fused.representationHits.push(hit);
 }
 
 function updateChannelScore(

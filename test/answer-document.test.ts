@@ -27,7 +27,7 @@ describe("answer draft boundary", () => {
 
     expect(schema).toMatchObject({
       additionalProperties: false,
-      required: ["conflictGroups", "statements", "status"],
+      required: ["answer", "findings"],
       type: "object",
     });
     expect(schema).not.toHaveProperty("oneOf");
@@ -54,12 +54,11 @@ describe("answer draft boundary", () => {
 
   it("fills missing presentation metadata at the model boundary", () => {
     const draft = decodeAnswerModelResponse({
-      conflictGroups: [],
-      statements: [{
+      answer: {
         content: "Revenue increased.",
         evidenceRefs: ["EVID_A"],
-      }],
-      status: "answered",
+      },
+      findings: [],
     }, createEvidenceReferences(1));
 
     expect(draft).toEqual({
@@ -74,16 +73,13 @@ describe("answer draft boundary", () => {
     });
   });
 
-  it("ignores model-authored presentation and owns direct-answer formatting", () => {
+  it("owns direct-answer presentation metadata", () => {
     const draft = decodeAnswerModelResponse({
-      conflictGroups: [],
-      statements: [{
+      answer: {
         content: "A supported cause is configuration failure.",
         evidenceRefs: ["EVID_A"],
-        presentation: "bullet",
-        section: "key-points",
-      }],
-      status: "answered",
+      },
+      findings: [],
     }, createEvidenceReferences(1));
 
     expect(draft).toMatchObject({
@@ -100,24 +96,30 @@ describe("answer draft boundary", () => {
     ["three", ["regional", "global", "local"]],
     ["four", ["regional", "global", "local", "isolated"]],
   ])(
-    "uses prose presentation for %s independently supported items",
+    "uses one direct answer and supporting findings for %s supported items",
     (_label, deploymentModes) => {
       const evidenceRefs = createEvidenceReferences(deploymentModes.length);
       const statements = deploymentModes.map((mode, index) => ({
         content: `The service supports a ${mode} deployment.`,
         evidenceRefs: [evidenceRefs[index]],
       }));
+      const answer = statements[0];
+      if (answer === undefined) {
+        throw new Error("Expected an answer fixture.");
+      }
       const draft = decodeAnswerModelResponse({
-        conflictGroups: [],
-        statements,
-        status: "answered",
+        answer,
+        findings: statements.slice(1),
       }, evidenceRefs);
 
       expect(draft).toMatchObject({
-        statements: deploymentModes.map(() => ({
-          presentation: "paragraph",
-          section: "answer",
-        })),
+        statements: [
+          { presentation: "paragraph", section: "answer" },
+          ...deploymentModes.slice(1).map(() => ({
+            presentation: "bullet",
+            section: "key-points",
+          })),
+        ],
         status: "answered",
       });
     },
@@ -125,24 +127,20 @@ describe("answer draft boundary", () => {
 
   it("keeps a multi-statement answer in prose", () => {
     const draft = decodeAnswerModelResponse({
-      conflictGroups: [],
-      statements: [
-        {
-          content: "The first mechanism blocks the receptor.",
-          evidenceRefs: ["EVID_A"],
-        },
-        {
+      answer: {
+        content: "The first mechanism blocks the receptor.",
+        evidenceRefs: ["EVID_A"],
+      },
+      findings: [{
           content: "The second mechanism blocks the proton pump.",
           evidenceRefs: ["EVID_B"],
-        },
-      ],
-      status: "answered",
+      }],
     }, createEvidenceReferences(2));
 
     expect(draft).toMatchObject({
       statements: [
         { presentation: "paragraph", section: "answer" },
-        { presentation: "paragraph", section: "answer" },
+        { presentation: "bullet", section: "key-points" },
       ],
       status: "answered",
     });
@@ -150,9 +148,11 @@ describe("answer draft boundary", () => {
 
   it("normalizes a no-answer model response into the domain draft", () => {
     expect(decodeAnswerModelResponse({
-      conflictGroups: [],
-      statements: [],
-      status: "no_answer",
+      answer: {
+        content: "The supplied source material does not identify the requested information.",
+        evidenceRefs: [],
+      },
+      findings: [],
     }, createEvidenceReferences(2))).toEqual({
       status: "no_answer",
     });
@@ -160,48 +160,35 @@ describe("answer draft boundary", () => {
 
   it("removes model citation decorations independently of placement", () => {
     const value = {
-      conflictGroups: [{
-        explanation: "The claims cannot both describe the same result (Sources 1, 2).",
-        positions: [
-          { claim: "Revenue increased [EVID_A].", evidenceRefs: ["EVID_A"] },
-          { claim: "Revenue [EVID_B] decreased.", evidenceRefs: ["EVID_B"] },
-        ],
-        sharedScope: {
-          conditions: "the same accounting basis【1】",
-          context: "the reporting entity",
-          scope: "the annual report",
-          timePeriod: "the same reporting period",
-        },
-      }],
-      statements: [{
+      answer: {
         content: "Revenue was reported by both sources. [1, 2]",
-        presentation: "paragraph",
-        section: "answer",
         evidenceRefs: ["EVID_A", "EVID_B"],
-      }],
-      status: "answered",
+      },
+      findings: [
+        { content: "Revenue increased [EVID_A].", evidenceRefs: ["EVID_A"] },
+        { content: "Revenue [EVID_B] decreased.", evidenceRefs: ["EVID_B"] },
+      ],
     };
 
     expect(decodeAnswerModelResponse(value, createEvidenceReferences(2))).toEqual({
-      ...value,
-      conflictGroups: [{
-        ...value.conflictGroups[0],
-        explanation: "The claims cannot both describe the same result.",
-        positions: [
-          { claim: "Revenue increased.", evidenceRefs: ["EVID_A"] },
-          { claim: "Revenue decreased.", evidenceRefs: ["EVID_B"] },
-        ],
-        sharedScope: {
-          conditions: "the same accounting basis",
-          context: "the reporting entity",
-          scope: "the annual report",
-          timePeriod: "the same reporting period",
-        },
-      }],
       statements: [{
-        ...value.statements[0],
         content: "Revenue was reported by both sources.",
+        evidenceRefs: ["EVID_A", "EVID_B"],
+        presentation: "paragraph",
+        section: "answer",
+      }, {
+        content: "Revenue increased.",
+        evidenceRefs: ["EVID_A"],
+        presentation: "bullet",
+        section: "key-points",
+      }, {
+        content: "Revenue decreased.",
+        evidenceRefs: ["EVID_B"],
+        presentation: "bullet",
+        section: "key-points",
       }],
+      conflictGroups: [],
+      status: "answered",
     });
   });
 
@@ -218,7 +205,7 @@ describe("answer draft boundary", () => {
     ["Revenue increased, source #1.", "Revenue increased."],
   ])("normalizes model citation decoration in %s", (content, expected) => {
     const draft = decodeAnswerModelResponse(
-      buildDraftWithContent(content),
+      buildAnswerModelResponse(content),
       createEvidenceReferences(2),
     );
     if (draft.status !== "answered") {
@@ -229,7 +216,7 @@ describe("answer draft boundary", () => {
 
   it("preserves unrecognized model annotations as plain content", () => {
     const draft = decodeAnswerModelResponse(
-      buildDraftWithContent("Revenue increased (see ref. A)."),
+      buildAnswerModelResponse("Revenue increased (see ref. A)."),
       createEvidenceReferences(2),
     );
     if (draft.status !== "answered") {
@@ -396,7 +383,7 @@ describe("answer draft boundary", () => {
       });
     }
     const document = compileAnswerDraft(draft, retrieved);
-    expect(document.status).toBe("answered");
+    expect(document).not.toHaveProperty("status");
     expect(document.statements).toHaveLength(65);
     expect(document.citations).toHaveLength(12);
   });
@@ -415,7 +402,10 @@ describe("answer draft boundary", () => {
 
   it("normalizes duplicate model evidence references", () => {
     const draft = decodeAnswerModelResponse(
-      buildAnsweredDraft(["EVID_B", "EVID_A", "EVID_B", "EVID_A"]),
+      buildAnswerModelResponse(
+        "Revenue increased.",
+        ["EVID_B", "EVID_A", "EVID_B", "EVID_A"],
+      ),
       createEvidenceReferences(2),
     );
     if (draft.status !== "answered") {
@@ -426,40 +416,28 @@ describe("answer draft boundary", () => {
 
   it("omits only statements emptied by model-text normalization", () => {
     const value = {
-      conflictGroups: [],
-      statements: [
+      answer: {
+        content: "Revenue increased [1].",
+        evidenceRefs: ["EVID_A"],
+      },
+      findings: [
         {
           content: "",
           evidenceRefs: ["EVID_A"],
-          presentation: "paragraph",
-          section: "answer",
         },
         {
           content: "  \n  ",
           evidenceRefs: ["EVID_A"],
-          presentation: "paragraph",
-          section: "answer",
         },
         {
           content: "**Model formatting**",
           evidenceRefs: ["EVID_A"],
-          presentation: "paragraph",
-          section: "answer",
         },
         {
           content: "[1]",
           evidenceRefs: ["EVID_A"],
-          presentation: "paragraph",
-          section: "answer",
-        },
-        {
-          content: "Revenue increased [1].",
-          evidenceRefs: ["EVID_A"],
-          presentation: "paragraph",
-          section: "answer",
         },
       ],
-      status: "answered",
     };
     const draft = decodeAnswerModelResponse(value, createEvidenceReferences(1));
     if (draft.status !== "answered") {
@@ -467,21 +445,21 @@ describe("answer draft boundary", () => {
     }
     expect(draft.statements).toEqual([
       {
-        content: "**Model formatting**",
-        evidenceRefs: ["EVID_A"],
-        presentation: "paragraph",
-        section: "answer",
-      },
-      {
         content: "Revenue increased.",
         evidenceRefs: ["EVID_A"],
         presentation: "paragraph",
         section: "answer",
       },
+      {
+        content: "**Model formatting**",
+        evidenceRefs: ["EVID_A"],
+        presentation: "bullet",
+        section: "key-points",
+      },
     ]);
   });
 
-  it("omits a conflict group invalidated by model-text normalization", () => {
+  it("rejects removed model-authored conflict groups", () => {
     const value = {
       conflictGroups: [{
         explanation: "The claims cannot both be true.",
@@ -496,20 +474,14 @@ describe("answer draft boundary", () => {
           timePeriod: "the same period",
         },
       }],
-      statements: [{
-        content: "Revenue was reported [1].",
+      answer: {
+        content: "Revenue was reported.",
         evidenceRefs: ["EVID_A"],
-        presentation: "paragraph",
-        section: "answer",
-      }],
-      status: "answered",
+      },
+      findings: [],
     };
-    const draft = decodeAnswerModelResponse(value, createEvidenceReferences(2));
-    if (draft.status !== "answered") {
-      throw new Error("Expected an answered draft.");
-    }
-    expect(draft.conflictGroups).toEqual([]);
-    expect(draft.statements).toHaveLength(1);
+    expect(() => decodeAnswerModelResponse(value, createEvidenceReferences(2)))
+      .toThrow("contains fields that are not allowed");
   });
 });
 
@@ -526,7 +498,7 @@ describe("published answer compilation", () => {
       ),
       retrieved,
     );
-    if (document.status !== "answered") {
+    if (document.citations.length === 0) {
       throw new Error("Expected an answered document.");
     }
 
@@ -704,6 +676,16 @@ function buildDraftWithContent(content: string) {
       section: "answer",
     }],
     status: "answered",
+  };
+}
+
+function buildAnswerModelResponse(
+  content: string,
+  evidenceRefs: string[] = ["EVID_A"],
+) {
+  return {
+    answer: { content, evidenceRefs },
+    findings: [],
   };
 }
 

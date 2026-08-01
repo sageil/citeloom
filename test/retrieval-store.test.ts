@@ -67,10 +67,7 @@ describe("retrieval telemetry", () => {
       "This relevant English evidence window explains the requested policy."
     );
     const queryExecutor: SqlQueryExecutor = {
-      execute: async (name) => {
-        if (name === "retrieve-description-lexical-candidates") {
-          return [];
-        }
+      execute: async () => {
         return [{
           bm25Score: 3,
           documentId,
@@ -80,6 +77,7 @@ describe("retrieval telemetry", () => {
           parentId: elementId,
           representationContent: evidenceContent,
           representationId: elementId,
+          representationType: "exact-window",
           sourceFile: "/documents/source.pdf",
         }];
       },
@@ -94,14 +92,22 @@ describe("retrieval telemetry", () => {
         sourceFile: "/documents/source.pdf",
       }],
     } as unknown as SourceDocumentStore;
+    const selectedRows = [{
+      documentId,
+      evidenceContent,
+      id: elementId,
+      nextRetrievalId: null,
+      previousRetrievalId: null,
+      sourceFile: "/documents/source.pdf",
+      versionId: "00000000-0000-4000-8000-000000000001",
+    }];
     const database = {
       select: () => ({
         from: () => ({
-          where: async () => [{
-            documentId,
-            sourceFile: "/documents/source.pdf",
-            versionId: "00000000-0000-4000-8000-000000000001",
-          }],
+          innerJoin: () => ({
+            where: async () => selectedRows,
+          }),
+          where: async () => selectedRows,
         }),
       }),
     } as unknown as CiteLoomDatabase;

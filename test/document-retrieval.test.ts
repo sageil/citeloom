@@ -81,6 +81,7 @@ describe("document-aware retrieval", () => {
     bestWindow.evidenceContent = "Best matching window.";
     const secondWindow = buildRetrievedElement("a", "1");
     secondWindow.evidenceContent = "Another window from the same element.";
+    secondWindow.provenance = buildRetrievedElementProvenance("f".repeat(64));
     const otherElement = buildRetrievedElement("a", "2");
 
     const selected = selectSourceDiverseElements([

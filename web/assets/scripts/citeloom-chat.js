@@ -24,7 +24,6 @@ const chatRunStates = Object.freeze([
   "canceled",
 ]);
 const chatMessageRoles = Object.freeze(["assistant", "user"]);
-const answerStatuses = Object.freeze(["answered", "no_answer"]);
 const evidenceUnitOutcomes = Object.freeze([
   "not-evaluated",
   "supported",
@@ -247,39 +246,50 @@ function readChatEvidenceUnits(value, citationNumberValue, label) {
 
 function readAnswerDocument(value) {
   const answer = readPlainObject(value, "chat answer");
-  return {
-    citations: readArray(answer.citations, "answer citations").map((item) => {
-      const citation = readPlainObject(item, "answer citation");
-      return {
-        id: readNonEmptyString(citation.id, "answer citation ID"),
-      };
-    }),
-    schemaVersion: readPositiveInteger(
-      answer.schemaVersion,
-      "answer schema version",
-    ),
-    statements: readArray(answer.statements, "answer statements").map((item) => {
-      const statement = readPlainObject(item, "answer statement");
-      return {
-        citationIds: readArray(
-          statement.citationIds,
-          "statement citation IDs",
-        ).map((id) => readNonEmptyString(id, "statement citation ID")),
-        content: readNonEmptyString(statement.content, "statement content"),
-        presentation: readEnum(
-          statement.presentation,
-          ["bullet", "paragraph"],
-          "statement presentation",
-        ),
-        section: readEnum(
-          statement.section,
-          ["answer", "conflicting-evidence", "key-points"],
-          "statement section",
-        ),
-      };
-    }),
-    status: readEnum(answer.status, answerStatuses, "answer status"),
-  };
+  const citations = readArray(answer.citations, "answer citations").map((item) => {
+    const citation = readPlainObject(item, "answer citation");
+    return {
+      id: readNonEmptyString(citation.id, "answer citation ID"),
+    };
+  });
+  const schemaVersion = readPositiveInteger(
+    answer.schemaVersion,
+    "answer schema version",
+  );
+  const statements = readArray(answer.statements, "answer statements").map((item) => {
+    const statement = readPlainObject(item, "answer statement");
+    return {
+      citationIds: readArray(
+        statement.citationIds,
+        "statement citation IDs",
+      ).map((id) => readNonEmptyString(id, "statement citation ID")),
+      content: readNonEmptyString(statement.content, "statement content"),
+      presentation: readEnum(
+        statement.presentation,
+        ["bullet", "paragraph"],
+        "statement presentation",
+      ),
+      section: readEnum(
+        statement.section,
+        ["answer", "conflicting-evidence", "key-points"],
+        "statement section",
+      ),
+    };
+  });
+  const hasCitations = citations.length > 0;
+  const hasStatements = statements.length > 0;
+  if (hasCitations !== hasStatements) {
+    throw new Error("The chat answer is incomplete.");
+  }
+  if (!hasCitations) {
+    return {
+      citations,
+      content: readNonEmptyString(answer.content, "no-answer content"),
+      schemaVersion,
+      statements,
+    };
+  }
+  return { citations, schemaVersion, statements };
 }
 
 function readChatCitation(value) {

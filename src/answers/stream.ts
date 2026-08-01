@@ -1,9 +1,7 @@
 import type { UIMessage } from "ai";
 import { z } from "zod";
 
-import {
-  publishedAnswerDocumentSchema,
-} from "./published-schema.js";
+import { publishedAnswerDocumentSchema } from "./published-schema.js";
 import { contentIdSchema } from "../domain/validation.js";
 
 export const matchedDocumentSchema = z.object({
@@ -12,12 +10,10 @@ export const matchedDocumentSchema = z.object({
   sourceFile: z.string().min(1),
 }).strict();
 
-export const storedClaimCheckSchema = z.object({
+const claimVerificationResultSchema = z.object({
   citationNumbers: z.array(z.number().int().positive()),
   claim: z.string().min(1),
   claimIndex: z.number().int().nonnegative(),
-  createdAt: z.iso.datetime({ offset: true }),
-  id: z.uuid(),
   evidenceUnits: z.array(z.object({
     citationNumber: z.number().int().positive(),
     outcome: z.enum([
@@ -32,8 +28,13 @@ export const storedClaimCheckSchema = z.object({
   }).strict()),
   rationale: z.string().min(1),
   status: z.enum(["supported", "partially-supported", "unsupported", "unverified"]),
-  turnId: z.uuid(),
   verifierModel: z.string().min(1),
+}).strict();
+
+export const storedClaimCheckSchema = claimVerificationResultSchema.extend({
+  createdAt: z.iso.datetime({ offset: true }),
+  id: z.uuid(),
+  turnId: z.uuid(),
 }).strict();
 
 export const streamedResearchTurnSchema = z.object({

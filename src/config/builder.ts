@@ -70,13 +70,16 @@ export function buildAppConfig(
       inference.embedding.maximumInputTokens,
     ),
   );
-  const embeddingSpaceId = settings.embeddingSpaceId
+  const embeddingSpaceBaseId = settings.embeddingSpaceId
     ?? createEmbeddingSpaceId(
       inference.embedding.model,
       embeddingInputFormat,
       settings.embeddingDimensions,
       retrievalWindow,
     );
+  const embeddingSpaceId = addRetrievalRepresentationVersion(
+    embeddingSpaceBaseId,
+  );
   const reranker = buildRerankerConfig(settings, providerSettings);
   const doclingServices = normalizeDoclingServiceInstances(
     doclingServiceValues,
@@ -380,7 +383,6 @@ function buildInferenceConfig(
       summary,
       secondsToMilliseconds(settings.summaryTimeoutSeconds),
     ),
-    thinkingMode: settings.inferenceThinkingMode,
   };
 }
 
@@ -397,6 +399,7 @@ function buildLanguageInferenceConfig(
     model: provider.model,
     providerId: provider.providerId,
     runtimeName: provider.runtimeName,
+    thinkingMode: provider.thinkingMode,
     timeoutMs,
   };
 }
@@ -489,6 +492,11 @@ function createEmbeddingSpaceId(
   const formatIdentity = readEmbeddingSpaceInputFormatIdentity(inputFormat);
   const baseId = `${model}:${formatIdentity}:${dimensions}`;
   return `${baseId}:window-${retrievalWindow.fingerprint.slice(0, 16)}`;
+}
+
+function addRetrievalRepresentationVersion(baseId: string): string {
+  const suffix = ":representations-v2";
+  return baseId.endsWith(suffix) ? baseId : `${baseId}${suffix}`;
 }
 
 function readEmbeddingSpaceInputFormatIdentity(

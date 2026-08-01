@@ -1492,6 +1492,7 @@ export const researchTurns = pgTable(
     completedAt: timestamp("completed_at", { mode: "date", withTimezone: true })
       .notNull(),
     id: uuid("id").primaryKey(),
+    noAnswerContent: text("no_answer_content"),
     question: text("question").notNull(),
     outputState: researchOutputState("output_state").notNull(),
     retrievedContext: jsonb("retrieved_context").$type<MatchedDocument[]>().notNull(),
@@ -1510,6 +1511,10 @@ export const researchTurns = pgTable(
     check(
       "research_turns_answer_schema_version_check",
       sql`${table.answerSchemaVersion} = 1`,
+    ),
+    check(
+      "research_turns_no_answer_content_check",
+      sql`${table.noAnswerContent} IS NULL OR length(trim(${table.noAnswerContent})) > 0`,
     ),
     uniqueIndex("research_turns_thread_sequence_idx").on(
       table.threadId,
@@ -1913,12 +1918,19 @@ function createRetrievalMetadataColumns() {
       .references(() => embeddingSpaces.id, { onDelete: "cascade" }),
     evidenceContent: text("evidence_content").notNull(),
     generationId: uuid("generation_id").notNull(),
-    id: varchar("id", { length: 64 }).notNull(),
+    id: varchar("id", { length: 76 }).notNull(),
     kind: elementKind("kind").notNull(),
     nextRetrievalId: varchar("next_retrieval_id", { length: 64 }),
     pageNumber: integer("page_number"),
     parentId: varchar("parent_id", { length: 64 }).notNull(),
     previousRetrievalId: varchar("previous_retrieval_id", { length: 64 }),
+    representationType: varchar("representation_type", { length: 32 })
+      .$type<
+        | "exact-window"
+        | "image-description"
+        | "table-description"
+      >()
+      .notNull(),
     sourceFile: text("source_file").notNull(),
   };
 }
@@ -2001,102 +2013,6 @@ export const retrievalLexicalChunks = pgTable(
       table.documentId,
     ),
     index("retrieval_lexical_chunks_content_bm25_idx")
-      .using("bm25", table.content)
-      .with({ text_config: "english" }),
-  ],
-);
-
-function createRetrievalDescriptionMetadataColumns() {
-  return {
-    documentId: varchar("document_id", { length: 64 }).notNull(),
-    embeddingSpaceId: text("embedding_space_id")
-      .notNull()
-      .references(() => embeddingSpaces.id, { onDelete: "cascade" }),
-    generationId: uuid("generation_id").notNull(),
-    id: varchar("id", { length: 76 }).notNull(),
-    kind: elementKind("kind").notNull(),
-    parentId: varchar("parent_id", { length: 64 }).notNull(),
-    sourceFile: text("source_file").notNull(),
-    description: text("description").notNull(),
-  };
-}
-
-export const retrievalDescriptionChunks384 = pgTable(
-  "retrieval_description_chunks_384",
-  {
-    ...createRetrievalDescriptionMetadataColumns(),
-    embedding: vector("embedding", { dimensions: 384 }).notNull(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.embeddingSpaceId, table.generationId, table.id],
-    }),
-    index("retrieval_description_chunks_384_document_idx").on(
-      table.embeddingSpaceId,
-      table.generationId,
-      table.documentId,
-    ),
-    index("retrieval_description_chunks_384_embedding_hnsw_idx")
-      .using("hnsw", table.embedding.op("vector_cosine_ops")),
-  ],
-);
-
-export const retrievalDescriptionChunks768 = pgTable(
-  "retrieval_description_chunks",
-  {
-    ...createRetrievalDescriptionMetadataColumns(),
-    embedding: vector("embedding", { dimensions: 768 }).notNull(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.embeddingSpaceId, table.generationId, table.id],
-    }),
-    index("retrieval_description_chunks_document_id_idx").on(
-      table.embeddingSpaceId,
-      table.generationId,
-      table.documentId,
-    ),
-    index("retrieval_description_chunks_embedding_hnsw_idx")
-      .using("hnsw", table.embedding.op("vector_cosine_ops")),
-  ],
-);
-
-export const retrievalDescriptionChunks1024 = pgTable(
-  "retrieval_description_chunks_1024",
-  {
-    ...createRetrievalDescriptionMetadataColumns(),
-    embedding: vector("embedding", { dimensions: 1024 }).notNull(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.embeddingSpaceId, table.generationId, table.id],
-    }),
-    index("retrieval_description_chunks_1024_document_idx").on(
-      table.embeddingSpaceId,
-      table.generationId,
-      table.documentId,
-    ),
-    index("retrieval_description_chunks_1024_embedding_hnsw_idx")
-      .using("hnsw", table.embedding.op("vector_cosine_ops")),
-  ],
-);
-
-export const retrievalDescriptionLexicalChunks = pgTable(
-  "retrieval_description_lexical_chunks",
-  {
-    content: text("content").notNull(),
-    ...createRetrievalDescriptionMetadataColumns(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.embeddingSpaceId, table.generationId, table.id],
-    }),
-    index("retrieval_description_lexical_chunks_document_idx").on(
-      table.embeddingSpaceId,
-      table.generationId,
-      table.documentId,
-    ),
-    index("retrieval_description_lexical_chunks_content_bm25_idx")
       .using("bm25", table.content)
       .with({ text_config: "english" }),
   ],

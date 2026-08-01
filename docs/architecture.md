@@ -121,6 +121,9 @@ See [Provider reference](configuration.md#provider-reference) for the complete c
 ## Document ingestion
 
 An ingestion job discovers document structure, divides content into searchable sections, creates summaries and embeddings, and publishes the finished index.
+Section paths remain part of each passage's embedding text.
+CiteLoom embeds the document filename once and blends that vector into each passage and media-description vector with a 0.1 filename weight and a 0.9 content weight.
+Document titles and section outlines are not independent retrieval candidates and cannot consume the candidate budget.
 The current document remains searchable until its replacement is complete.
 
 ```mermaid
@@ -189,7 +192,7 @@ sequenceDiagram
     participant AI as Provider adapters
     participant Ranker as Optional reranker
     participant Validate as Citation compiler
-    participant HHEM as Claim verifier
+    participant HHEM as Advisory claim verifier
     participant Research as Research store
 
     Client->>Entry: Question and document scope
@@ -211,17 +214,18 @@ sequenceDiagram
     AI-->>Validate: Statements and request-local evidence references
     Validate->>Validate: Match exact evidence references and compile server-owned citations
     Validate->>HHEM: Score claims against cited evidence
-    HHEM-->>Validate: Support decisions
-    Validate->>Research: Verified answer, citations, claims, and retrieval trace
+    HHEM-->>Validate: Advisory support scores
+    Validate->>Research: Cited answer, advisory checks, and retrieval trace
     Research->>DB: Validate citation anchors and atomically publish turn
     Research-->>Entry: Stored answer and source metadata
     Entry-->>Client: Stream completed published answer
 ```
 
 CiteLoom shows a citation only when the answer model produced it and citation validation accepted it.
-Claim-support scoring is a separate check that measures whether the cited evidence supports the answer.
-It can remove unsupported citation links or statements before publication, while keeping the underlying source evidence available for inspection.
-Only answers that pass validation are published.
+HHEM claim-support scoring is a separate advisory check that measures whether the cited evidence appears to support each answer statement.
+HHEM scores never remove, replace, or rewrite answer statements or citations, and they never convert an answered response into a no-answer response.
+When HHEM is unavailable or times out, CiteLoom publishes the cited answer with unverified advisory checks.
+Structured answer validation and citation validation remain publication requirements.
 Cancellations and service failures keep their own status.
 
 ## Document chat

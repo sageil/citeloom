@@ -476,8 +476,8 @@
             </div>
 
             <div class="answer-copy">
-              <template x-if="answer.answerDocument.status === 'no_answer'">
-                <p>The selected scope did not contain sufficiently relevant evidence to answer this question.</p>
+              <template x-if="answer.answerDocument.statements.length === 0">
+                <p x-text="answer.answerDocument.content"></p>
               </template>
               <template x-for="section in answerSections()" :key="section.key">
                 <section class="answer-document-section">
@@ -652,12 +652,12 @@
 
             <section
               class="claim-checks"
-              aria-label="Independent claim verification"
+              aria-label="Advisory HHEM evidence checks"
               x-cloak
               x-show="answer.claims.length > 0"
             >
-              <h3>Claim verification</h3>
-              <p>The verifier is an aid. Inspect the original evidence before relying on a claim.</p>
+              <h3>HHEM evidence check</h3>
+              <p>These results are advisory. HHEM does not remove or alter answer statements or citations. Inspect the original evidence before relying on a claim.</p>
               <ul>
                 <template x-for="claim in answer.claims" :key="claim.id">
                   <li>

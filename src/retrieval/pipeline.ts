@@ -15,7 +15,7 @@ import type {
   StreamedAnswer,
 } from "../answers/stream.js";
 import {
-  applyVerifiedAnswerPublication,
+  attachAdvisoryClaimChecks,
   AnswerOutputTokenLimitError,
   answerQuestion,
   createNoRelevantAnswer,
@@ -55,7 +55,6 @@ import {
   StaleInferenceSettingsError,
 } from "../inference/coordinator.js";
 import { InferenceFeatureTimeoutError } from "../inference/request.js";
-import { HhemClientError } from "../verification/hhem-client.js";
 import { RerankingTimeoutError } from "./ranking/reranker.js";
 import { embedQuestions } from "../embedding/inference.js";
 import { expandRetrievalQuery } from "./query-expansion.js";
@@ -178,7 +177,6 @@ type AnswerStreamFailure =
   | { kind: "answer-invalid" }
   | { kind: "answer-output-limit"; outputTokenLimit: number }
   | { kind: "answer-timeout"; message: string }
-  | { kind: "claim-verification"; category: HhemClientError["category"] }
   | { kind: "provider"; error: Error; failure: InferenceApiFailure }
   | { kind: "reranking-timeout"; message: string }
   | { kind: "scheduler-lease" }
@@ -223,7 +221,7 @@ export async function askIndexedDocuments(
       runTelemetry,
     );
     if (result.outcome === "answered") {
-      reportProgress("Verifying factual claims against cited evidence");
+      reportProgress("Scoring cited claims with advisory HHEM checks");
       const verified = await verifyPublishedAnswer(
         prepared.models,
         result.answerDocument,
@@ -231,10 +229,7 @@ export async function askIndexedDocuments(
         passiveAbortSignal,
         runTelemetry,
       );
-      result = applyVerifiedAnswerPublication(
-        result,
-        verified.answerDocument,
-      );
+      result = attachAdvisoryClaimChecks(result, verified.claims);
     }
     await runTelemetry.finish("success");
     return result;
@@ -785,7 +780,7 @@ export async function writeStreamedAnswer(
     }
     let verifiedClaims: ClaimVerificationResult[] = [];
     if (result.outcome === "answered") {
-      reportProgress("Verifying factual claims against cited evidence");
+      reportProgress("Scoring cited claims with advisory HHEM checks");
       const verified = await verifyPublishedAnswer(
         prepared.models,
         result.answerDocument,
@@ -794,10 +789,7 @@ export async function writeStreamedAnswer(
         runTelemetry,
       );
       verifiedClaims = verified.claims;
-      result = applyVerifiedAnswerPublication(
-        result,
-        verified.answerDocument,
-      );
+      result = attachAdvisoryClaimChecks(result, verified.claims);
     }
     abortSignal.throwIfAborted();
     const turn = await researchStore.saveTurn({
@@ -934,8 +926,6 @@ function readDirectAnswerStreamFailure(
       return { kind: "settings-changed" };
     case error instanceof InferenceLeaseLostError:
       return { kind: "scheduler-lease" };
-    case error instanceof HhemClientError:
-      return { category: error.category, kind: "claim-verification" };
     default:
       return null;
   }
@@ -960,25 +950,8 @@ function formatAnswerStreamFailure(failure: AnswerStreamFailure): string {
       return "Inference settings changed before answer generation started. Try the question again.";
     case "scheduler-lease":
       return "CiteLoom lost its inference slot while generating the answer. Try the question again.";
-    case "claim-verification":
-      return readClaimVerificationFailureMessage(failure.category);
     case "unexpected":
       return "The answer could not be generated.";
-  }
-}
-
-function readClaimVerificationFailureMessage(
-  category: HhemClientError["category"],
-): string {
-  switch (category) {
-    case "timeout":
-      return "Claim verification timed out before the answer could be published.";
-    case "service-unavailable":
-      return "Claim verification is unavailable, so CiteLoom did not publish the answer. Check the HHEM service and try again.";
-    case "invalid-response":
-      return "Claim verification returned an invalid response, so CiteLoom did not publish the answer. Check the HHEM service and try again.";
-    case "http-error":
-      return "Claim verification failed, so CiteLoom did not publish the answer. Check the HHEM service and try again.";
   }
 }
 
@@ -1049,7 +1022,6 @@ function readAnswerFailureOrigin(failure: AnswerStreamFailure) {
     case "answer-finish":
     case "answer-invalid":
     case "answer-output-limit":
-    case "claim-verification":
     case "reranking-timeout":
       return "inference-provider" as const;
     case "answer-capacity":
@@ -1069,9 +1041,6 @@ function readAnswerFailureRetryability(
     case "scheduler-lease":
     case "settings-changed":
       return true;
-    case "claim-verification":
-      return failure.category === "timeout"
-        || failure.category === "service-unavailable";
     case "answer-capacity":
     case "answer-output-limit":
       return false;
@@ -1108,8 +1077,6 @@ function readAnswerFailureCategory(failure: AnswerStreamFailure): string {
     case "scheduler-lease":
     case "settings-changed":
       return "inference-scheduler";
-    case "claim-verification":
-      return `claim-verification-${failure.category}`;
     case "answer-capacity":
       return "answer-capacity";
     case "answer-output-limit":
@@ -1138,8 +1105,6 @@ function readAnswerFailureCode(
       return "inference_lease_lost";
     case "settings-changed":
       return "inference_settings_changed";
-    case "claim-verification":
-      return readClaimVerificationFailureCode(failure.category);
     case "answer-capacity":
       return "answer_context_capacity_exceeded";
     case "answer-output-limit":
@@ -1176,8 +1141,6 @@ function readSafeAnswerFailureMessage(
     case "answer-timeout":
     case "reranking-timeout":
       return truncateAnswerFailureMessage(failure.message);
-    case "claim-verification":
-      return "Claim verification failed before the answer could be published.";
     case "answer-capacity":
     case "answer-finish":
     case "answer-invalid":
@@ -1237,21 +1200,6 @@ function readAnswerProviderFailureCode(
       return "inference_provider_request_rejected";
     case "unexpected":
       return "inference_provider_failed";
-  }
-}
-
-function readClaimVerificationFailureCode(
-  category: HhemClientError["category"],
-): string {
-  switch (category) {
-    case "timeout":
-      return "claim_verification_timeout";
-    case "service-unavailable":
-      return "claim_verification_unavailable";
-    case "invalid-response":
-      return "claim_verification_invalid_response";
-    case "http-error":
-      return "claim_verification_http_error";
   }
 }
 

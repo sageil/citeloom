@@ -43,10 +43,10 @@ describe("citation status", () => {
   });
 
   it.each([
-    ["supported", "Supported"],
-    ["partially-supported", "Partially supported"],
-    ["unsupported", "Unsupported"],
-    ["unverified", "Unverified"],
+    ["supported", "Supported by verifier"],
+    ["partially-supported", "Verifier found mixed support"],
+    ["unsupported", "Possible unsupported content"],
+    ["unverified", "Verifier uncertain"],
   ] as const)("labels %s as %s", (status, expected) => {
     expect(formatClaimStatusLabel(status)).toBe(expected);
   });

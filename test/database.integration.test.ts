@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IngestionArtifactStore } from "../src/ingestion/artifact-store.js";
@@ -119,10 +119,6 @@ import {
   retrievalChunks1024,
   retrievalLexicalChunks,
   retrievalDescriptionArtifacts,
-  retrievalDescriptionChunks384,
-  retrievalDescriptionChunks768,
-  retrievalDescriptionChunks1024,
-  retrievalDescriptionLexicalChunks,
   researchFeedback,
   researchStatements,
   researchThreads,
@@ -210,7 +206,7 @@ const testRetrievalWindowIdentity =
   `window-${testRetrievalWindow.fingerprint.slice(0, 16)}`;
 const space768: EmbeddingSpaceConfig = {
   dimensions: 768,
-  id: `test-embedding:plain:768:${testRetrievalWindowIdentity}`,
+  id: `test-embedding:plain:768:${testRetrievalWindowIdentity}:representations-v2`,
   inputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
   model: "test-embedding",
   retrievalWindow: testRetrievalWindow,
@@ -294,14 +290,14 @@ function buildTestDocumentFormatRow(sourceFile: string) {
 
 const space384: EmbeddingSpaceConfig = {
   dimensions: 384,
-  id: `test-embedding:plain:384:${testRetrievalWindowIdentity}`,
+  id: `test-embedding:plain:384:${testRetrievalWindowIdentity}:representations-v2`,
   inputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
   model: "test-embedding",
   retrievalWindow: testRetrievalWindow,
 };
 const space1024: EmbeddingSpaceConfig = {
   dimensions: 1024,
-  id: `test-embedding:plain:1024:${testRetrievalWindowIdentity}`,
+  id: `test-embedding:plain:1024:${testRetrievalWindowIdentity}:representations-v2`,
   inputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
   model: "test-embedding",
   retrievalWindow: testRetrievalWindow,
@@ -340,10 +336,6 @@ beforeEach(async () => {
   await session.database.delete(embeddingSpaceGcSpaces);
   await session.database.delete(embeddingSpaceGcRuns);
   await session.database.delete(embeddingSpacePins);
-  await session.database.delete(retrievalDescriptionLexicalChunks);
-  await session.database.delete(retrievalDescriptionChunks384);
-  await session.database.delete(retrievalDescriptionChunks768);
-  await session.database.delete(retrievalDescriptionChunks1024);
   await session.database.delete(retrievalLexicalChunks);
   await session.database.delete(retrievalChunks384);
   await session.database.delete(retrievalChunks768);
@@ -2254,7 +2246,6 @@ describe("PostgreSQL research records", () => {
           presentation: "bullet",
           section: "key-points",
         }],
-        status: "answered",
       },
       claims: [{
         citationNumbers: [1],
@@ -2503,7 +2494,6 @@ describe("PostgreSQL research records", () => {
           presentation: "paragraph",
           section: "answer",
         }],
-        status: "answered",
       },
       claims: [{
         citationNumbers: [1],
@@ -2571,6 +2561,9 @@ describe("PostgreSQL research records", () => {
   it("publishes no-answer turns atomically and keeps published output immutable", async () => {
     const config = buildTestConfig();
     const research = new ResearchStore(session.database, config);
+    const noAnswerContent = (
+      "The supplied source material does not identify what is unavailable."
+    );
     await session.database
       .insert(embeddingSpaces)
       .values(buildEmbeddingSpaceRow(space768));
@@ -2578,9 +2571,9 @@ describe("PostgreSQL research records", () => {
     const turn = await research.saveTurn({
       answerDocument: {
         citations: [],
+        content: noAnswerContent,
         schemaVersion: 1,
         statements: [],
-        status: "no_answer",
       },
       claims: [],
       completedAt: new Date("2026-07-25T15:00:00.000Z"),
@@ -2593,16 +2586,21 @@ describe("PostgreSQL research records", () => {
       threadId: thread.id,
     });
 
-    expect(turn.answerDocument.status).toBe("no_answer");
+    expect(turn.answerDocument).not.toHaveProperty("status");
+    expect(turn.answerDocument).toMatchObject({
+      citations: [],
+      content: noAnswerContent,
+      statements: [],
+    });
     expect(turn.citations).toEqual([]);
     expect(turn.claims).toEqual([]);
     expect(await research.readThread(thread.id)).toMatchObject({
       turns: [{
         answerDocument: {
           citations: [],
+          content: noAnswerContent,
           schemaVersion: 1,
           statements: [],
-          status: "no_answer",
         },
       }],
     });
@@ -2982,6 +2980,7 @@ describe("PostgreSQL document catalog", () => {
       kind: "text" as const,
       pageNumber: 1,
       parentId: elementId,
+      representationType: "exact-window" as const,
       sourceFile: duplicateSource,
     };
     await session.database.insert(retrievalChunks768).values({
@@ -4624,14 +4623,17 @@ describe("PostgreSQL generation publication", () => {
     await expect(session.database
       .select({ content: retrievalChunks384.evidenceContent })
       .from(retrievalChunks384)
-      .where(eq(retrievalChunks384.generationId, normalizedJob.generationId)))
+      .where(and(
+        eq(retrievalChunks384.generationId, normalizedJob.generationId),
+        eq(retrievalChunks384.representationType, "exact-window"),
+      )))
       .resolves.toEqual([{ content: table.content }]);
     const storedDescriptions = await session.database
-      .select({ description: retrievalDescriptionChunks384.description })
-      .from(retrievalDescriptionChunks384)
-      .where(eq(
-        retrievalDescriptionChunks384.generationId,
-        normalizedJob.generationId,
+      .select({ description: retrievalChunks384.evidenceContent })
+      .from(retrievalChunks384)
+      .where(and(
+        eq(retrievalChunks384.generationId, normalizedJob.generationId),
+        ne(retrievalChunks384.representationType, "exact-window"),
       ));
     expect(storedDescriptions).toHaveLength(2);
     expect(storedDescriptions).toEqual(expect.arrayContaining([
@@ -5470,7 +5472,7 @@ describe("pgvector retrieval", () => {
         nextRetrievalId: string | null;
         previousRetrievalId: string | null;
       }>;
-      let descriptionVectorRows: Array<{ description: string; id: string }>;
+      let descriptionVectorRows: Array<{ id: string }>;
       if (space.dimensions === 384) {
         vectorRows = await session.database
           .select({
@@ -5480,14 +5482,17 @@ describe("pgvector retrieval", () => {
             previousRetrievalId: retrievalChunks384.previousRetrievalId,
           })
           .from(retrievalChunks384)
-          .where(eq(retrievalChunks384.embeddingSpaceId, space.id));
+          .where(and(
+            eq(retrievalChunks384.embeddingSpaceId, space.id),
+            eq(retrievalChunks384.representationType, "exact-window"),
+          ));
         descriptionVectorRows = await session.database
-          .select({
-            description: retrievalDescriptionChunks384.description,
-            id: retrievalDescriptionChunks384.id,
-          })
-          .from(retrievalDescriptionChunks384)
-          .where(eq(retrievalDescriptionChunks384.embeddingSpaceId, space.id));
+          .select({ id: retrievalChunks384.id })
+          .from(retrievalChunks384)
+          .where(and(
+            eq(retrievalChunks384.embeddingSpaceId, space.id),
+            ne(retrievalChunks384.representationType, "exact-window"),
+          ));
       } else if (space.dimensions === 768) {
         vectorRows = await session.database
           .select({
@@ -5497,14 +5502,17 @@ describe("pgvector retrieval", () => {
             previousRetrievalId: retrievalChunks768.previousRetrievalId,
           })
           .from(retrievalChunks768)
-          .where(eq(retrievalChunks768.embeddingSpaceId, space.id));
+          .where(and(
+            eq(retrievalChunks768.embeddingSpaceId, space.id),
+            eq(retrievalChunks768.representationType, "exact-window"),
+          ));
         descriptionVectorRows = await session.database
-          .select({
-            description: retrievalDescriptionChunks768.description,
-            id: retrievalDescriptionChunks768.id,
-          })
-          .from(retrievalDescriptionChunks768)
-          .where(eq(retrievalDescriptionChunks768.embeddingSpaceId, space.id));
+          .select({ id: retrievalChunks768.id })
+          .from(retrievalChunks768)
+          .where(and(
+            eq(retrievalChunks768.embeddingSpaceId, space.id),
+            ne(retrievalChunks768.representationType, "exact-window"),
+          ));
       } else {
         vectorRows = await session.database
           .select({
@@ -5514,14 +5522,17 @@ describe("pgvector retrieval", () => {
             previousRetrievalId: retrievalChunks1024.previousRetrievalId,
           })
           .from(retrievalChunks1024)
-          .where(eq(retrievalChunks1024.embeddingSpaceId, space.id));
+          .where(and(
+            eq(retrievalChunks1024.embeddingSpaceId, space.id),
+            eq(retrievalChunks1024.representationType, "exact-window"),
+          ));
         descriptionVectorRows = await session.database
-          .select({
-            description: retrievalDescriptionChunks1024.description,
-            id: retrievalDescriptionChunks1024.id,
-          })
-          .from(retrievalDescriptionChunks1024)
-          .where(eq(retrievalDescriptionChunks1024.embeddingSpaceId, space.id));
+          .select({ id: retrievalChunks1024.id })
+          .from(retrievalChunks1024)
+          .where(and(
+            eq(retrievalChunks1024.embeddingSpaceId, space.id),
+            ne(retrievalChunks1024.representationType, "exact-window"),
+          ));
       }
       const lexicalRows = await session.database
         .select({
@@ -5532,15 +5543,17 @@ describe("pgvector retrieval", () => {
           previousRetrievalId: retrievalLexicalChunks.previousRetrievalId,
         })
         .from(retrievalLexicalChunks)
-        .where(eq(retrievalLexicalChunks.embeddingSpaceId, space.id));
+        .where(and(
+          eq(retrievalLexicalChunks.embeddingSpaceId, space.id),
+          eq(retrievalLexicalChunks.representationType, "exact-window"),
+        ));
       const descriptionLexicalRows = await session.database
-        .select({
-          content: retrievalDescriptionLexicalChunks.content,
-          description: retrievalDescriptionLexicalChunks.description,
-          id: retrievalDescriptionLexicalChunks.id,
-        })
-        .from(retrievalDescriptionLexicalChunks)
-        .where(eq(retrievalDescriptionLexicalChunks.embeddingSpaceId, space.id));
+        .select({ id: retrievalLexicalChunks.id })
+        .from(retrievalLexicalChunks)
+        .where(and(
+          eq(retrievalLexicalChunks.embeddingSpaceId, space.id),
+          ne(retrievalLexicalChunks.representationType, "exact-window"),
+        ));
 
       expect(vectorRows).toHaveLength(windows.length);
       expect(lexicalRows).toHaveLength(windows.length);
@@ -5695,6 +5708,7 @@ describe("pgvector retrieval", () => {
         kind: row.kind,
         pageNumber: row.pageNumber,
         parentId: row.parentId,
+        representationType: row.representationType,
         sourceFile: row.sourceFile,
         content: "deterministicfixturetoken",
       }));
@@ -5829,6 +5843,7 @@ describe("pgvector retrieval", () => {
       kind: "text" as const,
       pageNumber: 1,
       parentId: element.id,
+      representationType: "exact-window" as const,
       sourceFile: staleSource,
     };
     await session.database.insert(retrievalChunks768).values({
@@ -6565,6 +6580,7 @@ function buildStructuralTieVectorRows(
     kind: "text";
     pageNumber: number;
     parentId: string;
+    representationType: "exact-window";
     sourceFile: string;
   }> = [];
   for (let index = 0; index < 10; index += 1) {
@@ -6594,6 +6610,7 @@ function buildStructuralTieVectorRows(
       kind: "text",
       pageNumber: 1,
       parentId: createStructuralTieParentId(Math.floor(index / 2)),
+      representationType: "exact-window",
       sourceFile,
     });
   }
@@ -7171,6 +7188,7 @@ async function insertRetentionRows(spaceId: string): Promise<void> {
     kind: "text" as const,
     pageNumber: 1,
     parentId: documentId,
+    representationType: "exact-window" as const,
     sourceFile,
   };
   const embedding = Array.from({ length: 384 }, (_, index) => (

@@ -295,6 +295,16 @@
                 />
                 <small x-text="featureContextCapacityTokensOverride(selectedFeatureCapability) === null ? 'No override. The provider model context is used.' : 'Overrides the provider model context for this feature only.'"></small>
               </label>
+              <label class="provider-form-field" x-cloak x-show="capabilitySupportsThinking(selectedFeatureCapability)">
+                <span>Thinking mode override</span>
+                <select :value="featureThinkingModeOverride(selectedFeatureCapability) ?? ''" @change="writeFeatureThinkingModeOverride(selectedFeatureCapability, $event.target.value)">
+                  <option value="">Inherit provider setting</option>
+                  <option value="disabled">Disabled</option>
+                  <option value="enabled">Enabled</option>
+                  <option value="auto">Provider API default</option>
+                </select>
+                <small x-text="featureThinkingModeOverride(selectedFeatureCapability) === null ? `Inherited provider setting: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.` : `This feature overrides the provider with: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.`"></small>
+              </label>
               <template x-if="featureFieldsFor(selectedFeatureCapability).length > 0">
                 <div class="settings-feature-primary-field">
                   <template x-for="field in featureFieldsFor(selectedFeatureCapability).slice(0, 1)" :key="field.key">
@@ -502,6 +512,15 @@
                 <input max="16" min="1" step="1" type="number" :disabled="providerAdaptiveContextEnabled()" :value="providerMaximumParallelRequests() ?? 1" @change="writeProviderMaximumParallelRequests($event.target.value)" />
                 <small>Higher values may reduce waiting when the provider has spare capacity, but they increase load and can cause rate-limit errors. This does not improve answer quality.</small>
               </label>
+              <label class="provider-form-field" x-cloak x-show="providerSupportsThinking()">
+                <span>Default thinking mode</span>
+                <select :value="providerThinkingMode()" @change="writeProviderThinkingMode($event.target.value)">
+                  <option value="disabled">Disabled</option>
+                  <option value="enabled">Enabled</option>
+                  <option value="auto">Provider API default</option>
+                </select>
+                <small>Used by this provider's language features unless a feature overrides it. Disabled is the default.</small>
+              </label>
               <div class="provider-form-field" x-cloak x-show="selectedProviderId === 'ollama'">
                 <span>Adaptive inference</span>
                 <label class="setting-toggle">
@@ -563,6 +582,10 @@
               <div x-cloak x-show="selectedProviderId === 'ollama'">
                 <span>Adaptive inference</span>
                 <strong x-text="providerAdaptiveContextEnabled() ? 'Enabled' : 'Off'"></strong>
+              </div>
+              <div x-cloak x-show="providerSupportsThinking()">
+                <span>Thinking mode</span>
+                <strong x-text="providerThinkingMode()"></strong>
               </div>
               <div>
                 <span>Authentication</span>

@@ -13,10 +13,6 @@ import {
   retrievalChunks768,
   retrievalChunks1024,
   retrievalLexicalChunks,
-  retrievalDescriptionChunks384,
-  retrievalDescriptionChunks768,
-  retrievalDescriptionChunks1024,
-  retrievalDescriptionLexicalChunks,
 } from "../../database/schema.js";
 import type {
   RetrievalRepresentation,
@@ -68,6 +64,7 @@ interface RetrievalMetadataInsertRow {
   pageNumber: number | null;
   parentId: string;
   previousRetrievalId: string | null;
+  representationType: RetrievalRepresentation["type"];
   sourceFile: string;
 }
 
@@ -84,31 +81,10 @@ interface RetrievalVectorInsertRow extends RetrievalMetadataInsertRow {
   embedding: number[];
 }
 
-interface RetrievalDescriptionMetadataInsertRow {
-  documentId: string;
-  embeddingSpaceId: string;
-  generationId: string;
-  id: string;
-  kind: "image" | "table";
-  parentId: string;
-  sourceFile: string;
-  description: string;
-}
-
-interface RetrievalDescriptionInsertRow
-  extends RetrievalDescriptionMetadataInsertRow {
-  content: string;
-  embedding: number[];
-}
-
-interface RetrievalDescriptionLexicalInsertRow
-  extends RetrievalDescriptionMetadataInsertRow {
-  content: string;
-}
-
-interface RetrievalDescriptionVectorInsertRow
-  extends RetrievalDescriptionMetadataInsertRow {
-  embedding: number[];
+interface BuiltRetrievalRows {
+  descriptionCount: number;
+  exactCount: number;
+  rows: RetrievalInsertRow[];
 }
 
 export interface EmbeddingGenerationInput {
@@ -334,15 +310,8 @@ export async function stageRetrievalRepresentationBatch(
     }
 
     const vectorTable = readVectorTable(space.dimensions);
-    const descriptionVectorTable = readDescriptionVectorTable(space.dimensions);
-    await insertVectorRows(transaction, vectorTable, rows.exact);
-    await insertLexicalRows(transaction, rows.exact);
-    await insertDescriptionVectorRows(
-      transaction,
-      descriptionVectorTable,
-      rows.description,
-    );
-    await insertDescriptionLexicalRows(transaction, rows.description);
+    await insertVectorRows(transaction, vectorTable, rows.rows);
+    await insertLexicalRows(transaction, rows.rows);
 
     const completed = nextElementPosition === input.totalElements;
     const updatedRows = await transaction
@@ -350,10 +319,10 @@ export async function stageRetrievalRepresentationBatch(
       .set({
         completed,
         exactRepresentationCount:
-          manifest.exactRepresentationCount + rows.exact.length,
+          manifest.exactRepresentationCount + rows.exactCount,
         nextElementPosition,
         descriptionRepresentationCount:
-          manifest.descriptionRepresentationCount + rows.description.length,
+          manifest.descriptionRepresentationCount + rows.descriptionCount,
         updatedAt: new Date(),
       })
       .where(and(
@@ -376,18 +345,16 @@ function buildRetrievalRows(
   input: EmbeddingGenerationInput,
   representations: readonly RetrievalRepresentation[],
   embeddings: readonly number[][],
-): {
-  exact: RetrievalInsertRow[];
-  description: RetrievalDescriptionInsertRow[];
-} {
+): BuiltRetrievalRows {
   if (representations.length !== embeddings.length) {
     throw new Error(
       "Retrieval representation and embedding counts differ: "
       + `${representations.length} and ${embeddings.length}.`,
     );
   }
-  const exact: RetrievalInsertRow[] = [];
-  const description: RetrievalDescriptionInsertRow[] = [];
+  const rows: RetrievalInsertRow[] = [];
+  let descriptionCount = 0;
+  let exactCount = 0;
   for (let index = 0; index < representations.length; index += 1) {
     const representation = representations[index];
     const embedding = embeddings[index];
@@ -411,18 +378,12 @@ function buildRetrievalRows(
       space.dimensions,
       `embedding ${index + 1}`,
     );
-    if (representation.type !== "exact-window") {
-      description.push(
-        buildDescriptionRetrievalRow(
-          space.id,
-          input.generationId,
-          representation,
-          normalizedEmbedding,
-        ),
-      );
-      continue;
+    if (representation.type === "exact-window") {
+      exactCount += 1;
+    } else {
+      descriptionCount += 1;
     }
-    exact.push(
+    rows.push(
       buildRetrievalRow(
         space.id,
         input.generationId,
@@ -431,7 +392,7 @@ function buildRetrievalRows(
       ),
     );
   }
-  return { exact, description };
+  return { descriptionCount, exactCount, rows };
 }
 
 function assertManifestMatches(
@@ -543,10 +504,6 @@ type RetrievalVectorTable =
   | typeof retrievalChunks384
   | typeof retrievalChunks768
   | typeof retrievalChunks1024;
-type RetrievalDescriptionVectorTable =
-  | typeof retrievalDescriptionChunks384
-  | typeof retrievalDescriptionChunks768
-  | typeof retrievalDescriptionChunks1024;
 
 export async function validateEmbeddingGenerationForPublication(
   transaction: RetrievalTransaction,
@@ -580,32 +537,21 @@ export async function validateEmbeddingGenerationForPublication(
     .limit(1);
   const dimensions = readEmbeddingDimensions(spaceRows[0]?.dimensions);
   const vectorTable = readVectorTable(dimensions);
-  const descriptionVectorTable = readDescriptionVectorTable(dimensions);
-  const exactVectorCount = await countGenerationRows(
+  const vectorCount = await countGenerationRows(
     transaction,
     vectorTable,
     input,
   );
-  const exactLexicalCount = await countGenerationRows(
+  const lexicalCount = await countGenerationRows(
     transaction,
     retrievalLexicalChunks,
     input,
   );
-  const descriptionVectorCount = await countGenerationRows(
-    transaction,
-    descriptionVectorTable,
-    input,
-  );
-  const descriptionLexicalCount = await countGenerationRows(
-    transaction,
-    retrievalDescriptionLexicalChunks,
-    input,
-  );
+  const expectedRepresentationCount = manifest.exactRepresentationCount
+    + manifest.descriptionRepresentationCount;
   if (
-    exactVectorCount !== manifest.exactRepresentationCount
-    || exactLexicalCount !== manifest.exactRepresentationCount
-    || descriptionVectorCount !== manifest.descriptionRepresentationCount
-    || descriptionLexicalCount !== manifest.descriptionRepresentationCount
+    vectorCount !== expectedRepresentationCount
+    || lexicalCount !== expectedRepresentationCount
   ) {
     throw new Error(
       `Embedding generation ${input.generationId} has incomplete vector or lexical rows.`,
@@ -638,26 +584,6 @@ export async function deleteRetrievalGenerationRows(
     retrievalLexicalChunks,
     generationId,
   );
-  await deleteGenerationRows(
-    transaction,
-    retrievalDescriptionChunks384,
-    generationId,
-  );
-  await deleteGenerationRows(
-    transaction,
-    retrievalDescriptionChunks768,
-    generationId,
-  );
-  await deleteGenerationRows(
-    transaction,
-    retrievalDescriptionChunks1024,
-    generationId,
-  );
-  await deleteGenerationRows(
-    transaction,
-    retrievalDescriptionLexicalChunks,
-    generationId,
-  );
 }
 
 export async function deleteDocumentRetrievalRows(
@@ -685,10 +611,6 @@ async function readDocumentRetrievalGeneration(
     retrievalChunks768,
     retrievalChunks1024,
     retrievalLexicalChunks,
-    retrievalDescriptionChunks384,
-    retrievalDescriptionChunks768,
-    retrievalDescriptionChunks1024,
-    retrievalDescriptionLexicalChunks,
   ];
   for (const table of tables) {
     const rows = await transaction
@@ -706,9 +628,7 @@ async function readDocumentRetrievalGeneration(
 
 type RetrievalTable =
   | RetrievalVectorTable
-  | RetrievalDescriptionVectorTable
-  | typeof retrievalLexicalChunks
-  | typeof retrievalDescriptionLexicalChunks;
+  | typeof retrievalLexicalChunks;
 
 async function countGenerationRows(
   transaction: RetrievalTransaction,
@@ -775,18 +695,6 @@ function readVectorTable(dimensions: EmbeddingDimensions): RetrievalVectorTable 
   return retrievalChunks1024;
 }
 
-function readDescriptionVectorTable(
-  dimensions: EmbeddingDimensions,
-): RetrievalDescriptionVectorTable {
-  if (dimensions === 384) {
-    return retrievalDescriptionChunks384;
-  }
-  if (dimensions === 768) {
-    return retrievalDescriptionChunks768;
-  }
-  return retrievalDescriptionChunks1024;
-}
-
 async function insertVectorRows(
   transaction: RetrievalTransaction,
   table: RetrievalVectorTable,
@@ -820,46 +728,16 @@ async function insertLexicalRows(
   }
 }
 
-async function insertDescriptionVectorRows(
-  transaction: RetrievalTransaction,
-  table: RetrievalDescriptionVectorTable,
-  rows: RetrievalDescriptionInsertRow[],
-): Promise<void> {
-  const vectorRows = buildDescriptionVectorInsertRows(rows);
-  for (
-    let start = 0;
-    start < vectorRows.length;
-    start += RETRIEVAL_WRITE_BATCH_SIZE
-  ) {
-    await transaction
-      .insert(table)
-      .values(vectorRows.slice(start, start + RETRIEVAL_WRITE_BATCH_SIZE));
-  }
-}
-
-async function insertDescriptionLexicalRows(
-  transaction: RetrievalTransaction,
-  rows: RetrievalDescriptionInsertRow[],
-): Promise<void> {
-  const lexicalRows = buildDescriptionLexicalInsertRows(rows);
-  for (
-    let start = 0;
-    start < lexicalRows.length;
-    start += RETRIEVAL_WRITE_BATCH_SIZE
-  ) {
-    await transaction
-      .insert(retrievalDescriptionLexicalChunks)
-      .values(lexicalRows.slice(start, start + RETRIEVAL_WRITE_BATCH_SIZE));
-  }
-}
-
 function buildRetrievalRow(
   embeddingSpaceId: string,
   generationId: string,
   representation: RetrievalRepresentation,
   embedding: number[],
 ): RetrievalInsertRow {
-  if (representation.parentOrdinal === null) {
+  if (
+    representation.type === "exact-window"
+    && representation.parentOrdinal === null
+  ) {
     throw new Error(
       `Exact retrieval representation ${representation.id} has no parent ordinal.`,
     );
@@ -877,43 +755,8 @@ function buildRetrievalRow(
     pageNumber: representation.pageNumber,
     parentId: representation.parentId,
     previousRetrievalId: representation.previousRetrievalId,
+    representationType: representation.type,
     sourceFile: representation.sourceFile,
-  };
-}
-
-function buildDescriptionRetrievalRow(
-  embeddingSpaceId: string,
-  generationId: string,
-  representation: RetrievalRepresentation,
-  embedding: number[],
-): RetrievalDescriptionInsertRow {
-  let kind: RetrievalDescriptionMetadataInsertRow["kind"];
-  if (
-    representation.type === "table-description"
-    && representation.kind === "table"
-  ) {
-    kind = "table";
-  } else if (
-    representation.type === "image-description"
-    && representation.kind === "image"
-  ) {
-    kind = "image";
-  } else {
-    throw new Error(
-      `Representation ${representation.id} is not a retrieval description.`,
-    );
-  }
-  return {
-    content: representation.embeddingText,
-    documentId: representation.documentId,
-    embedding,
-    embeddingSpaceId,
-    generationId,
-    id: representation.id,
-    kind,
-    parentId: representation.parentId,
-    sourceFile: representation.sourceFile,
-    description: representation.content,
   };
 }
 
@@ -953,43 +796,7 @@ function buildRetrievalMetadataInsertRow(
     pageNumber: row.pageNumber,
     parentId: row.parentId,
     previousRetrievalId: row.previousRetrievalId,
+    representationType: row.representationType,
     sourceFile: row.sourceFile,
-  };
-}
-
-function buildDescriptionVectorInsertRows(
-  rows: RetrievalDescriptionInsertRow[],
-): RetrievalDescriptionVectorInsertRow[] {
-  const vectorRows: RetrievalDescriptionVectorInsertRow[] = [];
-  for (const row of rows) {
-    const metadata = buildDescriptionMetadataInsertRow(row);
-    vectorRows.push({ ...metadata, embedding: row.embedding });
-  }
-  return vectorRows;
-}
-
-function buildDescriptionLexicalInsertRows(
-  rows: RetrievalDescriptionInsertRow[],
-): RetrievalDescriptionLexicalInsertRow[] {
-  const lexicalRows: RetrievalDescriptionLexicalInsertRow[] = [];
-  for (const row of rows) {
-    const metadata = buildDescriptionMetadataInsertRow(row);
-    lexicalRows.push({ ...metadata, content: row.content });
-  }
-  return lexicalRows;
-}
-
-function buildDescriptionMetadataInsertRow(
-  row: RetrievalDescriptionInsertRow,
-): RetrievalDescriptionMetadataInsertRow {
-  return {
-    documentId: row.documentId,
-    embeddingSpaceId: row.embeddingSpaceId,
-    generationId: row.generationId,
-    id: row.id,
-    kind: row.kind,
-    parentId: row.parentId,
-    sourceFile: row.sourceFile,
-    description: row.description,
   };
 }

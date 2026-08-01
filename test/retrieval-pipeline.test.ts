@@ -95,7 +95,6 @@ describe("atomic structured answer publication", () => {
         citations: [expect.objectContaining({ citationNumber: 1 })],
         schemaVersion: 1,
         statements: [expect.objectContaining({ content: "Revenue increased." })],
-        status: "answered",
       },
       claims: [{
         citationNumbers: [1],
@@ -117,7 +116,9 @@ describe("atomic structured answer publication", () => {
     expect(readChunks(stream.chunks, "finish")).toHaveLength(1);
     expect(saveTurnMock).toHaveBeenCalledOnce();
     expect(readSavedTurnInput()).toMatchObject({
-      answerDocument: { status: "answered" },
+      answerDocument: {
+        statements: [expect.objectContaining({ content: "Revenue increased." })],
+      },
       claims: [{
         citationNumbers: [1],
         claim: "Revenue increased.",
@@ -126,7 +127,7 @@ describe("atomic structured answer publication", () => {
     });
   });
 
-  it("prunes unsupported citations before persistence and deterministic publication", async () => {
+  it("keeps unsupported content and publishes advisory verification results", async () => {
     const verifier = new FakeHhemClient(0.5, async (items) => {
       return items.map((item) => ({
         id: item.id,
@@ -138,19 +139,14 @@ describe("atomic structured answer publication", () => {
       }));
     });
     const answerModel = buildAnswerModel({
-      conflictGroups: [],
-      statements: [{
+      answer: {
         content: "Unsupported statement.",
         evidenceRefs: ["EVID_A"],
-        presentation: "paragraph",
-        section: "answer",
-      }, {
+      },
+      findings: [{
         content: "Revenue decreased.",
         evidenceRefs: ["EVID_B", "EVID_A"],
-        presentation: "paragraph",
-        section: "answer",
       }],
-      status: "answered",
     });
     const stream = buildWriter();
 
@@ -178,34 +174,16 @@ describe("atomic structured answer publication", () => {
       } = claim;
       return savedClaim;
     }));
-    expect(saved.answerDocument).toMatchObject({
-      citations: [{
-        citationNumber: 1,
-        elementId: "d".repeat(64),
-        evidence: {
-          excerpt: "Revenue decreased during the reporting period.",
-          kind: "text",
-        },
-      }],
-      statements: [{
-        content: "Revenue decreased.",
-      }],
-      status: "answered",
-    });
-    expect(saved.claims).toMatchObject([{
-      citationNumbers: [1],
-      claim: "Revenue decreased.",
-      claimIndex: 0,
-      evidenceUnits: [{
-        citationNumber: 1,
-        outcome: "supported",
-        unitId: "claim-0-citation-1",
-      }],
-      status: "supported",
-    }]);
-    expect(published.runDetails?.sourceCount).toBe(1);
-    expect(JSON.stringify(published)).not.toContain("Unsupported statement.");
-    expect(JSON.stringify(published)).not.toContain("b".repeat(64));
+    expect(saved.answerDocument.citations).toHaveLength(2);
+    expect(saved.answerDocument.statements.map((statement) => statement.content))
+      .toEqual(["Unsupported statement.", "Revenue decreased."]);
+    expect(saved.claims.map((claim) => claim.status)).toEqual([
+      "unsupported",
+      "partially-supported",
+    ]);
+    expect(published.runDetails?.sourceCount).toBe(2);
+    expect(JSON.stringify(published)).toContain("Unsupported statement.");
+    expect(JSON.stringify(published)).toContain("b".repeat(64));
   });
 
   it("applies citation validation to a recovered answer draft", async () => {
@@ -245,20 +223,22 @@ describe("atomic structured answer publication", () => {
         citations: [{
           citationNumber: 1,
           elementId: "b".repeat(64),
+        }, {
+          citationNumber: 2,
+          elementId: "d".repeat(64),
         }],
         statements: [{
           content: "Revenue increased.",
         }],
-        status: "answered",
       },
       claims: [{
-        citationNumbers: [1],
-        status: "supported",
+        citationNumbers: [1, 2],
+        status: "partially-supported",
       }],
     });
   });
 
-  it("publishes no-answer when every exact citation set is unsupported", async () => {
+  it("publishes unsupported verification as advisory metadata", async () => {
     const verifier = new FakeHhemClient(0.5, async (items) => {
       return items.map((item) => ({
         id: item.id,
@@ -278,20 +258,23 @@ describe("atomic structured answer publication", () => {
 
     const saved = readSavedTurnInput();
     const published = readChunks(stream.chunks, "data-answer")[0]?.data;
-    expect(saved.answerDocument).toEqual({
-      citations: [],
-      schemaVersion: 1,
-      statements: [],
-      status: "no_answer",
-    });
-    expect(saved.claims).toEqual([]);
+    expect(saved.answerDocument.citations).toHaveLength(1);
+    expect(saved.answerDocument.statements).toEqual([
+      expect.objectContaining({ content: "Revenue increased." }),
+    ]);
+    expect(saved.claims).toEqual([
+      expect.objectContaining({
+        claim: "Revenue increased.",
+        status: "unsupported",
+      }),
+    ]);
     expect(published?.answerDocument).toEqual(saved.answerDocument);
-    expect(published?.claims).toEqual([]);
-    expect(published?.runDetails?.sourceCount).toBe(0);
-    expect(JSON.stringify(published)).not.toContain("Revenue increased.");
+    expect(published?.claims).toHaveLength(1);
+    expect(published?.runDetails?.sourceCount).toBe(1);
+    expect(JSON.stringify(published)).toContain("Revenue increased.");
   });
 
-  it("verifies and atomically publishes both sides of a genuine conflict", async () => {
+  it("verifies and atomically publishes independently cited opposing findings", async () => {
     const verifiedClaims: string[] = [];
     const verifier = new FakeHhemClient(0.5, async (items) => {
       for (const item of items) {
@@ -304,24 +287,17 @@ describe("atomic structured answer publication", () => {
       }));
     });
     const draft = {
-      conflictGroups: [{
-        explanation: "The same reported revenue cannot both increase and decrease.",
-        positions: [{
-          claim: "Revenue increased.",
+      answer: {
+        content: "The reports describe opposite revenue changes.",
+        evidenceRefs: ["EVID_A", "EVID_B"],
+      },
+      findings: [{
+          content: "Revenue increased.",
           evidenceRefs: ["EVID_A"],
         }, {
-          claim: "Revenue decreased.",
+          content: "Revenue decreased.",
           evidenceRefs: ["EVID_B"],
         }],
-        sharedScope: {
-          conditions: "the same accounting basis",
-          context: "the reporting entity",
-          scope: "the annual report",
-          timePeriod: "the 2025 fiscal year",
-        },
-      }],
-      statements: [],
-      status: "answered",
     };
     const stream = buildWriter();
 
@@ -337,7 +313,7 @@ describe("atomic structured answer publication", () => {
     expect(verifiedClaims).toContain("Revenue increased.");
     expect(verifiedClaims).toContain("Revenue decreased.");
     expect(verifiedClaims).toContain(
-      "The same reported revenue cannot both increase and decrease.",
+      "The reports describe opposite revenue changes.",
     );
     const published = readChunks(stream.chunks, "data-answer")[0]?.data;
     if (published === undefined) {
@@ -345,12 +321,7 @@ describe("atomic structured answer publication", () => {
     }
     expect(published.answerDocument.citations).toHaveLength(2);
     expect(published.answerDocument.statements.map((statement) => statement.section))
-      .toEqual([
-        "conflicting-evidence",
-        "conflicting-evidence",
-        "conflicting-evidence",
-        "conflicting-evidence",
-      ]);
+      .toEqual(["answer", "key-points", "key-points"]);
     expect(published.answerDocument.statements[1]?.citationIds).toEqual([
       published.answerDocument.citations[0]?.id,
     ]);
@@ -562,14 +533,11 @@ function buildAnswerModel(draft: unknown): MockLanguageModelV4 {
 
 function buildAnsweredDraft(evidenceRefs: string[]) {
   return {
-    conflictGroups: [],
-    statements: [{
+    answer: {
       content: "Revenue increased.",
       evidenceRefs,
-      presentation: "paragraph",
-      section: "answer",
-    }],
-    status: "answered",
+    },
+    findings: [],
   };
 }
 

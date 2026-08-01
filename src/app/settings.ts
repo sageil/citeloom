@@ -25,6 +25,7 @@ import type {
   ProviderConnectionConfiguration,
   ProviderCredentialTarget,
   ProviderId,
+  ProviderLanguageFeatureOverrides,
   ProviderModelConnection,
   ProviderModelFeatureOverrides,
   ProviderSettings,
@@ -83,7 +84,6 @@ const runtimeSettingKeySchema = z.enum([
   "expansionDecay",
   "expansionQueryWeight",
   "generationSeedMode",
-  "inferenceThinkingMode",
   "lexicalWeight",
   "maxAttempts",
   "maxDocumentMegabytes",
@@ -197,11 +197,6 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   setting("claimVerifierBaseUrl", "Inference", "Claim verifier base URL", "url", "Where CiteLoom sends citation-support checks."),
   numberSetting("claimVerifierSupportThreshold", "Inference", "Claim support threshold", "How high the model's support score must be before CiteLoom marks a cited claim as supported. The recommended value is 0.50.", 0, 1, 0.01),
   numberSetting("claimVerifierTimeoutSeconds", "Inference", "Claim verifier timeout", "How long CiteLoom waits for a batch of citation-support checks.", 1, 3_600, 1, "seconds"),
-  featureSetting(selectSetting("inferenceThinkingMode", "Inference", "Thinking mode", "Reasoning is disabled by default. Enable it only when the configured models and workload benefit from additional reasoning.", [
-    { label: "Disabled", value: "disabled" },
-    { label: "Enabled", value: "enabled" },
-    { label: "Provider default", value: "auto" },
-  ]), "answer"),
   featureSetting(numberSetting("answerTimeoutSeconds", "Inference", "Answer deadline", "How long CiteLoom waits for one answer-generation request after it receives a model slot.", 1, 3_600, 1, "seconds"), "answer"),
   featureSetting(numberSetting("answerMaximumOutputTokens", "Inference", "Maximum answer tokens", "The largest structured answer CiteLoom may request after budgeting the complete model context.", 1, 262_144, 1, "tokens"), "answer"),
   featureSetting(numberSetting("answerMinimumOutputTokens", "Inference", "Minimum answer reserve", "The minimum output space required before CiteLoom will attempt structured answer generation.", 1, 262_144, 1, "tokens"), "answer"),
@@ -243,8 +238,8 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   ]),
   numberSetting("doclingSecondaryImageScale", "Docling", "Secondary image scale", "How sharp extracted picture images should be. Higher values use more memory.", 0.1, 8, 0.1),
   featureSetting(numberSetting("rerankTimeoutSeconds", "Reranking", "Reranking deadline", "How long CiteLoom waits for one reranking request.", 1, 3_600, 1, "seconds"), "reranking"),
-  featureSetting(numberSetting("rerankDiscoveryMinimumScore", "Reranking", "Semantic discovery minimum", "The lowest provider-specific reranker score that Find Sources accepts as a semantic match.", -1_000, 1_000, 0.01), "reranking"),
-  numberSetting("retrievalCandidates", "Retrieval", "Candidate count", "How many meaning-based and exact-word matches CiteLoom considers before choosing evidence.", 1, 200, 1),
+  featureSetting(numberSetting("rerankDiscoveryMinimumScore", "Reranking", "Find Sources reranker cutoff", "Find Sources hides semantic matches scored below this value by the configured reranker. Higher values show fewer results. Reranker score scales vary by model, so 0.9 does not mean 90 percent confidence. This setting does not affect Ask.", -1_000, 1_000, 0.01), "reranking"),
+  positiveIntegerSetting("retrievalCandidates", "Retrieval", "Candidate count", "The maximum number of meaning-based and exact-word matches CiteLoom considers before final context selection. Candidate count must be at least Answer context count.", "passages"),
   numberSetting("retrievalVariantConcurrency", "Retrieval", "Parallel searches", "How many searches CiteLoom may run at the same time for one original question.", 1, 16, 1),
   numberSetting("queryExpansions", "Retrieval", "Extra search queries (Query Expansion)", "The maximum number of extra search queries the AI may write for each original question.", 0, 4, 1),
   numberSetting("queryExpansionTemperature", "Retrieval", "Extra search query variation", "How much the wording of extra search queries may vary between runs.", 0, 2, 0.01),
@@ -259,7 +254,7 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   numberSetting("expansionQueryWeight", "Retrieval", "Extra search weight", "How strongly the first extra search query influences which evidence comes first.", 0.01, 100, 0.01),
   numberSetting("expansionDecay", "Retrieval", "Later extra search influence", "How much influence each later extra search query keeps.", 0.01, 1, 0.01),
   numberSetting("rrfK", "Retrieval", "Search list balance", "How much CiteLoom favors agreement across search lists over small differences in position.", 1, 1_000, 1),
-  numberSetting("topK", "Retrieval", "Answer context count", "How many of the best document sections are sent to the answer model.", 1, 50, 1),
+  positiveIntegerSetting("topK", "Retrieval", "Answer context count", "The maximum number of selected document sections sent to the answer model. Answer context count cannot exceed Candidate count, and the model context budget may send fewer.", "passages"),
   featureSetting(nullableSetting(
     "sttLanguage",
     "Speech-to-text",
@@ -334,7 +329,6 @@ export const runtimeSettingChangeExamples = {
   claimVerifierBaseUrl: "Point it to http://hhem:8080 when HHEM runs in the Compose network.",
   claimVerifierSupportThreshold: "Raise 0.50 to require stronger evidence, or lower it to mark more borderline claims as supported.",
   claimVerifierTimeoutSeconds: "Raise 120 to 180 if large citation batches time out.",
-  inferenceThinkingMode: "Keep Disabled unless you explicitly want compatible models to spend tokens on reasoning.",
   answerTimeoutSeconds: "Raise 900 to 1200 when a large local model needs more than 15 minutes to answer.",
   answerMaximumOutputTokens: "Set this to the largest answer your configured model and product requirements should permit.",
   answerMinimumOutputTokens: "Set this to the smallest output reserve that can hold a valid structured answer.",
@@ -362,9 +356,9 @@ export const runtimeSettingChangeExamples = {
   doclingTableStructureEnabled: "Turn this off for simple documents. Tables will keep less row and cell detail.",
   doclingTableMode: "Choose Fast to reduce processing time when perfect cell structure matters less.",
   doclingSecondaryImageScale: "Raise 2 to 3 for sharper extracted pictures. Conversions will use more memory.",
-  rerankDiscoveryMinimumScore: "Tune this against evaluations because reranker score scales differ by model.",
+  rerankDiscoveryMinimumScore: "Use 0.9 as a starting point, then tune it against Find Sources results from the configured reranker. Raising it hides more semantic matches. Lowering it shows more. This setting does not affect Ask.",
   rerankTimeoutSeconds: "Raise 300 to 600 if large result sets time out before reranking finishes.",
-  retrievalCandidates: "Higher values may find evidence that would otherwise be missed, but searching and reranking, when enabled, take more work and may be slower, especially during document ingestion. More candidates do not guarantee a better answer.",
+  retrievalCandidates: "Candidate count sets the passage pool available for final context selection and must be at least Answer context count. Higher values may find evidence that would otherwise be missed, but searching and reranking take more work and may be slower. More candidates do not guarantee a better answer.",
   retrievalVariantConcurrency: "Higher values may finish multi-search questions sooner when the database and providers have spare capacity. They also increase work happening at the same time and can compete with document ingestion.",
   queryExpansions: "Higher values allow more extra search queries, which may find evidence under different terms or in separate sections. Each added search creates more work and may slow the question. The model may still return fewer extra searches, including none.",
   queryExpansionTemperature: "Higher values allow more varied extra search query wording, which may uncover different evidence but makes repeated runs less predictable. It does not guarantee better results.",
@@ -376,7 +370,7 @@ export const runtimeSettingChangeExamples = {
   expansionQueryWeight: "Higher values give the first extra search query more influence. This may help when different terminology finds useful evidence, but can move results away from the original question. It does not change search speed.",
   expansionDecay: "Higher values let later extra search queries keep more influence. Lower values keep the original question and earlier searches more dominant. This does not change how many searches run or how long they take.",
   rrfK: "Higher values make small position differences within each search list matter less, so agreement across searches matters more. This does not run more searches or guarantee better results.",
-  topK: "Higher values send more document sections to the answer model. This may improve coverage, but creates a larger request that can be slower and more expensive. Too much unrelated evidence can also make answers less clear.",
+  topK: "Answer context count cannot exceed Candidate count. Higher values allow more selected sections to reach the answer model, but the model context budget may send fewer. Larger requests can be slower and too much unrelated material can make answers less clear.",
   sttLanguage: "Set en to bias recognition toward English.",
   sttPrompt: "Add “CiteLoom, HHEM, Docling” to help the model recognize project names.",
   sttTimeoutSeconds: "Raise 60 to 120 if long recordings time out.",
@@ -1065,6 +1059,17 @@ export function applyProviderSettingsChanges(
           change.capability,
         ).contextCapacityTokensOverride = null;
       }
+      if (
+        change.capability === "answer"
+        || change.capability === "chat"
+        || change.capability === "queryExpansion"
+        || change.capability === "summarization"
+      ) {
+        readMutableLanguageFeatureOverrides(
+          next,
+          change.capability,
+        ).thinkingModeOverride = null;
+      }
       if (change.capability === "textToSpeech") {
         next.featureOverrides.textToSpeech.voiceOverride = null;
       }
@@ -1096,6 +1101,17 @@ function configureApplicationFeature(
       configuration.capability,
     ).contextCapacityTokensOverride =
       configuration.contextCapacityTokensOverride;
+  }
+  if (
+    configuration.capability === "answer"
+    || configuration.capability === "chat"
+    || configuration.capability === "queryExpansion"
+    || configuration.capability === "summarization"
+  ) {
+    readMutableLanguageFeatureOverrides(
+      settings,
+      configuration.capability,
+    ).thinkingModeOverride = configuration.thinkingModeOverride;
   }
   if (configuration.capability === "textToSpeech") {
     settings.featureOverrides.textToSpeech.voiceOverride =
@@ -1132,6 +1148,7 @@ function configureProviderConnection(
     ),
     maximumParallelRequests: configuration.maximumParallelRequests,
     name: configuration.name,
+    thinkingMode: configuration.thinkingMode,
     reranking: configureCapabilityConnection(
       current.reranking,
       configuration.reranking,
@@ -1255,6 +1272,19 @@ function readMutableModelFeatureOverrides(
     | "queryExpansion"
     | "summarization",
 ): ProviderModelFeatureOverrides {
+  if (capability === "chat") {
+    settings.featureOverrides.chat ??= {
+      ...settings.featureOverrides.answer,
+    };
+    return settings.featureOverrides.chat;
+  }
+  return settings.featureOverrides[capability];
+}
+
+function readMutableLanguageFeatureOverrides(
+  settings: ProviderSettings,
+  capability: "answer" | "chat" | "queryExpansion" | "summarization",
+): ProviderLanguageFeatureOverrides {
   if (capability === "chat") {
     settings.featureOverrides.chat ??= {
       ...settings.featureOverrides.answer,

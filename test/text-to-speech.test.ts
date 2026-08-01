@@ -279,7 +279,6 @@ function buildSpeechRequest(content: string): SpeechRequest {
         presentation: "paragraph",
         section: "answer",
       }],
-      status: "answered",
     },
   };
 }

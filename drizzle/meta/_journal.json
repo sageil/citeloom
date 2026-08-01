@@ -29,6 +29,62 @@
       "when": 1785435698455,
       "tag": "0003_melted_pixie",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785518586930,
+      "tag": "0004_dapper_jack_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785529456616,
+      "tag": "0005_remove_legacy_thinking_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785533719137,
+      "tag": "0006_remove_answer_review_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785550052481,
+      "tag": "0007_correct_retrieval_title_signal",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785552480751,
+      "tag": "0008_update_find_sources_reranker_cutoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785558162923,
+      "tag": "0009_unify_retrieval_representations",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785559870691,
+      "tag": "0010_persist_no_answer_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785561000000,
+      "tag": "0011_backfill_chat_no_answer_content",
+      "breakpoints": true
     }
   ]
 }

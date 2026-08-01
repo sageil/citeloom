@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { readAnswerPresentationPolicy } from "./presentation.js";
-
 export const ANSWER_SECTIONS = [
   "answer",
   "key-points",
@@ -70,9 +68,8 @@ interface AnswerModelStatement {
 }
 
 interface AnswerModelResponse {
-  conflictGroups: AnswerDraftConflictGroup[];
-  statements: AnswerModelStatement[];
-  status: "answered" | "no_answer";
+  answer: AnswerModelStatement;
+  findings: AnswerModelStatement[];
 }
 
 interface AnswerSchemaParts {
@@ -88,6 +85,11 @@ interface AnswerStatementFieldSchemas {
 export interface AnswerDraftValidationIssue {
   message: string;
   path: string;
+}
+
+export interface AnswerModelResponseDecodeResult {
+  draft: AnswerDraft;
+  noAnswerContent: string | null;
 }
 
 export class AnswerDraftDecodeError extends Error {
@@ -133,41 +135,35 @@ export function createAnswerModelResponseSchema(
     allowedEvidenceRefs,
   );
   const evidenceReferencesSchema = z.array(evidenceReferenceSchema).min(1);
+  const answerSchema: z.ZodType<AnswerModelStatement> = z.object({
+    content: answerModelContentSchema,
+    evidenceRefs: z.array(evidenceReferenceSchema),
+  }).strict();
   const statementSchema: z.ZodType<AnswerModelStatement> = z.object({
     content: answerModelContentSchema,
     evidenceRefs: evidenceReferencesSchema,
   });
-  const conflictGroups = buildAnswerConflictGroupsSchema(
-    evidenceReferencesSchema,
-    answerModelContentSchema,
-  );
   return z.object({
-    conflictGroups,
-    statements: z.array(statementSchema),
-    status: z.enum(["answered", "no_answer"]),
+    answer: answerSchema,
+    findings: z.array(statementSchema),
   }).strict().superRefine((response, context) => {
-    if (response.status === "no_answer") {
-      if (response.statements.length > 0) {
+    const hasDirectAnswer = hasAnswerText(response.answer.content);
+    const hasAnswerEvidence = response.answer.evidenceRefs.length > 0;
+    if (!hasAnswerEvidence) {
+      if (response.findings.length > 0) {
         context.addIssue({
           code: "custom",
-          message: "A no-answer response must not contain statements.",
-          path: ["statements"],
-        });
-      }
-      if (response.conflictGroups.length > 0) {
-        context.addIssue({
-          code: "custom",
-          message: "A no-answer response must not contain conflict groups.",
-          path: ["conflictGroups"],
+          message: "A response without answer evidence must not contain findings.",
+          path: ["findings"],
         });
       }
       return;
     }
-    if (countAnswerContent(response.statements, response.conflictGroups) === 0) {
+    if (!hasDirectAnswer) {
       context.addIssue({
         code: "custom",
-        message: "An answered draft must contain a statement or conflict group.",
-        path: ["statements"],
+        message: "A cited direct answer must contain plain-text content.",
+        path: ["answer", "content"],
       });
     }
   });
@@ -320,6 +316,13 @@ export function decodeAnswerModelResponse(
   value: unknown,
   allowedEvidenceRefs: readonly EvidenceReference[],
 ): AnswerDraft {
+  return decodeAnswerModelResponseResult(value, allowedEvidenceRefs).draft;
+}
+
+export function decodeAnswerModelResponseResult(
+  value: unknown,
+  allowedEvidenceRefs: readonly EvidenceReference[],
+): AnswerModelResponseDecodeResult {
   const modelResult = createAnswerModelResponseSchema(
     allowedEvidenceRefs,
   ).safeParse(value);
@@ -331,96 +334,60 @@ export function decodeAnswerModelResponse(
       allowedEvidenceRefs,
     );
   }
-  if (modelResult.data.status === "no_answer") {
-    return { status: "no_answer" };
+  if (modelResult.data.answer.evidenceRefs.length === 0) {
+    return {
+      draft: { status: "no_answer" },
+      noAnswerContent: readNormalizedModelText(
+        modelResult.data.answer.content,
+      ),
+    };
   }
 
   const normalized = structuredClone(modelResult.data);
-  const normalizedStatements: AnswerModelStatement[] = [];
-  for (const statement of normalized.statements) {
-    const content = readNormalizedModelText(statement.content);
-    if (content === null) {
-      continue;
-    }
-    normalizedStatements.push({
-      content,
-      evidenceRefs: uniqueEvidenceReferences(statement.evidenceRefs),
-    });
-  }
-  const conflictGroups: AnswerDraftConflictGroup[] = [];
-  for (const group of normalized.conflictGroups) {
-    group.explanation = normalizeAnswerModelText(group.explanation);
-    group.sharedScope.conditions = normalizeAnswerModelText(group.sharedScope.conditions);
-    group.sharedScope.context = normalizeAnswerModelText(group.sharedScope.context);
-    group.sharedScope.scope = normalizeAnswerModelText(group.sharedScope.scope);
-    group.sharedScope.timePeriod = normalizeAnswerModelText(group.sharedScope.timePeriod);
-    for (const position of group.positions) {
-      position.claim = normalizeAnswerModelText(position.claim);
-      position.evidenceRefs = uniqueEvidenceReferences(position.evidenceRefs);
-    }
-    if (hasInvalidNormalizedConflictGroup(group)) {
-      continue;
-    }
-    conflictGroups.push(group);
-  }
-  if (countAnswerContent(normalizedStatements, conflictGroups) === 0) {
+  const answerContent = readNormalizedModelText(normalized.answer.content);
+  if (answerContent === null) {
     throw new AnswerDraftDecodeError(
-      "Invalid answer model response: no valid answer content remained.",
+      "Invalid answer model response: no valid direct answer remained.",
       "invalid-content",
       [{
-        message: "An answered response must contain valid plain-text answer content.",
-        path: "statements",
+        message: "An answered response must contain a valid plain-text direct answer.",
+        path: "answer.content",
       }],
       0,
     );
   }
-  const statements: AnswerDraftStatement[] = [];
-  if (normalizedStatements.length > 0) {
-    const presentationPolicy = readAnswerPresentationPolicy(
-      normalizedStatements.length,
-    );
-    for (const statement of normalizedStatements) {
-      statements.push({
-        ...statement,
-        presentation: presentationPolicy.presentation,
-        section: presentationPolicy.section,
-      });
+  const normalizedFindings: AnswerModelStatement[] = [];
+  for (const finding of normalized.findings) {
+    const content = readNormalizedModelText(finding.content);
+    if (content === null) {
+      continue;
     }
+    normalizedFindings.push({
+      content,
+      evidenceRefs: uniqueEvidenceReferences(finding.evidenceRefs),
+    });
+  }
+  const statements: AnswerDraftStatement[] = [{
+    content: answerContent,
+    evidenceRefs: uniqueEvidenceReferences(normalized.answer.evidenceRefs),
+    presentation: "paragraph",
+    section: "answer",
+  }];
+  for (const finding of normalizedFindings) {
+    statements.push({
+      ...finding,
+      presentation: "bullet",
+      section: "key-points",
+    });
   }
   return {
-    conflictGroups,
-    statements,
-    status: "answered",
+    draft: {
+      conflictGroups: [],
+      statements,
+      status: "answered",
+    },
+    noAnswerContent: null,
   };
-}
-
-function hasInvalidNormalizedConflictGroup(
-  group: AnswerDraftConflictGroup,
-): boolean {
-  const groupText = [
-    group.explanation,
-    group.sharedScope.conditions,
-    group.sharedScope.context,
-    group.sharedScope.scope,
-    group.sharedScope.timePeriod,
-  ];
-  for (const value of groupText) {
-    if (!hasAnswerText(value)) {
-      return true;
-    }
-  }
-  const claims = new Set<string>();
-  for (const position of group.positions) {
-    if (!hasAnswerText(position.claim)) {
-      return true;
-    }
-    const claim = position.claim.toLocaleLowerCase();
-    if (claims.has(claim)) {
-      return true;
-    }
-    claims.add(claim);
-  }
-  return false;
 }
 
 function readNormalizedModelText(value: string): string | null {
@@ -569,9 +536,19 @@ function countUnknownEvidenceReferences(
   }
   let count = 0;
   const response = value as {
+    answer?: unknown;
     conflictGroups?: unknown;
+    findings?: unknown;
     statements?: unknown;
   };
+  count += countUnknownAnswerPointReferences(
+    response.answer,
+    allowedEvidenceRefs,
+  );
+  count += countUnknownStatementReferences(
+    response.findings,
+    allowedEvidenceRefs,
+  );
   count += countUnknownStatementReferences(
     response.statements,
     allowedEvidenceRefs,
@@ -592,6 +569,17 @@ function countUnknownEvidenceReferences(
   return count;
 }
 
+function countUnknownAnswerPointReferences(
+  value: unknown,
+  allowedEvidenceRefs: ReadonlySet<EvidenceReference>,
+): number {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return 0;
+  }
+  const evidenceRefs = (value as { evidenceRefs?: unknown }).evidenceRefs;
+  return countUnknownReferenceValues(evidenceRefs, allowedEvidenceRefs);
+}
+
 function countUnknownStatementReferences(
   value: unknown,
   allowedEvidenceRefs: ReadonlySet<EvidenceReference>,
@@ -609,16 +597,25 @@ function countUnknownStatementReferences(
       continue;
     }
     const evidenceRefs = (statement as { evidenceRefs?: unknown }).evidenceRefs;
-    if (!Array.isArray(evidenceRefs)) {
-      continue;
-    }
-    for (const evidenceRef of evidenceRefs) {
-      if (
-        typeof evidenceRef === "string"
-        && !allowedEvidenceRefs.has(evidenceRef)
-      ) {
-        count += 1;
-      }
+    count += countUnknownReferenceValues(evidenceRefs, allowedEvidenceRefs);
+  }
+  return count;
+}
+
+function countUnknownReferenceValues(
+  value: unknown,
+  allowedEvidenceRefs: ReadonlySet<EvidenceReference>,
+): number {
+  if (!Array.isArray(value)) {
+    return 0;
+  }
+  let count = 0;
+  for (const evidenceRef of value) {
+    if (
+      typeof evidenceRef === "string"
+      && !allowedEvidenceRefs.has(evidenceRef)
+    ) {
+      count += 1;
     }
   }
   return count;

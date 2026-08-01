@@ -34,6 +34,8 @@ import type { MatchedDocument } from "../retrieval/document-retrieval.js";
 import {
   publishedAnswerDocumentSchema,
   decodePublishedAnswerDocument,
+  isPublishedAnsweredDocument,
+  isPublishedNoAnswerDocument,
   readPublishedAnswerClaims,
   renderPublishedAnswerMarkdown,
   type PublishedAnswerCitation,
@@ -138,6 +140,7 @@ const retrievalTraceOrderedSourcesSchema = z.array(z.object({
         "table-description",
         "image-description",
       ]),
+      routingType: z.enum(["document-title", "section-outline"]).optional(),
     }).strict()).min(1),
     retrievalWindowId: contentIdSchema,
     sourceFile: z.string().min(1),
@@ -282,6 +285,7 @@ const turnRowSchema = z.object({
   answerSchemaVersion: z.literal(1),
   completedAt: z.date(),
   id: z.uuid(),
+  noAnswerContent: z.string().trim().min(1).nullable(),
   outputState: z.literal("published"),
   question: z.string().min(1),
   retrievedContext: z.array(z.object({
@@ -472,7 +476,7 @@ export class ResearchStore {
   ): Promise<ResearchTurn> {
     abortSignal.throwIfAborted();
     const normalized = decodeSaveResearchTurnInput(input);
-    const citations = normalized.answerDocument.citations;
+    const citations = [...normalized.answerDocument.citations];
     const citationElementSetIds = await this.validateCitationAnchors(citations);
     abortSignal.throwIfAborted();
     const reproducibility = await this.readReproducibility(
@@ -502,6 +506,9 @@ export class ResearchStore {
         answerSchemaVersion: normalized.answerDocument.schemaVersion,
         completedAt: normalized.completedAt,
         id: turnId,
+        noAnswerContent: isPublishedNoAnswerDocument(normalized.answerDocument)
+          ? normalized.answerDocument.content
+          : null,
         outputState: "building",
         question: normalized.question,
         retrievedContext: [...normalized.retrievedContext],
@@ -543,7 +550,7 @@ export class ResearchStore {
         }));
         for (let index = 0; index < normalized.claims.length; index += 1) {
           const claim = normalized.claims[index];
-          const statement = normalized.answerDocument.status === "answered"
+          const statement = isPublishedAnsweredDocument(normalized.answerDocument)
             ? normalized.answerDocument.statements[index]
             : undefined;
           const claimId = claimIds[index];
@@ -1237,7 +1244,7 @@ function decodeSaveResearchTurnInput(input: SaveResearchTurnInput): SaveResearch
 function normalizePublishedAnswerDocument(
   document: PublishedAnswerDocument,
 ): PublishedAnswerDocument {
-  if (document.status === "no_answer") {
+  if (isPublishedNoAnswerDocument(document)) {
     return document;
   }
   const citations = [...document.citations];
@@ -1287,28 +1294,7 @@ function validateTurnCollections(
         );
       }
     }
-    if (claim.evidenceUnits.length !== claim.citationNumbers.length) {
-      throw new Error(
-        `Claim ${claim.claimIndex} verification evidence does not match its citations.`,
-      );
-    }
-    for (
-      let evidenceIndex = 0;
-      evidenceIndex < claim.evidenceUnits.length;
-      evidenceIndex += 1
-    ) {
-      const evidenceUnit = claim.evidenceUnits[evidenceIndex];
-      const citationNumber = claim.citationNumbers[evidenceIndex];
-      if (
-        evidenceUnit === undefined
-        || citationNumber === undefined
-        || evidenceUnit.citationNumber !== citationNumber
-      ) {
-        throw new Error(
-          `Claim ${claim.claimIndex} verification evidence is out of order.`,
-        );
-      }
-    }
+    validateVerificationEvidence(claim, "Claim");
     const expectedClaim = expectedClaims[claim.claimIndex];
     if (
       expectedClaim === undefined
@@ -1318,6 +1304,34 @@ function validateTurnCollections(
       throw new Error(`Claim ${claim.claimIndex} does not match its published statement.`);
     }
     claimIndexes.add(claim.claimIndex);
+  }
+}
+
+function validateVerificationEvidence(
+  verification: ClaimVerificationResult,
+  label: "Claim",
+): void {
+  if (verification.evidenceUnits.length !== verification.citationNumbers.length) {
+    throw new Error(
+      `${label} ${verification.claimIndex} verification evidence does not match its citations.`,
+    );
+  }
+  for (
+    let evidenceIndex = 0;
+    evidenceIndex < verification.evidenceUnits.length;
+    evidenceIndex += 1
+  ) {
+    const evidenceUnit = verification.evidenceUnits[evidenceIndex];
+    const citationNumber = verification.citationNumbers[evidenceIndex];
+    if (
+      evidenceUnit === undefined
+      || citationNumber === undefined
+      || evidenceUnit.citationNumber !== citationNumber
+    ) {
+      throw new Error(
+        `${label} ${verification.claimIndex} verification evidence is out of order.`,
+      );
+    }
   }
 }
 
@@ -1501,35 +1515,14 @@ function buildPersistedTurnOutput(
   answerDocument: PublishedAnswerDocument;
   claims: StoredClaimCheck[];
 } {
-  if (statementRows.length === 0 && citationRows.length === 0) {
-    if (statementCitationRows.length > 0) {
-      throw new Error(`No-answer turn ${turn.id} contains statement citations.`);
-    }
-    return {
-      answerDocument: decodePublishedAnswerDocument({
-        citations: [],
-        schemaVersion: turn.answerSchemaVersion,
-        statements: [],
-        status: "no_answer",
-      }),
-      claims: [],
-    };
-  }
-  if (statementRows.length === 0 || citationRows.length === 0) {
-    throw new Error(`Answered turn ${turn.id} has incomplete persisted output.`);
-  }
-
-  const publishedCitations: PublishedAnswerCitation[] = [];
   const citationById = new Map<string, z.output<typeof citationRowSchema>>();
   for (let index = 0; index < citationRows.length; index += 1) {
     const citation = citationRows[index];
     if (citation === undefined || citation.citationNumber !== index + 1) {
       throw new Error(`Turn ${turn.id} has non-contiguous citation numbers.`);
     }
-    publishedCitations.push(toPublishedCitation(citation));
     citationById.set(citation.id, citation);
   }
-
   const linksByStatement = new Map<
     string,
     Array<z.output<typeof statementCitationRowSchema>>
@@ -1539,13 +1532,66 @@ function buildPersistedTurnOutput(
     current.push(link);
     linksByStatement.set(link.statementId, current);
   }
+  const published = buildPersistedStatementCollections(
+    turn.id,
+    statementRows,
+    linksByStatement,
+    citationById,
+  );
+  const publishedCitations: PublishedAnswerCitation[] = [];
+  for (const citationRow of citationRows) {
+    const citation = toPublishedCitation(citationRow);
+    if (citation.citationNumber !== publishedCitations.length + 1) {
+      throw new Error(`Turn ${turn.id} has non-contiguous published citations.`);
+    }
+    publishedCitations.push(citation);
+  }
+  let answerDocument: PublishedAnswerDocument;
+  if (published.statements.length === 0) {
+    if (turn.noAnswerContent === null) {
+      throw new Error(`No-answer turn ${turn.id} has no persisted content.`);
+    }
+    answerDocument = decodePublishedAnswerDocument({
+      citations: [],
+      content: turn.noAnswerContent,
+      schemaVersion: turn.answerSchemaVersion,
+      statements: [],
+    });
+  } else {
+    if (turn.noAnswerContent !== null) {
+      throw new Error(`Answered turn ${turn.id} contains no-answer content.`);
+    }
+    answerDocument = decodePublishedAnswerDocument({
+      citations: publishedCitations,
+      schemaVersion: turn.answerSchemaVersion,
+      statements: published.statements,
+    });
+  }
+  validateTurnCollections(answerDocument, published.claims);
+  return {
+    answerDocument,
+    claims: published.claims,
+  };
+}
 
-  const publishedStatements: PublishedAnswerStatement[] = [];
+function buildPersistedStatementCollections(
+  turnId: string,
+  rows: readonly z.output<typeof statementRowSchema>[],
+  linksByStatement: ReadonlyMap<
+    string,
+    Array<z.output<typeof statementCitationRowSchema>>
+  >,
+  citationById: ReadonlyMap<string, z.output<typeof citationRowSchema>>,
+): {
+  claims: StoredClaimCheck[];
+  statements: PublishedAnswerStatement[];
+} {
+  const statements: PublishedAnswerStatement[] = [];
   const claims: StoredClaimCheck[] = [];
-  for (let index = 0; index < statementRows.length; index += 1) {
-    const statement = statementRows[index];
+  for (let index = 0; index < rows.length; index += 1) {
+    const statement = rows[index];
     if (statement === undefined || statement.statementIndex !== index) {
-      throw new Error(`Turn ${turn.id} has non-contiguous statement indexes.`);
+      throw new Error(`Turn ${turnId} has non-contiguous statement indexes.`);
     }
     const links = linksByStatement.get(statement.id) ?? [];
     if (links.length === 0) {
@@ -1575,7 +1621,7 @@ function buildPersistedTurnOutput(
         unitId: link.unitId,
       });
     }
-    publishedStatements.push({
+    statements.push({
       citationIds,
       content: statement.content,
       presentation: statement.presentation,
@@ -1594,18 +1640,7 @@ function buildPersistedTurnOutput(
       verifierModel: statement.verifierModel,
     });
   }
-
-  const answerDocument = decodePublishedAnswerDocument({
-    citations: publishedCitations,
-    schemaVersion: turn.answerSchemaVersion,
-    statements: publishedStatements,
-    status: "answered",
-  });
-  validateTurnCollections(answerDocument, claims);
-  return {
-    answerDocument,
-    claims,
-  };
+  return { claims, statements };
 }
 
 function buildStoredCitations(

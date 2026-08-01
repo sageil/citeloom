@@ -655,7 +655,7 @@ describe("web server boundary", () => {
         },
         embeddingSpace: {
           dimensions: 768,
-          id: "embedding-model:plain:768:window-87caf59d17b4baa5",
+          id: "embedding-model:plain:768:window-87caf59d17b4baa5:representations-v2",
           model: "embedding-model",
           retrievalWindowPolicyFingerprint:
             "87caf59d17b4baa5dfa11a48876e2113061ed943b23827a515384c2f5b35120f",
@@ -1512,9 +1512,9 @@ describe("web server boundary", () => {
     const audioBytes = Buffer.from("RIFF speech audio");
     const answerDocument = {
       citations: [] as [],
+      content: "The supplied source material does not answer this question.",
       schemaVersion: 1 as const,
       statements: [] as [],
-      status: "no_answer" as const,
     };
     const generateSpeech = vi.fn<RuntimeWebServices["generateSpeech"]>(async () => ({
       audio: Readable.from([audioBytes]),
@@ -1561,9 +1561,9 @@ describe("web server boundary", () => {
         payload: {
           answerDocument: {
             citations: [],
+            content: "The supplied source material does not answer this question.",
             schemaVersion: 2,
             statements: [],
-            status: "no_answer",
           },
         },
         url: "/api/speech",
@@ -1592,9 +1592,9 @@ describe("web server boundary", () => {
         payload: {
           answerDocument: {
             citations: [],
+            content: "The supplied source material does not answer this question.",
             schemaVersion: 1,
             statements: [],
-            status: "no_answer",
           },
         },
         url: "/api/speech",
@@ -2976,7 +2976,6 @@ function createAnswerStream(
               presentation: "paragraph",
               section: "answer",
             }],
-            status: "answered",
           },
           claims: [],
           matchedDocuments: [],

@@ -16,7 +16,7 @@ import type { RetrievedElement } from "../retrieval/document-retrieval.js";
 import {
   createNoAnswerDocument,
   decodePublishedAnswerDocument,
-  NO_ANSWER_TEXT,
+  isPublishedNoAnswerDocument,
   type PublishedAnswerCitation,
   type PublishedAnswerDocument,
   type PublishedAnswerStatement,
@@ -30,6 +30,8 @@ import type { RetrievalSourceElement } from "../domain/source-elements.js";
 export {
   createNoAnswerDocument,
   decodePublishedAnswerDocument,
+  isPublishedAnsweredDocument,
+  isPublishedNoAnswerDocument,
   NO_ANSWER_TEXT,
   publishedAnswerCitationSchema,
   publishedAnswerDocumentSchema,
@@ -133,7 +135,6 @@ export function compileAnswerDraft(
     citations,
     schemaVersion: 1,
     statements,
-    status: "answered",
   });
 }
 
@@ -406,7 +407,7 @@ function createRetrievedElementKey(item: RetrievedElement): string {
 export function readPublishedAnswerClaims(
   document: PublishedAnswerDocument,
 ): AnswerClaim[] {
-  if (document.status === "no_answer") {
+  if (isPublishedNoAnswerDocument(document)) {
     return [];
   }
   const citationNumberById = new Map<string, number>();
@@ -439,8 +440,8 @@ export function readPublishedAnswerClaims(
 export function renderPublishedAnswerMarkdown(
   document: PublishedAnswerDocument,
 ): string {
-  if (document.status === "no_answer") {
-    return NO_ANSWER_TEXT;
+  if (isPublishedNoAnswerDocument(document)) {
+    return document.content;
   }
   const citationNumberById = createCitationNumberById(document.citations);
   const lines: string[] = [];
@@ -476,8 +477,8 @@ export function renderPublishedAnswerMarkdown(
 export function renderPublishedAnswerSpeech(
   document: PublishedAnswerDocument,
 ): string {
-  if (document.status === "no_answer") {
-    return NO_ANSWER_TEXT;
+  if (isPublishedNoAnswerDocument(document)) {
+    return document.content;
   }
   const citationNumberById = createCitationNumberById(document.citations);
   const lines: string[] = [];

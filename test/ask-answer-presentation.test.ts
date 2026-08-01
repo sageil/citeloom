@@ -35,7 +35,6 @@ describe("ask answer presentation", () => {
         presentation: "paragraph",
         section: "answer",
       }],
-      status: "answered",
     };
 
     const answer = readAnswerPresentation(

@@ -241,7 +241,10 @@ Settings reports when the selected configuration has no indexed documents.
 
 Retrieval settings control the search process.
 They set how many passages CiteLoom considers, how it expands a question, how it combines meaning-based and keyword results, whether it reranks them, and how many passages reach the answer model.
-Set Candidate count (`retrievalCandidates`) at least as high as Answer context count (`topK`).
+Candidate count (`retrievalCandidates`) is the maximum passage pool available for final context selection.
+Answer context count (`topK`) is the maximum number of selected passages that can reach the answer model.
+Candidate count must be at least as high as Answer context count, and the model context budget may send fewer passages than Answer context count.
+Neither setting has an arbitrary application maximum, but higher values increase retrieval, reranking, memory, and prompt work.
 
 ### Optional reranking
 
@@ -250,10 +253,12 @@ Reranking can improve answer and citation accuracy by moving more relevant evide
 When reranking is enabled, CiteLoom sends the resulting candidate passages and original question to a specialized relevance model, reorders the candidates by its scores, and passes the best `topK` passages to the answer model.
 A remote reranking provider adds inference cost.
 
-Semantic discovery minimum (`rerankDiscoveryMinimumScore`) hides lower-scoring semantic results in Find Sources after reranking.
+Find Sources reranker cutoff (`rerankDiscoveryMinimumScore`) defaults to `0.9` and hides semantic results that score below the configured value after reranking.
 Calibrate this value for the configured reranker because different providers use different score scales.
-Reranker scores control result order and Find Sources filtering.
-Answer publication continues through structured generation, citation validation, and independent HHEM claim-support verification.
+The value is not a percentage or confidence probability.
+It affects Find Sources filtering but does not remove evidence from Ask.
+Answer publication continues through structured generation and citation validation.
+HHEM claim-support checks are advisory metadata and never remove or alter answer content or citations.
 
 Adjust live retrieval behavior in Settings.
 Use the [evaluation workflow](evaluation.md) to calibrate discovery thresholds and other tuned values.

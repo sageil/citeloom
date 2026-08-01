@@ -155,6 +155,7 @@ describe("provider profiles", () => {
     providers.featureOverrides.answer = {
       contextCapacityTokensOverride: 65_536,
       modelOverride: "answer-override",
+      thinkingModeOverride: null,
     };
     providers.featureOverrides.embedding = {
       contextCapacityTokensOverride: 4_096,
@@ -184,6 +185,29 @@ describe("provider profiles", () => {
       contextCapacityTokens: 32_768,
       model: "vision-model",
     });
+  });
+
+  it("inherits provider thinking mode unless a language feature overrides it", () => {
+    const runtimeSettings = createTestRuntimeSettings();
+    const providers = createTestProviderSettings();
+    providers.connections.lmstudio.thinkingMode = "enabled";
+    providers.featureOverrides.summarization.thinkingModeOverride = "disabled";
+    const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
+
+    const config = buildAppConfig(
+      startup.database,
+      runtimeSettings,
+      1,
+      providers,
+      startup.doclingServices,
+      startup.sourceContent,
+      TEST_EMBEDDING_INPUT_FORMAT,
+    );
+
+    expect(config.inference.answer.thinkingMode).toBe("enabled");
+    expect(config.inference.chat.thinkingMode).toBe("enabled");
+    expect(config.inference.queryExpansion.thinkingMode).toBe("enabled");
+    expect(config.inference.summary.thinkingMode).toBe("disabled");
   });
 
   it("switches text-to-speech by route while retaining both connections", () => {

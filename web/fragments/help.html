@@ -198,6 +198,11 @@
             </ul>
             <p>For a complete answer, ask a complete question instead of entering one broad term.</p>
             <p>Use Find Sources first for queries such as <code>termination</code>, <code>arthritis</code>, or <code>data retention</code>.</p>
+            <h3>Answer retrieval limits</h3>
+            <p>Administrators can change <strong>Candidate count</strong> and <strong>Answer context count</strong> under Retrieval in Settings.</p>
+            <p>Candidate count controls the maximum passage pool considered before final context selection, while Answer context count controls the maximum selected passages sent to the answer model.</p>
+            <p>Candidate count must be at least as high as Answer context count.</p>
+            <p>The model context budget may send fewer passages than Answer context count when the complete request would otherwise be too large.</p>
           </div>
         </section>
 
@@ -229,6 +234,13 @@
             </ul>
             <p><strong>Keyword match</strong> means the passage contains words from your search.</p>
             <p><strong>Semantic match</strong> means the passage appears related in meaning even if it does not contain those words.</p>
+            <h3>Find Sources reranker cutoff</h3>
+            <p>When reranking is enabled, Find Sources hides semantic matches whose reranker score is below the configured cutoff.</p>
+            <p>A higher value shows fewer semantic matches, while a lower value shows more.</p>
+            <p>The default is <code>0.9</code>, but reranker models use different scoring scales.</p>
+            <p>A score of <code>0.9</code> does not mean 90 percent confidence, and the same value can behave differently with another reranker model.</p>
+            <p>This setting affects Find Sources only and does not remove evidence from Ask.</p>
+            <p>Administrators can change it in <strong>Settings → Features → Reranking → Show advanced settings</strong>.</p>
           </div>
         </section>
 

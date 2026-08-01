@@ -14,6 +14,11 @@ export interface RetrievedElementProvenance {
 }
 
 export interface RetrievedElement {
+  adjacentContext?: {
+    following: string | null;
+    preceding: string | null;
+    retrievalWindowIds: string[];
+  };
   distance: number | null;
   documentVersionId: string;
   element: RetrievalSourceElement;
@@ -77,15 +82,15 @@ export function selectNonOverlappingCandidatesWithTrace(
   validateLimit(limit);
   const representatives: FusedCandidate[] = [];
   const representativeByCandidate = new Map<FusedCandidate, FusedCandidate>();
+  const representativeByEvidence = new Map<string, FusedCandidate>();
   for (const candidate of rankedCandidates) {
-    const representative = findOverlappingRepresentative(
-      representatives,
-      candidate,
-    );
-    if (representative !== null) {
+    const evidenceKey = createCandidateEvidenceKey(candidate);
+    const representative = representativeByEvidence.get(evidenceKey);
+    if (representative !== undefined) {
       representativeByCandidate.set(candidate, representative);
       continue;
     }
+    representativeByEvidence.set(evidenceKey, candidate);
     representativeByCandidate.set(candidate, candidate);
     representatives.push(candidate);
   }
@@ -137,46 +142,6 @@ export function selectNonOverlappingCandidatesWithTrace(
     decisions,
     selected,
   };
-}
-
-function findOverlappingRepresentative(
-  representatives: readonly FusedCandidate[],
-  candidate: FusedCandidate,
-): FusedCandidate | null {
-  for (const representative of representatives) {
-    if (
-      representative.documentId !== candidate.documentId
-      || representative.sourceFile !== candidate.sourceFile
-    ) {
-      continue;
-    }
-    if (
-      evidenceSubstantiallyOverlaps(
-        representative.evidenceContent,
-        candidate.evidenceContent,
-      )
-    ) {
-      return representative;
-    }
-  }
-  return null;
-}
-
-export function evidenceSubstantiallyOverlaps(
-  left: string,
-  right: string,
-): boolean {
-  const normalizedLeft = normalizeEvidence(left);
-  const normalizedRight = normalizeEvidence(right);
-  if (normalizedLeft === "" || normalizedRight === "") {
-    return normalizedLeft === normalizedRight;
-  }
-  return normalizedLeft.includes(normalizedRight)
-    || normalizedRight.includes(normalizedLeft);
-}
-
-function normalizeEvidence(value: string): string {
-  return value.trim().replace(/\s+/gu, " ").toLocaleLowerCase();
 }
 
 interface CandidateGroup {
@@ -236,18 +201,13 @@ export function selectSourceDiverseElements(
   limit: number,
 ): RetrievedElement[] {
   const uniqueElements: RetrievedElement[] = [];
+  const evidenceIdentities = new Set<string>();
   for (const item of rankedElements) {
-    const duplicate = uniqueElements.some((existing) => {
-      return existing.element.documentId === item.element.documentId
-        && existing.element.sourceFile === item.element.sourceFile
-        && evidenceSubstantiallyOverlaps(
-          existing.evidenceContent,
-          item.evidenceContent,
-        );
-    });
-    if (duplicate) {
+    const identity = createRetrievedEvidenceKey(item);
+    if (evidenceIdentities.has(identity)) {
       continue;
     }
+    evidenceIdentities.add(identity);
     uniqueElements.push(item);
   }
   return selectSourceDiverseItems(
@@ -356,6 +316,22 @@ function groupCandidatesByDocument(
 
 function createDocumentKey(documentId: string, sourceFile: string): string {
   return `${documentId}\u0000${sourceFile}`;
+}
+
+function createCandidateEvidenceKey(candidate: FusedCandidate): string {
+  return [
+    candidate.documentId,
+    candidate.sourceFile,
+    candidate.retrievalId,
+  ].join("\u0000");
+}
+
+function createRetrievedEvidenceKey(item: RetrievedElement): string {
+  return [
+    item.element.documentId,
+    item.element.sourceFile,
+    item.provenance.retrievalWindowId,
+  ].join("\u0000");
 }
 
 function validateLimit(limit: number): void {

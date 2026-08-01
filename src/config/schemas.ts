@@ -98,7 +98,6 @@ export const runtimeSettingsSchema = z.object({
   embeddingTimeoutSeconds: z.number().int().min(1).max(86_400),
   expansionDecay: z.number().positive().max(1),
   expansionQueryWeight: z.number().positive().max(100),
-  inferenceThinkingMode: z.enum(["auto", "disabled", "enabled"]),
   lexicalWeight: z.number().positive().max(100),
   maxAttempts: z.number().int().min(1).max(20),
   maxDocumentMegabytes: z.number().int().min(1).max(100),
@@ -109,7 +108,7 @@ export const runtimeSettingsSchema = z.object({
   generationSeedMode: z.enum(["random", "stable"]),
   rerankDiscoveryMinimumScore: z.number().min(-1_000).max(1_000),
   rerankTimeoutSeconds: z.number().int().min(1).max(3_600),
-  retrievalCandidates: z.number().int().min(1).max(200),
+  retrievalCandidates: z.number().int().min(1),
   retrievalChunkTargetTokens: z.number().int().positive(),
   retrievalVariantConcurrency: z.number().int().min(1).max(16),
   retrievalWindowPolicy: z.literal("structured-token-v3"),
@@ -121,7 +120,7 @@ export const runtimeSettingsSchema = z.object({
   sttMaxAudioMegabytes: z.number().int().min(1).max(25),
   sttPrompt: z.string().trim().max(2_000).nullable(),
   sttTimeoutSeconds: z.number().int().min(1).max(300),
-  topK: z.number().int().min(1).max(50),
+  topK: z.number().int().min(1),
   ttsPreloadEnabled: z.boolean(),
   ttsSpeed: z.number().min(0.25).max(5),
   ttsTimeoutSeconds: z.number().int().min(1).max(300),
@@ -138,7 +137,7 @@ export const runtimeSettingsSchema = z.object({
   if (settings.retrievalCandidates < settings.topK) {
     context.addIssue({
       code: "custom",
-      message: "must be greater than or equal to topK",
+      message: "Candidate count must be greater than or equal to Answer context count",
       path: ["retrievalCandidates"],
     });
   }

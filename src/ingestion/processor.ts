@@ -81,6 +81,7 @@ import {
 import { readInferenceErrorMessage } from "../inference/error.js";
 import {
   embedDocumentInputs,
+  embedDocumentTexts,
   type DocumentEmbeddingInput,
 } from "../embedding/inference.js";
 import {
@@ -102,6 +103,8 @@ import {
 } from "../retrieval/windows.js";
 import {
   addContextToImageRetrievalRepresentations,
+  blendRetrievalEmbeddingsWithDocumentTitle,
+  buildDocumentTitleEmbeddingContent,
   createRetrievalRepresentations,
   linkRetrievalRepresentationNeighbors,
   splitRetrievalRepresentationAtTokenLimit,
@@ -909,9 +912,22 @@ export class IngestionProcessor {
       this.config.embeddingSpace,
       generation,
     );
+    let titleEmbedding: number[] | null = null;
     let position = manifest.nextElementPosition;
     while (position < elementSet.elementCount) {
       abortSignal.throwIfAborted();
+      if (titleEmbedding === null) {
+        const titleEmbeddings = await embedDocumentTexts(
+          this.models,
+          [buildDocumentTitleEmbeddingContent(job.sourceFile)],
+          this.embeddingScheduler,
+          abortSignal,
+        );
+        titleEmbedding = titleEmbeddings[0] ?? null;
+        if (titleEmbedding === null) {
+          throw new Error(`Missing document title embedding for ${job.sourceFile}.`);
+        }
+      }
       const batch = await this.readIndexingBatch(
         elementSetId,
         position,
@@ -975,7 +991,10 @@ export class IngestionProcessor {
       const finalRepresentations = linkRetrievalRepresentationNeighbors(
         embedded.map((result) => result.source),
       );
-      const embeddings = embedded.map((result) => result.embedding);
+      const embeddings = blendRetrievalEmbeddingsWithDocumentTitle(
+        embedded.map((result) => result.embedding),
+        titleEmbedding,
+      );
       abortSignal.throwIfAborted();
       await stageRetrievalRepresentationBatch(
         this.database,

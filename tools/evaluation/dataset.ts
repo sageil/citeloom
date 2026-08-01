@@ -216,7 +216,7 @@ const benchmarkEvaluationCaseSchema = baseEvaluationCaseSchema.extend({
 
 const benchmarkEvaluationDatasetSchema = z.object({
   access: evaluationAccessSchema,
-  atK: z.number().int().min(1).max(50).default(10),
+  atK: z.number().int().min(1).default(10),
   cases: z.array(benchmarkEvaluationCaseSchema).min(1),
   corpus: evaluationCorpusProvenanceSchema.optional(),
   name: evaluationStableNameSchema,
