@@ -165,6 +165,8 @@ It saves the task ID so another worker can resume the same task after an interru
 Each Docling instance reads the source directly from the same read-only content store.
 If the original Docling instance no longer recognizes a saved task, the worker clears that task checkpoint and submits the same unchanged source again.
 Completed checkpoints remain available when the worker schedules a retry.
+When document TOC routing is enabled, the indexing phase builds a bounded navigation map from Docling section paths and maps every retained entry to exact retrieval-window IDs.
+The map is staged under the same generation as the vectors and lexical rows, validated before atomic publication, and removed with obsolete retrieval generations.
 
 Source deletion is recorded in PostgreSQL before the local file is removed.
 The worker retries pending deletions after a restart, and the same per-hash database lock serializes publication with deletion.
@@ -174,8 +176,12 @@ This prevents cleanup from removing a file while its job is being created and li
 ## Question answering
 
 Before searching, CiteLoom resolves the exact set of documents selected for the question.
-It searches the original question and generated query variations with both meaning-based retrieval and BM25 keyword retrieval.
+It always searches the original question with both meaning-based retrieval and BM25 keyword retrieval.
+When extra search queries are enabled, it also searches the generated query variations through those same retrieval paths.
+At a configured count of 0, CiteLoom does not call the extra-search-query model.
 It then combines those rankings and can optionally rerank the best candidates.
+When a published TOC map is available, CiteLoom may select relevant branches from the strongest normally retrieved document and merge their mapped passages into the candidate ranking before reranking.
+TOC entries remain unavailable to answer generation and citation publication.
 Reranking can improve answer and citation accuracy by using a specialized relevance model to reorder candidates before CiteLoom selects the answer context.
 
 Each answer run uses the configured sampling temperatures.
@@ -198,7 +204,9 @@ sequenceDiagram
     Client->>Entry: Question and document scope
     Entry->>Query: Start answer request
     Query->>DB: Resolve active documents and scope
-    Query->>AI: Generate extra search queries
+    opt Extra search queries enabled
+        Query->>AI: Generate extra search queries
+    end
     par Dense retrieval
         Query->>DB: pgvector cosine search
     and Lexical retrieval

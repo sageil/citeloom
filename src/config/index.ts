@@ -50,6 +50,7 @@ export type {
   ScheduledProviderCapability,
   ScheduledProviderCapabilityConfig,
   SchedulingConfig,
+  SourceDiscoveryConfig,
   SourceContentConfig,
   SpeechToTextConfig,
   SpeechToTextAdapter,

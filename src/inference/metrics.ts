@@ -11,6 +11,8 @@ export type InferenceOperation =
   | "embed-query"
   | "expand-query"
   | "offline-tool"
+  | "generate-document-toc"
+  | "route-document-toc"
   | "rerank";
 
 export interface InferenceMetric {

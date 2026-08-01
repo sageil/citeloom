@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildTestModelCapabilities } from "./model-capabilities-fixture.js";
 import { APICallError, embedMany, generateText, jsonSchema, Output } from "ai";
@@ -1223,6 +1225,85 @@ describe("answer generation", () => {
     }));
   });
 
+  it("records the exact context supplied to the answer model", async () => {
+    const source = buildRetrievedElement(
+      "a",
+      "b",
+      "/tmp/privacy-act.pdf",
+    );
+    const precedingRetrievalWindowId = "c".repeat(64);
+    const followingRetrievalWindowId = "d".repeat(64);
+    source.adjacentContext = {
+      following: "The following provision limits the exception.",
+      preceding: "The preceding provision defines the protected right.",
+      retrievalWindowIds: [
+        precedingRetrievalWindowId,
+        source.provenance.retrievalWindowId,
+        followingRetrievalWindowId,
+      ],
+    };
+    const exactSource = buildRetrievedElement(
+      "e",
+      "f",
+      "/tmp/labour-code.pdf",
+    );
+    exactSource.evidenceContent = "Revenue increased.";
+    const answerModel = buildAnswerModel(buildAnsweredDraft(
+      "The Privacy Act provides protections.",
+      ["EVID_A"],
+    ));
+    const recordAnswerRequest = vi.fn();
+    const runTelemetry: RunTelemetry = {
+      ...noopRunTelemetry,
+      recordAnswerRequest,
+    };
+
+    const result = await answerQuestion(
+      buildModelRegistry(answerModel),
+      "What protections are provided by the Privacy Act?",
+      [source, exactSource],
+      new TaskLimiter(1),
+      generationSettings,
+      runTelemetry,
+    );
+
+    expect(result.outcome).toBe("answered");
+    const sourceTexts = readModelFacingSourceTexts(answerModel);
+    expect(sourceTexts).toHaveLength(2);
+    expect(sourceTexts[0]).toContain(source.adjacentContext.preceding);
+    expect(sourceTexts[0]).toContain(source.adjacentContext.following);
+    const adjacentContentSha256 = createHash("sha256")
+      .update(sourceTexts[0] ?? "")
+      .digest("hex");
+    const exactContentSha256 = createHash("sha256")
+      .update(sourceTexts[1] ?? "")
+      .digest("hex");
+    expect(recordAnswerRequest).toHaveBeenCalledWith({
+      evidence: [{
+        context: {
+          contentSha256: adjacentContentSha256,
+          mode: "adjacent-retrieval-windows",
+          retrievalWindowIds: source.adjacentContext.retrievalWindowIds,
+        },
+        evidenceSha256: source.provenance.evidenceSha256,
+        elementId: source.element.id,
+        retrievalWindowId: source.provenance.retrievalWindowId,
+      }, {
+        context: {
+          contentSha256: exactContentSha256,
+          mode: "exact-retrieval-window",
+          retrievalWindowIds: [exactSource.provenance.retrievalWindowId],
+        },
+        evidenceSha256: exactSource.provenance.evidenceSha256,
+        elementId: exactSource.element.id,
+        retrievalWindowId: exactSource.provenance.retrievalWindowId,
+      }],
+      phase: "initial",
+    });
+    expect(JSON.stringify(recordAnswerRequest.mock.calls))
+      .not.toContain(source.adjacentContext.preceding);
+  });
+
   it("sends every budget-selected source for a cross-document question", async () => {
     const privacySource = buildRetrievedElement(
       "a",
@@ -1739,10 +1820,34 @@ function buildRetrievedElement(
 
 function buildAnswerRequestEvidence(source: RetrievedElement) {
   return {
+    context: {
+      contentSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      mode: "parent-source-element",
+      retrievalWindowIds: [source.provenance.retrievalWindowId],
+    },
     elementId: source.element.id,
     evidenceSha256: source.provenance.evidenceSha256,
     retrievalWindowId: source.provenance.retrievalWindowId,
   };
+}
+
+function readModelFacingSourceTexts(model: MockLanguageModelV4): string[] {
+  const request = model.doGenerateCalls[0];
+  if (request === undefined) {
+    throw new Error("Expected an answer model request.");
+  }
+  const sourceTexts: string[] = [];
+  for (const message of request.prompt) {
+    if (message.role !== "user") {
+      continue;
+    }
+    for (const part of message.content) {
+      if (part.type === "text" && part.text.includes("RETRIEVED EVIDENCE")) {
+        sourceTexts.push(part.text);
+      }
+    }
+  }
+  return sourceTexts;
 }
 
 function buildTextGeneration(

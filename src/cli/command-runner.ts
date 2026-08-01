@@ -36,6 +36,30 @@ export async function main(arguments_: string[] = process.argv.slice(2)): Promis
   );
   const config = effectiveSettings.config;
 
+  if (command.name === "document-toc-backfill") {
+    const { backfillDocumentTocs } = await import(
+      "../retrieval/toc/backfill.js"
+    );
+    const controller = new AbortController();
+    const stop = (): void => controller.abort();
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+    try {
+      const report = await backfillDocumentTocs(
+        config,
+        printProgress,
+        controller.signal,
+      );
+      console.log(
+        `Document TOC backfill: ${report.published} built, ${report.alreadyPublished} already present, ${report.stale} replaced during processing, ${report.scanned} total.`,
+      );
+    } finally {
+      process.off("SIGINT", stop);
+      process.off("SIGTERM", stop);
+    }
+    return;
+  }
+
   if (
     command.name === "embedding-space-gc"
     || command.name === "embedding-space-pin"

@@ -74,6 +74,7 @@ const runtimeSettingKeySchema = z.enum([
   "doclingSecondaryImageScale",
   "doclingTableMode",
   "doclingTableStructureEnabled",
+  "doclingTocEnabled",
   "doclingDefaultServiceCapacity",
   "doclingRequestTimeoutSeconds",
   "doclingTimeoutSeconds",
@@ -83,6 +84,8 @@ const runtimeSettingKeySchema = z.enum([
   "embeddingTimeoutSeconds",
   "expansionDecay",
   "expansionQueryWeight",
+  "findSourcesPassagesPerDocument",
+  "findSourcesResults",
   "generationSeedMode",
   "lexicalWeight",
   "maxAttempts",
@@ -120,16 +123,14 @@ const storedSettingsRowSchema = z.object({
 
 export type RuntimeSettingGroup =
   | "Docling"
-  | "Inference"
-  | "Ingestion recovery"
-  | "Models and embeddings"
-  | "Reranking"
-  | "Retrieval"
-  | "Speech-to-text"
-  | "Text-to-speech"
-  | "Telemetry"
-  | "Uploads and ingestion"
-  | "Worker scheduling";
+  | "Answers and citation checks"
+  | "Document processing"
+  | "Search and answers"
+  | "Search model"
+  | "Search ranking"
+  | "Speech input"
+  | "Spoken answers"
+  | "Usage diagnostics";
 
 export type RuntimeSettingInput =
   | "boolean"
@@ -193,86 +194,95 @@ export class SettingsValidationError extends Error {
 }
 
 export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
-  setting("claimVerifierRuntimeName", "Inference", "Claim verifier runtime name", "text", "The name shown for the service that checks whether citations support an answer."),
-  setting("claimVerifierBaseUrl", "Inference", "Claim verifier base URL", "url", "Where CiteLoom sends citation-support checks."),
-  numberSetting("claimVerifierSupportThreshold", "Inference", "Claim support threshold", "How high the model's support score must be before CiteLoom marks a cited claim as supported. The recommended value is 0.50.", 0, 1, 0.01),
-  numberSetting("claimVerifierTimeoutSeconds", "Inference", "Claim verifier timeout", "How long CiteLoom waits for a batch of citation-support checks.", 1, 3_600, 1, "seconds"),
-  featureSetting(numberSetting("answerTimeoutSeconds", "Inference", "Answer deadline", "How long CiteLoom waits for one answer-generation request after it receives a model slot.", 1, 3_600, 1, "seconds"), "answer"),
-  featureSetting(numberSetting("answerMaximumOutputTokens", "Inference", "Maximum answer tokens", "The largest structured answer CiteLoom may request after budgeting the complete model context.", 1, 262_144, 1, "tokens"), "answer"),
-  featureSetting(numberSetting("answerMinimumOutputTokens", "Inference", "Minimum answer reserve", "The minimum output space required before CiteLoom will attempt structured answer generation.", 1, 262_144, 1, "tokens"), "answer"),
-  featureSetting(numberSetting("answerProviderSafetyMarginTokens", "Inference", "Provider safety margin", "Context reserved for provider chat templates and structured-output framing not exposed through the compatible API.", 0, 262_144, 1, "tokens"), "answer"),
-  featureSetting(selectSetting("embeddingInputFormatId", "Models and embeddings", "Embedding input format", "How CiteLoom prepares documents and questions for the embedding model.", []), "embedding"),
-  featureSetting(positiveIntegerSetting("retrievalChunkTargetTokens", "Models and embeddings", "Retrieval chunk target", "The soft token target used to group nearby content within one document section.", "tokens"), "embedding"),
-  featureSetting(numberSetting("embeddingTimeoutSeconds", "Models and embeddings", "Embedding deadline", "How long CiteLoom waits for one embedding request after it receives a model slot.", 1, 86_400, 1, "seconds"), "embedding"),
-  featureSetting(numberSetting("summaryTimeoutSeconds", "Models and embeddings", "Description deadline", "How long CiteLoom waits for one table or image description request after it receives a model slot.", 1, 86_400, 1, "seconds"), "summarization"),
-  featureSetting(numberSetting("queryExpansionTimeoutSeconds", "Models and embeddings", "Query-expansion deadline", "How long CiteLoom waits for one browser query-expansion request after it receives a model slot.", 1, 3_600, 1, "seconds"), "queryExpansion"),
-  featureSetting(selectSetting("embeddingDimensions", "Models and embeddings", "Embedding dimensions", "The number of values stored in each embedding vector.", [
+  setting("claimVerifierRuntimeName", "Answers and citation checks", "Citation checker name", "text", "The name shown for the service that checks whether citations support an answer."),
+  setting("claimVerifierBaseUrl", "Answers and citation checks", "Citation checker address", "url", "The address of the service that checks whether citations support an answer."),
+  numberSetting("claimVerifierSupportThreshold", "Answers and citation checks", "Supported citation score", "The lowest score CiteLoom shows as supported. The recommended value is 0.50.", 0, 1, 0.01),
+  numberSetting("claimVerifierTimeoutSeconds", "Answers and citation checks", "Citation check timeout", "How long CiteLoom waits for citation checks to finish.", 1, 3_600, 1, "seconds"),
+  featureSetting(numberSetting("answerTimeoutSeconds", "Answers and citation checks", "Answer timeout", "How long CiteLoom waits for an answer to finish.", 1, 3_600, 1, "seconds"), "answer"),
+  featureSetting(numberSetting("answerMaximumOutputTokens", "Answers and citation checks", "Maximum answer length", "The most space CiteLoom allows for one answer, measured in model tokens.", 1, 262_144, 1, "tokens"), "answer"),
+  featureSetting(numberSetting("answerMinimumOutputTokens", "Answers and citation checks", "Minimum answer space", "The space CiteLoom requires before starting an answer. If less space is available, the request stops instead of returning a cut-off answer.", 1, 262_144, 1, "tokens"), "answer"),
+  featureSetting(numberSetting("answerProviderSafetyMarginTokens", "Answers and citation checks", "Reserved model space", "Space kept free so the selected provider can add its required instructions without exceeding the model limit.", 0, 262_144, 1, "tokens"), "answer"),
+  featureSetting(selectSetting("embeddingInputFormatId", "Search model", "Search text format", "The text format required by the selected search model.", []), "embedding"),
+  featureSetting(positiveIntegerSetting("retrievalChunkTargetTokens", "Search model", "Document section size", "The preferred size of searchable document sections. Smaller values create more focused sections, while larger values keep more nearby text together.", "tokens"), "embedding"),
+  featureSetting(numberSetting("embeddingTimeoutSeconds", "Search model", "Search model timeout", "How long CiteLoom waits for the search model while indexing documents or searching.", 1, 86_400, 1, "seconds"), "embedding"),
+  featureSetting(numberSetting("summaryTimeoutSeconds", "Document processing", "Image and table description timeout", "How long CiteLoom waits for an image or table description.", 1, 86_400, 1, "seconds"), "summarization"),
+  featureSetting(numberSetting("queryExpansionTimeoutSeconds", "Search and answers", "Additional search timeout", "How long CiteLoom waits for additional search wording to be created.", 1, 3_600, 1, "seconds"), "queryExpansion"),
+  featureSetting(selectSetting("embeddingDimensions", "Search model", "Search model dimensions", "Choose the value required by the selected search model.", [
     { label: "384", value: 384 },
     { label: "768", value: 768 },
     { label: "1024", value: 1024 },
   ]), "embedding"),
-  featureSetting(nullableSetting("embeddingSpaceId", "Models and embeddings", "Embedding space ID", "text", "The name of the search index for this embedding setup. Leave it blank to let CiteLoom choose one."), "embedding"),
-  featureSetting(selectSetting("retrievalWindowPolicy", "Models and embeddings", "Retrieval-window policy", "How CiteLoom constructs indexed child windows within each source element.", [
-    { label: "Structured token policy", value: "structured-token-v3" },
+  featureSetting(nullableSetting("embeddingSpaceId", "Search model", "Search index name", "text", "An optional name for this search setup. Leave it blank to let CiteLoom choose one."), "embedding"),
+  featureSetting(selectSetting("retrievalWindowPolicy", "Search model", "Document section method", "How CiteLoom keeps nearby document content together for search.", [
+    { label: "Keep document structure", value: "structured-token-v3" },
   ]), "embedding"),
   setting("doclingBaseUrl", "Docling", "Docling base URL", "url", "Where CiteLoom sends documents for conversion."),
   sensitiveSetting("doclingApiKey", "Docling", "Docling API key", "The secret CiteLoom uses to sign in to Docling."),
-  numberSetting("doclingDefaultServiceCapacity", "Docling", "Maximum parallel conversions", "How many documents the default Docling service can convert at the same time across all CiteLoom workers.", 1, 16, 1),
-  numberSetting("doclingTimeoutSeconds", "Docling", "Base processing timeout", "The starting amount of processing time given to every Docling job.", 60, 604_800, 1, "seconds"),
-  numberSetting("doclingMaxTimeoutSeconds", "Docling", "Task hard deadline", "The longest a Docling job may run before CiteLoom stops waiting.", 60, 604_800, 1, "seconds"),
-  numberSetting("doclingPageTimeoutSeconds", "Docling", "Per-page processing budget", "Extra processing time added for each PDF page.", 0, 3_600, 1, "seconds"),
-  numberSetting("doclingMegabyteTimeoutSeconds", "Docling", "Per-megabyte processing budget", "Extra processing time added for each megabyte in a document.", 0, 3_600, 1, "seconds"),
-  numberSetting("doclingRequestTimeoutSeconds", "Docling", "Request timeout", "How long CiteLoom waits for one upload, status check, or result download.", 10, 3_600, 1, "seconds"),
-  setting("doclingPerformanceMetricsEnabled", "Docling", "Conversion performance metrics", "boolean", "Save conversion timing and results without storing document content."),
-  numberSetting("doclingPerformanceMetricsRetentionDays", "Docling", "Metrics retention", "How long completed Docling performance records are kept.", 1, 3_650, 1, "days"),
-  selectSetting("doclingPdfBackend", "Docling", "PDF backend", "The PDF parser Docling uses.", [
+  numberSetting("doclingDefaultServiceCapacity", "Docling", "Documents converted at once", "How many documents Docling can convert at the same time.", 1, 16, 1),
+  numberSetting("doclingTimeoutSeconds", "Docling", "Standard conversion time", "The time allowed for every document before page and file-size allowances are added.", 60, 604_800, 1, "seconds"),
+  numberSetting("doclingMaxTimeoutSeconds", "Docling", "Maximum conversion time", "The longest CiteLoom waits for one document conversion.", 60, 604_800, 1, "seconds"),
+  numberSetting("doclingPageTimeoutSeconds", "Docling", "Extra time per PDF page", "The conversion time added for each PDF page.", 0, 3_600, 1, "seconds"),
+  numberSetting("doclingMegabyteTimeoutSeconds", "Docling", "Extra time per megabyte", "The conversion time added for each megabyte in a document.", 0, 3_600, 1, "seconds"),
+  numberSetting("doclingRequestTimeoutSeconds", "Docling", "Docling connection timeout", "How long CiteLoom waits while sending a document to Docling, checking progress, or downloading the result.", 10, 3_600, 1, "seconds"),
+  setting("doclingPerformanceMetricsEnabled", "Docling", "Conversion diagnostics", "boolean", "Save conversion times and outcomes without saving document content."),
+  numberSetting("doclingPerformanceMetricsRetentionDays", "Docling", "Conversion history", "How long CiteLoom keeps completed conversion diagnostics.", 1, 3_650, 1, "days"),
+  selectSetting("doclingPdfBackend", "Docling", "PDF reader", "The PDF reader Docling uses.", [
     { label: "Docling Parse", value: "docling_parse" },
     { label: "Threaded Docling Parse", value: "threaded_docling_parse" },
     { label: "PyPDFium2", value: "pypdfium2" },
   ]),
-  setting("doclingOcrEnabled", "Docling", "OCR", "boolean", "Read text from scanned pages and other images."),
-  setting("doclingTableStructureEnabled", "Docling", "Table structure extraction", "boolean", "Detect rows, columns, and merged cells in tables."),
-  selectSetting("doclingTableMode", "Docling", "Table mode", "Choose whether table detection favors accuracy or speed.", [
+  setting("doclingOcrEnabled", "Docling", "Read scanned text", "boolean", "Read text from scanned pages and other images."),
+  setting("doclingTableStructureEnabled", "Docling", "Preserve table structure", "boolean", "Detect rows, columns, and merged cells in tables."),
+  setting(
+    "doclingTocEnabled",
+    "Docling",
+    "Use document headings in search",
+    "boolean",
+    "Use a document's headings to help Ask and Chat find relevant sections in long documents. Run the documented update command so existing documents also benefit.",
+  ),
+  selectSetting("doclingTableMode", "Docling", "Table reading priority", "Choose whether reading tables favors accuracy or speed.", [
     { label: "Accurate", value: "accurate" },
     { label: "Fast", value: "fast" },
   ]),
-  numberSetting("doclingSecondaryImageScale", "Docling", "Secondary image scale", "How sharp extracted picture images should be. Higher values use more memory.", 0.1, 8, 0.1),
-  featureSetting(numberSetting("rerankTimeoutSeconds", "Reranking", "Reranking deadline", "How long CiteLoom waits for one reranking request.", 1, 3_600, 1, "seconds"), "reranking"),
-  featureSetting(numberSetting("rerankDiscoveryMinimumScore", "Reranking", "Find Sources reranker cutoff", "Find Sources hides semantic matches scored below this value by the configured reranker. Higher values show fewer results. Reranker score scales vary by model, so 0.9 does not mean 90 percent confidence. This setting does not affect Ask.", -1_000, 1_000, 0.01), "reranking"),
-  positiveIntegerSetting("retrievalCandidates", "Retrieval", "Candidate count", "The maximum number of meaning-based and exact-word matches CiteLoom considers before final context selection. Candidate count must be at least Answer context count.", "passages"),
-  numberSetting("retrievalVariantConcurrency", "Retrieval", "Parallel searches", "How many searches CiteLoom may run at the same time for one original question.", 1, 16, 1),
-  numberSetting("queryExpansions", "Retrieval", "Extra search queries (Query Expansion)", "The maximum number of extra search queries the AI may write for each original question.", 0, 4, 1),
-  numberSetting("queryExpansionTemperature", "Retrieval", "Extra search query variation", "How much the wording of extra search queries may vary between runs.", 0, 2, 0.01),
-  numberSetting("answerTemperature", "Retrieval", "Answer variation", "How much the wording of grounded answers may vary between runs.", 0, 2, 0.01),
-  selectSetting("generationSeedMode", "Retrieval", "Repeatable generation", "Choose whether CiteLoom asks providers for repeatable model output or lets them choose.", [
+  numberSetting("doclingSecondaryImageScale", "Docling", "Extracted image quality", "How sharp extracted images should be. Higher values use more memory.", 0.1, 8, 0.1),
+  featureSetting(numberSetting("rerankTimeoutSeconds", "Search ranking", "Search ranking timeout", "How long CiteLoom waits for semantic search results to be sorted.", 1, 3_600, 1, "seconds"), "reranking"),
+  featureSetting(numberSetting("rerankDiscoveryMinimumScore", "Search ranking", "Minimum score for Find Sources", "The lowest semantic-match score Find Sources shows. Higher values show fewer matches. Each search ranking model uses its own score scale, so 0.9 does not mean 90 percent confidence. This setting does not affect Ask.", -1_000, 1_000, 0.01), "reranking"),
+  positiveIntegerSetting("retrievalCandidates", "Search and answers", "Document sections searched", "The most document sections CiteLoom checks for each question. Higher values search more material but take longer. This applies to Ask, Chat, and semantic Find Sources. This value must be at least Sections used in answers.", "sections"),
+  positiveIntegerSetting("findSourcesResults", "Search and answers", "Documents shown in Find Sources", "How many documents appear in each Find Sources results list. Keyword results use this number on each page.", "documents"),
+  positiveIntegerSetting("findSourcesPassagesPerDocument", "Search and answers", "Excerpts shown per document", "How many matching excerpts appear inside each Find Sources document result. This changes only what Find Sources displays.", "excerpts"),
+  numberSetting("retrievalVariantConcurrency", "Search and answers", "Simultaneous searches", "How many searches CiteLoom may run at the same time for one question.", 1, 16, 1),
+  numberSetting("queryExpansions", "Search and answers", "Additional searches", "How many alternative searches CiteLoom may create for one question. Set this to 0 to search only the original wording.", 0, 4, 1),
+  numberSetting("queryExpansionTemperature", "Search and answers", "Additional search variation", "How much the wording of additional searches may change between runs.", 0, 2, 0.01),
+  numberSetting("answerTemperature", "Search and answers", "Answer wording variation", "How much the wording of answers may change between runs.", 0, 2, 0.01),
+  selectSetting("generationSeedMode", "Search and answers", "Repeatable answers", "Choose whether compatible models should try to return the same wording for the same request.", [
     { label: "Stable", value: "stable" },
     { label: "Random", value: "random" },
   ]),
-  numberSetting("denseWeight", "Retrieval", "Meaning match weight", "How strongly passages with similar meaning influence which evidence comes first.", 0.01, 100, 0.01),
-  numberSetting("lexicalWeight", "Retrieval", "Exact word match weight", "How strongly exact words, names, codes, and phrases influence which evidence comes first.", 0.01, 100, 0.01),
-  numberSetting("originalQueryWeight", "Retrieval", "Original question weight", "How strongly searches using the original question influence which evidence comes first.", 0.01, 100, 0.01),
-  numberSetting("expansionQueryWeight", "Retrieval", "Extra search weight", "How strongly the first extra search query influences which evidence comes first.", 0.01, 100, 0.01),
-  numberSetting("expansionDecay", "Retrieval", "Later extra search influence", "How much influence each later extra search query keeps.", 0.01, 1, 0.01),
-  numberSetting("rrfK", "Retrieval", "Search list balance", "How much CiteLoom favors agreement across search lists over small differences in position.", 1, 1_000, 1),
-  positiveIntegerSetting("topK", "Retrieval", "Answer context count", "The maximum number of selected document sections sent to the answer model. Answer context count cannot exceed Candidate count, and the model context budget may send fewer.", "passages"),
+  numberSetting("denseWeight", "Search and answers", "Meaning matches", "How much similar meaning affects result order. Raise this to give meaning matches more influence.", 0.01, 100, 0.01),
+  numberSetting("lexicalWeight", "Search and answers", "Exact-word matches", "How much exact words, names, codes, and phrases affect result order. Raise this to give exact matches more influence.", 0.01, 100, 0.01),
+  numberSetting("originalQueryWeight", "Search and answers", "Original question matches", "How much results from the original question affect the final order.", 0.01, 100, 0.01),
+  numberSetting("expansionQueryWeight", "Search and answers", "First additional search", "How much results from the first additional search affect the final order.", 0.01, 100, 0.01),
+  numberSetting("expansionDecay", "Search and answers", "Later additional searches", "How much influence each later additional search keeps compared with the previous one.", 0.01, 1, 0.01),
+  numberSetting("rrfK", "Search and answers", "Agreement across searches", "How much result order rewards a document section for appearing in several searches. Higher values favor agreement across searches. Lower values favor the top results from each search.", 1, 1_000, 1),
+  positiveIntegerSetting("topK", "Search and answers", "Sections used in answers", "The most document sections CiteLoom uses to write an answer. This cannot exceed Document sections searched. Very large values can include unrelated material.", "sections"),
   featureSetting(nullableSetting(
     "sttLanguage",
-    "Speech-to-text",
+    "Speech input",
     "Language hint",
     "text",
     "A language hint that can improve transcription when the provider supports it.",
   ), "speechToText"),
   featureSetting(nullableSetting(
     "sttPrompt",
-    "Speech-to-text",
+    "Speech input",
     "Vocabulary prompt",
     "text",
     "Words or phrases that help the model recognize names and specialist terms.",
   ), "speechToText"),
   featureSetting(numberSetting(
     "sttTimeoutSeconds",
-    "Speech-to-text",
-    "Transcription deadline",
+    "Speech input",
+    "Transcription timeout",
     "How long CiteLoom waits for a transcription.",
     1,
     300,
@@ -281,7 +291,7 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   ), "speechToText"),
   featureSetting(numberSetting(
     "sttMaxAudioMegabytes",
-    "Speech-to-text",
+    "Speech input",
     "Maximum audio size",
     "The largest microphone recording CiteLoom accepts.",
     1,
@@ -291,14 +301,14 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   ), "speechToText"),
   featureSetting(setting(
     "ttsPreloadEnabled",
-    "Text-to-speech",
+    "Spoken answers",
     "Preload answer audio",
     "boolean",
     "Create answer audio in the background as soon as an answer finishes.",
   ), "textToSpeech"),
   featureSetting(numberSetting(
     "ttsSpeed",
-    "Text-to-speech",
+    "Spoken answers",
     "Speech speed",
     "How quickly spoken answers play.",
     0.25,
@@ -307,21 +317,21 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   ), "textToSpeech"),
   featureSetting(numberSetting(
     "ttsTimeoutSeconds",
-    "Text-to-speech",
-    "Speech generation deadline",
+    "Spoken answers",
+    "Speech generation timeout",
     "How long CiteLoom waits for answer audio.",
     1,
     300,
     1,
     "seconds",
   ), "textToSpeech"),
-  numberSetting("maxDocumentMegabytes", "Uploads and ingestion", "Maximum document size", "The largest document users can upload or ingest.", 1, 100, 1, "MB"),
-  numberSetting("maxAttempts", "Ingestion recovery", "Maximum phase attempts", "How many times CiteLoom retries a failed ingestion phase before stopping.", 1, 20, 1),
-  numberSetting("retryBaseMs", "Ingestion recovery", "First retry delay", "How long CiteLoom waits before the first ingestion retry. Later retries wait longer.", 100, 3_600_000, 100, "ms"),
-  numberSetting("workerConcurrency", "Worker scheduling", "Ingestion jobs per worker", "How many document jobs one worker can advance at the same time. Provider and Docling capacities still limit external work.", 1, 16, 1),
-  numberSetting("backgroundProgressIntervalMs", "Worker scheduling", "Maximum background-work wait", "After this long without starting background AI work, the next available shared AI request is reserved for background work.", 100, 3_600_000, 100, "ms"),
-  numberSetting("workerFallbackPollMs", "Worker scheduling", "Missed-notification check interval", "How long an idle worker waits before checking the database when no job or settings notification arrives.", 1_000, 300_000, 1_000, "ms"),
-  setting("aiMetricsEnabled", "Telemetry", "AI metrics", "boolean", "Collect AI request timing and usage without saving prompts or answers."),
+  numberSetting("maxDocumentMegabytes", "Document processing", "Maximum document size", "The largest document users can upload.", 1, 100, 1, "MB"),
+  numberSetting("maxAttempts", "Document processing", "Document retry attempts", "How many times CiteLoom retries a failed document-processing step before stopping.", 1, 20, 1),
+  numberSetting("retryBaseMs", "Document processing", "First retry delay", "How long CiteLoom waits before retrying document processing for the first time. Later retries wait longer.", 100, 3_600_000, 100, "ms"),
+  numberSetting("workerConcurrency", "Document processing", "Documents processed at once", "How many documents each running CiteLoom service can process at the same time.", 1, 16, 1),
+  numberSetting("backgroundProgressIntervalMs", "Document processing", "Maximum wait for document processing", "How long waiting document work can be delayed while Ask or Chat is using the configured AI services.", 100, 3_600_000, 100, "ms"),
+  numberSetting("workerFallbackPollMs", "Document processing", "Waiting-document check interval", "How often CiteLoom checks for newly queued documents while no processing notices arrive.", 1_000, 300_000, 1_000, "ms"),
+  setting("aiMetricsEnabled", "Usage diagnostics", "AI request diagnostics", "boolean", "Record AI request times and usage without saving questions or answers."),
 ];
 
 export const runtimeSettingChangeExamples = {
@@ -330,17 +340,17 @@ export const runtimeSettingChangeExamples = {
   claimVerifierSupportThreshold: "Raise 0.50 to require stronger evidence, or lower it to mark more borderline claims as supported.",
   claimVerifierTimeoutSeconds: "Raise 120 to 180 if large citation batches time out.",
   answerTimeoutSeconds: "Raise 900 to 1200 when a large local model needs more than 15 minutes to answer.",
-  answerMaximumOutputTokens: "Set this to the largest answer your configured model and product requirements should permit.",
-  answerMinimumOutputTokens: "Set this to the smallest output reserve that can hold a valid structured answer.",
-  answerProviderSafetyMarginTokens: "Set this from measured provider chat-template and structured-output overhead.",
-  embeddingInputFormatId: "Select the format required by the embedding model. Changing it requires reindexing.",
-  embeddingDimensions: "Change 768 to 1024 only when the model supports it. Changing dimensions requires reindexing.",
-  embeddingSpaceId: "Set a stable name such as legal-v2 to keep that index identity across restarts.",
-  embeddingTimeoutSeconds: "Raise 21600 when a local embedding batch needs more than six hours, up to a maximum of 86400.",
-  retrievalChunkTargetTokens: "Use 512 for focused evidence chunks. If this exceeds the embedding model context, CiteLoom uses the model context and reports a warning.",
-  retrievalWindowPolicy: "Use the structured token policy for deterministic exact-text and table-row windows.",
-  summaryTimeoutSeconds: "Raise 21600 when table or image description requests need more than six hours, up to a maximum of 86400.",
-  queryExpansionTimeoutSeconds: "Raise 900 when browser extra search query generation needs more than 15 minutes, up to a maximum of 3600.",
+  answerMaximumOutputTokens: "Raise this to allow longer answers, or lower it to keep answers shorter.",
+  answerMinimumOutputTokens: "Set this to the smallest space that can hold a complete answer in your preferred format.",
+  answerProviderSafetyMarginTokens: "Increase this if the provider reports that a request is too large even though the selected model should have enough room.",
+  embeddingInputFormatId: "Select the text format required by the search model. Changing it requires reindexing.",
+  embeddingDimensions: "Change 768 to 1024 only when the selected search model requires 1024. Changing this value requires reindexing.",
+  embeddingSpaceId: "Set a stable name such as legal-v2 when you want to identify this search setup across restarts.",
+  embeddingTimeoutSeconds: "Raise 21600 when a local search model needs more than six hours, up to a maximum of 86400.",
+  retrievalChunkTargetTokens: "Use 512 for focused document sections. Larger values keep more nearby text together but may make individual matches less precise.",
+  retrievalWindowPolicy: "Keep document structure to preserve headings, paragraphs, and table rows within searchable sections.",
+  summaryTimeoutSeconds: "Raise 21600 when table or image descriptions need more than six hours, up to a maximum of 86400.",
+  queryExpansionTimeoutSeconds: "Raise 900 when creating additional search wording needs more than 15 minutes, up to a maximum of 3600.",
   doclingBaseUrl: "Point it to http://docling:5001 when Docling runs in the Compose network.",
   doclingApiKey: "Replace it after Docling rotates its key so document conversions keep working.",
   doclingDefaultServiceCapacity: "Raise 2 to 3 only when the default Docling service can safely convert three documents at once.",
@@ -349,28 +359,31 @@ export const runtimeSettingChangeExamples = {
   doclingPageTimeoutSeconds: "Raise 30 to 45 to give each PDF page 15 more seconds.",
   doclingMegabyteTimeoutSeconds: "Raise 60 to 90 to give each megabyte 30 more seconds.",
   doclingRequestTimeoutSeconds: "Raise 300 to 600 if uploads, status checks, or result downloads time out.",
-  doclingPerformanceMetricsEnabled: "Turn this on before a benchmark to record conversion timing without storing document content.",
-  doclingPerformanceMetricsRetentionDays: "Change 30 to 7 to keep one week of metrics instead of one month.",
+  doclingPerformanceMetricsEnabled: "Turn this on to record conversion times and outcomes without storing document content.",
+  doclingPerformanceMetricsRetentionDays: "Change 30 to 7 to keep one week of conversion history instead of one month.",
   doclingPdfBackend: "Try PyPDFium2 when a troublesome PDF does not parse correctly with Docling Parse.",
   doclingOcrEnabled: "Turn this off for text-only PDFs to skip OCR. Scanned pages may then be empty.",
   doclingTableStructureEnabled: "Turn this off for simple documents. Tables will keep less row and cell detail.",
+  doclingTocEnabled: "Enable this for long documents with useful headings. Run `citeloom document-toc backfill` so existing documents can also use their headings during search.",
   doclingTableMode: "Choose Fast to reduce processing time when perfect cell structure matters less.",
   doclingSecondaryImageScale: "Raise 2 to 3 for sharper extracted pictures. Conversions will use more memory.",
-  rerankDiscoveryMinimumScore: "Use 0.9 as a starting point, then tune it against Find Sources results from the configured reranker. Raising it hides more semantic matches. Lowering it shows more. This setting does not affect Ask.",
-  rerankTimeoutSeconds: "Raise 300 to 600 if large result sets time out before reranking finishes.",
-  retrievalCandidates: "Candidate count sets the passage pool available for final context selection and must be at least Answer context count. Higher values may find evidence that would otherwise be missed, but searching and reranking take more work and may be slower. More candidates do not guarantee a better answer.",
-  retrievalVariantConcurrency: "Higher values may finish multi-search questions sooner when the database and providers have spare capacity. They also increase work happening at the same time and can compete with document ingestion.",
-  queryExpansions: "Higher values allow more extra search queries, which may find evidence under different terms or in separate sections. Each added search creates more work and may slow the question. The model may still return fewer extra searches, including none.",
-  queryExpansionTemperature: "Higher values allow more varied extra search query wording, which may uncover different evidence but makes repeated runs less predictable. It does not guarantee better results.",
-  answerTemperature: "Higher values allow more varied answer wording, but make repeated runs less predictable. They do not add evidence or guarantee a better answer.",
-  generationSeedMode: "Stable asks compatible providers for repeatable output from the same request. Random allows more variation. Some providers may ignore this choice, and neither option guarantees better results.",
-  denseWeight: "Higher values favor passages with similar meaning even when they use different words. This may help with paraphrased questions, but can move exact word matches lower. It does not make searches faster or guarantee a better answer.",
-  lexicalWeight: "Higher values favor exact words, names, codes, and quoted phrases. This may help precise searches, but can move useful passages with different wording lower. It does not make searches faster or guarantee a better answer.",
-  originalQueryWeight: "Higher values keep evidence closer to the original question. This may help when the original wording is already precise, but reduces the influence of evidence found only by extra search queries. It does not change search speed.",
-  expansionQueryWeight: "Higher values give the first extra search query more influence. This may help when different terminology finds useful evidence, but can move results away from the original question. It does not change search speed.",
-  expansionDecay: "Higher values let later extra search queries keep more influence. Lower values keep the original question and earlier searches more dominant. This does not change how many searches run or how long they take.",
-  rrfK: "Higher values make small position differences within each search list matter less, so agreement across searches matters more. This does not run more searches or guarantee better results.",
-  topK: "Answer context count cannot exceed Candidate count. Higher values allow more selected sections to reach the answer model, but the model context budget may send fewer. Larger requests can be slower and too much unrelated material can make answers less clear.",
+  rerankDiscoveryMinimumScore: "Start at 0.9. Raise it to hide more semantic matches or lower it to show more. Check actual Find Sources results because every search ranking model uses its own score scale.",
+  rerankTimeoutSeconds: "Raise 300 to 600 if sorting a large set of search results times out.",
+  retrievalCandidates: "Raise 50 to search more document sections for each Ask, Chat, or semantic Find Sources request. Larger searches take longer.",
+  findSourcesResults: "Raise 10 to show more documents. Keyword results continue on additional pages.",
+  findSourcesPassagesPerDocument: "Raise 3 to show more matching excerpts inside each document result. This changes only the Find Sources display.",
+  retrievalVariantConcurrency: "Raise this to run more searches at once. This can finish searches sooner but uses more computing capacity.",
+  queryExpansions: "Keep this at 0 to search only the original wording. A higher value creates additional searches, which may find different wording but can also return less relevant material.",
+  queryExpansionTemperature: "Raise this for more variation in additional search wording. Lower it for more repeatable wording.",
+  answerTemperature: "Raise this for more varied answer wording. Lower it for more repeatable wording.",
+  generationSeedMode: "Stable asks compatible models for repeatable answers. Random allows the wording to vary. Some models ignore this setting.",
+  denseWeight: "Raise this to favor document sections with similar meaning, even when they use different words.",
+  lexicalWeight: "Raise this to favor document sections containing the same words, names, codes, or phrases as the search.",
+  originalQueryWeight: "Raise this to favor results found using the user's original question.",
+  expansionQueryWeight: "Raise this to give results from the first additional search more influence.",
+  expansionDecay: "Raise this to keep later additional searches influential. Lower it to favor the original question and earlier searches.",
+  rrfK: "Raise this to favor document sections found by several searches. Lower it to favor the highest results from each individual search.",
+  topK: "Raise 10 to let CiteLoom use more document sections when writing an answer. This cannot exceed Document sections searched. Too many unrelated sections can make answers less clear.",
   sttLanguage: "Set en to bias recognition toward English.",
   sttPrompt: "Add “CiteLoom, HHEM, Docling” to help the model recognize project names.",
   sttTimeoutSeconds: "Raise 60 to 120 if long recordings time out.",
@@ -379,12 +392,12 @@ export const runtimeSettingChangeExamples = {
   ttsSpeed: "Set 1.25 to play spoken answers 25 percent faster.",
   ttsTimeoutSeconds: "Raise 60 to 120 if long answers time out during speech generation.",
   maxDocumentMegabytes: "Lower 100 to reject oversized documents sooner and reduce storage and processing demand.",
-  maxAttempts: "Raise 3 to 5 to keep retrying temporary conversion failures.",
+  maxAttempts: "Raise 3 to 5 to keep retrying temporary document-processing failures.",
   retryBaseMs: "Raise 5 to 10 so the first retry waits ten seconds instead of five.",
-  backgroundProgressIntervalMs: "Lower 5 to 1 to let waiting background work claim a free slot within about one second.",
-  workerConcurrency: "Raise 2 to 4 to let one worker advance up to four ingestion jobs. Compute capacities still bound provider requests.",
-  workerFallbackPollMs: "Lower 60 to 15 to recover from missed notifications within 15 seconds, with more database checks.",
-  aiMetricsEnabled: "Turn this on to show AI request timing and usage in telemetry without storing prompt text.",
+  backgroundProgressIntervalMs: "Lower this value to reduce how long document processing waits while Ask or Chat is busy.",
+  workerConcurrency: "Raise 2 to 4 to process up to four documents at once in each running CiteLoom service.",
+  workerFallbackPollMs: "Lower 60 to 15 to check for waiting documents every 15 seconds while CiteLoom is idle.",
+  aiMetricsEnabled: "Turn this on to record AI request times and usage without storing questions or answers.",
 } satisfies Record<RuntimeSettingKey, string>;
 
 const definitionByKey = new Map(
@@ -742,7 +755,7 @@ async function validateOpenAICodexRouteChange(
     .limit(1);
   if (rows[0]?.status !== "connected") {
     throw new SettingsValidationError(
-      "Sign in to OpenAI Codex before routing an application feature to it.",
+      "Sign in to OpenAI Codex before assigning a feature to it.",
     );
   }
 }
@@ -804,7 +817,7 @@ function readDefaultDoclingServiceUrl(config: AppConfig): string {
 export function decodeRuntimeSettingKey(value: unknown): RuntimeSettingKey {
   const result = runtimeSettingKeySchema.safeParse(value);
   if (!result.success) {
-    throw new Error("Unknown runtime setting.");
+    throw new Error("Unknown application setting.");
   }
   return result.data;
 }
@@ -925,12 +938,12 @@ function readSelectedInputFormat(
   const inputFormat = inputFormats.find((candidate) => candidate.id === id);
   if (inputFormat === undefined) {
     throw new SettingsValidationError(
-      `The selected embedding input format does not exist: ${id}.`,
+      `The selected search text format does not exist: ${id}.`,
     );
   }
   if (inputFormat.retiredAt !== null) {
     throw new SettingsValidationError(
-      `The selected embedding input format is retired: ${inputFormat.name}.`,
+      `The selected search text format is retired: ${inputFormat.name}.`,
     );
   }
   return readEmbeddingInputFormatContract({

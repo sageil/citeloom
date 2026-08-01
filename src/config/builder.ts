@@ -108,6 +108,7 @@ export function buildAppConfig(
     secondaryImageScale: settings.doclingSecondaryImageScale,
     tableMode: settings.doclingTableMode,
     tableStructureEnabled: settings.doclingTableStructureEnabled,
+    tocEnabled: settings.doclingTocEnabled,
   };
   const embeddingSpace: AppConfig["embeddingSpace"] = {
     dimensions: settings.embeddingDimensions,
@@ -134,6 +135,10 @@ export function buildAppConfig(
     rrfK: settings.rrfK,
     topK: settings.topK,
     variantConcurrency: settings.retrievalVariantConcurrency,
+  };
+  const sourceDiscovery: AppConfig["sourceDiscovery"] = {
+    passagesPerDocument: settings.findSourcesPassagesPerDocument,
+    resultsPerGroup: settings.findSourcesResults,
   };
   const retry: AppConfig["retry"] = {
     baseDelayMs: settings.retryBaseMs,
@@ -162,6 +167,7 @@ export function buildAppConfig(
       settingsVersion,
     ),
     settingsVersion,
+    sourceDiscovery,
     sourceContent,
     speechToText: buildSpeechToTextConfig(settings, providerSettings),
     textToSpeech: buildTextToSpeechConfig(settings, providerSettings),
@@ -182,10 +188,9 @@ export function readEmbeddingConfigurationWarnings(
     return [];
   }
   return [
-    `Retrieval chunk target ${settings.retrievalChunkTargetTokens} exceeds `
-    + `the embedding model context of ${settings.embeddingContextCapacityTokens}. `
-    + `CiteLoom is using ${settings.embeddingContextCapacityTokens} tokens as the `
-    + "effective retrieval chunk target.",
+    `Document section size ${settings.retrievalChunkTargetTokens} exceeds `
+    + `the search model's maximum input of ${settings.embeddingContextCapacityTokens} tokens. `
+    + `CiteLoom will use ${settings.embeddingContextCapacityTokens} tokens instead.`,
   ];
 }
 

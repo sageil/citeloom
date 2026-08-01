@@ -89,6 +89,7 @@ export const runtimeSettingsSchema = z.object({
   doclingSecondaryImageScale: z.number().min(0.1).max(8),
   doclingTableMode: z.enum(["accurate", "fast"]),
   doclingTableStructureEnabled: z.boolean(),
+  doclingTocEnabled: z.boolean(),
   doclingDefaultServiceCapacity: z.number().int().min(1).max(16),
   doclingRequestTimeoutSeconds: z.number().int().min(10).max(3_600),
   doclingTimeoutSeconds: z.number().int().min(60).max(604_800),
@@ -98,6 +99,8 @@ export const runtimeSettingsSchema = z.object({
   embeddingTimeoutSeconds: z.number().int().min(1).max(86_400),
   expansionDecay: z.number().positive().max(1),
   expansionQueryWeight: z.number().positive().max(100),
+  findSourcesPassagesPerDocument: z.number().int().min(1),
+  findSourcesResults: z.number().int().min(1),
   lexicalWeight: z.number().positive().max(100),
   maxAttempts: z.number().int().min(1).max(20),
   maxDocumentMegabytes: z.number().int().min(1).max(100),
@@ -137,7 +140,7 @@ export const runtimeSettingsSchema = z.object({
   if (settings.retrievalCandidates < settings.topK) {
     context.addIssue({
       code: "custom",
-      message: "Candidate count must be greater than or equal to Answer context count",
+      message: "Document sections searched must be greater than or equal to Sections used in answers",
       path: ["retrievalCandidates"],
     });
   }
@@ -211,7 +214,7 @@ export function parseRuntimeSettings(value: unknown): RuntimeSettings {
   const result = runtimeSettingsSchema.safeParse(value);
   if (!result.success) {
     const details = result.error.issues.map(formatConfigIssue).join("\n");
-    throw new Error(`Invalid runtime configuration:\n${details}`);
+    throw new Error(`Invalid application settings:\n${details}`);
   }
   return result.data;
 }

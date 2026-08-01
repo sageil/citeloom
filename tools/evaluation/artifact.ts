@@ -95,7 +95,6 @@ const candidateSelectionDecisionSchema = z.object({
   exclusionReason: z.enum([
     "candidate-budget",
     "duplicate-evidence",
-    "unsupported-language",
   ]).nullable(),
   fusedRank: z.number().int().positive(),
   representativeRetrievalWindowId: sha256Schema,

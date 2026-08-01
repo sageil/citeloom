@@ -14,6 +14,7 @@ export const telemetryStageNameSchema = z.enum([
   "query-expansion",
   "reranking",
   "scope-resolution",
+  "toc-routing",
 ]);
 
 export type TelemetryStageName = z.output<typeof telemetryStageNameSchema>;

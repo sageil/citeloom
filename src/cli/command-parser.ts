@@ -12,6 +12,7 @@ import { tagSchema } from "../domain/validation.js";
 const commandSchema = z.discriminatedUnion("name", [
   z.object({ name: z.literal("doctor") }),
   z.object({ name: z.literal("documents") }),
+  z.object({ name: z.literal("document-toc-backfill") }),
   z.object({
     action: z.enum(["apply", "dry-run", "resume"]),
     name: z.literal("embedding-space-gc"),
@@ -72,6 +73,8 @@ export function parseCliCommand(
     candidate = parseWorkerArguments(commandArguments);
   } else if (commandName === "documents") {
     candidate = parseDocumentsArguments(commandArguments);
+  } else if (commandName === "document-toc") {
+    candidate = parseDocumentTocArguments(commandArguments);
   } else if (commandName === "embedding-spaces") {
     candidate = parseEmbeddingSpaceArguments(commandArguments);
   } else if (commandName === "jobs") {
@@ -89,6 +92,13 @@ export function parseCliCommand(
     throw new CliUsageError(readCommandUsageError(commandName));
   }
   return result.data;
+}
+
+function parseDocumentTocArguments(arguments_: string[]): unknown {
+  if (arguments_.length === 1 && arguments_[0] === "backfill") {
+    return { name: "document-toc-backfill" };
+  }
+  throw new CliUsageError("Usage: citeloom document-toc backfill");
 }
 
 function parseDocumentsArguments(arguments_: string[]): unknown {

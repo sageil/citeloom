@@ -541,6 +541,7 @@ function buildConfig(): DoclingConfig {
     secondaryImageScale: 2,
     tableMode: "accurate",
     tableStructureEnabled: true,
+    tocEnabled: true,
   };
 }
 

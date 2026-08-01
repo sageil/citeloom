@@ -91,6 +91,22 @@ Recovery moves old PostgreSQL data but never permanently deletes it.
 
 ## Reindexing
 
+Document TOC routing does not require reindexing existing documents.
+After enabling `Document TOC routing`, populate missing maps from stored document elements with:
+
+```bash
+pnpm dev document-toc backfill
+```
+
+For the supplied container deployment, run:
+
+```bash
+./infra/compose.sh --profile worker run --rm --no-deps worker node dist/cli/index.js document-toc backfill
+```
+
+The command applies to documents in the active embedding space and is safe to rerun after interruption.
+It skips completed generations and does not rerun Docling or embeddings.
+
 Use the document catalog to reindex a document.
 A document's current version stays searchable during an ordinary reindex.
 The background worker processes queued jobs.

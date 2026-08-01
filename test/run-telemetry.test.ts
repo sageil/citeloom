@@ -81,6 +81,11 @@ describe("run telemetry", () => {
     });
     telemetry.recordAnswerRequest({
       evidence: [{
+        context: {
+          contentSha256: "1".repeat(64),
+          mode: "exact-retrieval-window",
+          retrievalWindowIds: ["c".repeat(64)],
+        },
         evidenceSha256: "f".repeat(64),
         elementId: "b".repeat(64),
         retrievalWindowId: "c".repeat(64),
@@ -89,6 +94,11 @@ describe("run telemetry", () => {
     });
     telemetry.recordAnswerRequest({
       evidence: [{
+        context: {
+          contentSha256: "2".repeat(64),
+          mode: "parent-source-element",
+          retrievalWindowIds: ["d".repeat(64)],
+        },
         evidenceSha256: "9".repeat(64),
         elementId: "c".repeat(64),
         retrievalWindowId: "d".repeat(64),
@@ -253,6 +263,11 @@ describe("run telemetry", () => {
         outputBudgetTokens: 1_384,
         requests: [{
           evidence: [{
+            context: {
+              contentSha256: "1".repeat(64),
+              mode: "exact-retrieval-window",
+              retrievalWindowIds: ["c".repeat(64)],
+            },
             evidenceSha256: "f".repeat(64),
             elementId: "b".repeat(64),
             retrievalWindowId: "c".repeat(64),
@@ -260,6 +275,11 @@ describe("run telemetry", () => {
           phase: "initial",
         }, {
           evidence: [{
+            context: {
+              contentSha256: "2".repeat(64),
+              mode: "parent-source-element",
+              retrievalWindowIds: ["d".repeat(64)],
+            },
             evidenceSha256: "9".repeat(64),
             elementId: "c".repeat(64),
             retrievalWindowId: "d".repeat(64),

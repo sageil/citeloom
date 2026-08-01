@@ -85,6 +85,20 @@
       "when": 1785561000000,
       "tag": "0011_backfill_chat_no_answer_content",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785601087959,
+      "tag": "0012_past_wiccan",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1785606063000,
+      "tag": "0013_expose_find_sources_counts",
+      "breakpoints": true
     }
   ]
 }

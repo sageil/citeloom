@@ -38,7 +38,6 @@ import {
 } from "../../observability/run.js";
 import { DatabaseRunTelemetrySink } from "../../observability/store.js";
 
-const DISCOVERY_PASSAGES_PER_DOCUMENT = 3;
 const passiveAbortSignal = new AbortController().signal;
 
 export class SourceDiscoveryUnavailableError extends Error {
@@ -138,7 +137,10 @@ async function searchIndexedSourcesWithSession(
       runTelemetry.setQueryVariantCount(0);
       runTelemetry.setCandidateCount(0);
       runTelemetry.setHydratedContextCount(0);
-      const response = buildEmptySourceDiscoveryResponse(request);
+      const response = buildEmptySourceDiscoveryResponse(
+        request,
+        config.sourceDiscovery,
+      );
       await runTelemetry.finish("success");
       return response;
     }
@@ -199,6 +201,7 @@ async function searchIndexedSourcesWithSession(
       related: readRelatedDiscoveryState(request, relatedResult),
       relatedElements,
       request,
+      settings: config.sourceDiscovery,
     });
     await runTelemetry.finish("success");
     return response;
@@ -262,15 +265,10 @@ async function retrieveRelatedDiscoveryElements(
   runTelemetry: RunTelemetry,
   runtime?: ApplicationRuntime,
 ): Promise<RetrievedElement[]> {
-  const resultLimit = Math.min(50, Math.max(
-    request.relatedLimit,
-    request.relatedLimit * DISCOVERY_PASSAGES_PER_DOCUMENT,
-  ));
-  const candidateLimit = Math.min(config.retrieval.candidateK, 50);
   const retrieval = {
     ...config.retrieval,
     mode: "dense" as const,
-    topK: candidateLimit,
+    topK: config.retrieval.candidateK,
   };
   const discoveryConfig = { ...config, retrieval };
   let prepared: PreparedRetrieval;
@@ -329,7 +327,7 @@ async function retrieveRelatedDiscoveryElements(
         reranker,
         request.query,
         prepared.retrieved,
-        resultLimit,
+        config.retrieval.candidateK,
         minimumRelevanceScore,
         requestSignal,
       ),
@@ -372,8 +370,8 @@ async function retrieveKeywordDiscovery(
         config.embeddingSpace.id,
         scopeTargets,
         request.keywordPage,
-        request.keywordPageSize,
-        DISCOVERY_PASSAGES_PER_DOCUMENT,
+        config.sourceDiscovery.resultsPerGroup,
+        config.sourceDiscovery.passagesPerDocument,
       ),
       readKeywordMatchingDocumentKeys(
         databaseSession.query,
@@ -428,6 +426,7 @@ async function recordPartialDiscoveryFallback(
 
 function buildEmptySourceDiscoveryResponse(
   request: SourceDiscoveryRequest,
+  settings: AppConfig["sourceDiscovery"],
 ): SourceDiscoveryResponse {
   return buildSourceDiscoveryResponse({
     keyword: { status: "complete", warning: null },
@@ -438,6 +437,7 @@ function buildEmptySourceDiscoveryResponse(
       : { status: "disabled", warning: null },
     relatedElements: [],
     request,
+    settings,
   });
 }
 

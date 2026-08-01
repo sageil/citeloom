@@ -82,6 +82,7 @@ import {
   retrievalModeUsesDense,
   type RetrievalQuery,
 } from "./indexing/index.js";
+import type { TocRoutingResources } from "./toc/routing.js";
 import { SourceDocumentStore } from "../documents/storage/source-document-store.js";
 import {
   createTelemetryStageResult,
@@ -420,6 +421,9 @@ export async function prepareRetrieval(
     scope,
     abortSignal,
     runTelemetry,
+    workload === "interactive-answer"
+      ? { models, scheduler: answerScheduler }
+      : null,
   );
 }
 
@@ -432,8 +436,15 @@ export async function prepareRetrievalWithRuntime(
   runTelemetry: RunTelemetry = noopRunTelemetry,
   config: AppConfig = runtime.config,
   workload: WorkloadClass = "interactive-search",
+  tocRoutingResources?: TocRoutingResources,
 ): Promise<PreparedRetrieval> {
   const questionInput = readQuestionInput(question);
+  const effectiveTocRoutingResources = workload === "interactive-answer"
+    ? tocRoutingResources ?? {
+      models: runtime.models,
+      scheduler: runtime.scheduler("answer", workload),
+    }
+    : null;
   return prepareRetrievalWithResources(
     config,
     runtime,
@@ -449,6 +460,7 @@ export async function prepareRetrievalWithRuntime(
     scope,
     abortSignal,
     runTelemetry,
+    effectiveTocRoutingResources,
   );
 }
 
@@ -465,6 +477,7 @@ async function prepareRetrievalWithResources(
   scope: QueryScope,
   abortSignal: AbortSignal,
   runTelemetry: RunTelemetry,
+  tocRoutingResources: TocRoutingResources | null,
 ): Promise<PreparedRetrieval> {
   const catalog = new DocumentCatalog(databaseSession.database);
   const scopeStage = runTelemetry.startStage({
@@ -540,6 +553,9 @@ async function prepareRetrievalWithResources(
     rerankingScheduler,
     abortSignal,
     runTelemetry,
+    config.docling.tocEnabled && config.retrieval.mode === "hybrid-reranked"
+      ? tocRoutingResources
+      : null,
   );
   abortSignal.throwIfAborted();
   if (

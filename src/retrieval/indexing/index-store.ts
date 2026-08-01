@@ -13,6 +13,7 @@ import {
   retrievalChunks768,
   retrievalChunks1024,
   retrievalLexicalChunks,
+  retrievalTocArtifacts,
 } from "../../database/schema.js";
 import type {
   RetrievalRepresentation,
@@ -584,6 +585,9 @@ export async function deleteRetrievalGenerationRows(
     retrievalLexicalChunks,
     generationId,
   );
+  await transaction
+    .delete(retrievalTocArtifacts)
+    .where(eq(retrievalTocArtifacts.generationId, generationId));
 }
 
 export async function deleteDocumentRetrievalRows(

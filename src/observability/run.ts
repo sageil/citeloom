@@ -92,7 +92,6 @@ export interface CandidateBudgetAdmissionTelemetry {
 
 export interface CandidateBudgetDecisionTelemetry {
   admissionRank: number | null;
-  detectedLanguage?: string;
   documentId: string;
   exclusionReason: PreRerankCandidateExclusionReason | null;
   fusedRank: number;
@@ -154,16 +153,6 @@ export interface CandidateBudgetTelemetry {
   fusedWindowCount: number;
   hydratedDistinctParentCount: number;
   hydratedWindowCount: number;
-  languageAdmission?: {
-    admittedEnglishRepresentativeCount: number;
-    admittedUndeterminedRepresentativeCount: number;
-    englishRepresentativeCount: number;
-    fusedCandidateCount: number;
-    nonEnglishRepresentativeCount: number;
-    representativeCandidateCount: number;
-    supportedLanguage: "eng";
-    undeterminedRepresentativeCount: number;
-  };
   queries: CandidateBudgetQueryTelemetry[];
   retrievalWindowPolicy: RetrievalWindowPolicyContract;
 }
@@ -208,12 +197,22 @@ export interface AnswerBudgetTelemetry {
 }
 
 export interface AnswerGenerationRequestTelemetry {
-  evidence: Array<{
-    evidenceSha256: string;
-    elementId: string;
-    retrievalWindowId: string;
-  }>;
+  evidence: AnswerGenerationEvidenceTelemetry[];
   phase: "correction" | "initial";
+}
+
+export interface AnswerGenerationEvidenceTelemetry {
+  context: {
+    contentSha256: string;
+    mode:
+      | "adjacent-retrieval-windows"
+      | "exact-retrieval-window"
+      | "parent-source-element";
+    retrievalWindowIds: string[];
+  };
+  evidenceSha256: string;
+  elementId: string;
+  retrievalWindowId: string;
 }
 
 export type AnswerResponseFailureCategory =

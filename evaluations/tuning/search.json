@@ -16,7 +16,7 @@
       "lexicalWeight": 1,
       "originalQueryWeight": 1
     },
-    "queryExpansions": 2,
+    "queryExpansions": 0,
     "rerankerCandidateDepth": 50,
     "rrfK": 60
   },

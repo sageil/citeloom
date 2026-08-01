@@ -859,7 +859,7 @@ function readDiscoveryPassage(value, label) {
 
 function readDiscoveryDocument(value, label) {
   const document = readObject(value, label);
-  const passageValues = readArray(document.passages, `${label} passages`);
+  const passageValues = readArray(document.passages, `${label} excerpts`);
   if (passageValues.length === 0) {
     throw new Error(`The ${label} response is invalid.`);
   }
@@ -867,7 +867,7 @@ function readDiscoveryDocument(value, label) {
   for (let index = 0; index < passageValues.length; index += 1) {
     passages.push(readDiscoveryPassage(
       passageValues[index],
-      `${label} passage ${index + 1}`,
+      `${label} excerpt ${index + 1}`,
     ));
   }
   return {
@@ -879,7 +879,7 @@ function readDiscoveryDocument(value, label) {
     ),
     matchingPassageCount: readPositiveInteger(
       document.matchingPassageCount,
-      `${label} matching passage count`,
+      `${label} matching excerpt count`,
     ),
     passages,
     sourceFile: readNonEmptyString(document.sourceFile, `${label} source file`),
@@ -1828,9 +1828,7 @@ export function registerPage(alpine) {
           body: JSON.stringify({
             includeRelated: this.includeRelated,
             keywordPage,
-            keywordPageSize: 10,
             query,
-            relatedLimit: 10,
             scope,
           }),
           headers: {
@@ -1900,9 +1898,7 @@ export function registerPage(alpine) {
           body: JSON.stringify({
             includeRelated: false,
             keywordPage,
-            keywordPageSize: completedResult.keyword.pageSize,
             query: completedResult.query,
-            relatedLimit: completedResult.related.limit,
             scope: this.discoveryScope,
           }),
           headers: {
@@ -2948,7 +2944,7 @@ export function registerPage(alpine) {
 
     additionalPassageLabel(document) {
       const count = Math.max(0, document.matchingPassageCount - 1);
-      const label = count === 1 ? "passage" : "passages";
+      const label = count === 1 ? "excerpt" : "excerpts";
       return `${count} additional matching ${label}`;
     },
 
@@ -2962,12 +2958,12 @@ export function registerPage(alpine) {
       }
       const documentCount = this.answer.matchedDocuments.length;
       const documentLabel = documentCount === 1 ? "document" : "documents";
-      const elementLabel = elementCount === 1 ? "element" : "elements";
-      return `${documentCount} ${documentLabel}, ${elementCount} ${elementLabel}`;
+      const sectionLabel = elementCount === 1 ? "section" : "sections";
+      return `${documentCount} ${documentLabel}, ${elementCount} ${sectionLabel}`;
     },
 
     retrievedElementLabel(count) {
-      return `${count} retrieved ${count === 1 ? "element" : "elements"}`;
+      return `${count} ${count === 1 ? "section" : "sections"} reviewed`;
     },
 
     citationEvidenceText() {

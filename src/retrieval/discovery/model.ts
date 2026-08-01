@@ -1,4 +1,5 @@
 import type { RetrievedElement } from "../document-retrieval.js";
+import type { SourceDiscoveryConfig } from "../../config/index.js";
 import type {
   RetrievalSourceElement,
   SourceElement,
@@ -13,8 +14,6 @@ import type {
 } from "./schema.js";
 
 const MAX_EXCERPT_CHARACTERS = 360;
-const MAX_PASSAGES_PER_DOCUMENT = 3;
-
 export interface KeywordDiscoveryMatch {
   element: SourceElement;
   evidenceContent: string;
@@ -38,6 +37,7 @@ export interface BuildSourceDiscoveryResponseInput {
   related: DiscoverySectionState;
   relatedElements: RetrievedElement[];
   request: SourceDiscoveryRequest;
+  settings: SourceDiscoveryConfig;
 }
 
 interface MutableDiscoveryDocument {
@@ -63,14 +63,15 @@ export function buildSourceDiscoveryResponse(
     input.relatedElements,
     input.lexicalDocumentKeys,
     input.request.query,
-    input.request.relatedLimit,
+    input.settings.resultsPerGroup,
+    input.settings.passagesPerDocument,
   );
 
   return {
     keyword: {
       documents: keywordDocuments,
       page: input.request.keywordPage,
-      pageSize: input.request.keywordPageSize,
+      pageSize: input.settings.resultsPerGroup,
       status: input.keyword.status,
       totalDocuments: input.keywordPage.totalDocuments,
       warning: input.keyword.warning,
@@ -78,7 +79,7 @@ export function buildSourceDiscoveryResponse(
     query: input.request.query,
     related: {
       documents: relatedDocuments,
-      limit: input.request.relatedLimit,
+      limit: input.settings.resultsPerGroup,
       status: input.related.status,
       warning: input.related.warning,
     },
@@ -166,6 +167,7 @@ function buildRelatedDocuments(
   lexicalDocumentKeys: Set<string>,
   query: string,
   limit: number,
+  passagesPerDocument: number,
 ): SourceDiscoveryDocument[] {
   const documents = new Map<string, MutableDiscoveryDocument>();
   for (const item of elements) {
@@ -185,7 +187,7 @@ function buildRelatedDocuments(
       document = readOrCreateDocument(documents, element, "semantic");
     }
     document.matchingPassageCount += 1;
-    if (document.passages.length < MAX_PASSAGES_PER_DOCUMENT) {
+    if (document.passages.length < passagesPerDocument) {
       document.passages.push(buildPassage(
         element,
         item.evidenceContent,

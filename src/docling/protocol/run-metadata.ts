@@ -195,6 +195,7 @@ export function restoreDoclingConfig(
     secondaryImageScale: normalized.secondaryImageScale,
     tableMode: normalized.tableMode,
     tableStructureEnabled: normalized.tableStructureEnabled,
+    tocEnabled: false,
   };
 }
 

@@ -15,6 +15,7 @@ import {
   retrievalChunks384,
   retrievalChunks768,
   retrievalLexicalChunks,
+  retrievalTocArtifacts,
 } from "../../database/schema.js";
 import type {
   EmbeddingSpaceGcReport,
@@ -449,6 +450,13 @@ async function collectEmbeddingSpace(
       await transaction
         .delete(retrievalLexicalChunks)
         .where(eq(retrievalLexicalChunks.embeddingSpaceId, spaceId));
+      const retiredGenerations = transaction
+        .select({ generationId: indexedDocumentSpaces.generationId })
+        .from(indexedDocumentSpaces)
+        .where(eq(indexedDocumentSpaces.embeddingSpaceId, spaceId));
+      await transaction
+        .delete(retrievalTocArtifacts)
+        .where(inArray(retrievalTocArtifacts.generationId, retiredGenerations));
       await transaction
         .delete(indexedDocumentSpaces)
         .where(eq(indexedDocumentSpaces.embeddingSpaceId, spaceId));

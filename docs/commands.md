@@ -18,6 +18,24 @@ Run a script with `pnpm <script>`, followed by any arguments the command accepts
 | `worker` | Run the ingestion worker from source. |
 | `worker:production` | Run the compiled production ingestion worker. |
 
+### Document TOC backfill
+
+After enabling `Document TOC routing`, build missing TOC maps for documents already indexed in the active embedding space.
+
+```bash
+pnpm dev document-toc backfill
+```
+
+For the supplied container deployment, run the compiled command through the worker service.
+
+```bash
+./infra/compose.sh --profile worker run --rm --no-deps worker node dist/cli/index.js document-toc backfill
+```
+
+The command reads stored document elements, recreates their existing retrieval-window identifiers, and writes only missing TOC artifacts.
+It does not rerun Docling, generate embeddings, or replace retrieval rows.
+The command is safe to rerun because completed generations are skipped and a generated map is saved only if its indexed generation is still active.
+
 ## Build and code quality
 
 | Script | Purpose |

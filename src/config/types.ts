@@ -14,6 +14,7 @@ export interface AppConfig {
   retrieval: RetrievalConfig;
   scheduling: SchedulingConfig;
   settingsVersion: number;
+  sourceDiscovery: SourceDiscoveryConfig;
   sourceContent: SourceContentConfig;
   speechToText: SpeechToTextConfig | null;
   textToSpeech: TextToSpeechConfig | null;
@@ -159,6 +160,7 @@ export interface DoclingConfig {
   secondaryImageScale: number;
   tableMode: DoclingTableMode;
   tableStructureEnabled: boolean;
+  tocEnabled: boolean;
 }
 
 export interface DoclingProcessConfiguration {
@@ -261,6 +263,11 @@ export interface RetrievalConfig {
   variantConcurrency: number;
 }
 
+export interface SourceDiscoveryConfig {
+  passagesPerDocument: number;
+  resultsPerGroup: number;
+}
+
 export interface WorkerConfig {
   concurrency: number;
   fallbackPollIntervalMs: number;
@@ -291,6 +298,7 @@ export interface RuntimeSettings {
   doclingSecondaryImageScale: number;
   doclingTableMode: DoclingTableMode;
   doclingTableStructureEnabled: boolean;
+  doclingTocEnabled: boolean;
   doclingDefaultServiceCapacity: number;
   doclingRequestTimeoutSeconds: number;
   doclingTimeoutSeconds: number;
@@ -300,6 +308,8 @@ export interface RuntimeSettings {
   embeddingTimeoutSeconds: number;
   expansionDecay: number;
   expansionQueryWeight: number;
+  findSourcesPassagesPerDocument: number;
+  findSourcesResults: number;
   generationSeedMode: "random" | "stable";
   lexicalWeight: number;
   maxAttempts: number;

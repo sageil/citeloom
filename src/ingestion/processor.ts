@@ -62,6 +62,15 @@ import type {
   RetrievalDescriptionRecord,
 } from "../domain/retrieval-descriptions.js";
 import {
+  createDisabledDocumentTocArtifact,
+  generateDocumentTocArtifact,
+} from "../retrieval/toc/generation.js";
+import {
+  readStagedDocumentTocArtifact,
+  stageDocumentTocArtifact,
+  type DocumentTocGenerationIdentity,
+} from "../retrieval/toc/store.js";
+import {
   DoclingCapacityUnavailableError,
   DoclingServiceStore,
   StaleDoclingServiceVerificationError,
@@ -1007,10 +1016,58 @@ export class IngestionProcessor {
       );
       position = batch.nextPosition;
     }
+    await this.stageDocumentToc(job, elementSetId, abortSignal);
     if (job.state !== "running") {
       throw new Error(`Cannot complete indexing for ${job.sourceFile}.`);
     }
     await this.catalog.completeIndexing(job.sourceFile, job.ownerId);
+  }
+
+  private async stageDocumentToc(
+    job: IngestionJob,
+    elementSetId: string,
+    abortSignal: AbortSignal,
+  ): Promise<void> {
+    const identity: DocumentTocGenerationIdentity = {
+      documentId: job.documentId,
+      elementSetId,
+      generationId: job.generationId,
+      sourceFile: job.sourceFile,
+    };
+    const expectedMode = this.config.docling.tocEnabled
+      ? "generated"
+      : "disabled";
+    const existing = await readStagedDocumentTocArtifact(
+      this.database,
+      identity,
+    );
+    if (existing?.mode === expectedMode) {
+      this.reportProgress(
+        `${basename(job.sourceFile)}: reusing the staged document TOC map`,
+      );
+      return;
+    }
+    let artifact = createDisabledDocumentTocArtifact();
+    if (this.config.docling.tocEnabled) {
+      const elements = await this.documentStore.readAllElements(
+        elementSetId,
+        job.sourceFile,
+      );
+      artifact = await generateDocumentTocArtifact(
+        {
+          documentId: job.documentId,
+          elements,
+          sourceFile: job.sourceFile,
+          space: this.config.embeddingSpace,
+        },
+        this.models,
+        this.descriptionScheduler,
+        abortSignal,
+        this.reportProgress,
+      );
+    }
+    abortSignal.throwIfAborted();
+    await stageDocumentTocArtifact(this.database, identity, artifact);
   }
 
   private async describeElementBatch(

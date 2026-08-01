@@ -102,14 +102,14 @@ const textToSpeechAdapters = Object.freeze([
   "openai-speech",
 ]);
 const capabilityLabels = Object.freeze({
-  answer: "Answer generation",
+  answer: "Answers",
   chat: "Chat",
-  embedding: "Embedding",
-  queryExpansion: "Extra search queries (Query Expansion)",
-  reranking: "Reranking",
-  speechToText: "Speech-to-text",
-  summarization: "Summarization",
-  textToSpeech: "Text-to-speech",
+  embedding: "Search model",
+  queryExpansion: "Additional searches",
+  reranking: "Search ranking",
+  speechToText: "Speech input",
+  summarization: "Image and table descriptions",
+  textToSpeech: "Spoken answers",
 });
 const startupGroupName = "Startup and deployment";
 
@@ -137,69 +137,69 @@ function readApplicationSettings(value) {
 }
 
 function readEmbeddingInputFormats(value) {
-  const values = readArray(value, "embedding input formats");
+  const values = readArray(value, "search text formats");
   const formats = [];
   const ids = new Set();
   for (const value of values) {
-    const format = readPlainObject(value, "embedding input format");
-    const id = readNonEmptyString(format.id, "embedding input format ID");
+    const format = readPlainObject(value, "search text format");
+    const id = readNonEmptyString(format.id, "search text format ID");
     if (ids.has(id)) {
-      throw new Error(`The embedding input format ${id} appears more than once.`);
+      throw new Error(`The search text format ${id} appears more than once.`);
     }
     ids.add(id);
     const blockers = [];
     for (const blocker of readArray(
       format.retirementBlockers,
-      "embedding input format retirement blockers",
+      "search text format retirement blockers",
     )) {
       blockers.push(readNonEmptyString(
         blocker,
-        "embedding input format retirement blocker",
+        "search text format retirement blocker",
       ));
     }
     formats.push({
       canRetire: readBoolean(
         format.canRetire,
-        "embedding input format retirement state",
+        "search text format retirement state",
       ),
       createdAt: readNonEmptyString(
         format.createdAt,
-        "embedding input format creation time",
+        "search text format creation time",
       ),
       defaultSelected: readBoolean(
         format.defaultSelected,
-        "embedding input format default state",
+        "search text format default state",
       ),
       documentTemplate: readString(
         format.documentTemplate,
-        "embedding input format document template",
+        "search text format document template",
       ),
       embeddingSpaceCount: readNonNegativeInteger(
         format.embeddingSpaceCount,
-        "embedding input format space count",
+        "search text format index count",
       ),
       id,
       inputFormatHash: readNonEmptyString(
         format.inputFormatHash,
-        "embedding input format hash",
+        "search text format identifier",
       ),
-      name: readNonEmptyString(format.name, "embedding input format name"),
+      name: readNonEmptyString(format.name, "search text format name"),
       queryTemplate: readString(
         format.queryTemplate,
-        "embedding input format query template",
+        "search text format query template",
       ),
       retiredAt: readNullableNonEmptyString(
         format.retiredAt,
-        "embedding input format retirement time",
+        "search text format retirement time",
       ),
       retirementBlockers: blockers,
       schemaVersion: readPositiveInteger(
         format.schemaVersion,
-        "embedding input format schema version",
+        "search text format version",
       ),
       selected: readBoolean(
         format.selected,
-        "embedding input format selected state",
+        "search text format selected state",
       ),
     });
   }
@@ -216,13 +216,13 @@ function readConfigurationWarnings(value) {
 }
 
 function readRuntimeSettingFields(value) {
-  const values = readArray(value, "runtime settings");
+  const values = readArray(value, "application settings");
   const fields = [];
   const keys = new Set();
   for (const value of values) {
     const field = readRuntimeSettingField(value);
     if (keys.has(field.key)) {
-      throw new Error(`The runtime setting ${field.key} appears more than once.`);
+      throw new Error(`The application setting ${field.key} appears more than once.`);
     }
     keys.add(field.key);
     fields.push(field);
@@ -231,7 +231,7 @@ function readRuntimeSettingFields(value) {
 }
 
 function readRuntimeSettingField(value) {
-  const field = readPlainObject(value, "runtime setting");
+  const field = readPlainObject(value, "application setting");
   const feature = field.feature === undefined || field.feature === null
     ? null
     : readEnum(field.feature, providerCapabilities, "setting feature");
@@ -377,10 +377,10 @@ function readCapabilityAdapter(value, capability) {
     return readEnum(value, languageAdapters, "language adapter");
   }
   if (capability === "embedding") {
-    return readEnum(value, embeddingAdapters, "embedding adapter");
+    return readEnum(value, embeddingAdapters, "search model connection type");
   }
   if (capability === "reranking") {
-    return readEnum(value, rerankingAdapters, "reranking adapter");
+    return readEnum(value, rerankingAdapters, "search ranking connection type");
   }
   if (capability === "speechToText") {
     return readEnum(value, speechToTextAdapters, "speech-to-text adapter");
@@ -434,7 +434,7 @@ function readProviderConfiguration(value) {
   return {
     adaptiveContextEnabled: readBoolean(
       configuration.adaptiveContextEnabled,
-      "adaptive inference state",
+      "automatic context size state",
     ),
     answer: readProviderModelConfiguration(
       configuration.answer,
@@ -451,7 +451,7 @@ function readProviderConfiguration(value) {
     customAdapters: readCustomAdapters(configuration.customAdapters),
     embedding: readProviderModelConfiguration(
       configuration.embedding,
-      "embedding configuration",
+      "search model settings",
     ),
     queryExpansion: readProviderModelConfiguration(
       configuration.queryExpansion,
@@ -468,7 +468,7 @@ function readProviderConfiguration(value) {
     ),
     reranking: readProviderCapabilityConfiguration(
       configuration.reranking,
-      "reranking configuration",
+      "search ranking settings",
     ),
     speechToText: readProviderCapabilityConfiguration(
       configuration.speechToText,
@@ -500,7 +500,7 @@ function readProviderModelConfiguration(value, label) {
     ...configuration,
     contextCapacityTokens: readNullablePositiveInteger(
       source.contextCapacityTokens,
-      `${label} context capacity`,
+      `${label} maximum input tokens`,
     ),
   };
 }
@@ -545,7 +545,7 @@ function readCustomAdapters(value) {
     embedding: readEnum(
       adapters.embedding,
       embeddingAdapters,
-      "embedding adapter",
+      "search model connection type",
     ),
     queryExpansion: readEnum(
       adapters.queryExpansion,
@@ -555,7 +555,7 @@ function readCustomAdapters(value) {
     reranking: readEnum(
       adapters.reranking,
       rerankingAdapters,
-      "reranking adapter",
+      "search ranking connection type",
     ),
     speechToText: readEnum(
       adapters.speechToText,
@@ -576,24 +576,24 @@ function readCustomAdapters(value) {
 }
 
 function readFeatureOverrides(value) {
-  const overrides = readPlainObject(value, "provider feature overrides");
+  const overrides = readPlainObject(value, "provider feature settings");
   const normalized = {};
   for (const capability of providerCapabilities) {
     const capabilityOverrides = readPlainObject(
       overrides[capability],
-      `${capability} feature overrides`,
+      `${capability} feature settings`,
     );
     normalized[capability] = {
       modelOverride: readNullableNonEmptyString(
         capabilityOverrides.modelOverride,
-        `${capability} model override`,
+        `${capability} selected model`,
       ),
     };
     if (modelProviderCapabilities.includes(capability)) {
       normalized[capability].contextCapacityTokensOverride =
         readNullablePositiveInteger(
           capabilityOverrides.contextCapacityTokensOverride,
-          `${capability} context capacity override`,
+          `${capability} maximum input tokens`,
         );
     }
     if (languageProviderCapabilities.includes(capability)) {
@@ -603,28 +603,28 @@ function readFeatureOverrides(value) {
         : readEnum(
           thinkingModeOverride,
           thinkingModes,
-          `${capability} thinking mode override`,
+          `${capability} thinking mode`,
         );
     }
   }
   const textToSpeech = readPlainObject(
     overrides.textToSpeech,
-    "text-to-speech feature overrides",
+    "spoken answer settings",
   );
   normalized.textToSpeech.voiceOverride = readNullableNonEmptyString(
     textToSpeech.voiceOverride,
-    "text-to-speech voice override",
+    "spoken answer voice",
   );
   return normalized;
 }
 
 function readProviderRouting(value) {
-  const routing = readPlainObject(value, "provider routing");
+  const routing = readPlainObject(value, "feature provider selections");
   const normalized = {};
   for (const capability of providerCapabilities) {
     normalized[capability] = routing[capability] === null
       ? null
-      : readProviderId(routing[capability], `${capability} provider route`);
+      : readProviderId(routing[capability], `${capability} provider selection`);
   }
   return normalized;
 }
@@ -939,9 +939,9 @@ function readSettingsResponse(response, label) {
 }
 
 function readEmbeddingInputFormatMutationResponse(value) {
-  const response = readPlainObject(value, "embedding input format mutation");
+  const response = readPlainObject(value, "search text format update");
   return {
-    id: readNonEmptyString(response.id, "embedding input format ID"),
+    id: readNonEmptyString(response.id, "search text format ID"),
   };
 }
 
@@ -1549,12 +1549,12 @@ export function registerPage(alpine) {
 
     embeddingInputFormatEditorTitle() {
       if (this.inputFormatEditorMode === "copy") {
-        return "Copy input format";
+        return "Copy search text format";
       }
       if (this.inputFormatEditorMode === "revision") {
-        return "Create revision";
+        return "Create revised format";
       }
-      return "Create input format";
+      return "Create search text format";
     },
 
     async submitEmbeddingInputFormat() {
@@ -1568,12 +1568,12 @@ export function registerPage(alpine) {
       const draft = this.inputFormatDraft;
       const name = String(draft.name).trim();
       if (name === "") {
-        dispatchNotice("error", "Enter a name for the embedding input format.");
+        dispatchNotice("error", "Enter a name for the search text format.");
         return;
       }
       const schemaVersion = Number(draft.schemaVersion);
       if (!Number.isInteger(schemaVersion) || schemaVersion < 1) {
-        dispatchNotice("error", "Schema version must be a positive integer.");
+        dispatchNotice("error", "Format version must be a positive integer.");
         return;
       }
       let endpoint = "/api/embedding-input-formats";
@@ -1604,7 +1604,7 @@ export function registerPage(alpine) {
         });
         const created = await readJsonResponse(
           response,
-          "Embedding input format update",
+          "Search text format update",
           readEmbeddingInputFormatMutationResponse,
         );
         createdId = created.id;
@@ -1623,7 +1623,7 @@ export function registerPage(alpine) {
           "error",
           error instanceof Error
             ? error.message
-            : "The embedding input format could not be created.",
+            : "The search text format could not be created.",
         );
       } finally {
         this.inputFormatBusy = false;
@@ -1658,7 +1658,7 @@ export function registerPage(alpine) {
         );
         await readJsonResponse(
           response,
-          "Embedding input format retirement",
+          "Search text format retirement",
           readEmbeddingInputFormatMutationResponse,
         );
         this.reloadAfterSave = false;
@@ -1669,7 +1669,7 @@ export function registerPage(alpine) {
           "error",
           error instanceof Error
             ? error.message
-            : "The embedding input format could not be retired.",
+            : "The search text format could not be retired.",
         );
       } finally {
         this.inputFormatBusy = false;
@@ -1728,13 +1728,15 @@ export function registerPage(alpine) {
           : "Review settings that match your search.";
       }
       const descriptions = {
-        Docling: "Configure document conversion, OCR, parsing, and extraction behavior.",
-        Inference: "Configure answer generation and citation-support validation behavior.",
-        "Ingestion recovery": "Configure ingestion retries and recovery timing.",
-        Retrieval: "Choose how many matches to consider, how extra search queries are used, and how much evidence reaches the answer.",
-        Telemetry: "Configure privacy-safe application metrics and operational reporting.",
-        "Uploads and ingestion": "Configure upload limits and document processing behavior.",
-        "Worker scheduling": "Configure how each worker advances ingestion jobs.",
+        Docling: "Choose how Docling reads and converts uploaded documents.",
+        "Answers and citation checks": "Choose answer limits and how CiteLoom reports citation support.",
+        "Document processing": "Choose upload limits, processing time, and how many documents CiteLoom handles at once.",
+        "Search and answers": "Choose how widely CiteLoom searches and how much source material it can use in an answer.",
+        "Search model": "Choose how CiteLoom prepares documents for search.",
+        "Search ranking": "Choose how CiteLoom orders and filters semantic search results.",
+        "Speech input": "Choose how CiteLoom turns recorded questions into text.",
+        "Spoken answers": "Choose how CiteLoom creates and plays answer audio.",
+        "Usage diagnostics": "Choose whether CiteLoom records AI request times and usage.",
       };
       return descriptions[this.selectedArea]
         ?? `Configure ${this.selectedArea.toLocaleLowerCase()} behavior.`;
@@ -1763,7 +1765,7 @@ export function registerPage(alpine) {
       if (this.pending[field.key] === "reset") {
         return "Default after save";
       }
-      return field.source === "database" ? "Database" : "Environment/default";
+      return field.source === "database" ? "Saved value" : "Default value";
     },
 
     fieldResetDisabled(field) {
@@ -1876,14 +1878,14 @@ export function registerPage(alpine) {
 
     selectedFeatureDescription() {
       const descriptions = {
-        answer: "Configure the provider and behavior used when generating answers.",
-        chat: "Configure the provider and behavior used for grounded document conversations.",
-        embedding: "Configure the provider and model used to create retrieval embeddings.",
-        queryExpansion: "Configure the provider and model used to expand retrieval queries.",
-        reranking: "Configure the provider and model used to rerank retrieved evidence.",
-        speechToText: "Configure the provider and model used to transcribe audio.",
-        summarization: "Configure the provider and behavior used when summarizing documents.",
-        textToSpeech: "Configure the provider, model, and voice used to generate audio.",
+        answer: "Choose how CiteLoom writes answers.",
+        chat: "Choose how CiteLoom responds in document chats.",
+        embedding: "Choose the model CiteLoom uses to make documents searchable.",
+        queryExpansion: "Choose how CiteLoom creates additional searches when that setting is enabled.",
+        reranking: "Choose how CiteLoom orders semantic search results.",
+        speechToText: "Choose how CiteLoom turns recorded questions into text.",
+        summarization: "Choose how CiteLoom describes images and tables while processing documents.",
+        textToSpeech: "Choose how CiteLoom creates spoken answers.",
       };
       return descriptions[this.selectedFeatureCapability];
     },
@@ -1912,7 +1914,7 @@ export function registerPage(alpine) {
     featureModelSourceLabel(capability) {
       return this.featureModelOverride(capability) === null
         ? "Using provider default"
-        : "Using feature override";
+        : "Using this feature's model";
     },
 
     capabilityIsOptional(capability) {
@@ -1954,8 +1956,8 @@ export function registerPage(alpine) {
 
     featureModelFieldLabel(capability) {
       return capability === "embedding"
-        ? "Embedding model"
-        : "Feature model override";
+        ? "Search model"
+        : "Model for this feature";
     },
 
     featureModelInputPlaceholder(capability) {
@@ -1969,12 +1971,12 @@ export function registerPage(alpine) {
       const override = this.featureModelOverride(capability);
       if (capability === "embedding") {
         return override === null
-          ? "Enter a model ID to use a different embedding model, or leave blank to use the provider default."
-          : "This embedding model overrides the provider default.";
+          ? "Enter a model ID to use a different search model, or leave blank to use the provider default."
+          : "This search model is used instead of the provider default.";
       }
       return override === null
-        ? "No override. The provider default is used."
-        : "Overrides the provider default for this feature only.";
+        ? "The provider default is used."
+        : "This model is used instead of the provider default for this feature.";
     },
 
     featureModelOverride(capability) {
@@ -2096,7 +2098,7 @@ export function registerPage(alpine) {
         ? null
         : readPositiveInteger(
           Number(normalized),
-          "feature context capacity",
+          "maximum input tokens for this feature",
         );
       const draft = cloneProviderDrafts(this.providerDrafts, alpine);
       draft.featureOverrides[
@@ -2115,7 +2117,7 @@ export function registerPage(alpine) {
       }
       const thinkingModeOverride = value === ""
         ? null
-        : readEnum(value, thinkingModes, "feature thinking mode override");
+        : readEnum(value, thinkingModes, "thinking mode for this feature");
       const draft = cloneProviderDrafts(this.providerDrafts, alpine);
       draft.featureOverrides[capability].thinkingModeOverride =
         thinkingModeOverride;
@@ -2275,7 +2277,7 @@ export function registerPage(alpine) {
         && maximumParallelRequests !== 1
       ) {
         this.errorMessage =
-          "Adaptive inference requires maximum parallel requests to remain 1.";
+          "Automatic context size requires Maximum parallel requests to remain 1.";
         return;
       }
       this.updateSelectedProviderConfiguration((configuration) => {
@@ -2400,7 +2402,7 @@ export function registerPage(alpine) {
         ? null
         : readPositiveInteger(
           Number(normalized),
-          "provider model context capacity",
+          "provider maximum input tokens",
         );
       this.updateSelectedProviderConfiguration((configuration) => {
         configuration[capability].contextCapacityTokens =
@@ -2437,13 +2439,13 @@ export function registerPage(alpine) {
       }
       if (capability === "embedding") {
         return [
-          { label: "OpenAI-compatible embeddings", value: "openai-compatible-embedding" },
-          { label: "Ollama embeddings", value: "ollama-embedding" },
-          { label: "Cohere embeddings", value: "cohere-embedding" },
+          { label: "OpenAI-compatible search model", value: "openai-compatible-embedding" },
+          { label: "Ollama search model", value: "ollama-embedding" },
+          { label: "Cohere search model", value: "cohere-embedding" },
         ];
       }
       if (capability === "reranking") {
-        return [{ label: "top_n rerank", value: "top-n-rerank" }];
+        return [{ label: "Top-N search ranking", value: "top-n-rerank" }];
       }
       if (capability === "speechToText") {
         return [

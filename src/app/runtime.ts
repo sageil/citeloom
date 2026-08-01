@@ -476,6 +476,7 @@ function freezeApplicationConfig(config: AppConfig): AppConfig {
   }
   Object.freeze(copy.scheduling.targets);
   Object.freeze(copy.scheduling);
+  Object.freeze(copy.sourceDiscovery);
   Object.freeze(copy.sourceContent);
   if (copy.speechToText !== null) {
     Object.freeze(copy.speechToText);

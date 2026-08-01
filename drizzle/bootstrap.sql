@@ -852,6 +852,7 @@ WITH canonical_settings AS (
       "doclingSecondaryImageScale": 2,
       "doclingTableMode": "accurate",
       "doclingTableStructureEnabled": true,
+      "doclingTocEnabled": true,
       "doclingTimeoutSeconds": 1800,
       "embeddingDimensions": 768,
       "embeddingInputFormatId": "00000000-0000-4000-8000-000000000003",
@@ -859,6 +860,8 @@ WITH canonical_settings AS (
       "embeddingTimeoutSeconds": 21600,
       "expansionDecay": 1,
       "expansionQueryWeight": 1,
+      "findSourcesPassagesPerDocument": 3,
+      "findSourcesResults": 10,
       "generationSeedMode": "stable",
       "lexicalWeight": 1,
       "maxAttempts": 3,
@@ -866,7 +869,7 @@ WITH canonical_settings AS (
       "originalQueryWeight": 1,
       "queryExpansionTemperature": 0,
       "queryExpansionTimeoutSeconds": 900,
-      "queryExpansions": 2,
+      "queryExpansions": 0,
       "rerankDiscoveryMinimumScore": 0.9,
       "rerankTimeoutSeconds": 300,
       "retrievalCandidates": 50,
@@ -912,48 +915,72 @@ ON CONFLICT ("id") DO UPDATE
 SET
   "defaults" = jsonb_set(
     jsonb_set(
+    jsonb_set(
       jsonb_set(
         jsonb_set(
           jsonb_set(
             jsonb_set(
-              "application_settings"."defaults",
-              '{providers,routing}',
-              EXCLUDED."defaults"#>'{providers,routing}',
+              jsonb_set(
+                "application_settings"."defaults",
+                '{providers,routing}',
+                EXCLUDED."defaults"#>'{providers,routing}',
+                true
+              ),
+              '{providers,connections,omlx}',
+              EXCLUDED."defaults"#>'{providers,connections,omlx}',
               true
             ),
-            '{providers,connections,omlx}',
-            EXCLUDED."defaults"#>'{providers,connections,omlx}',
+            '{providers,connections,ollama}',
+            EXCLUDED."defaults"#>'{providers,connections,ollama}',
             true
           ),
-          '{providers,connections,ollama}',
-          EXCLUDED."defaults"#>'{providers,connections,ollama}',
+          '{runtime,answerMaximumOutputTokens}',
+          EXCLUDED."defaults"#>'{runtime,answerMaximumOutputTokens}',
           true
         ),
-        '{runtime,answerMaximumOutputTokens}',
-        EXCLUDED."defaults"#>'{runtime,answerMaximumOutputTokens}',
+        '{runtime,embeddingInputFormatId}',
+        EXCLUDED."defaults"#>'{runtime,embeddingInputFormatId}',
         true
       ),
-      '{runtime,embeddingInputFormatId}',
-      EXCLUDED."defaults"#>'{runtime,embeddingInputFormatId}',
+      '{runtime,queryExpansions}',
+      EXCLUDED."defaults"#>'{runtime,queryExpansions}',
       true
     ),
-    '{sourceContent}',
-    EXCLUDED."defaults"->'sourceContent',
+      '{sourceContent}',
+      EXCLUDED."defaults"->'sourceContent',
+      true
+    ),
+    '{runtime,doclingTocEnabled}',
+    EXCLUDED."defaults"#>'{runtime,doclingTocEnabled}',
     true
   ),
   "settings" = jsonb_set(
     jsonb_set(
+    jsonb_set(
       jsonb_set(
-        "application_settings"."settings",
-        '{runtime,answerMaximumOutputTokens}',
+        jsonb_set(
+          "application_settings"."settings",
+          '{runtime,answerMaximumOutputTokens}',
+          CASE
+            WHEN
+              "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+                IS NULL
+              OR "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+                = "application_settings"."defaults"#>'{runtime,answerMaximumOutputTokens}'
+            THEN EXCLUDED."settings"#>'{runtime,answerMaximumOutputTokens}'
+            ELSE "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+          END,
+          true
+        ),
+        '{runtime,queryExpansions}',
         CASE
           WHEN
-            "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+            "application_settings"."settings"#>'{runtime,queryExpansions}'
               IS NULL
-            OR "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
-              = "application_settings"."defaults"#>'{runtime,answerMaximumOutputTokens}'
-          THEN EXCLUDED."settings"#>'{runtime,answerMaximumOutputTokens}'
-          ELSE "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+            OR "application_settings"."settings"#>'{runtime,queryExpansions}'
+              = "application_settings"."defaults"#>'{runtime,queryExpansions}'
+          THEN EXCLUDED."settings"#>'{runtime,queryExpansions}'
+          ELSE "application_settings"."settings"#>'{runtime,queryExpansions}'
         END,
         true
       ),
@@ -972,8 +999,20 @@ SET
       END,
       true
     ),
-    '{sourceContent}',
-    EXCLUDED."settings"->'sourceContent',
+      '{sourceContent}',
+      EXCLUDED."settings"->'sourceContent',
+      true
+    ),
+    '{runtime,doclingTocEnabled}',
+    CASE
+      WHEN
+        "application_settings"."settings"#>'{runtime,doclingTocEnabled}'
+          IS NULL
+        OR "application_settings"."settings"#>'{runtime,doclingTocEnabled}'
+          = "application_settings"."defaults"#>'{runtime,doclingTocEnabled}'
+      THEN EXCLUDED."settings"#>'{runtime,doclingTocEnabled}'
+      ELSE "application_settings"."settings"#>'{runtime,doclingTocEnabled}'
+    END,
     true
   ),
   "updated_at" = now(),
@@ -989,12 +1028,59 @@ WHERE
     IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,answerMaximumOutputTokens}'
   OR "application_settings"."defaults"#>'{runtime,embeddingInputFormatId}'
     IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,embeddingInputFormatId}'
+  OR "application_settings"."defaults"#>'{runtime,queryExpansions}'
+    IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,queryExpansions}'
+  OR "application_settings"."defaults"#>'{runtime,doclingTocEnabled}'
+    IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,doclingTocEnabled}'
   OR "application_settings"."defaults"->'sourceContent'
     IS DISTINCT FROM EXCLUDED."defaults"->'sourceContent'
   OR "application_settings"."settings"#>'{providers,connections,ollama,adaptiveContextEnabled}'
     IS NULL
   OR "application_settings"."settings"->'sourceContent'
     IS DISTINCT FROM EXCLUDED."settings"->'sourceContent';
+
+UPDATE "application_settings"
+SET
+  "defaults" = jsonb_set(
+    jsonb_set(
+      "defaults",
+      '{runtime,findSourcesPassagesPerDocument}',
+      '3'::jsonb,
+      true
+    ),
+    '{runtime,findSourcesResults}',
+    '10'::jsonb,
+    true
+  ),
+  "settings" = jsonb_set(
+    jsonb_set(
+      "settings",
+      '{runtime,findSourcesPassagesPerDocument}',
+      COALESCE(
+        "settings"#>'{runtime,findSourcesPassagesPerDocument}',
+        '3'::jsonb
+      ),
+      true
+    ),
+    '{runtime,findSourcesResults}',
+    COALESCE(
+      "settings"#>'{runtime,findSourcesResults}',
+      '10'::jsonb
+    ),
+    true
+  ),
+  "updated_at" = now(),
+  "version" = "version" + 1
+WHERE
+  "id" = 'runtime'
+  AND (
+    "defaults"#>'{runtime,findSourcesPassagesPerDocument}'
+      IS DISTINCT FROM '3'::jsonb
+    OR "defaults"#>'{runtime,findSourcesResults}'
+      IS DISTINCT FROM '10'::jsonb
+    OR "settings"#>'{runtime,findSourcesPassagesPerDocument}' IS NULL
+    OR "settings"#>'{runtime,findSourcesResults}' IS NULL
+  );
 
 DO $bootstrap$
 DECLARE

@@ -128,6 +128,7 @@ Ingest and search:
   pnpm ask [--all | --document <id> | --file <path> | --tag <tag>] -- <question>
 
 Manage stored data:
+  pnpm dev document-toc backfill
   pnpm dev embedding-spaces pin --space <id> --reason <reason>
   pnpm dev embedding-spaces unpin --space <id>
   pnpm dev embedding-spaces gc --retention-days <days> <--dry-run|--apply>
@@ -136,6 +137,7 @@ Manage stored data:
 
 Notes:
   - Add --enqueue to process ingestion in the background with a running worker.
+  - Document TOC backfill uses stored document elements and does not rerun Docling or embeddings.
   - Run an interrupted ingest command again to resume it. Add --force only to rebuild it.
   - Repeat a scope flag to select multiple document IDs, files, or tags.
   - Supported document extensions: ${knownDocumentExtensions}.

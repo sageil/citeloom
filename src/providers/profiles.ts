@@ -605,7 +605,7 @@ export function parseProviderSettings(value: unknown): ProviderSettings {
         : `providers.${issue.path.join(".")}`;
       return `- ${path}: ${issue.message}`;
     }).join("\n");
-    throw new Error(`Invalid provider configuration:\n${details}`);
+    throw new Error(`Invalid provider settings:\n${details}`);
   }
   return result.data;
 }
@@ -671,13 +671,13 @@ export function resolveProviderCapability(
     return null;
   }
   if (capability === "reranking" && !isRerankerAdapter(provider.adapter)) {
-    throw new Error("The selected reranking provider has an invalid adapter.");
+    throw new Error("The selected provider is not compatible with Search ranking.");
   }
   if (
     capability === "speechToText"
     && !isSpeechToTextAdapter(provider.adapter)
   ) {
-    throw new Error("The selected speech-to-text provider has an invalid adapter.");
+    throw new Error("The selected provider is not compatible with Speech input.");
   }
   return provider;
 }
@@ -724,14 +724,14 @@ function validateAdaptiveContextConfiguration(
     if (providerId !== "ollama") {
       context.addIssue({
         code: "custom",
-        message: "Adaptive inference is available only for the Ollama provider.",
+        message: "Automatic context size is available only for the Ollama provider.",
         path: ["connections", providerId, "adaptiveContextEnabled"],
       });
     }
     if (connection.maximumParallelRequests !== 1) {
       context.addIssue({
         code: "custom",
-        message: "Adaptive inference requires maximum parallel requests to be 1.",
+        message: "Automatic context size requires maximum parallel requests to be 1.",
         path: ["connections", providerId, "maximumParallelRequests"],
       });
     }
@@ -743,10 +743,10 @@ export function resolveEmbeddingProvider(
 ): ResolvedEmbeddingProvider {
   const provider = resolveConfiguredProvider(settings, "embedding");
   if (provider === null) {
-    throw new Error("embedding requires a provider.");
+    throw new Error("Search model requires a provider.");
   }
   if (!isEmbeddingModelAdapter(provider.adapter)) {
-    throw new Error("The selected embedding provider has an invalid adapter.");
+    throw new Error("The selected provider is not compatible with Search model.");
   }
   return {
     ...provider,
@@ -1050,22 +1050,28 @@ function isSpeechToTextAdapter(
 
 function formatCapability(capability: ProviderCapability): string {
   if (capability === "answer") {
-    return "answer generation";
+    return "Answers";
   }
   if (capability === "summarization") {
-    return "summarization";
+    return "Image and table descriptions";
   }
   if (capability === "chat") {
     return "chat";
   }
   if (capability === "queryExpansion") {
-    return "extra search queries";
+    return "Additional searches";
   }
   if (capability === "speechToText") {
-    return "speech-to-text";
+    return "Speech input";
   }
   if (capability === "textToSpeech") {
-    return "text-to-speech";
+    return "Spoken answers";
+  }
+  if (capability === "embedding") {
+    return "Search model";
+  }
+  if (capability === "reranking") {
+    return "Search ranking";
   }
   return capability;
 }

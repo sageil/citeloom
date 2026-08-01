@@ -2,7 +2,7 @@
 
 CiteLoom has two configuration layers:
 
-- Use the Settings page for providers, models, feature routing, retrieval, and document conversion.
+- Use the Settings page for providers, models, search, answers, and document conversion.
 - Use environment variables for database access, storage paths, web listeners, release information, and service processes.
 
 Settings are stored in PostgreSQL.
@@ -11,10 +11,11 @@ Each job and answer run keeps the settings it started with.
 ## Configure providers
 
 After CiteLoom starts, open Settings.
-Configure a provider connection, then assign it to one or more capabilities.
-Answers, chat, extra search queries, summaries, and embeddings require a provider.
-Reranking, speech-to-text, and text-to-speech are optional.
-Answer, Chat, and Summary appear as separate feature settings, so each can use its own provider, model, context capacity, endpoint override, and capability-specific credential.
+Configure a provider connection, then choose which features use it.
+Answers, Chat, Image and table descriptions, and Search model require a provider.
+Additional searches require a provider only when enabled.
+Search ranking, Speech input, and Spoken answers are optional.
+Each feature can use its own provider, model, maximum input size, URL, and sign-in details.
 Existing installations initially copy their Answer route and model settings into Chat, after which later Chat changes are independent.
 
 A fresh database uses Ollama for the required capabilities.
@@ -91,9 +92,9 @@ If validation fails, the previous setting remains active.
 ## Provider reference
 
 [`providerCatalog`](../src/providers/profiles.ts) is the source of truth for built-in provider profiles and capabilities.
-Each capability is routed independently, so one provider can generate answers while other providers supply embeddings, reranking, or speech.
+Each feature can use a different provider, so the service that writes answers does not have to be the service used for search or speech.
 
-| Provider | Answers | Chat | Extra search queries | Summaries | Embeddings | Reranking | Speech-to-text | Text-to-speech |
+| Provider | Answers | Chat | Additional searches | Image and table descriptions | Search model | Search ranking | Speech input | Spoken answers |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | oMLX | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Ollama | Yes | Yes | Yes | Yes | Yes | - | - | - |
@@ -138,8 +139,8 @@ Confirm current details in the official documentation for [oMLX](https://github.
 
 ### Fresh-install routes and models
 
-Fresh installs use Ollama for answers, chat, extra search queries, summaries, and embeddings.
-Reranking and both speech capabilities start unassigned.
+Fresh installs use Ollama for Answers, Chat, Additional searches, Image and table descriptions, and Search model.
+Search ranking and both speech features start unassigned.
 The saved oMLX models are ready to use if an administrator selects oMLX for one of those capabilities.
 The saved oMLX URL uses port 9000 and can be changed in Settings.
 
@@ -147,20 +148,20 @@ The saved oMLX URL uses port 9000 and can be changed in Settings.
 | --- | --- | --- |
 | Answers | Ollama | `gemma4:e4b-mlx` |
 | Chat | Ollama | `gemma4:e4b-mlx` |
-| Extra search queries | Ollama | `gemma4:e4b-mlx` |
-| Summaries | Ollama | `gemma4:e4b-mlx` |
-| Embeddings | Ollama | `snowflake-arctic-embed:137m` |
-| Reranking | Not selected | oMLX default `gte-reranker-modernbert-base` is available |
-| Speech-to-text | Not selected | oMLX default `Qwen3-ASR-1.7B-8bit` is available |
-| Text-to-speech | Not selected | oMLX default `Kokoro-82M-bf16`, voice `af_heart`, is available |
+| Additional searches | Ollama | `gemma4:e4b-mlx` |
+| Image and table descriptions | Ollama | `gemma4:e4b-mlx` |
+| Search model | Ollama | `snowflake-arctic-embed:137m` |
+| Search ranking | Not selected | oMLX default `gte-reranker-modernbert-base` is available |
+| Speech input | Not selected | oMLX default `Qwen3-ASR-1.7B-8bit` is available |
+| Spoken answers | Not selected | oMLX default `Kokoro-82M-bf16`, voice `af_heart`, is available |
 
 Work already in progress keeps its saved settings snapshot when a model, endpoint, or route changes.
 
-### Ollama Adaptive inference
+### Ollama automatic context size
 
-Adaptive inference is enabled by default for Ollama language workloads.
-It applies only to native Ollama GGUF language models used for answers, chat, extra search queries, and summaries.
-It does not change embedding requests, other providers, or MLX runners.
+Automatic context size is enabled by default for Ollama language models.
+It applies only to native Ollama GGUF language models used for Answers, Chat, Additional searches, and Image and table descriptions.
+It does not change Search model requests, other providers, or MLX runners.
 
 For a bounded answer, CiteLoom calculates the requested context as:
 
@@ -181,21 +182,21 @@ These examples assume Ollama reports a model maximum of at least 131,072 tokens 
 | Extra search query generation | CiteLoom assigns the adaptive floor directly rather than using answer-output variables | `65,536` |
 | Summary, vision request, tool request, reasoning request, or answer without an output limit | CiteLoom cannot establish the same bounded answer requirement | The model maximum reported by Ollama |
 
-Adaptive inference requires CiteLoom's Ollama provider limit and Ollama's `OLLAMA_NUM_PARALLEL` setting to both be `1`.
+Automatic context size requires CiteLoom's Ollama provider limit and Ollama's `OLLAMA_NUM_PARALLEL` setting to both be `1`.
 Use a dedicated Ollama endpoint, or coordinate every client that can load the same model, because another client can change the resident runner.
-The Settings page locks CiteLoom's provider limit to `1` while Adaptive inference is enabled.
-Turn Adaptive inference off to make every Ollama language request use the configured fixed context capacity.
+The Settings page locks CiteLoom's provider limit to `1` while Automatic context size is enabled.
+Turn Automatic context size off to make every Ollama language request use the configured fixed input size.
 
-Fresh installations and provider resets enable Adaptive inference.
-An upgraded configuration with no saved Adaptive inference choice is enabled when its Ollama provider limit is already `1`.
+Fresh installations and provider resets enable Automatic context size.
+An upgraded configuration with no saved Automatic context size choice is enabled when its Ollama provider limit is already `1`.
 An explicit opt-out is preserved, and an older configuration with higher concurrency remains fixed-context instead of having its concurrency changed silently.
 
 The fresh Mac language model uses MLX, so it continues to use fixed-context fallback behavior even though the setting is enabled.
 Do not infer MLX context resizing from native GGUF behavior.
 
-## Embedding input formats
+## Search text formats
 
-Embedding input formats control how CiteLoom presents documents and queries to the embedding model.
+Search text formats control how CiteLoom presents documents and searches to the selected search model.
 CiteLoom does not choose a format from the model name, so select the format required by the model.
 
 A fresh database includes these formats:
@@ -204,13 +205,13 @@ A fresh database includes these formats:
 | --- | --- | --- |
 | Plain | `{{text}}` | `{{text}}` |
 | EmbeddingGemma | `title: none \| text: {{text}}` | `task: search result \| query: {{text}}` |
-| Snowflake | `{{text}}` | `Represent this sentence for searching relevant passages: {{text}}` |
+| Snowflake | `{{text}}` | Use the exact query template required by the selected Snowflake model |
 
 Custom templates must contain exactly one `{{text}}` placeholder.
-The document template is applied to each passage during indexing.
+The document template is applied to each searchable document section during indexing.
 The query template is applied to each question or semantic search.
-Use the prefixes required by the embedding model, and use Copy when a built-in format is a useful starting point.
-Use schema version 1 for a new format and increase it only when defining a deliberately versioned template contract.
+Use the prefixes required by the search model, and use Copy when a built-in format is a useful starting point.
+Use format version 1 for a new format and increase it only when saving a changed version of an existing format.
 Use Settings to select, create, copy, revise, or retire formats.
 Revising a format creates a new format, and only unused formats can be retired.
 Changing the selected format requires reindexing.
@@ -234,27 +235,35 @@ OpenAI Codex always uses a reasoning-capable request, so Disabled selects `low`,
 Model support still varies within each provider.
 Use Provider default if an endpoint rejects explicit thinking controls, and confirm behavior with the exact configured model rather than relying on model-family assumptions.
 
-## Retrieval
+## Search and answers
 
-Changing the embedding model, dimensions, retrieval-window policy, or input format requires reindexing.
+Changing the search model, dimensions, document section method, or search text format requires reindexing.
 Settings reports when the selected configuration has no indexed documents.
 
-Retrieval settings control the search process.
-They set how many passages CiteLoom considers, how it expands a question, how it combines meaning-based and keyword results, whether it reranks them, and how many passages reach the answer model.
-Candidate count (`retrievalCandidates`) is the maximum passage pool available for final context selection.
-Answer context count (`topK`) is the maximum number of selected passages that can reach the answer model.
-Candidate count must be at least as high as Answer context count, and the model context budget may send fewer passages than Answer context count.
-Neither setting has an arbitrary application maximum, but higher values increase retrieval, reranking, memory, and prompt work.
+Search and answer settings control how widely CiteLoom searches documents and how much source material it can use in an answer.
+Document sections searched (`retrievalCandidates`) is the maximum number of document sections CiteLoom checks for Ask, Chat, and semantic Find Sources.
+Sections used in answers (`topK`) is the maximum number of the strongest matching sections CiteLoom can use to write an Ask or Chat answer.
+Document sections searched must be at least as large as Sections used in answers.
+CiteLoom does not silently lower either configured value.
+CiteLoom can still use fewer sections when fewer useful matches exist or the selected model cannot accept all of them.
+Higher values take longer and use more memory and model input space.
 
-### Optional reranking
+Documents shown in Find Sources (`findSourcesResults`) controls both document lists on the Find Sources screen.
+The Keyword matches list shows this many documents on each page, with remaining documents available on later pages.
+The Semantic matches list shows up to this many documents after CiteLoom orders the configured number of search results and removes matches below the configured minimum score.
+Excerpts shown per document controls how many matching excerpts appear inside each document result.
+These two display settings do not change how many document sections CiteLoom searches.
 
-Hybrid retrieval first combines meaning-based and keyword rankings.
-Reranking can improve answer and citation accuracy by moving more relevant evidence into the answer context.
-When reranking is enabled, CiteLoom sends the resulting candidate passages and original question to a specialized relevance model, reorders the candidates by its scores, and passes the best `topK` passages to the answer model.
-A remote reranking provider adds inference cost.
+### Optional search ranking
 
-Find Sources reranker cutoff (`rerankDiscoveryMinimumScore`) defaults to `0.9` and hides semantic results that score below the configured value after reranking.
-Calibrate this value for the configured reranker because different providers use different score scales.
+Hybrid retrieval searches both by meaning and by exact words, then combines the two result lists.
+When search ranking is enabled, CiteLoom uses the configured ranking model to order the matching document sections for the original question.
+Ask and Chat then use up to Sections used in answers (`topK`) of the strongest matching sections.
+A remote search ranking service adds network time and provider usage.
+
+Minimum score for Find Sources (`rerankDiscoveryMinimumScore`) defaults to `0.9`.
+Find Sources does not show semantic matches scored below this value.
+Check actual Find Sources results when changing it because different search ranking models use different score scales.
 The value is not a percentage or confidence probability.
 It affects Find Sources filtering but does not remove evidence from Ask.
 Answer publication continues through structured generation and citation validation.
@@ -263,9 +272,12 @@ HHEM claim-support checks are advisory metadata and never remove or alter answer
 Adjust live retrieval behavior in Settings.
 Use the [evaluation workflow](evaluation.md) to calibrate discovery thresholds and other tuned values.
 
-### Reproducible generation
+### Repeatable answers and searches
 
-Extra search query generation and answer generation use separate sampling temperatures.
+Additional searches are disabled by default with `queryExpansions` set to `0`.
+At `0`, CiteLoom searches only the original wording and does not ask a model to create more searches.
+Values from `1` through `4` allow additional search wording and should be enabled only after a controlled comparison shows better search and answer quality on the intended documents.
+Additional searches and answers use separate wording-variation settings.
 Both `queryExpansionTemperature` and `answerTemperature` default to `0` for the most repeatable provider behavior.
 `generationSeedMode` defaults to `stable`.
 In this mode, CiteLoom derives separate nonnegative seeds for extra search queries and answer generation from the normalized original question and the sorted IDs of the selected documents.
@@ -274,16 +286,16 @@ Set the mode to `random` to omit those seeds and let the provider choose the sam
 Stable mode sends the same temperature and seed for the same question and document scope.
 Exact text can still vary when a provider ignores seeds or uses nondeterministic model operations.
 Changing the document scope also changes the derived seeds.
-When reranker scores are equal, CiteLoom uses stored document, version, file, and element IDs to produce a consistent order.
+When search ranking scores are equal, CiteLoom keeps a consistent order.
 
 Every new research turn saves its generated queries, ordered source results, temperatures, and seeds in a retrieval trace.
 Older turns created before traces were added remain readable but may not have one.
 Asking the same question again creates a new run that can reflect changed documents, settings, models, or provider behavior.
 Opening an existing turn reads the saved answer, citations, run settings, and retrieval trace without running the question again.
 
-## Timeouts and cancellation
+## Time limits and cancellation
 
-Answer, summary, query-expansion, embedding, reranking, HHEM, and Docling requests each have their own time limit.
+Answers, image and table descriptions, additional searches, search models, search ranking, citation checks, and Docling each have their own time limit.
 For non-PDF files, the conversion time limit increases with file size up to the configured maximum.
 PDF conversion uses the configured maximum.
 
@@ -301,6 +313,14 @@ Excel worksheets and PowerPoint slides retain their Docling location numbers, an
 Excel formulas are indexed from their saved results.
 Recalculate and save workbooks before ingestion.
 Bounding-box source highlighting is limited to PDFs and standalone image files.
+
+Use document headings in search is a Docling setting because CiteLoom reads headings while processing a document.
+When enabled, Ask and Chat can use a document's table of contents to find relevant sections in long documents.
+Table-of-contents titles help search but are not used as answer sources or citations.
+Run `pnpm dev document-toc backfill` after enabling the setting to update existing documents without converting or fully indexing them again.
+For the supplied container deployment, run `./infra/compose.sh --profile worker run --rm --no-deps worker node dist/cli/index.js document-toc backfill`.
+The command is safe to rerun because it skips documents that are already updated.
+Turning the setting off stops using document headings as an additional search aid. Regular search continues to work.
 
 Thread count, page batch size, and pipeline profiling are process settings that require the Docling service to restart.
 Restart workers with the same declared process settings so operational records remain accurate.
@@ -326,12 +346,12 @@ DOCLING_CONTAINER_ADDITIONAL_SERVICE_INSTANCES=[{"id":"replica-b","baseUrl":"htt
 ./infra/compose.sh --profile docling-scale up -d --wait docling-replica
 ```
 
-## Provider models, overrides, and capacity
+## Provider models and request limits
 
 Configure each provider's supported model defaults on the application Settings page.
-Answer, query-expansion, summarization, and embedding defaults include a configured context capacity.
-Feature routing can override the selected model, and model capabilities can also override their context capacity.
-Text-to-speech can override its voice.
+Answers, Additional searches, Image and table descriptions, and Search model include a configured maximum input size.
+Each feature can select a model and input size that differ from the provider defaults.
+Spoken answers can also select a different voice.
 
 Each provider sets one maximum number of parallel requests across all capabilities routed to it.
 PostgreSQL applies that provider limit across web, command-line, and worker processes.

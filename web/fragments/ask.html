@@ -566,7 +566,7 @@
             </section>
 
             <div class="no-context-action" x-cloak x-show="answer.matchedDocuments.length === 0">
-              <p>No relevant retrieved context was available for this answer.</p>
+              <p>No relevant source material was available for this answer.</p>
               <button class="text-action" type="button" @click="changeMode('discover')">Find sources for this query</button>
             </div>
 
@@ -613,20 +613,20 @@
               x-show="answer.matchedDocuments.length > 0"
             >
               <summary>
-                <span>Retrieved context</span>
+                <span>Source material reviewed</span>
                 <small x-text="retrievedContextLabel()"></small>
                 <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
                   <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
                 </svg>
               </summary>
-              <p>Documents considered while generating this answer. A retrieved document is not necessarily cited evidence.</p>
+              <p>Documents and sections CiteLoom checked while writing this answer. Reviewed material is not necessarily cited.</p>
               <a
                 class="text-action"
                 data-view="help"
                 href="./index.html?view=help#understand-citations-and-retrieved-context"
                 hx-get="./fragments/help.html"
                 hx-push-url="./index.html?view=help#understand-citations-and-retrieved-context"
-              >Understand citations and retrieved context</a>
+              >Understand sources and citations</a>
               <div class="sources-list retrieved-context-list">
                 <template x-for="(document, index) in answer.matchedDocuments" :key="`${document.documentId}-${document.sourceFile}`">
                   <article>
@@ -690,7 +690,7 @@
 
             <div class="answer-feedback-grid">
               <div class="research-feedback">
-                <span>Was the retrieved context relevant?</span>
+                <span>Was the source material relevant?</span>
                 <button type="button" :class="{ selected: feedback.retrieval === 1 }" @click="submitFeedback('retrieval-relevance', 1, null)">Yes <span x-text="feedbackCounts.retrieval.positive"></span></button>
                 <button type="button" :class="{ selected: feedback.retrieval === -1 }" @click="submitFeedback('retrieval-relevance', -1, null)">No <span x-text="feedbackCounts.retrieval.negative"></span></button>
               </div>
@@ -840,7 +840,7 @@
                               <small x-text="discoveryPassageDetail(document.sourceFile, passage)"></small>
                             </div>
                           </template>
-                          <small x-cloak x-show="document.matchingPassageCount - 1 > document.passages.slice(1).length">Showing representative passages from this document.</small>
+                          <small x-cloak x-show="document.matchingPassageCount - 1 > document.passages.slice(1).length">Showing representative excerpts from this document.</small>
                         </details>
                       </article>
                     </template>
@@ -1021,7 +1021,7 @@
           </template>
           <dl class="evidence-metadata">
             <div><dt>Document version</dt><dd><code x-text="inspectedCitation.documentVersionId"></code></dd></div>
-            <div><dt>Source element</dt><dd><code x-text="inspectedCitation.elementId"></code></dd></div>
+            <div><dt>Source section ID</dt><dd><code x-text="inspectedCitation.elementId"></code></dd></div>
             <div><dt>Stored regions</dt><dd x-text="inspectedCitation.regionCount"></dd></div>
           </dl>
           <div class="evidence-actions">

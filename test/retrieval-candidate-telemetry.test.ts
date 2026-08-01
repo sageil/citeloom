@@ -5,9 +5,6 @@ import {
   type RetrievalCandidateRankings,
 } from "../src/retrieval/indexing/query-store.js";
 import {
-  selectEnglishCandidateAdmission,
-} from "../src/retrieval/evidence-language.js";
-import {
   selectNonOverlappingCandidatesWithTrace,
 } from "../src/retrieval/document-retrieval.js";
 import {
@@ -274,99 +271,6 @@ describe("retrieval candidate telemetry", () => {
     });
   });
 
-  it("records English-compatible admission and unsupported-language exclusions", () => {
-    const retrievalWindowPolicy = createRetrievalWindowPolicyContract(
-      createRetrievalWindowPolicy("structured-token-v3", 512, 2_048),
-    );
-    const french = buildFusedCandidate(
-      "window-french",
-      "parent-french",
-      "document-french",
-      "/documents/human-rights.pdf",
-      [
-        "La présente loi a pour objet de compléter la législation",
-        "canadienne et de protéger le droit de tous les individus",
-        "à l'égalité des chances sans pratiques discriminatoires.",
-      ].join(" "),
-    );
-    const english = buildFusedCandidate(
-      "window-english",
-      "parent-english",
-      "document-english",
-      "/documents/human-rights.pdf",
-      [
-        "The purpose of this Act is to protect equal opportunity and",
-        "prevent discriminatory practices within matters under",
-        "Parliament's legislative authority in Canada.",
-      ].join(" "),
-    );
-    const undetermined = buildFusedCandidate(
-      "window-undetermined",
-      "parent-undetermined",
-      "document-undetermined",
-      "/documents/human-rights.pdf",
-      "§ 2",
-    );
-    const rankings: RetrievalCandidateRankings = {
-      dense: [[
-        buildDenseCandidate(french),
-        buildDenseCandidate(undetermined),
-        buildDenseCandidate(english),
-      ]],
-      lexical: [[]],
-    };
-    const admission = selectEnglishCandidateAdmission([
-      french,
-      undetermined,
-      english,
-    ], 2);
-
-    const telemetry = buildCandidateBudgetTelemetry(
-      rankings,
-      [{ embedding: null, text: "human rights in Canada" }],
-      3,
-      retrievalWindowPolicy,
-      admission.selection,
-      admission.selection.selected,
-      admission.trace,
-    );
-
-    expect(telemetry.languageAdmission).toEqual({
-      admittedEnglishRepresentativeCount: 1,
-      admittedUndeterminedRepresentativeCount: 1,
-      englishRepresentativeCount: 1,
-      fusedCandidateCount: 3,
-      nonEnglishRepresentativeCount: 1,
-      representativeCandidateCount: 3,
-      supportedLanguage: "eng",
-      undeterminedRepresentativeCount: 1,
-    });
-    expect(telemetry.fusedCandidates.map((candidate) => ({
-      admissionRank: candidate.admissionRank,
-      detectedLanguage: candidate.detectedLanguage,
-      exclusionReason: candidate.exclusionReason,
-      fusedRank: candidate.fusedRank,
-    }))).toEqual([
-      {
-        admissionRank: null,
-        detectedLanguage: "fra",
-        exclusionReason: "unsupported-language",
-        fusedRank: 1,
-      },
-      {
-        admissionRank: 1,
-        detectedLanguage: "und",
-        exclusionReason: null,
-        fusedRank: 2,
-      },
-      {
-        admissionRank: 2,
-        detectedLanguage: "eng",
-        exclusionReason: null,
-        fusedRank: 3,
-      },
-    ]);
-  });
 });
 
 function buildFusedCandidate(

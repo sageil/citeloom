@@ -116,7 +116,7 @@
             <svg aria-hidden="true" class="citeloom-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-book"></use>
             </svg>
-            <strong>Embedding input formats</strong>
+            <strong>Search text formats</strong>
             <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
             </svg>
@@ -157,7 +157,7 @@
               <li>Wait until each document shows Ready.</li>
               <li>Use Ask to get an answer that combines evidence and includes citations.</li>
               <li>Use Chat for a private follow-up conversation that remains grounded in document evidence.</li>
-              <li>Use Find Sources to locate documents or passages without generating an answer.</li>
+              <li>Use Find Sources to locate documents or matching excerpts without generating an answer.</li>
             </ol>
           </div>
         </section>
@@ -178,7 +178,7 @@
             <p>PowerPoint slide text, tables, pictures, speaker notes, and comments can be indexed.</p>
             <ul>
               <li>A document must be Ready before it can appear in Ask, Chat, or Find Sources.</li>
-              <li>If a document shows Reindex required, process it again before searching it with the current embedding model.</li>
+              <li>If a document shows Reindex required, process it again before searching it with the current search model.</li>
               <li>Use tags to create reusable groups of related documents.</li>
               <li>Clear headings and selectable text help CiteLoom create useful section names and excerpts.</li>
             </ul>
@@ -198,11 +198,11 @@
             </ul>
             <p>For a complete answer, ask a complete question instead of entering one broad term.</p>
             <p>Use Find Sources first for queries such as <code>termination</code>, <code>arthritis</code>, or <code>data retention</code>.</p>
-            <h3>Answer retrieval limits</h3>
-            <p>Administrators can change <strong>Candidate count</strong> and <strong>Answer context count</strong> under Retrieval in Settings.</p>
-            <p>Candidate count controls the maximum passage pool considered before final context selection, while Answer context count controls the maximum selected passages sent to the answer model.</p>
-            <p>Candidate count must be at least as high as Answer context count.</p>
-            <p>The model context budget may send fewer passages than Answer context count when the complete request would otherwise be too large.</p>
+            <h3>How much document text CiteLoom checks</h3>
+            <p>Administrators can change <strong>Document sections searched</strong> and <strong>Sections used in answers</strong> under Search and answers in Settings.</p>
+            <p>Document sections searched controls how widely CiteLoom searches, while Sections used in answers controls how many of the strongest matches CiteLoom can use to write an answer.</p>
+            <p>Document sections searched must be at least as high as Sections used in answers.</p>
+            <p>CiteLoom may use fewer sections when fewer useful matches exist or the selected model cannot accept all of them.</p>
           </div>
         </section>
 
@@ -213,12 +213,12 @@
             <ul>
               <li>Each chat is private to its creator in the current workspace.</li>
               <li>CiteLoom stores every user message and completed assistant response.</li>
-              <li>For long conversations, CiteLoom retrieves relevant earlier complete turns instead of sending the entire history.</li>
-              <li>Earlier messages provide context only. Every factual response still requires newly retrieved document evidence and citations.</li>
+              <li>Long chats remain focused on earlier messages that matter to the current question.</li>
+              <li>Earlier messages help CiteLoom understand the conversation. Every factual response still requires source material from the documents and citations.</li>
               <li>If a library document is deleted or replaced, existing chat messages and their retained citation evidence remain unchanged.</li>
-              <li>Deleting the chat removes its messages, embeddings, and retained citation records.</li>
+              <li>Deleting the chat permanently removes its messages and saved citation records.</li>
             </ul>
-            <p>Administrators can configure Chat separately from Answer and Summary in Settings.</p>
+            <p>Administrators can configure Chat separately from Answers and Image and table descriptions in Settings.</p>
           </div>
         </section>
 
@@ -227,20 +227,29 @@
           <div>
             <p>Use Find Sources to search without generating an answer.</p>
             <ul>
-              <li>Search <code>termination notice</code> to find agreement passages about notice before a contract ends.</li>
-              <li>Search <code>arthritis</code> with Include semantic matches enabled to find passages that may discuss joint disease or pain management.</li>
+              <li>Search <code>termination notice</code> to find agreement sections about notice before an agreement ends.</li>
+              <li>Search <code>arthritis</code> with Include semantic matches enabled to find excerpts that may discuss joint disease or pain management.</li>
               <li>Search <code>follow-up bloodwork</code> to prioritize veterinary records discussing ongoing monitoring.</li>
               <li>Leave Include semantic matches disabled when only exact terms matter.</li>
             </ul>
-            <p><strong>Keyword match</strong> means the passage contains words from your search.</p>
-            <p><strong>Semantic match</strong> means the passage appears related in meaning even if it does not contain those words.</p>
-            <h3>Find Sources reranker cutoff</h3>
-            <p>When reranking is enabled, Find Sources hides semantic matches whose reranker score is below the configured cutoff.</p>
+            <p><strong>Keyword match</strong> means a document section contains words from your search.</p>
+            <p><strong>Semantic match</strong> means a document section appears related in meaning even if it does not contain those words.</p>
+            <h3>Find Sources result counts</h3>
+            <p><strong>Document sections searched</strong> is the most document sections CiteLoom checks for each Ask, Chat, or semantic Find Sources request.</p>
+            <p>Higher values search more material but take longer, and CiteLoom does not silently lower the value you set.</p>
+            <p><strong>Documents shown in Find Sources</strong> controls how many documents appear in the Keyword matches list and the Semantic matches list.</p>
+            <p>Keyword matches use the number on each page, so later matches remain available on additional pages.</p>
+            <p>Semantic matches show up to that many documents.</p>
+            <p><strong>Excerpts shown per document</strong> controls how many matching excerpts appear inside each document result.</p>
+            <p>The two display settings do not change how many document sections CiteLoom searches.</p>
+            <p>Administrators can change these values in <strong>Settings → Search and answers</strong>.</p>
+            <h3>Minimum score for Find Sources</h3>
+            <p>Find Sources does not show a semantic match when its search ranking score is below this value.</p>
             <p>A higher value shows fewer semantic matches, while a lower value shows more.</p>
-            <p>The default is <code>0.9</code>, but reranker models use different scoring scales.</p>
-            <p>A score of <code>0.9</code> does not mean 90 percent confidence, and the same value can behave differently with another reranker model.</p>
+            <p>The default is <code>0.9</code>, but search ranking models use different scoring scales.</p>
+            <p>A score of <code>0.9</code> does not mean 90 percent confidence, and the same value can behave differently with another search ranking model.</p>
             <p>This setting affects Find Sources only and does not remove evidence from Ask.</p>
-            <p>Administrators can change it in <strong>Settings → Features → Reranking → Show advanced settings</strong>.</p>
+            <p>Administrators can change it in <strong>Settings → Application Features → Search ranking → Show advanced settings</strong>.</p>
           </div>
         </section>
 
@@ -277,8 +286,8 @@
           <h2 id="understand-citations-and-retrieved-context" tabindex="-1">Understand sources and citations</h2>
           <div>
             <p>An inline citation such as <code>[1]</code> links an answer claim to its supporting source.</p>
-            <p>Retrieved context shows the passages CiteLoom considered while preparing the answer.</p>
-            <p>A passage can be relevant to the question without supporting a claim in the final answer, so not every retrieved passage becomes a citation.</p>
+            <p>Retrieved source material shows the document sections CiteLoom considered while preparing the answer.</p>
+            <p>A document section can be relevant to the question without supporting a claim in the final answer, so not every section becomes a citation.</p>
             <p>Find Sources results are search results, not citations.</p>
           </div>
         </section>
@@ -297,28 +306,28 @@
         </section>
 
         <section aria-labelledby="embedding-input-formats" class="help-section">
-          <h2 id="embedding-input-formats" tabindex="-1">Embedding input formats</h2>
+          <h2 id="embedding-input-formats" tabindex="-1">Search text formats</h2>
           <div>
-            <p>An input format controls the text sent to the embedding model.</p>
-            <p>The document template prepares each passage while documents are indexed, and the query template prepares each question or semantic search.</p>
-            <p>Use the format specified by the embedding model or provider. Incorrect instructions can reduce search quality even when indexing completes successfully.</p>
+            <p>A search text format controls how CiteLoom prepares document sections and searches for the selected search model.</p>
+            <p>The document template prepares each searchable document section, and the query template prepares each question or semantic search.</p>
+            <p>Use the format specified by the search model or provider. An incorrect format can reduce search quality even when documents finish processing.</p>
             <h3>Built-in examples</h3>
             <ul class="help-examples">
               <li><strong>Plain:</strong> document <code>{{text}}</code>; query <code>{{text}}</code>.</li>
               <li><strong>EmbeddingGemma:</strong> document <code>title: none | text: {{text}}</code>; query <code>task: search result | query: {{text}}</code>.</li>
-              <li><strong>Snowflake:</strong> document <code>{{text}}</code>; query <code>Represent this sentence for searching relevant passages: {{text}}</code>.</li>
+              <li><strong>Snowflake:</strong> document <code>{{text}}</code>; use the exact query template required by the selected Snowflake model.</li>
             </ul>
             <h3>Create a format</h3>
             <ol>
-              <li>Check the embedding model's instructions for document and query prefixes.</li>
+              <li>Check the search model's instructions for document and query prefixes.</li>
               <li>Use Copy when a built-in format is a useful starting point, or choose New format to start with plain templates.</li>
               <li>Enter a recognizable name that identifies the model or purpose.</li>
-              <li>Use schema version 1 for a new format. Increase it only when you intentionally define a new version of the template contract.</li>
+              <li>Use format version 1 for a new format. Increase it only when saving a changed version of an existing format.</li>
               <li>Enter one document template and one query template. Each must contain exactly one <code>{{text}}</code> placeholder.</li>
-              <li>Save the format, then save the Embedding settings to select it.</li>
+              <li>Save the format, then save the Search model settings to select it.</li>
               <li>Reindex documents before using semantic search or answers with the new format.</li>
             </ol>
-            <p>Use Create revision when changing a format that has already been used. CiteLoom keeps the original format unchanged so existing embedding spaces remain identifiable.</p>
+            <p>Use Create revision when changing a format that has already been used. CiteLoom keeps the original format so existing indexed documents remain searchable.</p>
           </div>
         </section>
 
@@ -326,7 +335,7 @@
           <h2 id="troubleshooting" tabindex="-1">Troubleshooting</h2>
           <div>
             <p><strong>A document is missing from search:</strong> confirm that it shows Ready and is included in your search scope.</p>
-            <p><strong>Only one source is cited:</strong> review Retrieved context, then ask a comparison question that clearly requires evidence from each document.</p>
+            <p><strong>Only one source is cited:</strong> review Retrieved source material, then ask a comparison question that clearly requires information from each document.</p>
             <p><strong>No keyword results appear:</strong> enable Include semantic matches or try a synonym.</p>
             <p><strong>A semantic result does not contain your search term:</strong> semantic search matches meaning, so review the excerpt before using it.</p>
             <p><strong>Model services are unavailable:</strong> keyword search may still work, but semantic search and answers will remain unavailable.</p>

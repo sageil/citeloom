@@ -345,6 +345,7 @@ export function createBenchmarkDoclingConfig(baseUrl: string): DoclingConfig {
     secondaryImageScale: 2,
     tableMode: "accurate",
     tableStructureEnabled: true,
+    tocEnabled: false,
   };
 }
 

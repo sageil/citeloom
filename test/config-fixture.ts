@@ -93,6 +93,7 @@ const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
   doclingSecondaryImageScale: 2,
   doclingTableMode: "accurate",
   doclingTableStructureEnabled: true,
+  doclingTocEnabled: true,
   doclingTimeoutSeconds: 1_800,
   embeddingDimensions: 768,
   embeddingInputFormatId: TEST_EMBEDDING_INPUT_FORMAT.id,

@@ -189,12 +189,12 @@ function buildApplicationSettingsWarnings(
   }
   if (settings.indexedDocumentCount > 0) {
     warnings.push(
-      "The selected embedding configuration has no indexed documents. Reindex documents before asking questions.",
+      "No indexed documents use the selected search setup. Reindex documents before asking questions.",
     );
     return warnings;
   }
   warnings.push(
-    "The selected embedding configuration has no indexed documents. Index a document before asking questions.",
+    "No indexed documents use the selected search setup. Index a document before asking questions.",
   );
   return warnings;
 }
@@ -211,7 +211,7 @@ function buildEmbeddingInputFormatResponses(
     const retirementBlockers: string[] = [];
     if (format.embeddingSpaceCount > 0) {
       retirementBlockers.push(
-        `${format.embeddingSpaceCount} embedding ${format.embeddingSpaceCount === 1 ? "space" : "spaces"}`,
+        `${format.embeddingSpaceCount} search ${format.embeddingSpaceCount === 1 ? "index" : "indexes"}`,
       );
     }
     if (defaultSelected) {
@@ -294,7 +294,7 @@ function buildStartupSettings(
     {
       description: "How many database connections each CiteLoom process can keep open.",
       key: "databasePoolMax",
-      label: "Database pool maximum",
+      label: "Maximum database connections",
       value: String(config.database.poolMax),
     },
     {

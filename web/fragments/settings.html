@@ -8,7 +8,7 @@
   <header class="settings-search-header">
     <div class="settings-search-heading">
       <h1 id="settings-title">Settings</h1>
-      <p>Configure AI providers and feature behavior across your application.</p>
+      <p>Choose the services and settings CiteLoom uses for search, answers, document processing, and audio.</p>
     </div>
     <div class="settings-header-actions">
       <label class="settings-search-input settings-header-search">
@@ -32,9 +32,9 @@
           :value="sourceFilter"
           @change="changeSourceFilter($event.target.value)"
         >
-          <option value="all">All sources</option>
-          <option value="database">Database overrides</option>
-          <option value="database-default">Database defaults</option>
+          <option value="all">All values</option>
+          <option value="database">Changed values</option>
+          <option value="database-default">Default values</option>
           <option value="modified">Unsaved changes</option>
         </select>
       </label>
@@ -92,7 +92,7 @@
     <svg aria-hidden="true" class="citeloom-icon status-icon">
       <use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use>
     </svg>
-    <span>Settings saved. New web operations use this configuration immediately.</span>
+    <span>Settings saved. New requests use them immediately.</span>
   </div>
 
   <template x-if="settings !== null &amp;&amp; settings.warnings.length > 0">
@@ -108,7 +108,7 @@
     </div>
   </template>
 
-  <p class="settings-loading" x-show="loading">Loading effective configuration.</p>
+  <p class="settings-loading" x-show="loading">Loading settings.</p>
 
   <template x-if="settings !== null">
   <div class="settings-search-layout">
@@ -133,7 +133,7 @@
           </svg>
           <span>
             <strong>Application Features</strong>
-            <small x-text="`${featureCapabilities.length} provider-backed features`"></small>
+            <small x-text="`${featureCapabilities.length} features that use AI services`"></small>
           </span>
           <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
             <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
@@ -190,7 +190,7 @@
         </div>
         <div>
           <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-database"></use></svg>
-          <span><strong x-text="`${settings.providers.catalog.length} providers available`"></strong><small>Configured provider profiles</small></span>
+          <span><strong x-text="`${settings.providers.catalog.length} providers available`"></strong><small>Available connections</small></span>
         </div>
         <div :class="{ warning: featureWithoutCredentialCount() > 0 }">
           <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use></svg>
@@ -270,7 +270,7 @@
           </section>
 
           <section class="settings-feature-step" x-show="featureConnection(selectedFeatureCapability) !== null">
-            <header><span>2</span><h3>Model behavior</h3><p>Control how this feature selects and uses a model.</p></header>
+            <header><span>2</span><h3>Model settings</h3><p>Choose the model and limits used by this feature.</p></header>
             <div class="settings-feature-form-grid">
               <label class="provider-form-field">
                 <span x-text="featureModelFieldLabel(selectedFeatureCapability)"></span>
@@ -284,26 +284,26 @@
                 <small x-text="featureModelFieldHelp(selectedFeatureCapability)"></small>
               </label>
               <label class="provider-form-field" x-show="capabilityHasModelContext(selectedFeatureCapability)">
-                <span>Feature context override</span>
+                <span>Maximum input tokens for this feature</span>
                 <input
                   min="1"
-                  placeholder="Use provider model default"
+                  placeholder="Use provider default"
                   step="1"
                   type="number"
                   :value="featureContextCapacityTokensOverride(selectedFeatureCapability) ?? ''"
                   @change="writeFeatureContextCapacityTokensOverride(selectedFeatureCapability, $event.target.value)"
                 />
-                <small x-text="featureContextCapacityTokensOverride(selectedFeatureCapability) === null ? 'No override. The provider model context is used.' : 'Overrides the provider model context for this feature only.'"></small>
+                <small x-text="featureContextCapacityTokensOverride(selectedFeatureCapability) === null ? 'The provider default is used.' : 'This limit is used for this feature instead of the provider default.'"></small>
               </label>
               <label class="provider-form-field" x-cloak x-show="capabilitySupportsThinking(selectedFeatureCapability)">
-                <span>Thinking mode override</span>
+                <span>Thinking mode for this feature</span>
                 <select :value="featureThinkingModeOverride(selectedFeatureCapability) ?? ''" @change="writeFeatureThinkingModeOverride(selectedFeatureCapability, $event.target.value)">
                   <option value="">Inherit provider setting</option>
                   <option value="disabled">Disabled</option>
                   <option value="enabled">Enabled</option>
                   <option value="auto">Provider API default</option>
                 </select>
-                <small x-text="featureThinkingModeOverride(selectedFeatureCapability) === null ? `Inherited provider setting: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.` : `This feature overrides the provider with: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.`"></small>
+                <small x-text="featureThinkingModeOverride(selectedFeatureCapability) === null ? `Uses the provider setting: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.` : `Uses this feature setting: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.`"></small>
               </label>
               <template x-if="featureFieldsFor(selectedFeatureCapability).length > 0">
                 <div class="settings-feature-primary-field">
@@ -326,9 +326,9 @@
             </div>
             <template x-if="selectedFeatureCapability === 'textToSpeech'">
               <label class="provider-form-field settings-feature-voice">
-                <span>Feature voice override</span>
+                <span>Voice for this feature</span>
                 <input placeholder="Use provider default" type="text" :value="featureVoiceOverride() ?? ''" @input="writeFeatureVoiceOverride($event.target.value)" />
-                <small x-text="featureVoiceOverride() === null ? 'No override. The provider default voice is used.' : 'Overrides the provider default voice.'"></small>
+                <small x-text="featureVoiceOverride() === null ? 'The provider default voice is used.' : 'This voice is used instead of the provider default.'"></small>
               </label>
             </template>
             <template x-if="selectedFeatureCapability === 'embedding'">
@@ -361,15 +361,15 @@
                       <p>Saving creates a new format. The original remains unchanged.</p>
                     </header>
                     <div class="settings-input-format-guidance">
-                      <strong>Match the embedding model's instructions</strong>
-                      <span>The document template prepares each indexed passage. The query template prepares each question or semantic search.</span>
-                      <span>Use the exact prefixes required by the model and place one <code>{{text}}</code> where CiteLoom should insert the passage or question.</span>
+                      <strong>Match the search model's instructions</strong>
+                      <span>The document template prepares each searchable document section. The query template prepares each question or semantic search.</span>
+                      <span>Use the exact prefixes required by the model and place one <code>{{text}}</code> where CiteLoom should insert the document section or question.</span>
                       <a class="text-action inline-help" data-view="help" href="./index.html?view=help#embedding-input-formats" hx-get="./fragments/help.html" hx-push-url="./index.html?view=help#embedding-input-formats">View examples and step-by-step guidance</a>
                     </div>
                     <label><span>Name</span><input maxlength="100" required type="text" x-model="inputFormatDraft.name" /><small>Use a recognizable name such as Acme Embed v2.</small></label>
-                    <label><span>Schema version</span><input min="1" required type="number" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.schemaVersion" /><small>Use 1 for a new format. Increase it only for a deliberately versioned template contract.</small></label>
-                    <label class="settings-input-format-template-field"><span>Document template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.documentTemplate"></textarea><small>Applied to every passage during indexing. Plain example: <code>{{text}}</code></small></label>
-                    <label class="settings-input-format-template-field"><span>Query template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.queryTemplate"></textarea><small>Applied to every question or semantic search. Snowflake example: <code>Represent this sentence for searching relevant passages: {{text}}</code></small></label>
+                    <label><span>Format version</span><input min="1" required type="number" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.schemaVersion" /><small>Use 1 for a new format. Increase it only when saving a changed version of an existing format.</small></label>
+                    <label class="settings-input-format-template-field"><span>Document template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.documentTemplate"></textarea><small>Applied to every searchable document section. Plain example: <code>{{text}}</code></small></label>
+                    <label class="settings-input-format-template-field"><span>Query template</span><textarea maxlength="10000" required rows="3" :readonly="inputFormatEditorMode === 'copy'" x-model="inputFormatDraft.queryTemplate"></textarea><small>Applied to every question or semantic search. Use the exact template required by the selected model.</small></label>
                     <p>Both templates must contain exactly one <code>{{text}}</code> placeholder.</p>
                     <div class="settings-input-format-editor-actions"><button class="settings-input-format-action" type="button" :disabled="inputFormatBusy" @click="cancelEmbeddingInputFormatEditor()">Cancel</button><button class="settings-input-format-action settings-input-format-action-primary" type="submit" :disabled="inputFormatBusy" x-text="inputFormatBusy ? 'Saving' : 'Save format'"></button></div>
                   </form>
@@ -379,15 +379,15 @@
           </section>
 
           <section class="settings-feature-step" x-show="featureConnection(selectedFeatureCapability) !== null">
-            <header><span>3</span><h3>Resolved result</h3><p>These are the effective values used at runtime.</p></header>
+            <header><span>3</span><h3>Settings in use</h3><p>These are the values CiteLoom will use.</p></header>
             <div class="settings-resolved-result">
-              <div><span>Effective model</span><code x-text="valueOrFallback(featureEffectiveModel(selectedFeatureCapability))"></code></div>
-              <div><span>Model source</span><strong x-text="featureModelSourceLabel(selectedFeatureCapability)"></strong></div>
+              <div><span>Selected model</span><code x-text="valueOrFallback(featureEffectiveModel(selectedFeatureCapability))"></code></div>
+              <div><span>Model selection</span><strong x-text="featureModelSourceLabel(selectedFeatureCapability)"></strong></div>
               <template x-if="capabilityHasModelContext(selectedFeatureCapability)">
-                <div><span>Effective context</span><strong x-text="`${valueOrFallback(featureEffectiveContextCapacityTokens(selectedFeatureCapability))} tokens`"></strong></div>
+                <div><span>Maximum input</span><strong x-text="`${valueOrFallback(featureEffectiveContextCapacityTokens(selectedFeatureCapability))} tokens`"></strong></div>
               </template>
               <template x-if="selectedFeatureCapability === 'textToSpeech'">
-                <div><span>Effective voice</span><code x-text="valueOrFallback(featureEffectiveVoice())"></code></div>
+                <div><span>Selected voice</span><code x-text="valueOrFallback(featureEffectiveVoice())"></code></div>
               </template>
             </div>
           </section>
@@ -519,16 +519,16 @@
                   <option value="enabled">Enabled</option>
                   <option value="auto">Provider API default</option>
                 </select>
-                <small>Used by this provider's language features unless a feature overrides it. Disabled is the default.</small>
+                <small>Used for this provider's language features unless a feature has its own setting. Disabled is the default.</small>
               </label>
               <div class="provider-form-field" x-cloak x-show="selectedProviderId === 'ollama'">
-                <span>Adaptive inference</span>
+                <span>Automatic context size</span>
                 <label class="setting-toggle">
                   <input type="checkbox" :checked="providerAdaptiveContextEnabled()" @change="writeProviderAdaptiveContextEnabled($event.target.checked)" />
                   <span aria-hidden="true"></span>
                   <strong x-text="providerAdaptiveContextEnabled() ? 'Enabled' : 'Off'"></strong>
                 </label>
-                <small>Enabled by default for native GGUF language models. CiteLoom uses a 65,536-token floor capped by the model maximum, reuses larger resident runners, and grows only when a request requires it. CiteLoom locks this provider to one parallel request. The dedicated Ollama server must also use OLLAMA_NUM_PARALLEL=1. Existing resident runners are never shrunk. Turn this off to always request the configured fixed context.</small>
+                <small>Lets CiteLoom give a request more input space when Ollama needs it. This limits the provider to one request at a time, and the Ollama server must use <code>OLLAMA_NUM_PARALLEL=1</code>. Turn it off to always use the configured input limit.</small>
               </div>
               <div class="settings-provider-authentication" x-show="providerUsesDeviceAuth()">
                 <div class="settings-provider-auth-heading">
@@ -580,7 +580,7 @@
                 <strong x-text="providerMaximumParallelRequests() ?? 'Not configured'"></strong>
               </div>
               <div x-cloak x-show="selectedProviderId === 'ollama'">
-                <span>Adaptive inference</span>
+                <span>Automatic context size</span>
                 <strong x-text="providerAdaptiveContextEnabled() ? 'Enabled' : 'Off'"></strong>
               </div>
               <div x-cloak x-show="providerSupportsThinking()">
@@ -600,11 +600,11 @@
             <div class="settings-provider-capability-matrix">
               <div class="settings-provider-matrix-header" aria-hidden="true">
                 <span>Feature</span>
-                <span>Effective URL</span>
+                <span>URL in use</span>
                 <span>Authentication</span>
                 <span>Default model</span>
-                <span>Context</span>
-                <span>Override</span>
+                <span>Maximum input</span>
+                <span>Custom URL</span>
               </div>
               <template x-for="entry in selectedProviderProfile?.capabilities ?? []" :key="entry.capability">
                 <div class="settings-provider-matrix-entry">
@@ -642,7 +642,7 @@
                   >
                     <header>
                       <h3 x-text="`Edit ${capabilityLabel(entry.capability)} defaults`"></h3>
-                      <p>Update the default model, context, or base URL override for this feature.</p>
+                      <p>Choose the default model, maximum input size, and optional URL for this feature.</p>
                     </header>
 
                     <div class="settings-provider-inheritance-summary">
@@ -651,7 +651,7 @@
                         <code x-text="valueOrFallback(selectedProviderConnection?.configuration.baseUrl, 'Not configured')"></code>
                       </div>
                       <div>
-                        <span>Effective URL</span>
+                        <span>URL in use</span>
                         <code x-text="valueOrFallback(providerEffectiveUrl(entry.capability), 'Not configured')"></code>
                       </div>
                       <div>
@@ -667,9 +667,9 @@
                         <small x-show="providerCapabilityModel(entry.capability) === null">No default model configured.</small>
                       </label>
                       <label class="provider-form-field" x-show="capabilityHasModelContext(entry.capability)">
-                        <span>Default model context</span>
-                        <input min="1" placeholder="Enter the model context" step="1" type="number" :value="providerCapabilityContextCapacityTokens(entry.capability) ?? ''" @change="writeProviderCapabilityContextCapacityTokens(entry.capability, $event.target.value)" />
-                        <small>The model's maximum context in tokens.</small>
+                        <span>Maximum input tokens</span>
+                        <input min="1" placeholder="Enter the model limit" step="1" type="number" :value="providerCapabilityContextCapacityTokens(entry.capability) ?? ''" @change="writeProviderCapabilityContextCapacityTokens(entry.capability, $event.target.value)" />
+                        <small>The largest input this model accepts, measured in tokens.</small>
                       </label>
                       <label class="provider-form-field" x-show="entry.capability === 'textToSpeech'">
                         <span>Default voice</span>
@@ -686,7 +686,7 @@
                       </label>
                       <div class="provider-form-field settings-provider-override-field" x-show="!providerUsesDeviceAuth()">
                         <span class="settings-provider-field-heading">
-                          <label :for="`provider-${selectedProviderId}-${entry.capability}-base-url`">Feature base URL override</label>
+                          <label :for="`provider-${selectedProviderId}-${entry.capability}-base-url`">URL for this feature</label>
                           <button
                             class="text-button"
                             type="button"
@@ -695,7 +695,7 @@
                           >Clear override</button>
                         </span>
                         <input :id="`provider-${selectedProviderId}-${entry.capability}-base-url`" placeholder="Use the provider base URL" type="url" :value="providerCapabilityBaseUrl(entry.capability) ?? ''" @input="writeProviderCapabilityBaseUrl(entry.capability, $event.target.value)" />
-                        <small x-text="providerCapabilityBaseUrl(entry.capability) === null ? 'Uses the provider base URL.' : 'Overrides the provider base URL for this feature.'"></small>
+                        <small x-text="providerCapabilityBaseUrl(entry.capability) === null ? 'Uses the provider URL.' : 'Uses this URL instead of the provider URL for this feature.'"></small>
                       </div>
                     </div>
                   </section>
@@ -717,14 +717,14 @@
     <template x-if="selectedArea === 'Startup and deployment'">
     <section class="settings-search-results settings-feature-workbench settings-startup-workbench">
       <div class="settings-feature-health" aria-label="Startup configuration summary">
-        <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><span><strong x-text="`${settings.startupSettings.length} startup values`"></strong><small>Environment-owned configuration</small></span></div>
-        <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><span><strong>Read-only at runtime</strong><small>Validated before database settings load</small></span></div>
+        <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><span><strong x-text="`${settings.startupSettings.length} startup values`"></strong><small>Set when CiteLoom starts</small></span></div>
+        <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><span><strong>Read-only here</strong><small>Restart CiteLoom after changing them</small></span></div>
         <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-database"></use></svg><span><strong>Environment source</strong><small>Change through deployment configuration</small></span></div>
       </div>
 
       <div class="settings-feature-workspace">
         <aside class="settings-feature-sidebar settings-startup-sidebar">
-          <header><h2>Startup and deployment</h2><p>Select a value to inspect its effective runtime configuration.</p></header>
+          <header><h2>Startup and deployment</h2><p>Select a value to see its current setting.</p></header>
           <nav aria-label="Startup and deployment settings">
           <template x-for="field in settings.startupSettings" :key="field.key">
             <button type="button" :aria-current="field.key === activeStartupSetting()?.key ? 'page' : null" :class="{ active: field.key === activeStartupSetting()?.key }" @click="selectStartupSetting(field.key)">
@@ -739,10 +739,10 @@
         <section class="settings-feature-editor settings-startup-editor">
           <template x-for="field in [activeStartupSetting()]" :key="field.key">
           <div>
-            <header class="settings-feature-editor-heading"><div><span><h2 x-text="field.label"></h2><small>Startup and deployment</small></span><p x-text="field.description"></p></div><span class="setting-source">Environment</span></header>
-            <section class="settings-feature-step"><header><span>1</span><h3>Effective value</h3><p>This value is loaded before saved application settings are available.</p></header><div class="settings-startup-value"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><div><span>Current value</span><code :title="field.value" x-text="field.value"></code></div></div></section>
+            <header class="settings-feature-editor-heading"><div><span><h2 x-text="field.label"></h2><small>Startup and deployment</small></span><p x-text="field.description"></p></div><span class="setting-source">Deployment</span></header>
+            <section class="settings-feature-step"><header><span>1</span><h3>Current value</h3><p>CiteLoom loaded this value when it started.</p></header><div class="settings-startup-value"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><div><span>Current value</span><code :title="field.value" x-text="field.value"></code></div></div></section>
             <section class="settings-feature-step"><header><span>2</span><h3>How to change it</h3></header><p class="settings-startup-guidance">Update this value in the deployment environment, then restart CiteLoom so startup validation can load the new configuration.</p></section>
-            <footer class="settings-readonly-footer"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><strong>Read-only in the application</strong><span>Saved Settings changes do not modify deployment values.</span></footer>
+            <footer class="settings-readonly-footer"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><strong>Read-only on this page</strong><span>Change this value in the deployment environment and restart CiteLoom.</span></footer>
           </div>
           </template>
         </section>
@@ -762,16 +762,16 @@
       </div>
 
       <div class="settings-runtime-content" x-show="filteredFields.length > 0">
-        <div class="settings-feature-health" aria-label="Runtime setting summary">
+        <div class="settings-feature-health" aria-label="Setting summary">
           <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg><span><strong x-text="formatSettingCount(filteredFields.length)"></strong><small x-text="resultLabel()"></small></span></div>
-          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-database"></use></svg><span><strong x-text="`${filteredFieldSourceCount('database')} database overrides`"></strong><small x-text="`${filteredFieldSourceCount('database-default')} database defaults`"></small></span></div>
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-database"></use></svg><span><strong x-text="`${filteredFieldSourceCount('database')} changed values`"></strong><small x-text="`${filteredFieldSourceCount('database-default')} default values`"></small></span></div>
           <div :class="{ warning: filteredPendingCount() > 0 }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><span><strong x-text="`${filteredPendingCount()} pending changes`"></strong><small>Changes in this area</small></span></div>
         </div>
 
         <div class="settings-feature-workspace">
           <aside class="settings-feature-sidebar settings-runtime-sidebar">
             <header><h2 x-text="resultLabel()"></h2><p x-text="areaDescription()"></p></header>
-            <nav aria-label="Runtime settings">
+            <nav aria-label="Application settings">
               <template x-for="field in filteredFields" :key="field.key">
                 <button type="button" :aria-current="field.key === activeRuntimeField()?.key ? 'page' : null" :class="{ active: field.key === activeRuntimeField()?.key }" @click="selectRuntimeField(field.key)">
                   <span class="settings-feature-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg></span>
@@ -786,7 +786,7 @@
             <template x-for="field in [activeRuntimeField()]" :key="field.key">
             <div>
               <header class="settings-feature-editor-heading"><div><span><h2 x-text="field.label"></h2><small x-text="field.group"></small></span><p x-text="field.description"></p></div><span class="setting-source" :class="fieldSourceClass(field)" x-text="fieldSourceLabel(field)"></span></header>
-              <section class="settings-feature-step"><header><span>1</span><h3>Effective setting</h3><p>Change the value used by new application operations.</p></header><div class="settings-runtime-control">
+              <section class="settings-feature-step"><header><span>1</span><h3>Setting value</h3><p>Change the value used by new requests.</p></header><div class="settings-runtime-control">
                 <template x-if="field.input === 'boolean'"><select :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value === 'true')"><option value="true">Enabled</option><option value="false">Disabled</option></select></template>
                 <template x-if="field.input === 'select'"><select :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template></select></template>
                 <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input :autocomplete="field.sensitive ? 'new-password' : 'off'" :data-1p-ignore="field.sensitive ? 'true' : null" :data-bwignore="field.sensitive ? 'true' : null" :data-lpignore="field.sensitive ? 'true' : null" :id="`setting-${field.key}`" :max="field.max" :min="field.min" :name="`setting-${field.key}`" :placeholder="field.sensitive &amp;&amp; field.configured ? 'Configured' : ''" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
@@ -796,7 +796,7 @@
                 <header>
                   <span>2</span>
                   <h3>What to expect</h3>
-                  <p>How this setting can affect results, speed, or system load.</p>
+                  <p>How this setting can affect results, speed, or computer use.</p>
                 </header>
                 <div class="settings-resolved-result settings-runtime-guidance">
                   <div>

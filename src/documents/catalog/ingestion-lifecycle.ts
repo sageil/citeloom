@@ -50,6 +50,7 @@ import {
   retrievalChunks1024,
   retrievalLexicalChunks,
   retrievalDescriptionArtifacts,
+  retrievalTocArtifacts,
   sourceElements,
 } from "../../database/schema.js";
 import {
@@ -57,6 +58,7 @@ import {
   validateEmbeddingGenerationForPublication,
 } from "../../retrieval/indexing/index-store.js";
 import type { DocumentFormat } from "../format.js";
+import { validateDocumentTocForPublication } from "../../retrieval/toc/store.js";
 
 export interface PrepareIngestionRequest {
   documentId: string;
@@ -781,6 +783,14 @@ async function synchronizeRetrievalSourceFile(
     .set({ sourceFile: canonicalSourceFile })
     .where(lexicalCondition);
 
+  const tocCondition = and(
+    eq(retrievalTocArtifacts.documentId, documentId),
+    eq(retrievalTocArtifacts.sourceFile, previousSourceFile),
+  );
+  await transaction
+    .update(retrievalTocArtifacts)
+    .set({ sourceFile: canonicalSourceFile })
+    .where(tocCondition);
 }
 
 async function readLatestDocumentVersion(
@@ -887,6 +897,12 @@ async function validatePublicationArtifacts(
     embeddingSpaceId: job.embeddingSpaceId,
     generationId: job.generationId,
     totalElements: job.totalElements,
+  });
+  await validateDocumentTocForPublication(transaction, {
+    documentId: job.documentId,
+    elementSetId,
+    generationId: job.generationId,
+    sourceFile: job.sourceFile,
   });
 }
 

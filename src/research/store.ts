@@ -100,6 +100,7 @@ const runConfigurationSchema = z.object({
     queryExpansions: z.number().int().nonnegative(),
     queryExpansionTemperature: z.number().min(0).max(2).default(0.1),
     rrfK: z.number().int().positive(),
+    tocRoutingEnabled: z.boolean().default(false),
     topK: z.number().int().positive(),
     variantConcurrency: z.number().int().positive(),
   }).strict(),
@@ -129,7 +130,7 @@ const retrievalTraceOrderedSourcesSchema = z.array(z.object({
     elementId: contentIdSchema,
     rank: z.number().int().positive(),
     representationHits: z.array(z.object({
-      channel: z.enum(["dense", "lexical"]),
+      channel: z.enum(["dense", "lexical", "toc"]),
       queryIndex: z.number().int().nonnegative(),
       rank: z.number().int().positive(),
       representationId: z.string().regex(
@@ -1186,6 +1187,7 @@ export function buildResearchRunConfiguration(
       queryExpansions: config.retrieval.queryExpansions,
       queryExpansionTemperature: config.retrieval.queryExpansionTemperature,
       rrfK: config.retrieval.rrfK,
+      tocRoutingEnabled: config.docling.tocEnabled,
       topK: config.retrieval.topK,
       variantConcurrency: config.retrieval.variantConcurrency,
     },

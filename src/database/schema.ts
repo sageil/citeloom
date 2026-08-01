@@ -56,6 +56,7 @@ import type {
 import type {
   RetrievalDescriptionRecord,
 } from "../domain/retrieval-descriptions.js";
+import type { DocumentTocArtifact } from "../domain/document-toc.js";
 import type { StoredRetrievalWindowPolicy } from "../retrieval/window-policy.js";
 
 export const ingestionPhase = pgEnum("ingestion_phase", [
@@ -1907,6 +1908,25 @@ export const retrievalDescriptionArtifacts = pgTable(
       table.position,
     ),
     index("retrieval_description_document_id_idx").on(table.documentId),
+  ],
+);
+
+export const retrievalTocArtifacts = pgTable(
+  "retrieval_toc_artifacts",
+  {
+    artifact: jsonb("artifact").$type<DocumentTocArtifact>().notNull(),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    documentId: varchar("document_id", { length: 64 }).notNull(),
+    elementSetId: varchar("element_set_id", { length: 64 })
+      .notNull()
+      .references(() => documentElementSets.id, { onDelete: "restrict" }),
+    generationId: uuid("generation_id").primaryKey(),
+    sourceFile: text("source_file").notNull(),
+  },
+  (table) => [
+    index("retrieval_toc_document_idx").on(table.documentId),
   ],
 );
 

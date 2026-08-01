@@ -143,6 +143,8 @@ export async function answerChatMessageWithRuntime(
       runTelemetry,
     );
     reportProgress("Retrieving evidence from indexed documents");
+    const chatModels = selectChatInferenceModels(runtime.models);
+    const chatScheduler = runtime.scheduler("chat", "interactive-answer");
     const prepared = await prepareRetrievalWithRuntime(
       runtime,
       retrievalQuestion,
@@ -152,6 +154,7 @@ export async function answerChatMessageWithRuntime(
       runTelemetry,
       createChatRetrievalConfig(runtime.config),
       "interactive-answer",
+      { models: chatModels, scheduler: chatScheduler },
     );
 
     await store.transitionRun(
@@ -161,8 +164,6 @@ export async function answerChatMessageWithRuntime(
       "retrieving",
       "generating",
     );
-    const chatModels = selectChatInferenceModels(runtime.models);
-    const chatScheduler = runtime.scheduler("chat", "interactive-answer");
     let result: GeneratedAnswerResult;
     if (prepared.retrieved.length === 0) {
       result = createNoRelevantAnswer();

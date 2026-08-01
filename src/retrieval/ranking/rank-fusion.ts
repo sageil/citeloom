@@ -26,7 +26,7 @@ export interface LexicalCandidate extends RankedCandidateBase {
 }
 
 export interface RepresentationHit {
-  channel: "dense" | "lexical";
+  channel: "dense" | "lexical" | "toc";
   queryIndex: number;
   rank: number;
   representationId: string;

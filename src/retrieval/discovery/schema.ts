@@ -17,9 +17,7 @@ export const discoverySearchStatusSchema = z.enum([
 export const sourceDiscoveryRequestSchema = z.object({
   includeRelated: z.boolean(),
   keywordPage: z.number().int().positive(),
-  keywordPageSize: z.number().int().min(1).max(50),
   query: z.string().trim().min(1).max(500),
-  relatedLimit: z.number().int().min(1).max(50),
   scope: queryScopeSchema,
 }).strict();
 
@@ -50,13 +48,13 @@ const sourceDiscoverySectionShape = {
 const keywordDiscoverySectionSchema = z.object({
   ...sourceDiscoverySectionShape,
   page: z.number().int().positive(),
-  pageSize: z.number().int().min(1).max(50),
+  pageSize: z.number().int().positive(),
   totalDocuments: z.number().int().nonnegative(),
 }).strict();
 
 const relatedDiscoverySectionSchema = z.object({
   ...sourceDiscoverySectionShape,
-  limit: z.number().int().min(1).max(50),
+  limit: z.number().int().positive(),
 }).strict();
 
 export const sourceDiscoveryResponseSchema = z.object({

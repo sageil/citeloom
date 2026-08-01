@@ -58,6 +58,7 @@ import {
   createTelemetryStageResult,
   noopRunTelemetry,
   readTelemetryFailureOutcome,
+  type AnswerGenerationEvidenceTelemetry,
   type AnswerResponseDiagnosticTelemetry,
   type AnswerResponseFailureCategory,
   type RunTelemetry,
@@ -170,6 +171,21 @@ type DecodedAnswerResponse =
 
 type AnswerMetricOperation = "answer" | "answer-stream";
 type AnswerContentPart = TextPart;
+
+interface PreparedAnswerRequest {
+  content: UserContent;
+  evidence: AnswerGenerationEvidenceTelemetry[];
+}
+
+interface PreparedAnswerSourceContent extends AnswerSourceContentOptions {
+  requestEvidence: AnswerGenerationEvidenceTelemetry;
+}
+
+interface ExpandedAnswerSource {
+  mode: "adjacent-retrieval-windows" | "parent-source-element";
+  retrievalWindowIds: string[];
+  text: string;
+}
 
 const passiveAbortSignal = new AbortController().signal;
 
@@ -416,21 +432,22 @@ async function generateAnswer(
       const expandedRetrievalWindowIds = new Set(
         budget.expandedRetrievalWindowIds,
       );
-      const content = buildAnswerContentWithEvidence(
+      const answerRequest = prepareAnswerRequest(
         processingQuestion,
         selectedRetrieved,
         allowedEvidenceRefs,
         expandedRetrievalWindowIds,
         conversationTurns,
         prompt,
+        null,
       );
-      recordAnswerRequest(runTelemetry, "initial", selectedRetrieved);
+      recordAnswerRequest(runTelemetry, "initial", answerRequest.evidence);
       let initialResponse: DecodedAnswerResponse;
       let initialCompletion: AnswerCompletion;
       try {
         const result = await requestAnswerDraft(
           models,
-          content,
+          answerRequest.content,
           allowedEvidenceRefs,
           requestSignal,
           generationSettings,
@@ -636,20 +653,24 @@ async function correctAnswerDraft(
   prompt: AnswerGenerationPrompt,
 ): Promise<DecodedAnswerResponse> {
   abortSignal.throwIfAborted();
-  const content = buildAnswerCorrectionContent(
+  const correction = buildAnswerCorrectionInstruction(
+    initialFailure,
+    allowedEvidenceRefs,
+  );
+  const answerRequest = prepareAnswerRequest(
     question,
     retrieved,
     allowedEvidenceRefs,
     new Set(budget.expandedRetrievalWindowIds),
-    initialFailure,
     conversationTurns,
     prompt,
+    correction,
   );
   const runGeneration = (requestSignal: AbortSignal) => {
-    recordAnswerRequest(runTelemetry, "correction", retrieved);
+    recordAnswerRequest(runTelemetry, "correction", answerRequest.evidence);
     return requestAnswerDraft(
       models,
-      content,
+      answerRequest.content,
       allowedEvidenceRefs,
       requestSignal,
       generationSettings,
@@ -790,17 +811,9 @@ function hashResponse(value: string | null): string | null {
 function recordAnswerRequest(
   runTelemetry: RunTelemetry,
   phase: "correction" | "initial",
-  retrieved: readonly RetrievedElement[],
+  evidence: readonly AnswerGenerationEvidenceTelemetry[],
 ): void {
-  const evidence = [];
-  for (const item of retrieved) {
-    evidence.push({
-      evidenceSha256: item.provenance.evidenceSha256,
-      elementId: item.element.id,
-      retrievalWindowId: item.provenance.retrievalWindowId,
-    });
-  }
-  runTelemetry.recordAnswerRequest({ evidence, phase });
+  runTelemetry.recordAnswerRequest({ evidence: [...evidence], phase });
 }
 
 async function requestAnswerDraft(
@@ -913,59 +926,46 @@ export function buildAnswerContent(
   prompt: AnswerGenerationPrompt = defaultAnswerGenerationPrompt,
 ): UserContent {
   const allowedEvidenceRefs = prompt.createEvidenceReferences(retrieved);
-  return buildAnswerContentWithEvidence(
+  const request = prepareAnswerRequest(
     question,
     retrieved,
     allowedEvidenceRefs,
     expandedRetrievalWindowIds,
     conversationTurns,
     prompt,
+    null,
   );
+  return request.content;
 }
 
-function buildAnswerContentWithEvidence(
+function prepareAnswerRequest(
   question: string,
   retrieved: RetrievedElement[],
   allowedEvidenceRefs: readonly EvidenceReference[],
   expandedRetrievalWindowIds: ReadonlySet<string>,
   conversationTurns: readonly AnswerConversationTurn[],
   prompt: AnswerGenerationPrompt,
-): UserContent {
+  correction: string | null,
+): PreparedAnswerRequest {
   const promptFrame = prompt.buildUserPromptFrame(
     question,
     conversationTurns,
   );
-  const sources = buildAnswerSourceContents(
+  const sourceContents = buildAnswerSourceContents(
     retrieved,
     allowedEvidenceRefs,
     expandedRetrievalWindowIds,
-  ).flatMap((source) => source.primary);
-  return assembleAnswerContent(promptFrame, sources, null);
-}
-
-function buildAnswerCorrectionContent(
-  question: string,
-  retrieved: RetrievedElement[],
-  allowedEvidenceRefs: readonly EvidenceReference[],
-  expandedRetrievalWindowIds: ReadonlySet<string>,
-  failure: InvalidAnswerResponse,
-  conversationTurns: readonly AnswerConversationTurn[],
-  prompt: AnswerGenerationPrompt,
-): UserContent {
-  const promptFrame = prompt.buildUserPromptFrame(
-    question,
-    conversationTurns,
   );
-  const sources = buildAnswerSourceContents(
-    retrieved,
-    allowedEvidenceRefs,
-    expandedRetrievalWindowIds,
-  ).flatMap((source) => source.primary);
-  const correction = buildAnswerCorrectionInstruction(
-    failure,
-    allowedEvidenceRefs,
-  );
-  return assembleAnswerContent(promptFrame, sources, correction);
+  const evidence: AnswerGenerationEvidenceTelemetry[] = [];
+  const sources: AnswerContentPart[] = [];
+  for (const sourceContent of sourceContents) {
+    sources.push(...sourceContent.primary);
+    evidence.push(sourceContent.requestEvidence);
+  }
+  return {
+    content: assembleAnswerContent(promptFrame, sources, correction),
+    evidence,
+  };
 }
 
 function buildAnswerCorrectionInstruction(
@@ -1079,13 +1079,13 @@ function buildAnswerSourceContents(
   retrieved: readonly RetrievedElement[],
   allowedEvidenceRefs: readonly EvidenceReference[],
   expandedRetrievalWindowIds: ReadonlySet<string> = new Set(),
-): AnswerSourceContentOptions[] {
+): PreparedAnswerSourceContent[] {
   if (allowedEvidenceRefs.length !== retrieved.length) {
     throw new Error(
       "Answer evidence references must correspond to retrieved evidence.",
     );
   }
-  const sources: AnswerSourceContentOptions[] = [];
+  const sources: PreparedAnswerSourceContent[] = [];
   for (let index = 0; index < retrieved.length; index += 1) {
     const item = retrieved[index];
     const evidenceRef = allowedEvidenceRefs[index];
@@ -1094,40 +1094,72 @@ function buildAnswerSourceContents(
     }
     const label = createSourceLabel(evidenceRef, item.element);
     if (item.element.kind === "image") {
+      const primaryText = `${label}\n${item.evidenceContent}`;
       const primary = [{
-        text: `${label}\n${item.evidenceContent}`,
+        text: primaryText,
         type: "text" as const,
       }];
-      sources.push({ expanded: null, primary });
+      sources.push({
+        expanded: null,
+        primary,
+        requestEvidence: buildAnswerRequestEvidence(
+          item,
+          primaryText,
+          "exact-retrieval-window",
+          [item.provenance.retrievalWindowId],
+        ),
+      });
       continue;
     }
+    const primaryText = `${label}\n${item.evidenceContent}`;
     const primary = [{
-      text: `${label}\n${item.evidenceContent}`,
+      text: primaryText,
       type: "text" as const,
     }];
     let expanded: AnswerContentPart[] | null = null;
-    const expandedText = buildExpandedAnswerSourceText(label, item);
-    if (expandedText !== null) {
+    const expandedSource = buildExpandedAnswerSource(label, item);
+    if (expandedSource !== null) {
       expanded = [{
-        text: expandedText,
+        text: expandedSource.text,
         type: "text",
       }];
     }
     const useExpanded = expandedRetrievalWindowIds.has(
       item.provenance.retrievalWindowId,
     );
+    const selectedContent = useExpanded && expanded !== null
+      ? expanded
+      : primary;
+    const selectedExpandedSource = useExpanded ? expandedSource : null;
+    let requestEvidence: AnswerGenerationEvidenceTelemetry;
+    if (selectedExpandedSource === null) {
+      requestEvidence = buildAnswerRequestEvidence(
+        item,
+        primaryText,
+        "exact-retrieval-window",
+        [item.provenance.retrievalWindowId],
+      );
+    } else {
+      requestEvidence = buildAnswerRequestEvidence(
+        item,
+        selectedExpandedSource.text,
+        selectedExpandedSource.mode,
+        selectedExpandedSource.retrievalWindowIds,
+      );
+    }
     sources.push({
       expanded,
-      primary: useExpanded && expanded !== null ? expanded : primary,
+      primary: selectedContent,
+      requestEvidence,
     });
   }
   return sources;
 }
 
-function buildExpandedAnswerSourceText(
+function buildExpandedAnswerSource(
   label: string,
   item: RetrievedElement,
-): string | null {
+): ExpandedAnswerSource | null {
   const parts = [label];
   const adjacentContext = item.adjacentContext;
   let hasAdjacentContext = false;
@@ -1151,7 +1183,36 @@ function buildExpandedAnswerSourceText(
   if (parts.length === 2) {
     return null;
   }
-  return parts.join("\n\n");
+  if (hasAdjacentContext && adjacentContext !== undefined) {
+    return {
+      mode: "adjacent-retrieval-windows",
+      retrievalWindowIds: [...adjacentContext.retrievalWindowIds],
+      text: parts.join("\n\n"),
+    };
+  }
+  return {
+    mode: "parent-source-element",
+    retrievalWindowIds: [item.provenance.retrievalWindowId],
+    text: parts.join("\n\n"),
+  };
+}
+
+function buildAnswerRequestEvidence(
+  item: RetrievedElement,
+  content: string,
+  mode: AnswerGenerationEvidenceTelemetry["context"]["mode"],
+  retrievalWindowIds: readonly string[],
+): AnswerGenerationEvidenceTelemetry {
+  return {
+    context: {
+      contentSha256: createHash("sha256").update(content).digest("hex"),
+      mode,
+      retrievalWindowIds: [...retrievalWindowIds],
+    },
+    evidenceSha256: item.provenance.evidenceSha256,
+    elementId: item.element.id,
+    retrievalWindowId: item.provenance.retrievalWindowId,
+  };
 }
 
 export function createNoRelevantAnswer(): EmptyRetrievalAnswerResult {

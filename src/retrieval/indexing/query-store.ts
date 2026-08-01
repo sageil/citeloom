@@ -19,10 +19,6 @@ import {
   type NonOverlappingCandidateSelection,
 } from "../document-retrieval.js";
 import type { RetrievedElement } from "../document-retrieval.js";
-import type {
-  CandidateLanguageAdmissionTrace,
-  EvidenceLanguageClassification,
-} from "../evidence-language.js";
 import type { RetrievalSourceElement } from "../../domain/source-elements.js";
 import {
   fuseRankedCandidates,
@@ -74,6 +70,10 @@ import { contentIdSchema } from "../../domain/validation.js";
 import type {
   RetrievalRepresentationType,
 } from "../representations.js";
+import {
+  addDocumentTocCandidates,
+  type TocRoutingResources,
+} from "../toc/routing.js";
 
 const passiveAbortSignal = new AbortController().signal;
 const retrievalIdentifierSchema = z.string().regex(
@@ -201,6 +201,7 @@ export async function retrieveRelevantElements(
   rerankerScheduler: TaskScheduler | null = null,
   abortSignal: AbortSignal = passiveAbortSignal,
   runTelemetry: RunTelemetry = noopRunTelemetry,
+  tocRoutingResources: TocRoutingResources | null = null,
 ): Promise<RetrievedElement[]> {
   const result = await retrieveRelevantElementsWithScores(
     database,
@@ -215,6 +216,7 @@ export async function retrieveRelevantElements(
     rerankerScheduler,
     abortSignal,
     runTelemetry,
+    tocRoutingResources,
   );
   return result.retrieved;
 }
@@ -232,6 +234,7 @@ export async function retrieveRelevantElementsWithScores(
   rerankerScheduler: TaskScheduler | null = null,
   abortSignal: AbortSignal = passiveAbortSignal,
   runTelemetry: RunTelemetry = noopRunTelemetry,
+  tocRoutingResources: TocRoutingResources | null = null,
 ): Promise<RetrievedElementsResult> {
   if (scopeTargets.length === 0) {
     return {
@@ -266,6 +269,24 @@ export async function retrieveRelevantElementsWithScores(
       config.rrfK,
       config.fusion,
     );
+    if (
+      config.mode === "hybrid-reranked"
+      && tocRoutingResources !== null
+      && queries[0]?.embedding !== null
+      && queries[0]?.embedding !== undefined
+    ) {
+      rankedCandidates = await addDocumentTocCandidates(
+        database,
+        space,
+        queries[0].embedding,
+        originalQuestion,
+        rankedCandidates,
+        config.candidateK,
+        tocRoutingResources,
+        abortSignal,
+        runTelemetry,
+      );
+    }
     await fusionStage.finish(createTelemetryStageResult("success", {
       inputCount: countRankedCandidates(rankings),
       outputCount: rankedCandidates.length,
@@ -463,7 +484,9 @@ async function addAdjacentRetrievalContext(
           previous.evidenceContent,
           item.evidenceContent,
         );
-        contextWindowIds.push(previous.id);
+        if (preceding !== null) {
+          contextWindowIds.push(previous.id);
+        }
       }
     }
     contextWindowIds.push(retrievalId);
@@ -477,7 +500,9 @@ async function addAdjacentRetrievalContext(
           next.evidenceContent,
           item.evidenceContent,
         );
-        contextWindowIds.push(next.id);
+        if (following !== null) {
+          contextWindowIds.push(next.id);
+        }
       }
     }
     if (preceding === null && following === null) {
@@ -716,7 +741,6 @@ export function buildCandidateBudgetTelemetry(
   retrievalWindowPolicy: EmbeddingSpaceConfig["retrievalWindow"],
   selection: NonOverlappingCandidateSelection,
   hydratedCandidates: readonly FusedCandidate[],
-  languageAdmission: CandidateLanguageAdmissionTrace | null = null,
 ): CandidateBudgetTelemetry {
   const fusedCandidates = selection.decisions.map((decision) => (
     decision.candidate
@@ -783,20 +807,14 @@ export function buildCandidateBudgetTelemetry(
     });
   }
 
-  const languageByCandidate = buildLanguageClassificationMap(
-    languageAdmission,
-  );
-  const telemetry: CandidateBudgetTelemetry = {
+  return {
     allocationPolicy: selection.allocationPolicy,
     admittedCandidates: admissions,
     admittedDistinctParentCount: admittedParentKeys.size,
     admittedWindowCount: admittedCandidates.length,
     candidateK: selection.candidateK,
     fusedCandidates: selection.decisions.map((decision) => (
-      buildCandidateBudgetDecisionTelemetry(
-        decision,
-        languageByCandidate.get(decision.candidate),
-      )
+      buildCandidateBudgetDecisionTelemetry(decision)
     )),
     fusedDistinctParentCount: countDistinctCandidateParents(fusedCandidates),
     fusedWindowCount: fusedCandidates.length,
@@ -809,39 +827,12 @@ export function buildCandidateBudgetTelemetry(
     ),
     retrievalWindowPolicy,
   };
-  if (languageAdmission === null) {
-    return telemetry;
-  }
-  return {
-    ...telemetry,
-    languageAdmission: buildLanguageAdmissionTelemetry(
-      selection,
-      languageByCandidate,
-    ),
-  };
-}
-
-function buildLanguageClassificationMap(
-  languageAdmission: CandidateLanguageAdmissionTrace | null,
-): ReadonlyMap<FusedCandidate, EvidenceLanguageClassification> {
-  const languageByCandidate = new Map<
-    FusedCandidate,
-    EvidenceLanguageClassification
-  >();
-  if (languageAdmission === null) {
-    return languageByCandidate;
-  }
-  for (const entry of languageAdmission.classifications) {
-    languageByCandidate.set(entry.candidate, entry.language);
-  }
-  return languageByCandidate;
 }
 
 function buildCandidateBudgetDecisionTelemetry(
   decision: NonOverlappingCandidateSelection["decisions"][number],
-  language: EvidenceLanguageClassification | undefined,
 ): CandidateBudgetTelemetry["fusedCandidates"][number] {
-  const telemetry: CandidateBudgetTelemetry["fusedCandidates"][number] = {
+  return {
     admissionRank: decision.admissionRank,
     documentId: decision.candidate.documentId,
     exclusionReason: decision.exclusionReason,
@@ -858,75 +849,6 @@ function buildCandidateBudgetDecisionTelemetry(
     retrievalWindowId: decision.candidate.retrievalId,
     sourceFile: decision.candidate.sourceFile,
     descriptionAffected: decision.candidate.descriptionAffected,
-  };
-  if (language === undefined) {
-    return telemetry;
-  }
-  return {
-    ...telemetry,
-    detectedLanguage: language.code,
-  };
-}
-
-function buildLanguageAdmissionTelemetry(
-  selection: NonOverlappingCandidateSelection,
-  languageByCandidate: ReadonlyMap<
-    FusedCandidate,
-    EvidenceLanguageClassification
-  >,
-): NonNullable<CandidateBudgetTelemetry["languageAdmission"]> {
-  let admittedEnglishRepresentativeCount = 0;
-  let admittedUndeterminedRepresentativeCount = 0;
-  let englishRepresentativeCount = 0;
-  let nonEnglishRepresentativeCount = 0;
-  let representativeCandidateCount = 0;
-  let undeterminedRepresentativeCount = 0;
-  for (const decision of selection.decisions) {
-    if (
-      decision.representativeRetrievalWindowId
-      !== decision.candidate.retrievalId
-    ) {
-      continue;
-    }
-    const language = languageByCandidate.get(decision.candidate);
-    if (language === undefined) {
-      throw new Error(
-        `Fused candidate ${decision.candidate.retrievalId} has no language classification.`,
-      );
-    }
-    representativeCandidateCount += 1;
-    if (language.code === "eng") {
-      englishRepresentativeCount += 1;
-      if (decision.admissionRank !== null) {
-        admittedEnglishRepresentativeCount += 1;
-      }
-    } else if (language.code === "und") {
-      undeterminedRepresentativeCount += 1;
-      if (decision.admissionRank !== null) {
-        admittedUndeterminedRepresentativeCount += 1;
-      }
-    } else {
-      nonEnglishRepresentativeCount += 1;
-    }
-  }
-  if (
-    admittedEnglishRepresentativeCount
-      + admittedUndeterminedRepresentativeCount
-    !== selection.selected.length
-  ) {
-    throw new Error(
-      "Admitted candidates include an unsupported evidence language.",
-    );
-  }
-  return {
-    admittedEnglishRepresentativeCount,
-    admittedUndeterminedRepresentativeCount,
-    englishRepresentativeCount,
-    fusedCandidateCount: selection.decisions.length,
-    nonEnglishRepresentativeCount,
-    representativeCandidateCount,
-    supportedLanguage: "eng",
-    undeterminedRepresentativeCount,
   };
 }
 

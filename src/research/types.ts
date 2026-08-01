@@ -114,6 +114,7 @@ export interface ResearchRunConfiguration {
     queryExpansions: number;
     queryExpansionTemperature: number;
     rrfK: number;
+    tocRoutingEnabled: boolean;
     topK: number;
     variantConcurrency: number;
   };
