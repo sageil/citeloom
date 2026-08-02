@@ -40,7 +40,7 @@ describe("provider profiles", () => {
     providers.routing.textToSpeech = "cohere";
 
     expect(() => parseProviderSettings(providers)).toThrow(
-      "Cohere does not support text-to-speech",
+      "Cohere does not support Spoken answers",
     );
   });
 
@@ -49,7 +49,7 @@ describe("provider profiles", () => {
     providers.connections.lmstudio.answer.contextCapacityTokens = null;
 
     expect(() => parseProviderSettings(providers)).toThrow(
-      "requires a context capacity for answer generation",
+      "requires a context capacity for Answers",
     );
   });
 

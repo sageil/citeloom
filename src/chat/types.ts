@@ -44,10 +44,10 @@ export interface ChatMemorySelection {
 export interface ChatMemoryTrace {
   embeddingSpaceId: string;
   maximumTokens: number;
-  policyId: "citeloom/chat-memory:recent-semantic-v1";
+  policyId: "citeloom/chat-memory:recent-semantic-v2";
   queryMessageId: string;
   selectedTurns: ChatMemorySelection[];
-  version: 1;
+  version: 2;
 }
 
 export interface ChatRunConfiguration

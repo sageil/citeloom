@@ -14,9 +14,9 @@ import {
 } from "./draft.js";
 import type { RetrievedElement } from "../retrieval/document-retrieval.js";
 import {
-  createNoAnswerDocument,
+  createUncitedAnswerDocument,
   decodePublishedAnswerDocument,
-  isPublishedNoAnswerDocument,
+  isPublishedUncitedAnswerDocument,
   type PublishedAnswerCitation,
   type PublishedAnswerDocument,
   type PublishedAnswerStatement,
@@ -28,11 +28,11 @@ import type {
 import type { RetrievalSourceElement } from "../domain/source-elements.js";
 
 export {
-  createNoAnswerDocument,
+  createUncitedAnswerDocument,
+  DEFAULT_UNCITED_ANSWER_TEXT,
   decodePublishedAnswerDocument,
   isPublishedAnsweredDocument,
-  isPublishedNoAnswerDocument,
-  NO_ANSWER_TEXT,
+  isPublishedUncitedAnswerDocument,
   publishedAnswerCitationSchema,
   publishedAnswerDocumentSchema,
   type PublishedAnswerCitation,
@@ -73,8 +73,8 @@ export function compileAnswerDraft(
   retrieved: readonly RetrievedElement[],
   evidenceRefs: readonly EvidenceReference[] | null = null,
 ): PublishedAnswerDocument {
-  if (draft.status === "no_answer") {
-    return createNoAnswerDocument();
+  if (draft.status === "uncited") {
+    return createUncitedAnswerDocument(draft.content);
   }
   const requestEvidence = createRequestEvidence(
     retrieved,
@@ -407,7 +407,7 @@ function createRetrievedElementKey(item: RetrievedElement): string {
 export function readPublishedAnswerClaims(
   document: PublishedAnswerDocument,
 ): AnswerClaim[] {
-  if (isPublishedNoAnswerDocument(document)) {
+  if (isPublishedUncitedAnswerDocument(document)) {
     return [];
   }
   const citationNumberById = new Map<string, number>();
@@ -440,7 +440,7 @@ export function readPublishedAnswerClaims(
 export function renderPublishedAnswerMarkdown(
   document: PublishedAnswerDocument,
 ): string {
-  if (isPublishedNoAnswerDocument(document)) {
+  if (isPublishedUncitedAnswerDocument(document)) {
     return document.content;
   }
   const citationNumberById = createCitationNumberById(document.citations);
@@ -477,7 +477,7 @@ export function renderPublishedAnswerMarkdown(
 export function renderPublishedAnswerSpeech(
   document: PublishedAnswerDocument,
 ): string {
-  if (isPublishedNoAnswerDocument(document)) {
+  if (isPublishedUncitedAnswerDocument(document)) {
     return document.content;
   }
   const citationNumberById = createCitationNumberById(document.citations);

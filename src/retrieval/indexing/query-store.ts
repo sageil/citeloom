@@ -179,6 +179,7 @@ export interface RetrievalCandidateRankings {
 
 export interface RetrievalQuery {
   embedding: number[] | null;
+  kind?: "contextualized" | "expansion" | "original";
   text: string;
 }
 
@@ -898,7 +899,8 @@ function buildCandidateBudgetQueryTelemetry(
         .update(retrievalQuery.text)
         .digest("hex"),
       queryIndex,
-      queryKind: queryIndex === 0 ? "original" : "expansion",
+      queryKind: retrievalQuery.kind
+        ?? (queryIndex === 0 ? "original" : "expansion"),
     });
   }
   return queries;

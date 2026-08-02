@@ -139,7 +139,7 @@ export interface CandidateBudgetQueryTelemetry {
   lexicalWindowCount: number;
   queryFingerprintSha256: string;
   queryIndex: number;
-  queryKind: "expansion" | "original";
+  queryKind: "contextualized" | "expansion" | "original";
 }
 
 export interface CandidateBudgetTelemetry {

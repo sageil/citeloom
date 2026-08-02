@@ -2558,20 +2558,20 @@ describe("PostgreSQL research records", () => {
     expect(await session.database.select().from(researchTurns)).toHaveLength(0);
   });
 
-  it("publishes no-answer turns atomically and keeps published output immutable", async () => {
+  it("publishes uncited turns atomically and keeps published output immutable", async () => {
     const config = buildTestConfig();
     const research = new ResearchStore(session.database, config);
-    const noAnswerContent = (
+    const uncitedAnswerContent = (
       "The supplied source material does not identify what is unavailable."
     );
     await session.database
       .insert(embeddingSpaces)
       .values(buildEmbeddingSpaceRow(space768));
-    const thread = await research.createThread("No answer persistence");
+    const thread = await research.createThread("Uncited answer persistence");
     const turn = await research.saveTurn({
       answerDocument: {
         citations: [],
-        content: noAnswerContent,
+        content: uncitedAnswerContent,
         schemaVersion: 1,
         statements: [],
       },
@@ -2589,7 +2589,7 @@ describe("PostgreSQL research records", () => {
     expect(turn.answerDocument).not.toHaveProperty("status");
     expect(turn.answerDocument).toMatchObject({
       citations: [],
-      content: noAnswerContent,
+      content: uncitedAnswerContent,
       statements: [],
     });
     expect(turn.citations).toEqual([]);
@@ -2598,7 +2598,7 @@ describe("PostgreSQL research records", () => {
       turns: [{
         answerDocument: {
           citations: [],
-          content: noAnswerContent,
+          content: uncitedAnswerContent,
           schemaVersion: 1,
           statements: [],
         },

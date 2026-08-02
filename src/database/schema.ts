@@ -1493,7 +1493,7 @@ export const researchTurns = pgTable(
     completedAt: timestamp("completed_at", { mode: "date", withTimezone: true })
       .notNull(),
     id: uuid("id").primaryKey(),
-    noAnswerContent: text("no_answer_content"),
+    uncitedAnswerContent: text("no_answer_content"),
     question: text("question").notNull(),
     outputState: researchOutputState("output_state").notNull(),
     retrievedContext: jsonb("retrieved_context").$type<MatchedDocument[]>().notNull(),
@@ -1515,7 +1515,7 @@ export const researchTurns = pgTable(
     ),
     check(
       "research_turns_no_answer_content_check",
-      sql`${table.noAnswerContent} IS NULL OR length(trim(${table.noAnswerContent})) > 0`,
+      sql`${table.uncitedAnswerContent} IS NULL OR length(trim(${table.uncitedAnswerContent})) > 0`,
     ),
     uniqueIndex("research_turns_thread_sequence_idx").on(
       table.threadId,

@@ -25,10 +25,10 @@ describe("runtime setting contract", () => {
   it("validates a setting value with its named schema", () => {
     expect(decodeRuntimeSettingValue("doclingTimeoutSeconds", 600)).toBe(600);
     expect(() => decodeRuntimeSettingValue("doclingTimeoutSeconds", 1)).toThrow(
-      "Invalid value for Base processing timeout",
+      "Invalid value for Standard conversion time",
     );
     expect(() => decodeRuntimeSettingValue("topK", "10")).toThrow(
-      "Invalid value for Answer context count",
+      "Invalid value for Sections used in answers",
     );
   });
 
@@ -39,19 +39,19 @@ describe("runtime setting contract", () => {
 
     expect(definitions.get("retrievalCandidates")).toMatchObject({
       min: 1,
-      unit: "passages",
+      unit: "sections",
     });
     expect(definitions.get("retrievalCandidates")).not.toHaveProperty("max");
     expect(definitions.get("retrievalCandidates")?.description).toContain(
-      "must be at least Answer context count",
+      "must be at least Sections used in answers",
     );
     expect(definitions.get("topK")).toMatchObject({
       min: 1,
-      unit: "passages",
+      unit: "sections",
     });
     expect(definitions.get("topK")).not.toHaveProperty("max");
     expect(definitions.get("topK")?.description).toContain(
-      "cannot exceed Candidate count",
+      "cannot exceed Document sections searched",
     );
   });
 });

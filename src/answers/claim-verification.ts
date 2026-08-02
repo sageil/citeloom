@@ -1,7 +1,7 @@
 import { readClaimsFromAnswerMarkup } from "./claims.js";
 import { parseAnswerMarkup } from "./markup.js";
 import {
-  isPublishedNoAnswerDocument,
+  isPublishedUncitedAnswerDocument,
   readPublishedAnswerClaims,
   type PublishedAnswerDocument,
 } from "./published.js";
@@ -146,7 +146,7 @@ export async function verifyPublishedAnswer(
   abortSignal: AbortSignal,
   runTelemetry: RunTelemetry = noopRunTelemetry,
 ): Promise<VerifiedPublishedAnswer> {
-  if (isPublishedNoAnswerDocument(answerDocument)) {
+  if (isPublishedUncitedAnswerDocument(answerDocument)) {
     return { answerDocument, claims: [] };
   }
   const claims = readPublishedAnswerClaims(answerDocument);

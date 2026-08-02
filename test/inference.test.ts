@@ -678,7 +678,7 @@ describe("createInferenceModelRegistry", () => {
           createAnswerModelResponseSchema(createEvidenceReferences(1)),
         )),
       }),
-      prompt: "Return no_answer.",
+      prompt: "Return an uncited response.",
       seed: 42,
     });
 
@@ -772,7 +772,7 @@ describe("createInferenceModelRegistry", () => {
           createAnswerModelResponseSchema(createEvidenceReferences(1)),
         )),
       }),
-      prompt: "Return no_answer.",
+      prompt: "Return an uncited response.",
     });
 
     expect(result.output).toEqual({
@@ -1341,7 +1341,7 @@ describe("answer generation", () => {
     ]);
   });
 
-  it("returns a valid no-answer response without retrying", async () => {
+  it("returns a valid uncited response without retrying", async () => {
     const privacySource = buildRetrievedElement(
       "a",
       "b",
@@ -1370,7 +1370,7 @@ describe("answer generation", () => {
 
     expect(result).toMatchObject({
       outcome: "fallback",
-      reason: "model-no-answer",
+      reason: "model-uncited",
     });
     expect(answerModel.doGenerateCalls).toHaveLength(1);
     const initialPrompt = JSON.stringify(answerModel.doGenerateCalls[0]?.prompt);
@@ -1528,7 +1528,7 @@ describe("answer generation", () => {
     expect(result.answerDocument.statements[0]?.section).toBe("answer");
   });
 
-  it("accepts the structured no-answer variant as a fixed fallback", async () => {
+  it("accepts an uncited structured response as a fallback", async () => {
     const answerModel = new MockLanguageModelV4({
       doGenerate: buildTextGeneration(
         JSON.stringify({
@@ -1560,7 +1560,7 @@ describe("answer generation", () => {
       },
       claims: [],
       outcome: "fallback",
-      reason: "model-no-answer",
+      reason: "model-uncited",
       sources: [],
     });
   });
@@ -1662,7 +1662,10 @@ describe("answer generation", () => {
     controller.abort(new Error("cancelled"));
     const answerModel = new MockLanguageModelV4({
       doGenerate: buildTextGeneration(
-        JSON.stringify({ status: "no_answer" }),
+        JSON.stringify({
+          answer: { content: "Unsupported.", evidenceRefs: [] },
+          findings: [],
+        }),
         "stop",
       ),
     });
@@ -1697,7 +1700,10 @@ describe("answer generation", () => {
   it("preserves non-contract provider finish failures as errors", async () => {
     const answerModel = new MockLanguageModelV4({
       doGenerate: buildTextGeneration(
-        JSON.stringify({ status: "no_answer" }),
+        JSON.stringify({
+          answer: { content: "Unsupported.", evidenceRefs: [] },
+          findings: [],
+        }),
         "content-filter",
       ),
     });

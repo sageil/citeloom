@@ -7,9 +7,6 @@ import {
   type AnswerDraftStatement,
   type EvidenceReference,
 } from "../answers/draft.js";
-import {
-  NO_ANSWER_TEXT,
-} from "../answers/published.js";
 import type {
   AnswerResponseContract,
   AnswerResponseDecodeResult,
@@ -28,14 +25,13 @@ interface ChatGroundedClaim {
 interface ChatAnswerModelResponse {
   answer: ChatAnswerPoint;
   findings: ChatGroundedClaim[];
-  status: "answered" | "no_answer";
 }
 
 export const CHAT_ANSWER_RESPONSE_CONTRACT: AnswerResponseContract = {
   createSchema: createChatAnswerModelResponseSchema,
   decode: decodeChatAnswerModelResponse,
   description:
-    "A grounded Chat answer with a direct answer, findings, and request-local source references.",
+    "A Chat response containing either a grounded answer with findings and source references or an uncited clarification question with no findings.",
   name: "chat_answer",
 };
 
@@ -48,29 +44,28 @@ function createChatAnswerModelResponseSchema(
     source_refs: z.array(sourceReference).min(1),
   }).strict();
   const answerPoint: z.ZodType<ChatAnswerPoint> = z.object({
-    content: z.string(),
-    source_refs: z.array(sourceReference),
+    content: z.string().trim().min(1).describe(
+      "The grounded answer, evidence limitation, or focused clarification question with meaningful options.",
+    ),
+    source_refs: z.array(sourceReference).describe(
+      "Supporting source references for a grounded answer, or an empty array for a clarification or wholly unsupported response.",
+    ),
   }).strict();
   return z.object({
     answer: answerPoint,
-    findings: z.array(groundedClaim),
-    status: z.enum(["answered", "no_answer"]),
+    findings: z.array(groundedClaim).describe(
+      "Grounded findings for an answered response, or an empty array for a clarification or wholly unsupported response.",
+    ),
   }).strict().superRefine((response, context) => {
-    if (response.status === "answered") {
-      if (response.answer.content.trim().length === 0) {
-        context.addIssue({
-          code: "custom",
-          message: "An answered response requires direct answer content.",
-          path: ["answer", "content"],
-        });
-      }
-      if (response.answer.source_refs.length === 0) {
-        context.addIssue({
-          code: "custom",
-          message: "An answered response requires answer source references.",
-          path: ["answer", "source_refs"],
-        });
-      }
+    if (
+      response.answer.source_refs.length === 0
+      && response.findings.length > 0
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "An uncited response must not contain findings.",
+        path: ["findings"],
+      });
     }
   });
 }
@@ -90,10 +85,12 @@ function decodeChatAnswerModelResponse(
     );
   }
   const response = result.data as ChatAnswerModelResponse;
-  if (response.status === "no_answer") {
+  if (response.answer.source_refs.length === 0) {
     return {
-      draft: { status: "no_answer" },
-      noAnswerContent: normalizeNoAnswerContent(response.answer.content),
+      draft: {
+        content: normalizeAnswerModelText(response.answer.content),
+        status: "uncited",
+      },
       verificationStatementIndexes: [],
     };
   }
@@ -118,17 +115,8 @@ function decodeChatAnswerModelResponse(
       },
       allowedEvidenceRefs,
     ),
-    noAnswerContent: null,
     verificationStatementIndexes,
   };
-}
-
-function normalizeNoAnswerContent(value: string): string {
-  const normalized = value.replace(/\s+/gu, " ").trim();
-  if (normalized.length === 0) {
-    return NO_ANSWER_TEXT;
-  }
-  return normalized;
 }
 
 function appendGroundedClaims(

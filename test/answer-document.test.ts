@@ -39,10 +39,14 @@ describe("answer draft boundary", () => {
     expect(schemaText).not.toContain('"section"');
   });
 
-  it("decodes valid answered and no-answer drafts", () => {
+  it("decodes valid cited and uncited drafts", () => {
     const allowedEvidenceRefs = createEvidenceReferences(2);
-    expect(decodeAnswerDraft({ status: "no_answer" }, allowedEvidenceRefs)).toEqual({
-      status: "no_answer",
+    expect(decodeAnswerDraft({
+      content: "The source material does not establish the requested information.",
+      status: "uncited",
+    }, allowedEvidenceRefs)).toEqual({
+      content: "The source material does not establish the requested information.",
+      status: "uncited",
     });
     expect(decodeAnswerDraft(
       buildAnsweredDraft(["EVID_B", "EVID_A"]),
@@ -146,7 +150,7 @@ describe("answer draft boundary", () => {
     });
   });
 
-  it("normalizes a no-answer model response into the domain draft", () => {
+  it("normalizes an uncited model response into the domain draft", () => {
     expect(decodeAnswerModelResponse({
       answer: {
         content: "The supplied source material does not identify the requested information.",
@@ -154,7 +158,8 @@ describe("answer draft boundary", () => {
       },
       findings: [],
     }, createEvidenceReferences(2))).toEqual({
-      status: "no_answer",
+      content: "The supplied source material does not identify the requested information.",
+      status: "uncited",
     });
   });
 
@@ -231,7 +236,10 @@ describe("answer draft boundary", () => {
       value: { conflictGroups: [], statements: [], status: "answered" },
     },
     { label: "empty statement content", value: buildDraftWithContent("") },
-    { label: "an unknown top-level property", value: { extra: true, status: "no_answer" } },
+    {
+      label: "an unknown top-level property",
+      value: { content: "Unsupported.", extra: true, status: "uncited" },
+    },
     {
       label: "an unknown statement property",
       value: {

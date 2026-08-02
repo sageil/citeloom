@@ -35,7 +35,7 @@ import {
   publishedAnswerDocumentSchema,
   decodePublishedAnswerDocument,
   isPublishedAnsweredDocument,
-  isPublishedNoAnswerDocument,
+  isPublishedUncitedAnswerDocument,
   readPublishedAnswerClaims,
   renderPublishedAnswerMarkdown,
   type PublishedAnswerCitation,
@@ -106,7 +106,7 @@ const runConfigurationSchema = z.object({
   }).strict(),
   settingsVersion: z.number().int().nonnegative(),
 }).strict();
-const retrievalTraceBaseSchema = z.object({
+const retrievalTraceGenerationSchema = z.object({
   generation: z.object({
     answer: z.object({
       seed: z.number().int().nonnegative().nullable(),
@@ -118,8 +118,16 @@ const retrievalTraceBaseSchema = z.object({
     }).strict(),
     seedMode: z.enum(["random", "stable"]),
   }).strict(),
+});
+const previousRetrievalTraceQueriesSchema = z.object({
   queries: z.array(z.object({
     kind: z.enum(["expansion", "original"]),
+    text: z.string().min(1),
+  }).strict()).min(1),
+});
+const currentRetrievalTraceQueriesSchema = z.object({
+  queries: z.array(z.object({
+    kind: z.enum(["contextualized", "expansion", "original"]),
     text: z.string().min(1),
   }).strict()).min(1),
 });
@@ -147,11 +155,13 @@ const retrievalTraceOrderedSourcesSchema = z.array(z.object({
     sourceFile: z.string().min(1),
     descriptionAffected: z.boolean(),
   }).strict());
-const legacyRetrievalTraceSchema = retrievalTraceBaseSchema.extend({
+const legacyRetrievalTraceSchema = retrievalTraceGenerationSchema.extend({
+  ...previousRetrievalTraceQueriesSchema.shape,
   orderedSources: retrievalTraceOrderedSourcesSchema,
   version: z.literal(3),
 }).strict();
-const currentRetrievalTraceSchema = retrievalTraceBaseSchema.extend({
+const previousRetrievalTraceSchema = retrievalTraceGenerationSchema.extend({
+  ...previousRetrievalTraceQueriesSchema.shape,
   orderedSources: retrievalTraceOrderedSourcesSchema,
   question: z.object({
     original: z.string().min(1),
@@ -160,8 +170,19 @@ const currentRetrievalTraceSchema = retrievalTraceBaseSchema.extend({
   }).strict(),
   version: z.literal(4),
 }).strict();
+const currentRetrievalTraceSchema = retrievalTraceGenerationSchema.extend({
+  ...currentRetrievalTraceQueriesSchema.shape,
+  orderedSources: retrievalTraceOrderedSourcesSchema,
+  question: z.object({
+    original: z.string().min(1),
+    policyId: z.literal(QUESTION_PROCESSING_POLICY_ID),
+    processing: z.string().min(1),
+  }).strict(),
+  version: z.literal(5),
+}).strict();
 const storedRetrievalTraceSchema = z.discriminatedUnion("version", [
   legacyRetrievalTraceSchema,
+  previousRetrievalTraceSchema,
   currentRetrievalTraceSchema,
 ]);
 const passiveAbortSignal = new AbortController().signal;
@@ -286,7 +307,7 @@ const turnRowSchema = z.object({
   answerSchemaVersion: z.literal(1),
   completedAt: z.date(),
   id: z.uuid(),
-  noAnswerContent: z.string().trim().min(1).nullable(),
+  uncitedAnswerContent: z.string().trim().min(1).nullable(),
   outputState: z.literal("published"),
   question: z.string().min(1),
   retrievedContext: z.array(z.object({
@@ -507,7 +528,7 @@ export class ResearchStore {
         answerSchemaVersion: normalized.answerDocument.schemaVersion,
         completedAt: normalized.completedAt,
         id: turnId,
-        noAnswerContent: isPublishedNoAnswerDocument(normalized.answerDocument)
+        uncitedAnswerContent: isPublishedUncitedAnswerDocument(normalized.answerDocument)
           ? normalized.answerDocument.content
           : null,
         outputState: "building",
@@ -1246,7 +1267,7 @@ function decodeSaveResearchTurnInput(input: SaveResearchTurnInput): SaveResearch
 function normalizePublishedAnswerDocument(
   document: PublishedAnswerDocument,
 ): PublishedAnswerDocument {
-  if (isPublishedNoAnswerDocument(document)) {
+  if (isPublishedUncitedAnswerDocument(document)) {
     return document;
   }
   const citations = [...document.citations];
@@ -1550,18 +1571,18 @@ function buildPersistedTurnOutput(
   }
   let answerDocument: PublishedAnswerDocument;
   if (published.statements.length === 0) {
-    if (turn.noAnswerContent === null) {
-      throw new Error(`No-answer turn ${turn.id} has no persisted content.`);
+    if (turn.uncitedAnswerContent === null) {
+      throw new Error(`Uncited turn ${turn.id} has no persisted content.`);
     }
     answerDocument = decodePublishedAnswerDocument({
       citations: [],
-      content: turn.noAnswerContent,
+      content: turn.uncitedAnswerContent,
       schemaVersion: turn.answerSchemaVersion,
       statements: [],
     });
   } else {
-    if (turn.noAnswerContent !== null) {
-      throw new Error(`Answered turn ${turn.id} contains no-answer content.`);
+    if (turn.uncitedAnswerContent !== null) {
+      throw new Error(`Cited turn ${turn.id} contains uncited answer content.`);
     }
     answerDocument = decodePublishedAnswerDocument({
       citations: publishedCitations,

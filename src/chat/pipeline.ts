@@ -1,12 +1,18 @@
 import type { AuthenticatedPrincipal } from "../auth/model.js";
 import { createPendingAnswerClaimChecks } from "../answers/claim-verification.js";
 import {
-  createNoRelevantAnswer,
+  createEmptyRetrievalAnswer,
   streamAnswerQuestion,
   type GeneratedAnswerResult,
 } from "../answers/inference.js";
+import {
+  createUncitedAnswerDocument,
+  renderPublishedAnswerMarkdown,
+  type PublishedAnswerDocument,
+} from "../answers/published.js";
 import type { ApplicationRuntime } from "../app/runtime.js";
 import type { AppConfig } from "../config/index.js";
+import { createContextualizedQuestionInput } from "../domain/question.js";
 import {
   selectChatInferenceModels,
 } from "../inference/registry.js";
@@ -129,7 +135,7 @@ export async function answerChatMessageWithRuntime(
       "embedding",
       "retrieving",
     );
-    const retrievalQuestion = await contextualizeChatQuestion(
+    const questionResolution = await contextualizeChatQuestion(
       runtime.models,
       accepted.userMessage.content,
       memory.questionContextTurns,
@@ -142,12 +148,16 @@ export async function answerChatMessageWithRuntime(
       reportProgress,
       runTelemetry,
     );
+    const questionInput = createContextualizedQuestionInput(
+      accepted.userMessage.content,
+      questionResolution.question,
+    );
     reportProgress("Retrieving evidence from indexed documents");
     const chatModels = selectChatInferenceModels(runtime.models);
     const chatScheduler = runtime.scheduler("chat", "interactive-answer");
     const prepared = await prepareRetrievalWithRuntime(
       runtime,
-      retrievalQuestion,
+      questionInput,
       reportProgress,
       accepted.conversation.scope,
       lease.signal,
@@ -164,14 +174,16 @@ export async function answerChatMessageWithRuntime(
       "retrieving",
       "generating",
     );
-    let result: GeneratedAnswerResult;
-    if (prepared.retrieved.length === 0) {
-      result = createNoRelevantAnswer();
+    let result: ChatGeneratedResponse;
+    if (questionResolution.clarification !== null) {
+      result = createChatClarification(questionResolution.clarification);
+    } else if (prepared.retrieved.length === 0) {
+      result = createEmptyRetrievalAnswer();
     } else {
       reportProgress("Generating a grounded chat response");
       result = await streamAnswerQuestion(
         chatModels,
-        accepted.userMessage.content,
+        questionResolution.question,
         prepared.retrieved,
         chatScheduler,
         lease.signal,
@@ -262,6 +274,22 @@ export async function answerChatMessageWithRuntime(
   } finally {
     await lease.stop();
   }
+}
+
+type ChatGeneratedResponse = Pick<
+  GeneratedAnswerResult,
+  "answer" | "answerDocument" | "claims"
+>;
+
+function createChatClarification(content: string): ChatGeneratedResponse {
+  const answerDocument: PublishedAnswerDocument = createUncitedAnswerDocument(
+    content,
+  );
+  return {
+    answer: renderPublishedAnswerMarkdown(answerDocument),
+    answerDocument,
+    claims: [],
+  };
 }
 
 interface ChatRunLease {

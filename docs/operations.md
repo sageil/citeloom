@@ -169,4 +169,4 @@ pnpm jobs retry --file <stored-source-file>
 ```
 
 Treat cancellation and unexpected service failures as operational errors.
-Do not report them as a successful no-answer result or a completed ingestion.
+Do not report them as a successful uncited response or a completed ingestion.

@@ -20,7 +20,7 @@ import { z } from "zod";
 import {
   decodePublishedAnswerDocument,
   isPublishedAnsweredDocument,
-  isPublishedNoAnswerDocument,
+  isPublishedUncitedAnswerDocument,
   publishedAnswerDocumentSchema,
   renderPublishedAnswerMarkdown,
   type PublishedAnswerCitation,
@@ -249,18 +249,10 @@ export interface AcceptedChatRun {
 export interface ChatMemoryTurnRecord {
   assistantContent: string;
   assistantMessageId: string;
-  citationSources: ChatMemoryCitationSource[];
   runId: string;
   sequence: number;
   userContent: string;
   userMessageId: string;
-}
-
-export interface ChatMemoryCitationSource {
-  citationNumber: number;
-  pageNumbers: number[];
-  sectionPath: string[];
-  sourceFile: string;
 }
 
 export interface ChatMessageEmbeddingRecord {
@@ -320,7 +312,7 @@ function normalizePublishedChatContent(
     return renderedContent;
   }
   if (claims.length > 0) {
-    throw new Error("A no-answer Chat message must not contain claims.");
+    throw new Error("An uncited Chat message must not contain claims.");
   }
   return content;
 }
@@ -863,28 +855,7 @@ export class ChatStore {
       userContent: z.string().trim().min(1),
       userMessageId: z.uuid(),
     });
-    const turns = rows.map((row) => schema.parse(row));
-    const assistantMessageIds = turns.map((turn) => turn.assistantMessageId);
-    const citationsByMessage = await this.readCitationsByMessage(
-      assistantMessageIds,
-    );
-    return turns.map((turn) => {
-      const storedCitations = citationsByMessage.get(turn.assistantMessageId)
-        ?? [];
-      const citationSources: ChatMemoryCitationSource[] = [];
-      for (const citation of storedCitations) {
-        citationSources.push({
-          citationNumber: citation.citationNumber,
-          pageNumbers: [...citation.pageNumbers],
-          sectionPath: [...citation.sectionPath],
-          sourceFile: citation.sourceFile,
-        });
-      }
-      return {
-        ...turn,
-        citationSources,
-      };
-    });
+    return rows.map((row) => schema.parse(row));
   }
 
   public async readMessagesMissingEmbeddings(
@@ -1608,11 +1579,11 @@ export class ChatStore {
         message.answerDocument,
       );
       if (
-        isPublishedNoAnswerDocument(answerDocument)
+        isPublishedUncitedAnswerDocument(answerDocument)
         && message.claims.length > 0
       ) {
         throw new Error(
-          `Chat no-answer message ${message.id} contains claims.`,
+          `Uncited Chat message ${message.id} contains claims.`,
         );
       }
       if (

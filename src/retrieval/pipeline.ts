@@ -18,7 +18,7 @@ import {
   attachAdvisoryClaimChecks,
   AnswerOutputTokenLimitError,
   answerQuestion,
-  createNoRelevantAnswer,
+  createEmptyRetrievalAnswer,
   InvalidAnswerDraftError,
   streamAnswerQuestion,
   UnexpectedAnswerFinishReasonError,
@@ -117,18 +117,18 @@ export interface PreparedRetrieval {
 function createRetrievalTrace(
   generation: TurnGenerationSettings,
   question: QuestionInput,
-  queryTexts: readonly string[],
+  retrievalQueries: readonly RetrievalQuery[],
   retrieved: readonly RetrievedElement[],
 ): CurrentResearchRetrievalTrace {
   const queries: CurrentResearchRetrievalTrace["queries"] = [];
-  for (let index = 0; index < queryTexts.length; index += 1) {
-    const text = queryTexts[index];
-    if (text === undefined) {
+  for (let index = 0; index < retrievalQueries.length; index += 1) {
+    const query = retrievalQueries[index];
+    if (query === undefined) {
       continue;
     }
     queries.push({
-      kind: index === 0 ? "original" : "expansion",
-      text,
+      kind: query.kind ?? (index === 0 ? "original" : "expansion"),
+      text: query.text,
     });
   }
   const orderedSources: CurrentResearchRetrievalTrace["orderedSources"] = [];
@@ -158,7 +158,7 @@ function createRetrievalTrace(
       processing: question.processing,
     },
     queries,
-    version: 4,
+    version: 5,
   };
 }
 
@@ -210,7 +210,7 @@ export async function askIndexedDocuments(
     );
     if (prepared.retrieved.length === 0) {
       await runTelemetry.finish("success");
-      return createNoRelevantAnswer();
+      return createEmptyRetrievalAnswer();
     }
     reportProgress("Generating an answer from the retrieved multimodal context");
     let result = await answerQuestion(
@@ -517,17 +517,21 @@ async function prepareRetrievalWithResources(
       retrievalTrace: createRetrievalTrace(
         generationSettings,
         question,
-        [question.processing],
+        question.retrievalQueries.map((query) => ({
+          embedding: null,
+          kind: query.kind,
+          text: query.text,
+        })),
         [],
       ),
       retrieved: [],
     };
   }
 
-  const queries = await prepareRetrievalQueries(
+  const queries = await prepareQuestionRetrievalQueries(
     config,
     models,
-    question.processing,
+    question,
     reportProgress,
     embeddingScheduler,
     queryExpansionScheduler,
@@ -575,7 +579,7 @@ async function prepareRetrievalWithResources(
     retrievalTrace: createRetrievalTrace(
       generationSettings,
       question,
-      queries.map((query) => query.text),
+      queries,
       retrieval.retrieved,
     ),
     retrieved: retrieval.retrieved,
@@ -593,10 +597,11 @@ export async function prepareRetrievalQueries(
   generationSettings: QueryExpansionGenerationSettings,
   runTelemetry: RunTelemetry = noopRunTelemetry,
 ): Promise<RetrievalQuery[]> {
-  return prepareRetrievalQueriesWithGenerationSettings(
+  return prepareRetrievalQuerySeedsWithGenerationSettings(
     config,
     models,
     question,
+    [{ kind: "original", text: question }],
     reportProgress,
     embeddingScheduler,
     queryExpansionScheduler,
@@ -621,10 +626,11 @@ export async function prepareRetrievalQueriesWithSeed(
     seed: generationSeed,
     temperature: 0,
   };
-  return prepareRetrievalQueriesWithGenerationSettings(
+  return prepareRetrievalQuerySeedsWithGenerationSettings(
     config,
     models,
     question,
+    [{ kind: "original", text: question }],
     reportProgress,
     embeddingScheduler,
     queryExpansionScheduler,
@@ -634,10 +640,10 @@ export async function prepareRetrievalQueriesWithSeed(
   );
 }
 
-async function prepareRetrievalQueriesWithGenerationSettings(
+async function prepareQuestionRetrievalQueries(
   config: AppConfig,
   models: InferenceModelRegistry,
-  question: string,
+  question: QuestionInput,
   reportProgress: (message: string) => void,
   embeddingScheduler: TaskScheduler,
   queryExpansionScheduler: TaskScheduler,
@@ -645,21 +651,59 @@ async function prepareRetrievalQueriesWithGenerationSettings(
   generationSettings: QueryExpansionGenerationSettings | undefined,
   runTelemetry: RunTelemetry,
 ): Promise<RetrievalQuery[]> {
-  const queryTexts = await buildRetrievalQueries(
+  const seeds: RetrievalQuerySeed[] = [];
+  for (const query of question.retrievalQueries) {
+    seeds.push({ kind: query.kind, text: query.text });
+  }
+  return prepareRetrievalQuerySeedsWithGenerationSettings(
+    config,
+    models,
+    question.processing,
+    seeds,
+    reportProgress,
+    embeddingScheduler,
+    queryExpansionScheduler,
+    abortSignal,
+    generationSettings,
+    runTelemetry,
+  );
+}
+
+type RetrievalQueryKind = NonNullable<RetrievalQuery["kind"]>;
+
+interface RetrievalQuerySeed {
+  kind: RetrievalQueryKind;
+  text: string;
+}
+
+async function prepareRetrievalQuerySeedsWithGenerationSettings(
+  config: AppConfig,
+  models: InferenceModelRegistry,
+  question: string,
+  seeds: readonly RetrievalQuerySeed[],
+  reportProgress: (message: string) => void,
+  embeddingScheduler: TaskScheduler,
+  queryExpansionScheduler: TaskScheduler,
+  abortSignal: AbortSignal,
+  generationSettings: QueryExpansionGenerationSettings | undefined,
+  runTelemetry: RunTelemetry,
+): Promise<RetrievalQuery[]> {
+  const querySeeds = await buildRetrievalQueries(
     config,
     models,
     question,
+    seeds,
     reportProgress,
     queryExpansionScheduler,
     abortSignal,
     generationSettings,
     runTelemetry,
   );
-  runTelemetry.setQueryVariantCount(queryTexts.length);
+  runTelemetry.setQueryVariantCount(querySeeds.length);
   return embedRetrievalQueries(
     config,
     models,
-    queryTexts,
+    querySeeds,
     reportProgress,
     embeddingScheduler,
     abortSignal,
@@ -671,15 +715,19 @@ async function buildRetrievalQueries(
   config: AppConfig,
   models: InferenceModelRegistry,
   question: string,
+  seeds: readonly RetrievalQuerySeed[],
   reportProgress: (message: string) => void,
   queryExpansionScheduler: TaskScheduler,
   abortSignal: AbortSignal,
   generationSettings: QueryExpansionGenerationSettings | undefined,
   runTelemetry: RunTelemetry,
-): Promise<string[]> {
-  const queryTexts = [question];
+): Promise<RetrievalQuerySeed[]> {
+  if (seeds.length === 0) {
+    throw new Error("Retrieval requires at least one query seed.");
+  }
+  const querySeeds = [...seeds];
   if (config.retrieval.queryExpansions <= 0) {
-    return queryTexts;
+    return querySeeds;
   }
   reportProgress("Generating extra search queries");
   try {
@@ -692,20 +740,22 @@ async function buildRetrievalQueries(
       generationSettings,
       runTelemetry,
     );
-    queryTexts.push(...expansions);
+    for (const expansion of expansions) {
+      querySeeds.push({ kind: "expansion", text: expansion });
+    }
   } catch (error: unknown) {
     abortSignal.throwIfAborted();
     reportProgress(
       `Extra search queries were unavailable, so retrieval is using the original question: ${readErrorMessage(error)}`,
     );
   }
-  return queryTexts;
+  return querySeeds;
 }
 
 async function embedRetrievalQueries(
   config: AppConfig,
   models: InferenceModelRegistry,
-  queryTexts: string[],
+  querySeeds: readonly RetrievalQuerySeed[],
   reportProgress: (message: string) => void,
   embeddingScheduler: TaskScheduler,
   abortSignal: AbortSignal,
@@ -713,19 +763,19 @@ async function embedRetrievalQueries(
 ): Promise<RetrievalQuery[]> {
   let embeddings: number[][] = [];
   if (retrievalModeUsesDense(config.retrieval.mode)) {
-    reportProgress(`Embedding ${queryTexts.length} search queries`);
+    reportProgress(`Embedding ${querySeeds.length} search queries`);
     embeddings = await embedQuestions(
       models,
-      queryTexts,
+      querySeeds.map((query) => query.text),
       embeddingScheduler,
       abortSignal,
       runTelemetry,
     );
   }
   const queries: RetrievalQuery[] = [];
-  for (let index = 0; index < queryTexts.length; index += 1) {
-    const text = queryTexts[index];
-    if (text === undefined) {
+  for (let index = 0; index < querySeeds.length; index += 1) {
+    const seed = querySeeds[index];
+    if (seed === undefined) {
       throw new Error(`Missing retrieval query at index ${index}.`);
     }
     let embedding: number[] | null = null;
@@ -735,7 +785,7 @@ async function embedRetrievalQueries(
         throw new Error(`Missing retrieval query embedding at index ${index}.`);
       }
     }
-    queries.push({ embedding, text });
+    queries.push({ embedding, kind: seed.kind, text: seed.text });
     abortSignal.throwIfAborted();
   }
   return queries;
@@ -781,7 +831,7 @@ export async function writeStreamedAnswer(
     const prepared = await prepare(runTelemetry);
     let result: GeneratedAnswerResult;
     if (prepared.retrieved.length === 0) {
-      result = createNoRelevantAnswer();
+      result = createEmptyRetrievalAnswer();
     } else {
       reportProgress("Generating an answer from the retrieved multimodal context");
       result = await streamAnswerQuestion(

@@ -284,7 +284,7 @@ function readAnswerDocument(value) {
   if (!hasCitations) {
     return {
       citations,
-      content: readNonEmptyString(answer.content, "no-answer content"),
+      content: readNonEmptyString(answer.content, "uncited answer content"),
       schemaVersion,
       statements,
     };

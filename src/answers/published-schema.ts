@@ -15,7 +15,7 @@ import {
   sourceRegionSchema,
 } from "../domain/validation.js";
 
-export const NO_ANSWER_TEXT = "I couldn't find the answer to your question in the available information.";
+export const DEFAULT_UNCITED_ANSWER_TEXT = "I couldn't find the answer to your question in the available information.";
 
 export interface PublishedAnswerCitation {
   citationNumber: number;
@@ -38,7 +38,7 @@ export interface PublishedAnswerStatement {
   section: AnswerSection;
 }
 
-export interface PublishedNoAnswerDocument {
+export interface PublishedUncitedAnswerDocument {
   citations: [];
   content: string;
   schemaVersion: 1;
@@ -53,7 +53,7 @@ export interface PublishedAnsweredDocument {
 
 export type PublishedAnswerDocument =
   | PublishedAnsweredDocument
-  | PublishedNoAnswerDocument;
+  | PublishedUncitedAnswerDocument;
 
 const evidenceSchema = z.discriminatedUnion("kind", [
   z.object({ excerpt: z.string().min(1), kind: z.literal("text") }).strict(),
@@ -140,9 +140,9 @@ export function decodePublishedAnswerDocument(value: unknown): PublishedAnswerDo
   return result.data;
 }
 
-export function createNoAnswerDocument(
-  content = NO_ANSWER_TEXT,
-): PublishedNoAnswerDocument {
+export function createUncitedAnswerDocument(
+  content = DEFAULT_UNCITED_ANSWER_TEXT,
+): PublishedUncitedAnswerDocument {
   return {
     citations: [],
     content,
@@ -157,9 +157,9 @@ export function isPublishedAnsweredDocument(
   return document.citations.length > 0;
 }
 
-export function isPublishedNoAnswerDocument(
+export function isPublishedUncitedAnswerDocument(
   document: PublishedAnswerDocument,
-): document is PublishedNoAnswerDocument {
+): document is PublishedUncitedAnswerDocument {
   return document.citations.length === 0;
 }
 

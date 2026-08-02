@@ -121,14 +121,24 @@ export interface ResearchRunConfiguration {
   settingsVersion: number;
 }
 
-interface ResearchRetrievalTraceBase {
+interface ResearchRetrievalTraceGeneration {
   generation: {
     answer: { seed: number | null; temperature: number };
     queryExpansion: { seed: number | null; temperature: number };
     seedMode: "random" | "stable";
   };
+}
+
+interface PreviousResearchRetrievalTraceQueries {
   queries: Array<{
     kind: "expansion" | "original";
+    text: string;
+  }>;
+}
+
+interface CurrentResearchRetrievalTraceQueries {
+  queries: Array<{
+    kind: "contextualized" | "expansion" | "original";
     text: string;
   }>;
 }
@@ -148,12 +158,16 @@ interface ResearchRetrievalTraceSources {
 }
 
 export interface LegacyResearchRetrievalTrace
-  extends ResearchRetrievalTraceBase, ResearchRetrievalTraceSources {
+  extends ResearchRetrievalTraceGeneration,
+    PreviousResearchRetrievalTraceQueries,
+    ResearchRetrievalTraceSources {
   version: 3;
 }
 
-export interface CurrentResearchRetrievalTrace
-  extends ResearchRetrievalTraceBase, ResearchRetrievalTraceSources {
+export interface PreviousResearchRetrievalTrace
+  extends ResearchRetrievalTraceGeneration,
+    PreviousResearchRetrievalTraceQueries,
+    ResearchRetrievalTraceSources {
   question: {
     original: string;
     policyId: typeof QUESTION_PROCESSING_POLICY_ID;
@@ -162,8 +176,21 @@ export interface CurrentResearchRetrievalTrace
   version: 4;
 }
 
+export interface CurrentResearchRetrievalTrace
+  extends ResearchRetrievalTraceGeneration,
+    CurrentResearchRetrievalTraceQueries,
+    ResearchRetrievalTraceSources {
+  question: {
+    original: string;
+    policyId: typeof QUESTION_PROCESSING_POLICY_ID;
+    processing: string;
+  };
+  version: 5;
+}
+
 export type ResearchRetrievalTrace =
   | LegacyResearchRetrievalTrace
+  | PreviousResearchRetrievalTrace
   | CurrentResearchRetrievalTrace;
 
 export type StoredResearchRetrievalTrace = ResearchRetrievalTrace;

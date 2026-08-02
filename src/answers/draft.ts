@@ -55,7 +55,10 @@ export interface AnswerDraftConflictGroup {
 }
 
 export type AnswerDraft =
-  | { status: "no_answer" }
+  | {
+    content: string;
+    status: "uncited";
+  }
   | {
     conflictGroups: AnswerDraftConflictGroup[];
     statements: AnswerDraftStatement[];
@@ -85,11 +88,6 @@ interface AnswerStatementFieldSchemas {
 export interface AnswerDraftValidationIssue {
   message: string;
   path: string;
-}
-
-export interface AnswerModelResponseDecodeResult {
-  draft: AnswerDraft;
-  noAnswerContent: string | null;
 }
 
 export class AnswerDraftDecodeError extends Error {
@@ -157,6 +155,13 @@ export function createAnswerModelResponseSchema(
           path: ["findings"],
         });
       }
+      if (!hasDirectAnswer) {
+        context.addIssue({
+          code: "custom",
+          message: "An uncited response must explain what the source material does not establish.",
+          path: ["answer", "content"],
+        });
+      }
       return;
     }
     if (!hasDirectAnswer) {
@@ -187,7 +192,10 @@ function buildAnswerDraftSchema(
     conflictGroupsSchema = conflictGroupsSchema.default([]);
   }
   const schema = z.discriminatedUnion("status", [
-    z.object({ status: z.literal("no_answer") }).strict(),
+    z.object({
+      content: answerStatementContentSchema,
+      status: z.literal("uncited"),
+    }).strict(),
     z.object({
       status: z.literal("answered"),
       statements: parts.statements,
@@ -316,13 +324,6 @@ export function decodeAnswerModelResponse(
   value: unknown,
   allowedEvidenceRefs: readonly EvidenceReference[],
 ): AnswerDraft {
-  return decodeAnswerModelResponseResult(value, allowedEvidenceRefs).draft;
-}
-
-export function decodeAnswerModelResponseResult(
-  value: unknown,
-  allowedEvidenceRefs: readonly EvidenceReference[],
-): AnswerModelResponseDecodeResult {
   const modelResult = createAnswerModelResponseSchema(
     allowedEvidenceRefs,
   ).safeParse(value);
@@ -335,12 +336,19 @@ export function decodeAnswerModelResponseResult(
     );
   }
   if (modelResult.data.answer.evidenceRefs.length === 0) {
-    return {
-      draft: { status: "no_answer" },
-      noAnswerContent: readNormalizedModelText(
-        modelResult.data.answer.content,
-      ),
-    };
+    const content = readNormalizedModelText(modelResult.data.answer.content);
+    if (content === null) {
+      throw new AnswerDraftDecodeError(
+        "Invalid answer model response: an uncited response requires content.",
+        "invalid-content",
+        [{
+          message: "An uncited response must explain what the source material does not establish.",
+          path: "answer.content",
+        }],
+        0,
+      );
+    }
+    return { content, status: "uncited" };
   }
 
   const normalized = structuredClone(modelResult.data);
@@ -381,12 +389,9 @@ export function decodeAnswerModelResponseResult(
     });
   }
   return {
-    draft: {
-      conflictGroups: [],
-      statements,
-      status: "answered",
-    },
-    noAnswerContent: null,
+    conflictGroups: [],
+    statements,
+    status: "answered",
   };
 }
 

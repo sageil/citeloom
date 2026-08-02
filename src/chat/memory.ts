@@ -21,7 +21,6 @@ import type {
 
 const RECENT_TURN_COUNT = 4;
 const SEMANTIC_TURN_LIMIT = 8;
-const MAXIMUM_MEMORY_TOKENS = 8_000;
 const MINIMUM_MEMORY_TOKENS = 512;
 
 interface EmbeddingSource {
@@ -78,10 +77,7 @@ export async function prepareChatMemory(
   const capabilities = await readCapabilities(abortSignal);
   const maximumTokens = Math.max(
     MINIMUM_MEMORY_TOKENS,
-    Math.min(
-      MAXIMUM_MEMORY_TOKENS,
-      Math.floor(capabilities.contextCapacityTokens * 0.2),
-    ),
+    Math.floor(capabilities.contextCapacityTokens * 0.2),
   );
   const fullHistory = selectWholeTurns(
     turns,
@@ -419,7 +415,7 @@ function buildSelectedMemory(
   const questionContextTurns: AnswerConversationTurn[] = [];
   for (const item of selected) {
     conversationTurns.push({
-      assistant: formatAssistantMemoryContext(item.turn),
+      assistant: item.turn.assistantContent,
       user: item.turn.userContent,
     });
     questionContextTurns.push({
@@ -433,36 +429,14 @@ function buildSelectedMemory(
     trace: {
       embeddingSpaceId,
       maximumTokens,
-      policyId: "citeloom/chat-memory:recent-semantic-v1",
+      policyId: "citeloom/chat-memory:recent-semantic-v2",
       queryMessageId,
       selectedTurns: selected.map((item) => item.selection),
-      version: 1,
+      version: 2,
     },
   };
 }
 
 function formatConversationTurn(turn: ChatMemoryTurnRecord): string {
-  const assistant = formatAssistantMemoryContext(turn);
-  return `User:\n${turn.userContent}\n\nAssistant:\n${assistant}\n`;
-}
-
-function formatAssistantMemoryContext(turn: ChatMemoryTurnRecord): string {
-  if (turn.citationSources.length === 0) {
-    return turn.assistantContent;
-  }
-  const citationSources: string[] = [];
-  for (const citation of turn.citationSources) {
-    citationSources.push(JSON.stringify({
-      citationNumber: citation.citationNumber,
-      pageNumbers: citation.pageNumbers,
-      sectionPath: citation.sectionPath,
-      sourceFile: citation.sourceFile,
-    }));
-  }
-  return [
-    turn.assistantContent,
-    "",
-    "Citation source map for the prior assistant answer:",
-    ...citationSources,
-  ].join("\n");
+  return `User:\n${turn.userContent}\n\nAssistant:\n${turn.assistantContent}\n`;
 }

@@ -662,7 +662,7 @@ function readAnswerDocument(value) {
   if (!hasCitations) {
     return {
       citations,
-      content: readNonEmptyString(document.content, "no-answer content"),
+      content: readNonEmptyString(document.content, "uncited answer content"),
       schemaVersion,
       statements,
     };

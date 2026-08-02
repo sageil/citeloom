@@ -187,9 +187,8 @@ describe("application configuration", () => {
         config.inference.embedding.maximumInputTokens,
       retrievalChunkTargetTokens: runtimeSettings.retrievalChunkTargetTokens,
     })).toEqual([
-      "Retrieval chunk target 4096 exceeds the embedding model context of "
-      + "2048. CiteLoom is using 2048 tokens as the effective retrieval chunk "
-      + "target.",
+      "Document section size 4096 exceeds the search model's maximum input of "
+      + "2048 tokens. CiteLoom will use 2048 tokens instead.",
     ]);
   });
 });

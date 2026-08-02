@@ -7,7 +7,7 @@ import {
   type TextToSpeechConfig,
 } from "../config/index.js";
 import {
-  createNoAnswerDocument,
+  createUncitedAnswerDocument,
   renderPublishedAnswerSpeech,
   type PublishedAnswerDocument,
 } from "../answers/published.js";
@@ -85,7 +85,7 @@ export async function probeTextToSpeechProvider(
 ): Promise<void> {
   const result = await requestSpeech(
     config,
-    { answerDocument: createNoAnswerDocument() },
+    { answerDocument: createUncitedAnswerDocument() },
     abortSignal,
   );
   try {

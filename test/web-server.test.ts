@@ -808,10 +808,9 @@ describe("web server boundary", () => {
       const body = response.json();
       expect(body).toMatchObject({ updatedAt: settings.updatedAt, version: 3 });
       expect(body.warnings).toEqual([
-        "Retrieval chunk target 4096 exceeds the embedding model context of "
-        + "2048. CiteLoom is using 2048 tokens as the effective retrieval "
-        + "chunk target.",
-        "The selected embedding configuration has no indexed documents. "
+        "Document section size 4096 exceeds the search model's maximum input of "
+        + "2048 tokens. CiteLoom will use 2048 tokens instead.",
+        "No indexed documents use the selected search setup. "
         + "Index a document before asking questions.",
       ]);
       expect(body.fields).toEqual(expect.arrayContaining([
@@ -2675,9 +2674,7 @@ function buildSourceDiscoveryRequest() {
   return {
     includeRelated: true,
     keywordPage: 1,
-    keywordPageSize: 10,
     query: "loan",
-    relatedLimit: 10,
     scope: { kind: "all" as const },
   };
 }

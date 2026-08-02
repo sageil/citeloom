@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { SourceDiscoveryConfig } from "../src/config/index.js";
 import type { RetrievedElement } from "../src/retrieval/document-retrieval.js";
 import type { SourceElement } from "../src/domain/source-elements.js";
 import {
@@ -32,6 +33,7 @@ describe("source discovery presentation", () => {
         buildRetrievedElement(relatedElement),
       ],
       request: buildRequest(),
+      settings: buildSettings(),
     });
 
     expect(response.keyword.documents).toHaveLength(1);
@@ -55,7 +57,7 @@ describe("source discovery presentation", () => {
         `Related passage ${index}`,
       )));
     }
-    const request = buildRequest({ relatedLimit: 1 });
+    const request = buildRequest();
     const response = buildSourceDiscoveryResponse({
       keyword: { status: "complete", warning: null },
       keywordPage: { matches: [], totalDocuments: 0 },
@@ -63,6 +65,7 @@ describe("source discovery presentation", () => {
       related: { status: "complete", warning: null },
       relatedElements,
       request,
+      settings: buildSettings({ resultsPerGroup: 1 }),
     });
 
     expect(response.related.documents).toHaveLength(1);
@@ -100,10 +103,18 @@ function buildRequest(
   return {
     includeRelated: true,
     keywordPage: 1,
-    keywordPageSize: 10,
     query: "loan",
-    relatedLimit: 10,
     scope: { kind: "all" },
+    ...overrides,
+  };
+}
+
+function buildSettings(
+  overrides: Partial<SourceDiscoveryConfig> = {},
+): SourceDiscoveryConfig {
+  return {
+    passagesPerDocument: 3,
+    resultsPerGroup: 10,
     ...overrides,
   };
 }

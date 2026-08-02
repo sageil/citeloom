@@ -379,7 +379,7 @@ describe("claim verification", () => {
     }]);
   });
 
-  it("returns no checks for a published no-answer document", async () => {
+  it("returns no checks for a published uncited document", async () => {
     const verifier = new FakeHhemClient();
     const document = decodePublishedAnswerDocument({
       citations: [],

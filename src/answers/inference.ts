@@ -13,7 +13,7 @@ import { z } from "zod";
 import {
   createAnswerModelResponseSchema,
   createEvidenceReferences,
-  decodeAnswerModelResponseResult,
+  decodeAnswerModelResponse,
   AnswerDraftDecodeError,
   type AnswerDraft,
   type AnswerDraftValidationIssue,
@@ -42,9 +42,8 @@ import {
 } from "./context-budget.js";
 import {
   compileAnswerDraft,
-  createNoAnswerDocument,
+  createUncitedAnswerDocument,
   isPublishedAnsweredDocument,
-  NO_ANSWER_TEXT,
   readPublishedAnswerClaims,
   renderPublishedAnswerMarkdown,
   type PublishedAnswerCitation,
@@ -85,7 +84,7 @@ export interface AnswerRunDetails {
   runId: string | null;
 }
 
-type GeneratedAnswerFallbackReason = "model-no-answer";
+type GeneratedAnswerFallbackReason = "model-uncited";
 
 const ANSWER_OUTPUT_DESCRIPTION = "A private CiteLoom response containing a direct answer, cited findings, and exact request-local evidence references.";
 const ANSWER_OUTPUT_NAME = "answer_draft";
@@ -159,7 +158,6 @@ type DecodedAnswerResponse =
   | {
     draft: AnswerDraft;
     failure: null;
-    noAnswerContent: string | null;
     responseSha256: string;
     verificationStatementIndexes: readonly number[] | null;
   }
@@ -249,7 +247,6 @@ export interface AnswerResponseContract {
 
 export interface AnswerResponseDecodeResult {
   draft: AnswerDraft;
-  noAnswerContent: string | null;
   verificationStatementIndexes: readonly number[] | null;
 }
 
@@ -264,13 +261,12 @@ function decodeDefaultAnswerModelResponse(
   value: unknown,
   allowedEvidenceRefs: readonly EvidenceReference[],
 ): AnswerResponseDecodeResult {
-  const result = decodeAnswerModelResponseResult(
+  const draft = decodeAnswerModelResponse(
     value,
     allowedEvidenceRefs,
   );
   return {
-    draft: result.draft,
-    noAnswerContent: result.noAnswerContent,
+    draft,
     verificationStatementIndexes: null,
   };
 }
@@ -350,7 +346,7 @@ async function generateAnswer(
   prompt: AnswerGenerationPrompt,
 ): Promise<GeneratedAnswerResult> {
   if (retrieved.length === 0) {
-    return createNoRelevantAnswer();
+    return createEmptyRetrievalAnswer();
   }
   const processingQuestion = createProcessingQuestion(question);
   const startedAt = performance.now();
@@ -514,7 +510,6 @@ async function generateAnswer(
             selectedRetrieved,
             allowedEvidenceRefs,
             runDetails,
-            initialResponse.noAnswerContent,
             initialResponse.verificationStatementIndexes,
           ),
         };
@@ -572,7 +567,6 @@ async function generateAnswer(
           selectedRetrieved,
           allowedEvidenceRefs,
           runDetails,
-          correctedResponse.noAnswerContent,
           correctedResponse.verificationStatementIndexes,
         ),
       };
@@ -729,7 +723,6 @@ function decodeAnswerResponse(
     return {
       draft: decoded.draft,
       failure: null,
-      noAnswerContent: decoded.noAnswerContent,
       responseSha256,
       verificationStatementIndexes:
         decoded.verificationStatementIndexes,
@@ -1215,14 +1208,14 @@ function buildAnswerRequestEvidence(
   };
 }
 
-export function createNoRelevantAnswer(): EmptyRetrievalAnswerResult {
+export function createEmptyRetrievalAnswer(): EmptyRetrievalAnswerResult {
   return createRetrievalFallback("empty-retrieval");
 }
 
 function createRetrievalFallback(
   reason: EmptyRetrievalAnswerResult["reason"],
 ): EmptyRetrievalAnswerResult {
-  const answerDocument = createNoAnswerDocument();
+  const answerDocument = createUncitedAnswerDocument();
   return {
     answer: renderPublishedAnswerMarkdown(answerDocument),
     answerDocument,
@@ -1240,20 +1233,19 @@ function finalizeAnswerDraft(
   retrieved: RetrievedElement[],
   evidenceRefs: readonly EvidenceReference[],
   runDetails: AnswerRunDetails,
-  noAnswerContent: string | null,
   verificationStatementIndexes: readonly number[] | null,
 ): AnsweredGeneratedAnswerResult | FallbackGeneratedAnswerResult {
-  if (draft.status === "no_answer") {
+  if (draft.status === "uncited") {
     return createGeneratedFallback(
       retrieved,
       runDetails,
-      "model-no-answer",
-      noAnswerContent ?? NO_ANSWER_TEXT,
+      "model-uncited",
+      draft.content,
     );
   }
   const answerDocument = compileAnswerDraft(draft, retrieved, evidenceRefs);
   if (!isPublishedAnsweredDocument(answerDocument)) {
-    throw new Error("Answered draft compiled into a no-answer document.");
+    throw new Error("Answered draft compiled into an uncited document.");
   }
   const claims = readPublishedAnswerClaims(answerDocument);
   return {
@@ -1312,7 +1304,7 @@ function createGeneratedFallback(
   reason: GeneratedAnswerFallbackReason,
   answer: string,
 ): FallbackGeneratedAnswerResult {
-  const answerDocument = createNoAnswerDocument(answer);
+  const answerDocument = createUncitedAnswerDocument(answer);
   const fallback: FallbackGeneratedAnswerResult = {
     answer,
     answerDocument,
@@ -1489,7 +1481,7 @@ export function createAnswerSystemPrompt(): string {
     "When the evidence supports no substantive part of the request:",
     "",
     "* answer.content must provide a concise, question-specific explanation identifying exactly what requested information the retrieved evidence fails to establish",
-    "* do not use a generic or fixed no-answer message",
+    "* do not use a generic or fixed refusal",
     "* do not include affirmative factual claims, related background, analogous information, or facts about another subject",
     "* do not speculate or imply that the requested information exists",
     "* leave answer.evidenceRefs empty",

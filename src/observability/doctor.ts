@@ -311,7 +311,7 @@ async function checkStructuredAnswerCapability(
     if (draft.status !== "answered") {
       return failedCheck(
         "Answer draft protocol",
-        `model ${modelId} returned no_answer for the structured-output readiness probe`,
+        `model ${modelId} returned an uncited response for the structured-output readiness probe`,
       );
     }
     return successfulCheck(
