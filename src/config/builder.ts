@@ -120,6 +120,7 @@ export function buildAppConfig(
   const retrieval: AppConfig["retrieval"] = {
     answerTemperature: settings.answerTemperature,
     candidateK: settings.retrievalCandidates,
+    chatTemperature: settings.chatTemperature,
     fusion: {
       denseWeight: settings.denseWeight,
       expansionDecay: settings.expansionDecay,
@@ -134,7 +135,6 @@ export function buildAppConfig(
     reranker,
     rrfK: settings.rrfK,
     topK: settings.topK,
-    variantConcurrency: settings.retrievalVariantConcurrency,
   };
   const sourceDiscovery: AppConfig["sourceDiscovery"] = {
     passagesPerDocument: settings.findSourcesPassagesPerDocument,
@@ -189,7 +189,7 @@ export function readEmbeddingConfigurationWarnings(
   }
   return [
     `Document section size ${settings.retrievalChunkTargetTokens} exceeds `
-    + `the search model's maximum input of ${settings.embeddingContextCapacityTokens} tokens. `
+    + `the embedding model's maximum input of ${settings.embeddingContextCapacityTokens} tokens. `
     + `CiteLoom will use ${settings.embeddingContextCapacityTokens} tokens instead.`,
   ];
 }
@@ -295,6 +295,9 @@ function buildSchedulingConfig(
     "textToSpeech",
   ];
   for (const capability of scheduledCapabilities) {
+    if (capability === "queryExpansion" && settings.queryExpansions === 0) {
+      continue;
+    }
     const providerId = capability === "chat"
       ? providerSettings.routing.chat ?? providerSettings.routing.answer
       : providerSettings.routing[capability];
@@ -356,10 +359,17 @@ function buildInferenceConfig(
   const answer = resolveLanguageProvider(providerSettings, "answer");
   const chat = resolveLanguageProvider(providerSettings, "chat");
   const embedding = resolveEmbeddingProvider(providerSettings);
-  const queryExpansion = resolveLanguageProvider(
-    providerSettings,
-    "queryExpansion",
-  );
+  let queryExpansion: LanguageInferenceConfig | null = null;
+  if (settings.queryExpansions > 0) {
+    const provider = resolveLanguageProvider(
+      providerSettings,
+      "queryExpansion",
+    );
+    queryExpansion = buildLanguageInferenceConfig(
+      provider,
+      secondsToMilliseconds(settings.queryExpansionTimeoutSeconds),
+    );
+  }
   const summary = resolveLanguageProvider(providerSettings, "summarization");
   return {
     answer: buildLanguageInferenceConfig(
@@ -380,10 +390,7 @@ function buildInferenceConfig(
       embeddingInputFormat,
       secondsToMilliseconds(settings.embeddingTimeoutSeconds),
     ),
-    queryExpansion: buildLanguageInferenceConfig(
-      queryExpansion,
-      secondsToMilliseconds(settings.queryExpansionTimeoutSeconds),
-    ),
+    queryExpansion,
     summary: buildLanguageInferenceConfig(
       summary,
       secondsToMilliseconds(settings.summaryTimeoutSeconds),

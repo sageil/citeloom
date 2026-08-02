@@ -217,11 +217,10 @@ function buildPreparation(
         queryExpansions: 2,
         rrfK: 60,
         topK: 10,
-        variantConcurrency: 2,
       },
       settingsVersion: 1,
     },
-    version: 6 as const,
+    version: 7 as const,
   };
   return decodeAnswerThresholdPreparation(value, "test fixture");
 }

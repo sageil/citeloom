@@ -178,7 +178,7 @@
             <p>PowerPoint slide text, tables, pictures, speaker notes, and comments can be indexed.</p>
             <ul>
               <li>A document must be Ready before it can appear in Ask, Chat, or Find Sources.</li>
-              <li>If a document shows Reindex required, process it again before searching it with the current search model.</li>
+              <li>If a document shows Reindex required, process it again before searching it with the current embedding model.</li>
               <li>Use tags to create reusable groups of related documents.</li>
               <li>Clear headings and selectable text help CiteLoom create useful section names and excerpts.</li>
             </ul>
@@ -199,9 +199,9 @@
             <p>For a complete answer, ask a complete question instead of entering one broad term.</p>
             <p>Use Find Sources first for queries such as <code>termination</code>, <code>arthritis</code>, or <code>data retention</code>.</p>
             <h3>How much document text CiteLoom checks</h3>
-            <p>Administrators can change <strong>Document sections searched</strong> and <strong>Sections used in answers</strong> under Search and answers in Settings.</p>
-            <p>Document sections searched controls how widely CiteLoom searches, while Sections used in answers controls how many of the strongest matches CiteLoom can use to write an answer.</p>
-            <p>Document sections searched must be at least as high as Sections used in answers.</p>
+            <p>Administrators can change <strong>Sections considered</strong> and <strong>Sections used in answers</strong> on the Search size screen under Search and answers in Settings.</p>
+            <p>Sections considered controls how much matching content CiteLoom considers, while Sections used in answers controls how many of the strongest matches CiteLoom can use to write an answer.</p>
+            <p>Sections considered must be at least as high as Sections used in answers.</p>
             <p>CiteLoom may use fewer sections when fewer useful matches exist or the selected model cannot accept all of them.</p>
           </div>
         </section>
@@ -218,7 +218,7 @@
               <li>If a library document is deleted or replaced, existing chat messages and their retained citation evidence remain unchanged.</li>
               <li>Deleting the chat permanently removes its messages and saved citation records.</li>
             </ul>
-            <p>Administrators can configure Chat separately from Answers and Image and table descriptions in Settings.</p>
+            <p>Administrators can configure Chat separately from Ask and the Indexing model in Settings.</p>
           </div>
         </section>
 
@@ -235,7 +235,7 @@
             <p><strong>Keyword match</strong> means a document section contains words from your search.</p>
             <p><strong>Semantic match</strong> means a document section appears related in meaning even if it does not contain those words.</p>
             <h3>Find Sources result counts</h3>
-            <p><strong>Document sections searched</strong> is the most document sections CiteLoom checks for each Ask, Chat, or semantic Find Sources request.</p>
+            <p><strong>Sections considered</strong> is the most document sections CiteLoom checks for each Ask, Chat, or semantic Find Sources request.</p>
             <p>Higher values search more material but take longer, and CiteLoom does not silently lower the value you set.</p>
             <p><strong>Documents shown in Find Sources</strong> controls how many documents appear in the Keyword matches list and the Semantic matches list.</p>
             <p>Keyword matches use the number on each page, so later matches remain available on additional pages.</p>
@@ -308,9 +308,9 @@
         <section aria-labelledby="embedding-input-formats" class="help-section">
           <h2 id="embedding-input-formats" tabindex="-1">Search text formats</h2>
           <div>
-            <p>A search text format controls how CiteLoom prepares document sections and searches for the selected search model.</p>
+            <p>A search text format controls how CiteLoom prepares document sections and searches for the selected embedding model.</p>
             <p>The document template prepares each searchable document section, and the query template prepares each question or semantic search.</p>
-            <p>Use the format specified by the search model or provider. An incorrect format can reduce search quality even when documents finish processing.</p>
+            <p>Use the format specified by the embedding model or provider. An incorrect format can reduce search quality even when documents finish processing.</p>
             <h3>Built-in examples</h3>
             <ul class="help-examples">
               <li><strong>Plain:</strong> document <code>{{text}}</code>; query <code>{{text}}</code>.</li>
@@ -319,12 +319,12 @@
             </ul>
             <h3>Create a format</h3>
             <ol>
-              <li>Check the search model's instructions for document and query prefixes.</li>
+              <li>Check the embedding model's instructions for document and query prefixes.</li>
               <li>Use Copy when a built-in format is a useful starting point, or choose New format to start with plain templates.</li>
               <li>Enter a recognizable name that identifies the model or purpose.</li>
               <li>Use format version 1 for a new format. Increase it only when saving a changed version of an existing format.</li>
               <li>Enter one document template and one query template. Each must contain exactly one <code>{{text}}</code> placeholder.</li>
-              <li>Save the format, then save the Search model settings to select it.</li>
+              <li>Save the format, then save the Embedding model settings to select it.</li>
               <li>Reindex documents before using semantic search or answers with the new format.</li>
             </ol>
             <p>Use Create revision when changing a format that has already been used. CiteLoom keeps the original format so existing indexed documents remain searchable.</p>

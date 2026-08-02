@@ -12,8 +12,8 @@ Each job and answer run keeps the settings it started with.
 
 After CiteLoom starts, open Settings.
 Configure a provider connection, then choose which features use it.
-Answers, Chat, Image and table descriptions, and Search model require a provider.
-Additional searches require a provider only when enabled.
+Ask, Chat, Indexing model, and Embedding model require a provider.
+Query expansion requires a provider only when enabled.
 Search ranking, Speech input, and Spoken answers are optional.
 Each feature can use its own provider, model, maximum input size, URL, and sign-in details.
 Existing installations initially copy their Answer route and model settings into Chat, after which later Chat changes are independent.
@@ -94,7 +94,7 @@ If validation fails, the previous setting remains active.
 [`providerCatalog`](../src/providers/profiles.ts) is the source of truth for built-in provider profiles and capabilities.
 Each feature can use a different provider, so the service that writes answers does not have to be the service used for search or speech.
 
-| Provider | Answers | Chat | Additional searches | Image and table descriptions | Search model | Search ranking | Speech input | Spoken answers |
+| Provider | Ask | Chat | Query expansion | Indexing model | Embedding model | Search ranking | Speech input | Spoken answers |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | oMLX | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Ollama | Yes | Yes | Yes | Yes | Yes | - | - | - |
@@ -139,18 +139,18 @@ Confirm current details in the official documentation for [oMLX](https://github.
 
 ### Fresh-install routes and models
 
-Fresh installs use Ollama for Answers, Chat, Additional searches, Image and table descriptions, and Search model.
+Fresh installs use Ollama for Ask, Chat, Query expansion, Indexing model, and Embedding model.
 Search ranking and both speech features start unassigned.
 The saved oMLX models are ready to use if an administrator selects oMLX for one of those capabilities.
 The saved oMLX URL uses port 9000 and can be changed in Settings.
 
 | Feature | Bootstrap provider | Bootstrap model |
 | --- | --- | --- |
-| Answers | Ollama | `gemma4:e4b-mlx` |
+| Ask | Ollama | `gemma4:e4b-mlx` |
 | Chat | Ollama | `gemma4:e4b-mlx` |
-| Additional searches | Ollama | `gemma4:e4b-mlx` |
-| Image and table descriptions | Ollama | `gemma4:e4b-mlx` |
-| Search model | Ollama | `snowflake-arctic-embed:137m` |
+| Query expansion | Ollama | `gemma4:e4b-mlx` |
+| Indexing model | Ollama | `gemma4:e4b-mlx` |
+| Embedding model | Ollama | `snowflake-arctic-embed:137m` |
 | Search ranking | Not selected | oMLX default `gte-reranker-modernbert-base` is available |
 | Speech input | Not selected | oMLX default `Qwen3-ASR-1.7B-8bit` is available |
 | Spoken answers | Not selected | oMLX default `Kokoro-82M-bf16`, voice `af_heart`, is available |
@@ -160,8 +160,8 @@ Work already in progress keeps its saved settings snapshot when a model, endpoin
 ### Ollama automatic context size
 
 Automatic context size is enabled by default for Ollama language models.
-It applies only to native Ollama GGUF language models used for Answers, Chat, Additional searches, and Image and table descriptions.
-It does not change Search model requests, other providers, or MLX runners.
+It applies only to native Ollama GGUF language models used for Ask, Chat, Query expansion, and Indexing model.
+It does not change Embedding model requests, other providers, or MLX runners.
 
 For a bounded answer, CiteLoom calculates the requested context as:
 
@@ -196,7 +196,7 @@ Do not infer MLX context resizing from native GGUF behavior.
 
 ## Search text formats
 
-Search text formats control how CiteLoom presents documents and searches to the selected search model.
+Search text formats control how CiteLoom presents documents and searches to the selected embedding model.
 CiteLoom does not choose a format from the model name, so select the format required by the model.
 
 A fresh database includes these formats:
@@ -210,7 +210,7 @@ A fresh database includes these formats:
 Custom templates must contain exactly one `{{text}}` placeholder.
 The document template is applied to each searchable document section during indexing.
 The query template is applied to each question or semantic search.
-Use the prefixes required by the search model, and use Copy when a built-in format is a useful starting point.
+Use the prefixes required by the embedding model, and use Copy when a built-in format is a useful starting point.
 Use format version 1 for a new format and increase it only when saving a changed version of an existing format.
 Use Settings to select, create, copy, revise, or retire formats.
 Revising a format creates a new format, and only unused formats can be retired.
@@ -237,13 +237,13 @@ Use Provider default if an endpoint rejects explicit thinking controls, and conf
 
 ## Search and answers
 
-Changing the search model, dimensions, document section method, or search text format requires reindexing.
+Changing the embedding model, dimensions, document section method, or search text format requires reindexing.
 Settings reports when the selected configuration has no indexed documents.
 
 Search and answer settings control how widely CiteLoom searches documents and how much source material it can use in an answer.
-Document sections searched (`retrievalCandidates`) is the maximum number of document sections CiteLoom checks for Ask, Chat, and semantic Find Sources.
+Sections considered (`retrievalCandidates`) is the maximum number of document sections CiteLoom checks for Ask, Chat, and semantic Find Sources.
 Sections used in answers (`topK`) is the maximum number of the strongest matching sections CiteLoom can use to write an Ask or Chat answer.
-Document sections searched must be at least as large as Sections used in answers.
+Sections considered must be at least as large as Sections used in answers.
 CiteLoom does not silently lower either configured value.
 CiteLoom can still use fewer sections when fewer useful matches exist or the selected model cannot accept all of them.
 Higher values take longer and use more memory and model input space.
@@ -274,11 +274,11 @@ Use the [evaluation workflow](evaluation.md) to calibrate discovery thresholds a
 
 ### Repeatable answers and searches
 
-Additional searches are disabled by default with `queryExpansions` set to `0`.
+Query expansion is disabled by default with `queryExpansions` set to `0`.
 At `0`, CiteLoom searches only the original wording and does not ask a model to create more searches.
 Values from `1` through `4` allow additional search wording and should be enabled only after a controlled comparison shows better search and answer quality on the intended documents.
-Additional searches and answers use separate wording-variation settings.
-Both `queryExpansionTemperature` and `answerTemperature` default to `0` for the most repeatable provider behavior.
+Query expansion, Ask, and Chat each use their own temperature setting.
+`queryExpansionTemperature`, `answerTemperature`, and `chatTemperature` default to `0` for the most repeatable provider behavior.
 `generationSeedMode` defaults to `stable`.
 In this mode, CiteLoom derives separate nonnegative seeds for extra search queries and answer generation from the normalized original question and the sorted IDs of the selected documents.
 Set the mode to `random` to omit those seeds and let the provider choose the sampling randomness.
@@ -295,7 +295,7 @@ Opening an existing turn reads the saved answer, citations, run settings, and re
 
 ## Time limits and cancellation
 
-Answers, image and table descriptions, additional searches, search models, search ranking, citation checks, and Docling each have their own time limit.
+Ask, the indexing model, query expansion, embedding models, search ranking, citation checks, and Docling each have their own time limit.
 For non-PDF files, the conversion time limit increases with file size up to the configured maximum.
 PDF conversion uses the configured maximum.
 
@@ -349,7 +349,7 @@ DOCLING_CONTAINER_ADDITIONAL_SERVICE_INSTANCES=[{"id":"replica-b","baseUrl":"htt
 ## Provider models and request limits
 
 Configure each provider's supported model defaults on the application Settings page.
-Answers, Additional searches, Image and table descriptions, and Search model include a configured maximum input size.
+Ask, Query expansion, Indexing model, and Embedding model include a configured maximum input size.
 Each feature can select a model and input size that differ from the provider defaults.
 Spoken answers can also select a different voice.
 

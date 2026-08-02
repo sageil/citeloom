@@ -38,18 +38,23 @@ export async function expandRetrievalQuery(
   if (expansionCount === 0) {
     return [];
   }
+  const model = models.queryExpansion;
+  const timeoutMs = models.timeouts.queryExpansionMs;
+  if (model === null || timeoutMs === null) {
+    throw new Error("Query expansion is enabled without a configured model.");
+  }
   const stage = runTelemetry.startStage({
     model: {
-      modelId: models.queryExpansion.modelId,
-      provider: models.queryExpansion.provider,
+      modelId: model.modelId,
+      provider: model.provider,
     },
     name: "query-expansion",
     retrievalMode: null,
   });
   const finishMetric = models.metrics.start(
     "expand-query",
-    models.queryExpansion.provider,
-    models.queryExpansion.modelId,
+    model.provider,
+    model.modelId,
   );
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
@@ -62,6 +67,8 @@ export async function expandRetrievalQuery(
   try {
     const runGeneration = (requestSignal: AbortSignal) => requestQueryExpansions(
       models,
+      model,
+      timeoutMs,
       processingQuestion,
       expansionCount,
       requestSignal,
@@ -99,6 +106,8 @@ export async function expandRetrievalQuery(
 
 async function requestQueryExpansions(
   models: InferenceModelRegistry,
+  model: NonNullable<InferenceModelRegistry["queryExpansion"]>,
+  timeoutMs: number,
   question: string,
   expansionCount: number,
   abortSignal: AbortSignal,
@@ -110,7 +119,6 @@ async function requestQueryExpansions(
     models,
     "citeloom.expand-query",
   );
-  const timeoutMs = models.timeouts.queryExpansionMs;
   const signals = createInferenceRequestSignal(timeoutMs, abortSignal);
   try {
     const samplingSettings = generationSettings === undefined
@@ -120,7 +128,7 @@ async function requestQueryExpansions(
       ...samplingSettings,
       abortSignal: signals.requestSignal,
       maxRetries: 1,
-      model: models.queryExpansion,
+      model,
       onFinish: (event) => {
         recordCompletion({
           finishReason: event.finishReason,

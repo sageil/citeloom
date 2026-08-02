@@ -169,8 +169,39 @@ const loadedPageScripts = new Set();
 const loadedPageStyles = new Set();
 const pageScriptPromises = new Map();
 const pageStylePromises = new Map();
+const chatSwitcherRequestEvent = "citeloom:chat-switcher-request";
+const chatTitleChangeEvent = "citeloom:chat-title-change";
+const newChatRequestEvent = "citeloom:new-chat-request";
 let pageNavigationGeneration = 0;
 let pendingPageResourceErrorMessage = "";
+let settingsHistoryGuardInstalled = false;
+
+function installSettingsHistoryGuard() {
+  if (settingsHistoryGuardInstalled) {
+    return;
+  }
+  const htmxPopstateHandler = window.onpopstate;
+  window.onpopstate = (event) => {
+    const settingsPageIsActive = document.getElementById("settings") !== null;
+    if (settingsPageIsActive && readLocationView() === "settings") {
+      return;
+    }
+    htmxPopstateHandler?.call(window, event);
+  };
+  settingsHistoryGuardInstalled = true;
+}
+
+function readChatTitleChange(event) {
+  if (!(event instanceof CustomEvent)) {
+    return null;
+  }
+  try {
+    return readNonEmptyString(event.detail, "chat title");
+  } catch {
+    return null;
+  }
+}
+
 function readView(value) {
   if (typeof value !== "string") {
     return defaultView;
@@ -591,7 +622,9 @@ configureInitialFragment();
 function registerShell(alpine) {
   alpine.data("citeloomShell", () => ({
     accountMenuOpen: false,
+    activeChatTitle: "Chat",
     activeView: readLocationView(),
+    chatTitleChangeListener: null,
     currentDisplayName: "Account",
     currentRole: null,
     currentUserId: null,
@@ -630,12 +663,12 @@ function registerShell(alpine) {
     get showTaskLaunchpad() {
       return this.activeView === "overview"
         || this.activeView === "documents"
-        || this.activeView === "ask"
-        || this.activeView === "chat";
+        || this.activeView === "ask";
     },
 
     get showWorkflowProgress() {
       return this.activeView !== "overview"
+        && this.activeView !== "chat"
         && this.activeView !== "login"
         && this.workflow.visible;
     },
@@ -667,6 +700,17 @@ function registerShell(alpine) {
     },
 
     initialize() {
+      installSettingsHistoryGuard();
+      this.chatTitleChangeListener = (event) => {
+        const title = readChatTitleChange(event);
+        if (title !== null) {
+          this.activeChatTitle = title;
+        }
+      };
+      window.addEventListener(
+        chatTitleChangeEvent,
+        this.chatTitleChangeListener,
+      );
       this.dashboardRefreshRequestListener = () => {
         this.scheduleDashboardRefresh();
       };
@@ -765,6 +809,9 @@ function registerShell(alpine) {
         const shouldMoveFocus = this.pendingView !== null;
         this.activeView = this.pendingView ?? readLocationView();
         this.pendingView = null;
+        if (this.activeView !== "chat") {
+          this.activeChatTitle = "Chat";
+        }
         if (this.activeView !== "documents") {
           this.questionSelectionOpen = false;
         }
@@ -815,6 +862,12 @@ function registerShell(alpine) {
     },
 
     destroy() {
+      if (this.chatTitleChangeListener !== null) {
+        window.removeEventListener(
+          chatTitleChangeEvent,
+          this.chatTitleChangeListener,
+        );
+      }
       if (this.dashboardRefreshRequestListener !== null) {
         window.removeEventListener(
           "citeloom:dashboard-refresh-request",
@@ -866,6 +919,14 @@ function registerShell(alpine) {
 
     currentPage(view) {
       return this.activeView === view ? "page" : null;
+    },
+
+    requestChatSwitcher() {
+      window.dispatchEvent(new CustomEvent(chatSwitcherRequestEvent));
+    },
+
+    requestNewChat() {
+      window.dispatchEvent(new CustomEvent(newChatRequestEvent));
     },
 
     async loadCurrentSession() {
@@ -1360,6 +1421,9 @@ function registerShell(alpine) {
 
     synchronizeHistory() {
       this.activeView = readLocationView();
+      if (this.activeView !== "chat") {
+        this.activeChatTitle = "Chat";
+      }
       document.title = routes[this.activeView].title;
       this.focusLocationAnchor();
     },

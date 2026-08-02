@@ -116,7 +116,6 @@ export interface ResearchRunConfiguration {
     rrfK: number;
     tocRoutingEnabled: boolean;
     topK: number;
-    variantConcurrency: number;
   };
   settingsVersion: number;
 }

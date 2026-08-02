@@ -39,7 +39,7 @@
       </div>
       <div class="access-security-detail"><span>Password</span><strong><i class="access-status-dot"></i>Protected</strong></div>
       <div class="access-security-detail"><span>Requirement</span><strong>At least 15 characters</strong></div>
-      <button class="access-secondary-button" type="button" x-show="!passwordFormOpen" @click="openPasswordForm()">Change password</button>
+      <button class="button access-secondary-button" type="button" x-show="!passwordFormOpen" @click="openPasswordForm()">Change password</button>
     </div>
   </section>
 
@@ -47,14 +47,14 @@
 
   <section class="access-workspace-summary access-card" x-cloak x-show="currentRole === 'admin'">
     <div><span class="access-feature-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-shield-check"></use></svg></span><span><h2>Workspace users</h2><p>Admins can add users, assign roles, and remove workspace access.</p></span></div>
-    <a class="access-secondary-button" data-view="users" href="./index.html?view=users" hx-get="./fragments/users.html" hx-push-url="./index.html?view=users">Manage users</a>
+    <a class="button access-secondary-button" data-view="users" href="./index.html?view=users" hx-get="./fragments/users.html" hx-push-url="./index.html?view=users">Manage users</a>
   </section>
 
   <div class="access-drawer-backdrop" x-cloak x-show="passwordFormOpen" @click.self="closePasswordForm()">
     <aside class="access-add-drawer access-password-drawer" role="dialog" aria-modal="true" aria-labelledby="change-password-title">
       <header>
         <div><h2 id="change-password-title">Change password</h2><p>Enter your current password, then choose a new one.</p></div>
-        <button class="access-close-button" type="button" aria-label="Close password form" @click="closePasswordForm()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg></button>
+        <button class="button access-close-button" type="button" aria-label="Close password form" @click="closePasswordForm()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg></button>
       </header>
       <form class="access-password-form" @submit.prevent="changePassword()">
         <div class="access-password-grid">
@@ -63,7 +63,7 @@
           <label><span>Confirm new password</span><input autocomplete="new-password" minlength="15" required type="password" x-model="confirmation" /></label>
         </div>
         <p class="access-message error" role="alert" x-show="errorMessage" x-text="errorMessage"></p>
-        <footer><button class="access-secondary-button" :disabled="busy" type="button" @click="closePasswordForm()">Cancel</button><button class="access-primary-button" :disabled="busy" type="submit" x-text="busy ? 'Saving…' : 'Change password'"></button></footer>
+        <footer><button class="button access-secondary-button" :disabled="busy" type="button" @click="closePasswordForm()">Cancel</button><button class="button access-primary-button" :disabled="busy" type="submit" x-text="busy ? 'Saving…' : 'Change password'"></button></footer>
       </form>
     </aside>
   </div>

@@ -238,6 +238,7 @@ export interface DocumentCatalogFacets {
 export type DocumentCollection =
   | { kind: "all" }
   | { kind: "tag"; tag: string }
+  | { kind: "tags"; tags: string[] }
   | { kind: "untagged" }
   | { kind: "uploads" };
 
@@ -314,6 +315,9 @@ export async function browseDocumentCatalog(
 function encodeCollection(collection: DocumentCollection): string {
   if (collection.kind === "tag") {
     return `tag:${collection.tag}`;
+  }
+  if (collection.kind === "tags") {
+    return `tags:${collection.tags.join(",")}`;
   }
   return collection.kind;
 }

@@ -743,10 +743,10 @@ export function resolveEmbeddingProvider(
 ): ResolvedEmbeddingProvider {
   const provider = resolveConfiguredProvider(settings, "embedding");
   if (provider === null) {
-    throw new Error("Search model requires a provider.");
+    throw new Error("Embedding model requires a provider.");
   }
   if (!isEmbeddingModelAdapter(provider.adapter)) {
-    throw new Error("The selected provider is not compatible with Search model.");
+    throw new Error("The selected provider is not compatible with Embedding model.");
   }
   return {
     ...provider,
@@ -1050,16 +1050,16 @@ function isSpeechToTextAdapter(
 
 function formatCapability(capability: ProviderCapability): string {
   if (capability === "answer") {
-    return "Answers";
+    return "Ask";
   }
   if (capability === "summarization") {
-    return "Image and table descriptions";
+    return "Indexing model";
   }
   if (capability === "chat") {
     return "chat";
   }
   if (capability === "queryExpansion") {
-    return "Additional searches";
+    return "Query expansion";
   }
   if (capability === "speechToText") {
     return "Speech input";
@@ -1068,7 +1068,7 @@ function formatCapability(capability: ProviderCapability): string {
     return "Spoken answers";
   }
   if (capability === "embedding") {
-    return "Search model";
+    return "Embedding model";
   }
   if (capability === "reranking") {
     return "Search ranking";

@@ -187,7 +187,7 @@ describe("application configuration", () => {
         config.inference.embedding.maximumInputTokens,
       retrievalChunkTargetTokens: runtimeSettings.retrievalChunkTargetTokens,
     })).toEqual([
-      "Document section size 4096 exceeds the search model's maximum input of "
+      "Document section size 4096 exceeds the embedding model's maximum input of "
       + "2048 tokens. CiteLoom will use 2048 tokens instead.",
     ]);
   });

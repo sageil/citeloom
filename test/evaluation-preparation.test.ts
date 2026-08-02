@@ -373,7 +373,7 @@ describe("comparative evaluation preparation", () => {
           timeToFirstTokenMs: null,
         },
       }],
-      version: 11,
+      version: 13,
     }, "telemetry test artifact");
 
     const result = scorePreparedEvaluation(artifact);
@@ -631,7 +631,7 @@ async function buildArtifact(): Promise<EvaluationPreparationArtifact> {
         timeToFirstTokenMs: null,
       },
     }],
-    version: 11,
+    version: 13,
   }, "test artifact");
 }
 
@@ -652,7 +652,6 @@ function buildConfig(): AppConfig {
       queryExpansions: 1,
       rrfK: 60,
       topK: 2,
-      variantConcurrency: 2,
     },
   };
 }
@@ -754,7 +753,6 @@ function buildProvenance(
       queryExpansions: 1,
       rrfK: 60,
       topK: 2,
-      variantConcurrency: 2,
     },
     settingsVersion: 7,
   };

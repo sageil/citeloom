@@ -119,6 +119,7 @@ import {
   retrievalChunks1024,
   retrievalLexicalChunks,
   retrievalDescriptionArtifacts,
+  retrievalTocArtifacts,
   researchFeedback,
   researchStatements,
   researchThreads,
@@ -177,6 +178,7 @@ import {
   createRetrievalWindowPolicy,
   createRetrievalWindowPolicyContract,
 } from "../src/retrieval/window-policy.js";
+import { stageDocumentTocArtifact } from "../src/retrieval/toc/store.js";
 import { runIngestionWorker } from "../src/ingestion/worker.js";
 import {
   buildResearchRunConfiguration,
@@ -342,6 +344,7 @@ beforeEach(async () => {
   await session.database.delete(retrievalChunks1024);
   await session.database.delete(ingestionEmbeddingManifests);
   await session.database.delete(retrievalDescriptionArtifacts);
+  await session.database.delete(retrievalTocArtifacts);
   await session.database.delete(doclingArtifacts);
   await session.database.delete(doclingBenchmarkRuns);
   await session.database.delete(doclingConversionRuns);
@@ -1077,6 +1080,16 @@ async function writeTestPublicationArtifacts(
     representations,
     embeddings,
   );
+  await stageDocumentTocArtifact(session.database, {
+    documentId: job.documentId,
+    elementSetId: job.elementSetId,
+    generationId: job.generationId,
+    sourceFile,
+  }, {
+    entries: [],
+    mode: "generated",
+    version: 1,
+  });
 }
 
 describe("PostgreSQL Docling service coordination", () => {
@@ -4605,6 +4618,16 @@ describe("PostgreSQL generation publication", () => {
       representations,
       representations.map((_, index) => buildEmbedding(384, index + 1)),
     );
+    await stageDocumentTocArtifact(session.database, {
+      documentId,
+      elementSetId: elementSet.id,
+      generationId: normalizedJob.generationId,
+      sourceFile,
+    }, {
+      entries: [],
+      mode: "generated",
+      version: 1,
+    });
     await catalog.completeIndexing(sourceFile, ownerId);
     expect(await catalog.getJob(sourceFile)).toMatchObject({
       ownerId,
@@ -4657,6 +4680,7 @@ describe("PostgreSQL generation publication", () => {
       {
         answerTemperature: 0,
         candidateK: 10,
+        chatTemperature: 0,
         fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
         generationSeedMode: "stable",
         mode: "dense",
@@ -4665,7 +4689,6 @@ describe("PostgreSQL generation publication", () => {
         reranker: null,
         rrfK: 60,
         topK: 10,
-        variantConcurrency: 1,
       },
       [{ documentId, sourceFile }],
       new AbortController().signal,
@@ -4688,6 +4711,7 @@ describe("PostgreSQL generation publication", () => {
       {
         answerTemperature: 0,
         candidateK: 10,
+        chatTemperature: 0,
         fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
         generationSeedMode: "stable",
         mode: "bm25",
@@ -4696,7 +4720,6 @@ describe("PostgreSQL generation publication", () => {
         reranker: null,
         rrfK: 60,
         topK: 10,
-        variantConcurrency: 1,
       },
       [{ documentId, sourceFile }],
       new AbortController().signal,
@@ -4719,6 +4742,7 @@ describe("PostgreSQL generation publication", () => {
       {
         answerTemperature: 0,
         candidateK: 10,
+        chatTemperature: 0,
         fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
         generationSeedMode: "stable",
         mode: "bm25",
@@ -4727,7 +4751,6 @@ describe("PostgreSQL generation publication", () => {
         reranker: null,
         rrfK: 60,
         topK: 10,
-        variantConcurrency: 1,
       },
       [{ documentId, sourceFile }],
       new AbortController().signal,
@@ -5725,6 +5748,7 @@ describe("pgvector retrieval", () => {
         {
           answerTemperature: 0,
           candidateK: 5,
+          chatTemperature: 0,
           fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
           generationSeedMode: "stable",
           mode: "hybrid",
@@ -5733,7 +5757,6 @@ describe("pgvector retrieval", () => {
           reranker: null,
           rrfK: 60,
           topK: 5,
-          variantConcurrency: 1,
         },
         buildResolvedScopeTargets(documentIds, sourceFiles),
         new AbortController().signal,
@@ -5865,6 +5888,7 @@ describe("pgvector retrieval", () => {
       {
         answerTemperature: 0,
         candidateK: 5,
+        chatTemperature: 0,
         fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
         generationSeedMode: "stable",
         mode: "hybrid",
@@ -5873,7 +5897,6 @@ describe("pgvector retrieval", () => {
         reranker: null,
         rrfK: 60,
         topK: 5,
-        variantConcurrency: 1,
       },
       [{ documentId, sourceFile: activeSource }],
       null,
@@ -6104,6 +6127,7 @@ describe("pgvector retrieval", () => {
       {
         answerTemperature: 0,
         candidateK: 5,
+        chatTemperature: 0,
         generationSeedMode: "stable",
         fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
         mode: "hybrid",
@@ -6112,7 +6136,6 @@ describe("pgvector retrieval", () => {
         reranker: null,
         rrfK: 60,
         topK: 5,
-        variantConcurrency: 2,
       },
       [{ documentId: firstDocumentId, sourceFile: firstElement.sourceFile }],
       new AbortController().signal,
@@ -6134,6 +6157,7 @@ describe("pgvector retrieval", () => {
       {
         answerTemperature: 0,
         candidateK: 5,
+        chatTemperature: 0,
         generationSeedMode: "stable",
         fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
         mode: "hybrid",
@@ -6142,7 +6166,6 @@ describe("pgvector retrieval", () => {
         reranker: null,
         rrfK: 60,
         topK: 5,
-        variantConcurrency: 2,
       },
       [{ documentId: firstDocumentId, sourceFile: firstElement.sourceFile }],
       null,
@@ -6169,6 +6192,7 @@ describe("pgvector retrieval", () => {
       {
         answerTemperature: 0,
         candidateK: 5,
+        chatTemperature: 0,
         generationSeedMode: "stable",
         fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
         mode: "hybrid",
@@ -6177,7 +6201,6 @@ describe("pgvector retrieval", () => {
         reranker: null,
         rrfK: 60,
         topK: 5,
-        variantConcurrency: 2,
       },
       [{ documentId: firstDocumentId, sourceFile: firstElement.sourceFile }],
       null,
@@ -6194,6 +6217,7 @@ describe("pgvector retrieval", () => {
       {
         answerTemperature: 0,
         candidateK: 5,
+        chatTemperature: 0,
         generationSeedMode: "stable",
         fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
         mode: "dense",
@@ -6202,7 +6226,6 @@ describe("pgvector retrieval", () => {
         reranker: null,
         rrfK: 60,
         topK: 5,
-        variantConcurrency: 2,
       },
       [
         { documentId: firstDocumentId, sourceFile: firstElement.sourceFile },
@@ -6222,6 +6245,7 @@ describe("pgvector retrieval", () => {
       {
         answerTemperature: 0,
         candidateK: 5,
+        chatTemperature: 0,
         generationSeedMode: "stable",
         fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
         mode: "bm25",
@@ -6230,7 +6254,6 @@ describe("pgvector retrieval", () => {
         reranker: null,
         rrfK: 60,
         topK: 5,
-        variantConcurrency: 2,
       },
       [
         { documentId: firstDocumentId, sourceFile: firstElement.sourceFile },
@@ -6251,6 +6274,7 @@ describe("pgvector retrieval", () => {
       {
         answerTemperature: 0,
         candidateK: 5,
+        chatTemperature: 0,
         generationSeedMode: "stable",
         fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
         mode: "hybrid",
@@ -6259,7 +6283,6 @@ describe("pgvector retrieval", () => {
         reranker: null,
         rrfK: 60,
         topK: 5,
-        variantConcurrency: 2,
       },
       [
         { documentId: firstDocumentId, sourceFile: firstElement.sourceFile },
@@ -6643,7 +6666,7 @@ describe("PostgreSQL application settings", () => {
       [],
       [routeChange],
     )).rejects.toThrow(
-      "Sign in to OpenAI Codex before routing an application feature to it.",
+      "Sign in to OpenAI Codex before assigning a feature to it.",
     );
 
     const credentials = new OpenAICodexCredentialStore(session.database);

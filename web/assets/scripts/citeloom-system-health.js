@@ -72,12 +72,12 @@ function readSystemHealthDashboard(dashboard, system, queue) {
       answer: readNonEmptyString(inferenceRuntime.answerModel, "answer model"),
       claimVerifier: readNonEmptyString(claimVerifier.model, "claim verifier model"),
       embedding: readNonEmptyString(embeddingSpace.model, "embedding model"),
-      queryExpansion: readNonEmptyString(
+      queryExpansion: readNullableNonEmptyString(
         inferenceRuntime.queryExpansionModel,
         "query-expansion model",
-      ),
+      ) ?? "Disabled",
       reranker: readReranker(inferenceRuntime.reranker),
-      summary: readNonEmptyString(inferenceRuntime.summaryModel, "summary model"),
+      summary: readNonEmptyString(inferenceRuntime.summaryModel, "indexing model"),
     },
     queueLength: queue.length,
     telemetry: readTelemetry(dashboard.telemetry),

@@ -4,6 +4,7 @@ import {
   readJsonResponse,
   readNonEmptyString,
   readNonNegativeInteger,
+  readNullablePositiveInteger,
   readPlainObject,
 } from "./citeloom-boundaries.js";
 import { dispatchNotice } from "./citeloom-notices.js";
@@ -75,16 +76,6 @@ function readIngestionResponseBody(response) {
     "Document ingestion",
     readIngestionResponse,
   );
-}
-
-function readNullablePositiveInteger(value, label) {
-  if (value === null) {
-    return null;
-  }
-  if (!Number.isInteger(value) || value < 1) {
-    throw new Error(`The ${label} response is invalid.`);
-  }
-  return value;
 }
 
 function addTagDraft(currentTags, draft) {

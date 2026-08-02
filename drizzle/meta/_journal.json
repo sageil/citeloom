@@ -99,6 +99,13 @@
       "when": 1785606063000,
       "tag": "0013_expose_find_sources_counts",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1785693600000,
+      "tag": "0014_refine_generation_settings",
+      "breakpoints": true
     }
   ]
 }

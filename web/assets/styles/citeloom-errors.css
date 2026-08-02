@@ -372,8 +372,6 @@
 }
 
 .error-reports-pagination {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: 20px;
   padding: 12px 8px;
@@ -383,11 +381,6 @@
   margin: 0;
   color: var(--muted);
   font-size: 11px;
-}
-
-.error-reports-pagination > div {
-  display: flex;
-  gap: 8px;
 }
 
 @media (max-width: 720px) {

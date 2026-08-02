@@ -171,87 +171,6 @@
   min-height: 420px;
 }
 
-.citeloom-page {
-  display: grid;
-  width: min(1180px, 100%);
-  gap: 20px;
-  margin: 0 auto;
-  padding-bottom: 64px;
-}
-
-.citeloom-page-header {
-  display: grid;
-  gap: 8px;
-}
-
-.citeloom-page-header h1,
-.citeloom-page-header p {
-  margin: 0;
-}
-
-.citeloom-page-header h1 {
-  font-family: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
-  font-size: clamp(28px, 4vw, 42px);
-  letter-spacing: -0.035em;
-}
-
-.citeloom-page-header > p:last-child {
-  max-width: 720px;
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-.citeloom-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.citeloom-panel {
-  display: grid;
-  align-content: start;
-  min-height: 190px;
-  gap: 14px;
-  padding: 22px;
-}
-
-.citeloom-panel h2,
-.citeloom-panel p {
-  margin: 0;
-}
-
-.citeloom-panel p,
-.citeloom-panel li {
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.citeloom-panel ul {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding-left: 20px;
-}
-
-.citeloom-status {
-  display: inline-flex;
-  width: fit-content;
-  align-items: center;
-  gap: 7px;
-  color: var(--success);
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.citeloom-status::before {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-  content: "";
-}
-
 .citeloom-noscript {
   max-width: 720px;
   margin: 32px auto;
@@ -259,9 +178,6 @@
 }
 
 @media (max-width: 760px) {
-  .citeloom-grid {
-    grid-template-columns: 1fr;
-  }
 
   .citeloom-loading {
     top: 148px;

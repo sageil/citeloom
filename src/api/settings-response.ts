@@ -2,6 +2,7 @@ import {
   runtimeSettingChangeExamples,
   runtimeSettingDefinitions,
   type EffectiveApplicationSettings,
+  type RuntimeSettingPanel,
 } from "../app/settings.js";
 import {
   providerCatalog,
@@ -41,6 +42,7 @@ export interface RuntimeSettingFieldResponse {
   min: number | null;
   nullable: boolean;
   options: Array<{ label: string; value: string | number }>;
+  panel: RuntimeSettingPanel | null;
   sensitive: boolean;
   source: "database" | "database-default";
   step: number | null;
@@ -157,6 +159,7 @@ export function buildApplicationSettingsResponse(
       min: presentation.min,
       nullable: definition.nullable === true,
       options,
+      panel: definition.panel ?? null,
       sensitive,
       source,
       step: presentation.step,

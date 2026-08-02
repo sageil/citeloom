@@ -34,11 +34,39 @@ function readNullableNonEmptyString(value, label) {
   return readNonEmptyString(value, label);
 }
 
+function readNullableString(value, label) {
+  if (value === null) {
+    return null;
+  }
+  return readString(value, label);
+}
+
 function readBoolean(value, label) {
   if (typeof value !== "boolean") {
     throw new Error(`The ${label} response is invalid.`);
   }
   return value;
+}
+
+function readNullableBoolean(value, label) {
+  if (value === null) {
+    return null;
+  }
+  return readBoolean(value, label);
+}
+
+function readFiniteNumber(value, label) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`The ${label} response is invalid.`);
+  }
+  return value;
+}
+
+function readNullableFiniteNumber(value, label) {
+  if (value === null) {
+    return null;
+  }
+  return readFiniteNumber(value, label);
 }
 
 function readNonNegativeInteger(value, label) {
@@ -60,6 +88,28 @@ function readPositiveInteger(value, label) {
     throw new Error(`The ${label} response is invalid.`);
   }
   return value;
+}
+
+function readNullablePositiveInteger(value, label) {
+  if (value === null) {
+    return null;
+  }
+  return readPositiveInteger(value, label);
+}
+
+function readTimestamp(value, label) {
+  const timestamp = readNonEmptyString(value, label);
+  if (!Number.isFinite(Date.parse(timestamp))) {
+    throw new Error(`The ${label} response is invalid.`);
+  }
+  return timestamp;
+}
+
+function readNullableTimestamp(value, label) {
+  if (value === null) {
+    return null;
+  }
+  return readTimestamp(value, label);
 }
 
 function readEnum(value, allowedValues, label) {
@@ -97,12 +147,19 @@ export {
   readArray,
   readBoolean,
   readEnum,
+  readFiniteNumber,
   readJsonResponse,
   readNonEmptyString,
   readNonNegativeInteger,
+  readNullableBoolean,
+  readNullableFiniteNumber,
   readNullableNonEmptyString,
   readNullableNonNegativeInteger,
+  readNullablePositiveInteger,
+  readNullableString,
+  readNullableTimestamp,
   readPlainObject,
   readPositiveInteger,
   readString,
+  readTimestamp,
 };

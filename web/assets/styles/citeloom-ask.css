@@ -1,11 +1,5 @@
 /* Ask route styles are loaded only when the Ask workspace is requested. */
 
-.question-section {
-  padding: 24px 0 48px;
-  border-top: 1px solid var(--border);
-  scroll-margin-top: 20px;
-}
-
 .ask-workspace-error {
   margin: 0 0 14px;
 }
@@ -26,37 +20,7 @@
 }
 
 .question-mode-switch {
-  display: inline-grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 3px;
   margin-bottom: 14px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: rgba(11, 16, 32, 0.88);
-}
-
-.question-mode-switch button {
-  appearance: none;
-  min-height: 38px;
-  padding: 0 16px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 680;
-}
-
-.question-mode-switch button:hover {
-  color: var(--text);
-}
-
-.question-mode-switch button.active {
-  border-color: rgba(6, 182, 212, 0.38);
-  background: rgba(6, 182, 212, 0.12);
-  color: var(--text);
 }
 
 .research-thread-bar {
@@ -77,17 +41,6 @@
   color: var(--muted);
   font-size: 11px;
   font-weight: 650;
-}
-
-.research-thread-bar input,
-.research-thread-bar select {
-  min-width: 0;
-  height: 38px;
-  padding: 0 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: 7px;
-  background: var(--surface-raised);
-  color: var(--text);
 }
 
 .research-thread-exports {
@@ -171,17 +124,15 @@
 .question-composer,
 .answer-panel {
   padding: 22px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: rgba(11, 16, 32, 0.88);
+  box-shadow: none;
 }
 
-.question-composer .field-label:first-child {
+.question-composer .form-field {
+  margin-top: 18px;
+}
+
+.question-composer .form-field:first-child {
   margin-top: 0;
-}
-
-.question-composer .compact-field {
-  margin-top: 10px;
 }
 
 .tag-scope-field {
@@ -237,12 +188,6 @@
   max-width: 100%;
 }
 
-.tag-scope-chip > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .tag-scope-chip .citeloom-icon {
   width: 12px;
   height: 12px;
@@ -284,33 +229,18 @@
 }
 
 .tag-scope-menu {
-  position: absolute;
   top: calc(100% + 5px);
   left: 0;
   display: grid;
   width: 100%;
-  overflow: hidden;
-  border: 1px solid var(--border-strong);
   border-radius: 8px;
   background: #0b1020;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
 }
 
 .tag-scope-search {
-  display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
   margin: 9px;
-  padding: 0 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: 7px;
   background: #090e1c;
-  color: var(--muted);
-}
-
-.tag-scope-search:focus-within {
-  border-color: var(--cyan);
 }
 
 .tag-scope-search .citeloom-icon {
@@ -319,14 +249,7 @@
 }
 
 .tag-scope-search input {
-  min-width: 0;
   height: 36px;
-  padding: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
 }
 
 .tag-scope-search input::placeholder {
@@ -456,7 +379,7 @@
   line-height: 1.5;
 }
 
-.field-label-heading {
+.form-field-heading {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -515,7 +438,6 @@
 }
 
 .inline-citation {
-  appearance: none;
   display: inline;
   margin: 0 1px;
   padding: 0 2px;
@@ -542,29 +464,16 @@
   margin-top: 5px;
 }
 
-.empty-answer,
-.loading-answer {
-  display: grid;
-  place-items: center;
-  align-content: center;
+.empty-answer {
   gap: 9px;
-  color: var(--muted);
-  text-align: center;
 }
 
-.empty-answer > svg,
-.loading-answer > svg {
+.empty-answer > svg {
   margin-bottom: 5px;
   color: var(--cyan);
 }
 
-.empty-answer strong,
-.loading-answer strong {
-  color: var(--text);
-}
-
-.empty-answer p,
-.loading-answer p {
+.empty-answer p {
   max-width: 380px;
   margin-bottom: 0;
   font-size: 12px;
@@ -901,7 +810,8 @@
   text-underline-offset: 3px;
 }
 
-.source-document-link:focus-visible {
+.source-document-link:focus-visible,
+.claim-citation-link:focus-visible {
   border-radius: 2px;
   outline: 2px solid var(--cyan);
   outline-offset: 3px;
@@ -925,7 +835,8 @@
 }
 
 .claim-checks,
-.answer-feedback-grid {
+.answer-feedback-grid,
+.answer-run-details {
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
@@ -1001,12 +912,6 @@
   color: var(--text);
 }
 
-.claim-citation-link:focus-visible {
-  border-radius: 2px;
-  outline: 2px solid var(--cyan);
-  outline-offset: 3px;
-}
-
 .claim-verification-details {
   width: fit-content;
   max-width: 100%;
@@ -1043,11 +948,7 @@
   color: var(--warning);
 }
 
-.claim-status.unsupported {
-  background: rgba(248, 113, 113, 0.14);
-  color: var(--danger);
-}
-
+.claim-status.unsupported,
 .claim-status.unverified {
   background: rgba(248, 113, 113, 0.14);
   color: var(--danger);
@@ -1083,7 +984,6 @@
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: transparent;
-  cursor: pointer;
   font-size: 10px;
 }
 
@@ -1150,7 +1050,6 @@
   border: 1px solid var(--border);
   border-radius: 7px;
   background: transparent;
-  cursor: pointer;
 }
 
 .evidence-inspector-resize-handle {
@@ -1173,7 +1072,8 @@
   margin-top: 16px;
 }
 
-.exact-evidence h4 {
+.exact-evidence h4,
+.citation-image-highlight h4 {
   margin: 0 0 8px;
   font-size: 12px;
 }
@@ -1259,11 +1159,6 @@
 
 .citation-image-highlight {
   margin-top: 16px;
-}
-
-.citation-image-highlight h4 {
-  margin: 0 0 8px;
-  font-size: 12px;
 }
 
 .citation-image-highlight-frame {
@@ -1389,12 +1284,6 @@
   line-height: 1.5;
 }
 
-.answer-run-details {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-
 .retrieved-context-details > p {
   margin: 13px 0 7px;
   color: var(--muted);
@@ -1417,8 +1306,7 @@
   display: flex;
 }
 
-.discovery-panel.empty-answer,
-.discovery-panel.loading-answer {
+.discovery-panel.empty-answer {
   display: grid;
 }
 
@@ -1649,13 +1537,6 @@
   font-size: 11px;
 }
 
-.discovery-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-}
-
 .discovery-pagination .button {
   min-height: 34px;
   padding-inline: 10px;
@@ -1780,20 +1661,5 @@
 
   .research-thread-bar {
     grid-template-columns: 1fr 1fr;
-  }
-}
-
-@media (max-width: 700px) {
-  .research-thread-bar,
-  .answer-feedback-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .evidence-inspector {
-    top: 10px;
-    right: 10px;
-    width: calc(100vw - 20px);
-    max-width: calc(100vw - 20px);
-    max-height: calc(100vh - 20px);
   }
 }

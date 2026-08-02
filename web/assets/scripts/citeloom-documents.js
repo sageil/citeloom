@@ -5,9 +5,13 @@ import {
   readNonEmptyString,
   readNonNegativeInteger,
   readNullableNonNegativeInteger,
+  readNullablePositiveInteger,
+  readNullableString,
+  readNullableTimestamp,
   readPlainObject,
   readPositiveInteger,
   readString,
+  readTimestamp,
 } from "./citeloom-boundaries.js";
 import {
   DOCUMENT_NOTIFICATION_CHANGE_EVENT,
@@ -95,7 +99,7 @@ const emptyFacets = Object.freeze({
   uploads: 0,
 });
 
-function readDocumentCatalog(value) {
+export function readDocumentCatalog(value) {
   const response = readPlainObject(value, "document catalog");
   const attention = readPlainObject(
     response.attention,
@@ -615,27 +619,6 @@ function readDeleteResponse(value) {
   };
 }
 
-function readNullableString(value, label) {
-  if (value === null) {
-    return null;
-  }
-  return readString(value, label);
-}
-
-function readNullablePositiveInteger(value, label) {
-  if (value === null) {
-    return null;
-  }
-  return readPositiveInteger(value, label);
-}
-
-function readNullableTimestamp(value, label) {
-  if (value === null) {
-    return null;
-  }
-  return readTimestamp(value, label);
-}
-
 function readDocumentRetryState(document, status, errorMessage) {
   const attemptCount = readNullableNonNegativeInteger(
     document.attemptCount,
@@ -701,14 +684,6 @@ function readPageSize(value) {
     throw new Error("The catalog page size response is invalid.");
   }
   return value;
-}
-
-function readTimestamp(value, label) {
-  const timestamp = readNonEmptyString(value, label);
-  if (!Number.isFinite(Date.parse(timestamp))) {
-    throw new Error(`The ${label} response is invalid.`);
-  }
-  return timestamp;
 }
 
 function readUuid(value, label) {

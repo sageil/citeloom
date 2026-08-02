@@ -187,6 +187,10 @@ WITH active_spaces AS (
       left($5, 4) = 'tag:'
       AND substring($5 FROM 5) = ANY(records.tags)
     )
+    OR (
+      left($5, 5) = 'tags:'
+      AND records.tags && string_to_array(substring($5 FROM 6), ',')
+    )
   )
 ), ordered AS (
   SELECT

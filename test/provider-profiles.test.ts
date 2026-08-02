@@ -49,7 +49,7 @@ describe("provider profiles", () => {
     providers.connections.lmstudio.answer.contextCapacityTokens = null;
 
     expect(() => parseProviderSettings(providers)).toThrow(
-      "requires a context capacity for Answers",
+      "requires a context capacity for Ask",
     );
   });
 
@@ -203,10 +203,14 @@ describe("provider profiles", () => {
       startup.sourceContent,
       TEST_EMBEDDING_INPUT_FORMAT,
     );
+    const queryExpansion = config.inference.queryExpansion;
+    if (queryExpansion === null) {
+      throw new Error("Expected query expansion to be configured.");
+    }
 
     expect(config.inference.answer.thinkingMode).toBe("enabled");
     expect(config.inference.chat.thinkingMode).toBe("enabled");
-    expect(config.inference.queryExpansion.thinkingMode).toBe("enabled");
+    expect(queryExpansion.thinkingMode).toBe("enabled");
     expect(config.inference.summary.thinkingMode).toBe("disabled");
   });
 

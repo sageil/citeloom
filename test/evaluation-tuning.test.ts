@@ -96,7 +96,7 @@ describe("development retrieval tuning", () => {
           && candidate.rrfK === 60;
       },
     );
-    expect(twoExpansionAssessment?.metrics.estimatedP95LatencyMs).toBe(60);
+    expect(twoExpansionAssessment?.metrics.estimatedP95LatencyMs).toBe(55);
   });
 
   it("reports objective and per-domain rejection reasons for every candidate", () => {
@@ -463,13 +463,12 @@ function buildPreparation(
         queryExpansions: 2,
         rrfK: config.retrieval.rrfK,
         topK: 1,
-        variantConcurrency: config.retrieval.variantConcurrency,
       },
       settingsVersion: 7,
     },
     skippedModes: [],
     telemetry: [{ caseId, trace: buildTrace(domain) }],
-    version: 11,
+    version: 13,
   }, `${domain} tuning preparation`);
 }
 

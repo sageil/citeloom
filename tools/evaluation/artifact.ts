@@ -168,7 +168,7 @@ export const evaluationProvenanceSchema = z.object({
   }).strict(),
   models: z.object({
     queryEmbedding: modelIdentitySchema,
-    queryExpansion: modelIdentitySchema,
+    queryExpansion: modelIdentitySchema.nullable(),
     reranker: modelIdentitySchema.nullable(),
   }).strict(),
   retrieval: z.object({
@@ -178,7 +178,6 @@ export const evaluationProvenanceSchema = z.object({
     queryExpansions: z.number().int().nonnegative(),
     rrfK: z.number().int().positive(),
     topK: z.number().int().positive(),
-    variantConcurrency: z.number().int().min(1).max(16),
   }).strict(),
   settingsVersion: z.number().int().nonnegative(),
 }).strict();
@@ -227,7 +226,7 @@ const evaluationPreparationArtifactSchema = z.object({
   provenance: evaluationProvenanceSchema,
   skippedModes: z.array(retrievalModeSchema),
   telemetry: z.array(benchmarkTelemetrySchema).min(1),
-  version: z.literal(11),
+  version: z.literal(13),
 }).strict();
 
 export type EvaluationPreparationArtifact = z.output<
@@ -274,9 +273,9 @@ function rejectIncompatibleArtifactVersion(
     return;
   }
   const version = value.version;
-  if (version !== 11) {
+  if (version !== 13) {
     throw new Error(
-      `Incompatible evaluation preparation ${sourceLabel}: expected version 11, received ${String(version)}.`,
+      `Incompatible evaluation preparation ${sourceLabel}: expected version 13, received ${String(version)}.`,
     );
   }
 }

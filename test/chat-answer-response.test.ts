@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
-  CHAT_ANSWER_RESPONSE_CONTRACT,
-} from "../src/chat/answer-contract.js";
+  CHAT_ANSWER_RESPONSE,
+} from "../src/chat/answer-response.js";
 import {
   createChatSystemPrompt,
 } from "../src/chat/prompt.js";
 
-describe("Chat answer response contract", () => {
+describe("Chat answer response", () => {
   it("exposes only answer and findings at the structured-output root", () => {
     const schema = z.toJSONSchema(
-      CHAT_ANSWER_RESPONSE_CONTRACT.createSchema(["SOURCE_1", "SOURCE_2"]),
+      CHAT_ANSWER_RESPONSE.createSchema(["SOURCE_1", "SOURCE_2"]),
     );
 
     expect(schema).toMatchObject({
@@ -23,7 +23,7 @@ describe("Chat answer response contract", () => {
   });
 
   it("decodes a cited response without a status field", () => {
-    const result = CHAT_ANSWER_RESPONSE_CONTRACT.decode({
+    const result = CHAT_ANSWER_RESPONSE.decode({
       answer: {
         content: "Rule B provides access and correction rights.",
         source_refs: ["SOURCE_2"],
@@ -58,7 +58,7 @@ describe("Chat answer response contract", () => {
   });
 
   it("decodes empty answer references as an uncited response", () => {
-    const result = CHAT_ANSWER_RESPONSE_CONTRACT.decode({
+    const result = CHAT_ANSWER_RESPONSE.decode({
       answer: {
         content: "The supplied sources do not establish who signed the agreement.",
         source_refs: [],
@@ -76,7 +76,7 @@ describe("Chat answer response contract", () => {
   });
 
   it("rejects findings on an uncited response", () => {
-    expect(() => CHAT_ANSWER_RESPONSE_CONTRACT.decode({
+    expect(() => CHAT_ANSWER_RESPONSE.decode({
       answer: {
         content: "The supplied sources do not establish who signed the agreement.",
         source_refs: [],
@@ -89,7 +89,7 @@ describe("Chat answer response contract", () => {
   });
 
   it("rejects the removed status field", () => {
-    expect(() => CHAT_ANSWER_RESPONSE_CONTRACT.decode({
+    expect(() => CHAT_ANSWER_RESPONSE.decode({
       answer: {
         content: "The supplied sources do not establish who signed the agreement.",
         source_refs: [],
@@ -101,7 +101,7 @@ describe("Chat answer response contract", () => {
 });
 
 describe("Chat system prompt", () => {
-  it("matches the status-free Chat response contract", () => {
+  it("matches the status-free Chat response schema", () => {
     const prompt = createChatSystemPrompt();
 
     expect(prompt).toContain("MISSION");

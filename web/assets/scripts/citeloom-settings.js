@@ -5,7 +5,9 @@ import {
   readJsonResponse,
   readNonEmptyString,
   readNonNegativeInteger,
+  readNullableFiniteNumber,
   readNullableNonEmptyString,
+  readNullablePositiveInteger,
   readPlainObject,
   readPositiveInteger,
   readString,
@@ -69,6 +71,12 @@ const sourceFilters = Object.freeze([
   "modified",
 ]);
 const providerEditorSections = Object.freeze(["connection", "capabilities"]);
+const settingsLocationParameters = Object.freeze({
+  area: "settings-area",
+  capability: "settings-capability",
+  item: "settings-item",
+  section: "settings-section",
+});
 const providerAuthenticationMethods = Object.freeze([
   "api-token",
   "openai-device",
@@ -102,16 +110,77 @@ const textToSpeechAdapters = Object.freeze([
   "openai-speech",
 ]);
 const capabilityLabels = Object.freeze({
-  answer: "Answers",
+  answer: "Ask",
   chat: "Chat",
-  embedding: "Search model",
-  queryExpansion: "Additional searches",
+  embedding: "Embedding model",
+  queryExpansion: "Query expansion",
   reranking: "Search ranking",
   speechToText: "Speech input",
-  summarization: "Image and table descriptions",
+  summarization: "Indexing model",
   textToSpeech: "Spoken answers",
 });
 const startupGroupName = "Startup and deployment";
+
+function readOptionalLocationParameter(parameters, name) {
+  const value = parameters.get(name)?.trim() ?? "";
+  return value === "" ? null : value;
+}
+
+function readSettingsLocation() {
+  const url = new URL(window.location.href);
+  const view = url.searchParams.get("view");
+  if (view !== "settings" && url.pathname !== "/settings") {
+    return null;
+  }
+  return {
+    area: readOptionalLocationParameter(
+      url.searchParams,
+      settingsLocationParameters.area,
+    ),
+    capability: readOptionalLocationParameter(
+      url.searchParams,
+      settingsLocationParameters.capability,
+    ),
+    item: readOptionalLocationParameter(
+      url.searchParams,
+      settingsLocationParameters.item,
+    ),
+    section: readOptionalLocationParameter(
+      url.searchParams,
+      settingsLocationParameters.section,
+    ),
+  };
+}
+
+function pushSettingsLocation(location) {
+  const url = new URL(window.location.href);
+  for (const parameter of Object.values(settingsLocationParameters)) {
+    url.searchParams.delete(parameter);
+  }
+  if (location.area !== null) {
+    url.searchParams.set(settingsLocationParameters.area, location.area);
+  }
+  if (location.capability !== null) {
+    url.searchParams.set(
+      settingsLocationParameters.capability,
+      location.capability,
+    );
+  }
+  if (location.item !== null) {
+    url.searchParams.set(settingsLocationParameters.item, location.item);
+  }
+  if (location.section !== null) {
+    url.searchParams.set(settingsLocationParameters.section, location.section);
+  }
+  if (url.href === window.location.href) {
+    return;
+  }
+  const currentState = window.history.state;
+  const nextState = typeof currentState === "object" && currentState !== null
+    ? { ...currentState, citeloomSettings: true }
+    : { citeloomSettings: true };
+  window.history.pushState(nextState, "", url);
+}
 
 function readApplicationSettings(value) {
   const response = readPlainObject(value, "application settings");
@@ -230,6 +299,21 @@ function readRuntimeSettingFields(value) {
   return fields;
 }
 
+function readRuntimeSettingPanel(value) {
+  if (value === null) {
+    return null;
+  }
+  const panel = readPlainObject(value, "setting panel");
+  return {
+    description: readNonEmptyString(
+      panel.description,
+      "setting panel description",
+    ),
+    id: readNonEmptyString(panel.id, "setting panel identifier"),
+    label: readNonEmptyString(panel.label, "setting panel label"),
+  };
+}
+
 function readRuntimeSettingField(value) {
   const field = readPlainObject(value, "application setting");
   const feature = field.feature === undefined || field.feature === null
@@ -258,6 +342,7 @@ function readRuntimeSettingField(value) {
     min: readNullableFiniteNumber(field.min, "setting minimum"),
     nullable: readBoolean(field.nullable, "setting nullable state"),
     options,
+    panel: readRuntimeSettingPanel(field.panel),
     sensitive: readBoolean(field.sensitive, "setting sensitive state"),
     source: readEnum(field.source, runtimeSources, "setting source"),
     step: readNullableFiniteNumber(field.step, "setting step"),
@@ -377,7 +462,7 @@ function readCapabilityAdapter(value, capability) {
     return readEnum(value, languageAdapters, "language adapter");
   }
   if (capability === "embedding") {
-    return readEnum(value, embeddingAdapters, "search model connection type");
+    return readEnum(value, embeddingAdapters, "embedding model connection type");
   }
   if (capability === "reranking") {
     return readEnum(value, rerankingAdapters, "search ranking connection type");
@@ -451,7 +536,7 @@ function readProviderConfiguration(value) {
     customAdapters: readCustomAdapters(configuration.customAdapters),
     embedding: readProviderModelConfiguration(
       configuration.embedding,
-      "search model settings",
+      "embedding model settings",
     ),
     queryExpansion: readProviderModelConfiguration(
       configuration.queryExpansion,
@@ -545,7 +630,7 @@ function readCustomAdapters(value) {
     embedding: readEnum(
       adapters.embedding,
       embeddingAdapters,
-      "search model connection type",
+      "embedding model connection type",
     ),
     queryExpansion: readEnum(
       adapters.queryExpansion,
@@ -689,16 +774,6 @@ function readStartupSettings(value) {
   return settings;
 }
 
-function readNullableFiniteNumber(value, label) {
-  if (value === null) {
-    return null;
-  }
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`The ${label} response is invalid.`);
-  }
-  return value;
-}
-
 function readStringOrFiniteNumber(value, label) {
   if (typeof value === "string") {
     return value;
@@ -711,13 +786,6 @@ function readStringOrFiniteNumber(value, label) {
 
 function readProviderId(value, label) {
   return readEnum(value, providerIds, label);
-}
-
-function readNullablePositiveInteger(value, label) {
-  if (value === null) {
-    return null;
-  }
-  return readPositiveInteger(value, label);
 }
 
 function buildEmptyFeatureOverrides() {
@@ -784,6 +852,27 @@ function groupRuntimeFields(fields) {
     group.fields.push(field);
   }
   return [...groupsByName.values()];
+}
+
+function buildRuntimeSettingPanels(fields) {
+  const panels = [];
+  const panelsById = new Map();
+  for (const field of fields) {
+    const id = field.panel?.id ?? field.key;
+    let panel = panelsById.get(id);
+    if (panel === undefined) {
+      panel = {
+        description: field.panel?.description ?? field.description,
+        fields: [],
+        id,
+        label: field.panel?.label ?? field.label,
+      };
+      panelsById.set(id, panel);
+      panels.push(panel);
+    }
+    panel.fields.push(field);
+  }
+  return panels;
 }
 
 function buildRuntimeSettingChanges(settings, drafts, pending) {
@@ -1028,6 +1117,7 @@ export function registerPage(alpine) {
     inputFormatDraft: null,
     inputFormatEditorMode: null,
     loading: true,
+    locationStateRestored: false,
     openAICodexAuth: null,
     openAICodexBusy: false,
     openAICodexModels: [],
@@ -1040,6 +1130,7 @@ export function registerPage(alpine) {
     providerProfilesById: {},
     query: "",
     reloadAfterSave: false,
+    restoringHistory: false,
     saved: false,
     saving: false,
     selectedArea: null,
@@ -1051,6 +1142,7 @@ export function registerPage(alpine) {
     settings: null,
     settingsRevision: null,
     settingsRevisionListener: null,
+    settingsHistoryListener: null,
     sourceFilter: "all",
 
     get areaCount() {
@@ -1091,6 +1183,10 @@ export function registerPage(alpine) {
       return fields;
     },
 
+    get filteredRuntimePanels() {
+      return buildRuntimeSettingPanels(this.filteredFields);
+    },
+
     get providerChanges() {
       if (this.settings === null || this.providerDrafts === null) {
         return [];
@@ -1126,6 +1222,10 @@ export function registerPage(alpine) {
     },
 
     async initialize() {
+      this.settingsHistoryListener = () => {
+        this.restoreLocationState();
+      };
+      window.addEventListener("popstate", this.settingsHistoryListener);
       this.settingsRevisionListener = (event) => {
         if (typeof event.detail !== "string") {
           return;
@@ -1169,6 +1269,9 @@ export function registerPage(alpine) {
           "citeloom:settings-revision",
           this.settingsRevisionListener,
         );
+      }
+      if (this.settingsHistoryListener !== null) {
+        window.removeEventListener("popstate", this.settingsHistoryListener);
       }
     },
 
@@ -1409,47 +1512,199 @@ export function registerPage(alpine) {
           this.selectedProviderProfile?.capabilities[0]?.capability ?? null;
       }
       this.settings = settings;
+      if (!this.locationStateRestored) {
+        this.locationStateRestored = true;
+        this.restoreLocationState();
+      }
+    },
+
+    areaExists(area) {
+      if (
+        area === "Application Features"
+        || area === "Providers"
+        || area === startupGroupName
+      ) {
+        return true;
+      }
+      return this.groups.some((group) => group.name === area);
+    },
+
+    currentLocationState() {
+      const location = {
+        area: this.selectedArea,
+        capability: null,
+        item: null,
+        section: null,
+      };
+      if (this.selectedArea === "Application Features") {
+        location.item = this.selectedFeatureCapability;
+        return location;
+      }
+      if (this.selectedArea === "Providers") {
+        location.item = this.selectedProviderId;
+        location.section = this.providerEditorSection;
+        if (this.providerEditorSection === "capabilities") {
+          location.capability = this.selectedProviderCapability;
+        }
+        return location;
+      }
+      if (this.selectedArea === startupGroupName) {
+        location.item = this.selectedStartupKey;
+        return location;
+      }
+      if (this.selectedArea !== null) {
+        location.item = this.activeRuntimePanel()?.id ?? null;
+      }
+      return location;
+    },
+
+    recordLocationState() {
+      if (this.restoringHistory || this.settings === null) {
+        return;
+      }
+      pushSettingsLocation(this.currentLocationState());
+    },
+
+    restoreLocationState() {
+      if (this.settings === null) {
+        return;
+      }
+      const location = readSettingsLocation();
+      if (location === null) {
+        return;
+      }
+      this.restoringHistory = true;
+      try {
+        this.query = "";
+        this.sourceFilter = "all";
+        if (location.area === null || !this.areaExists(location.area)) {
+          this.selectedArea = null;
+          return;
+        }
+        this.selectArea(location.area);
+        if (location.area === "Application Features") {
+          const capability = providerCapabilities.includes(location.item)
+            ? location.item
+            : "answer";
+          this.selectFeature(capability);
+          return;
+        }
+        if (location.area === "Providers") {
+          this.restoreProviderLocation(location);
+          return;
+        }
+        if (location.area === startupGroupName) {
+          if (location.item !== null) {
+            this.selectStartupSetting(location.item);
+          }
+          return;
+        }
+        if (location.item !== null) {
+          this.selectRuntimePanel(location.item);
+        }
+      } finally {
+        this.restoringHistory = false;
+      }
+    },
+
+    restoreProviderLocation(location) {
+      const fallbackProviderId = this.settings?.providers.catalog[0]?.id ?? null;
+      const providerId = location.item !== null
+        && Object.hasOwn(this.providerProfilesById, location.item)
+        ? location.item
+        : fallbackProviderId;
+      if (providerId === null) {
+        return;
+      }
+      this.selectProvider(providerId);
+      if (location.section === "connection") {
+        this.selectProviderEditorSection("connection");
+        return;
+      }
+      if (location.capability === null) {
+        return;
+      }
+      const capabilityIsAvailable = this.selectedProviderProfile
+        ?.capabilities.some((entry) => {
+          return entry.capability === location.capability;
+        }) ?? false;
+      if (capabilityIsAvailable) {
+        this.selectProviderCapability(location.capability);
+      }
     },
 
     selectArea(area) {
       this.selectedArea = area;
       if (area === startupGroupName) {
         this.selectedStartupKey = this.settings?.startupSettings[0]?.key ?? null;
-        return;
-      }
-      for (const group of this.groups) {
-        if (group.name === area) {
-          this.selectedRuntimeFieldKey = group.fields[0]?.key ?? null;
-          return;
+      } else {
+        for (const group of this.groups) {
+          if (group.name === area) {
+            this.selectedRuntimeFieldKey = group.fields[0]?.key ?? null;
+            break;
+          }
         }
       }
+      this.recordLocationState();
     },
 
     clearSearch() {
       this.query = "";
       this.selectedArea = null;
       this.sourceFilter = "all";
+      this.recordLocationState();
     },
 
     changeSearchQuery() {
+      const changedArea = this.selectedArea !== null;
       this.selectedArea = null;
+      if (changedArea) {
+        this.recordLocationState();
+      }
     },
 
     changeSourceFilter(value) {
       this.sourceFilter = readEnum(value, sourceFilters, "source filter");
       if (this.selectedArea === startupGroupName) {
         this.selectedArea = null;
+        this.recordLocationState();
       }
     },
 
+    fieldMatchesSearch(field, normalizedQuery) {
+      const searchableValues = [
+        field.label,
+        field.description,
+        field.changeExample,
+        field.group,
+      ];
+      if (field.panel !== null) {
+        searchableValues.push(field.panel.label, field.panel.description);
+      }
+      for (const value of searchableValues) {
+        if (value.toLocaleLowerCase().includes(normalizedQuery)) {
+          return true;
+        }
+      }
+      return false;
+    },
+
     settingMatchesSearch(field, normalizedQuery) {
-      if (normalizedQuery === "") {
+      if (normalizedQuery === "" || this.fieldMatchesSearch(field, normalizedQuery)) {
         return true;
       }
-      return field.label.toLocaleLowerCase().includes(normalizedQuery)
-        || field.description.toLocaleLowerCase().includes(normalizedQuery)
-        || field.changeExample.toLocaleLowerCase().includes(normalizedQuery)
-        || field.group.toLocaleLowerCase().includes(normalizedQuery);
+      if (field.panel === null || this.settings === null) {
+        return false;
+      }
+      for (const candidate of this.settings.fields) {
+        if (
+          candidate.panel?.id === field.panel.id
+          && this.fieldMatchesSearch(candidate, normalizedQuery)
+        ) {
+          return true;
+        }
+      }
+      return false;
     },
 
     resultLabel() {
@@ -1464,23 +1719,43 @@ export function registerPage(alpine) {
       return `${count} ${count === 1 ? "setting" : "settings"}`;
     },
 
-    selectRuntimeField(key) {
-      const field = this.settings?.fields.find((candidate) => {
-        return candidate.key === key && candidate.feature === null;
-      });
-      if (field === undefined) {
-        return;
+    runtimePanelBadgeClass(panel) {
+      const field = panel.fields[0];
+      if (panel.fields.length !== 1 || field === undefined) {
+        return "";
       }
-      this.selectedRuntimeFieldKey = field.key;
+      return this.fieldSourceClass(field);
     },
 
-    activeRuntimeField() {
-      for (const field of this.filteredFields) {
-        if (field.key === this.selectedRuntimeFieldKey) {
-          return field;
+    runtimePanelBadgeLabel(panel) {
+      const field = panel.fields[0];
+      if (panel.fields.length !== 1 || field === undefined) {
+        return this.formatSettingCount(panel.fields.length);
+      }
+      return this.fieldSourceLabel(field);
+    },
+
+    selectRuntimePanel(id) {
+      const panel = this.filteredRuntimePanels.find((candidate) => {
+        return candidate.id === id;
+      });
+      const firstField = panel?.fields[0];
+      if (firstField === undefined) {
+        return;
+      }
+      this.selectedRuntimeFieldKey = firstField.key;
+      this.recordLocationState();
+    },
+
+    activeRuntimePanel() {
+      for (const panel of this.filteredRuntimePanels) {
+        for (const field of panel.fields) {
+          if (field.key === this.selectedRuntimeFieldKey) {
+            return panel;
+          }
         }
       }
-      return this.filteredFields[0] ?? null;
+      return this.filteredRuntimePanels[0] ?? null;
     },
 
     selectedEmbeddingInputFormat() {
@@ -1706,6 +1981,7 @@ export function registerPage(alpine) {
       });
       if (field !== undefined) {
         this.selectedStartupKey = field.key;
+        this.recordLocationState();
       }
     },
 
@@ -1732,7 +2008,7 @@ export function registerPage(alpine) {
         "Answers and citation checks": "Choose answer limits and how CiteLoom reports citation support.",
         "Document processing": "Choose upload limits, processing time, and how many documents CiteLoom handles at once.",
         "Search and answers": "Choose how widely CiteLoom searches and how much source material it can use in an answer.",
-        "Search model": "Choose how CiteLoom prepares documents for search.",
+        "Embedding model": "Choose how CiteLoom converts document content and questions into representations used for semantic search.",
         "Search ranking": "Choose how CiteLoom orders and filters semantic search results.",
         "Speech input": "Choose how CiteLoom turns recorded questions into text.",
         "Spoken answers": "Choose how CiteLoom creates and plays answer audio.",
@@ -1874,17 +2150,18 @@ export function registerPage(alpine) {
         "selected feature",
       );
       this.featureAdvancedOpen = false;
+      this.recordLocationState();
     },
 
     selectedFeatureDescription() {
       const descriptions = {
-        answer: "Choose how CiteLoom writes answers.",
+        answer: "Choose how CiteLoom answers questions in Ask.",
         chat: "Choose how CiteLoom responds in document chats.",
         embedding: "Choose the model CiteLoom uses to make documents searchable.",
-        queryExpansion: "Choose how CiteLoom creates additional searches when that setting is enabled.",
+        queryExpansion: "Choose whether CiteLoom creates alternative searches and how their results influence ordering.",
         reranking: "Choose how CiteLoom orders semantic search results.",
         speechToText: "Choose how CiteLoom turns recorded questions into text.",
-        summarization: "Choose how CiteLoom describes images and tables while processing documents.",
+        summarization: "Choose the model CiteLoom uses to prepare Docling output for search, including images, tables, and document structure.",
         textToSpeech: "Choose how CiteLoom creates spoken answers.",
       };
       return descriptions[this.selectedFeatureCapability];
@@ -1918,7 +2195,14 @@ export function registerPage(alpine) {
     },
 
     capabilityIsOptional(capability) {
+      if (capability === "queryExpansion") {
+        return !this.queryExpansionEnabled();
+      }
       return optionalProviderCapabilities.includes(capability);
+    },
+
+    queryExpansionEnabled() {
+      return Number(this.drafts.queryExpansions) > 0;
     },
 
     compatibleProviders(capability) {
@@ -1956,7 +2240,7 @@ export function registerPage(alpine) {
 
     featureModelFieldLabel(capability) {
       return capability === "embedding"
-        ? "Search model"
+        ? "Embedding model"
         : "Model for this feature";
     },
 
@@ -1971,8 +2255,8 @@ export function registerPage(alpine) {
       const override = this.featureModelOverride(capability);
       if (capability === "embedding") {
         return override === null
-          ? "Enter a model ID to use a different search model, or leave blank to use the provider default."
-          : "This search model is used instead of the provider default.";
+          ? "Enter a model ID to use a different embedding model, or leave blank to use the provider default."
+          : "This embedding model is used instead of the provider default.";
       }
       return override === null
         ? "The provider default is used."
@@ -2047,6 +2331,9 @@ export function registerPage(alpine) {
     },
 
     featureStateLabel(capability) {
+      if (capability === "queryExpansion" && !this.queryExpansionEnabled()) {
+        return "Disabled";
+      }
       if (!this.capabilityIsOptional(capability)) {
         return "Required";
       }
@@ -2155,6 +2442,7 @@ export function registerPage(alpine) {
         this.providerProfilesById[selectedProviderId]?.capabilities[0]?.capability
         ?? null;
       this.providerEditorSection = "capabilities";
+      this.recordLocationState();
     },
 
     selectProviderEditorSection(section) {
@@ -2163,6 +2451,7 @@ export function registerPage(alpine) {
         providerEditorSections,
         "provider editor section",
       );
+      this.recordLocationState();
     },
 
     selectProviderCapability(capability) {
@@ -2180,6 +2469,7 @@ export function registerPage(alpine) {
       }
       this.selectedProviderCapability = selectedCapability;
       this.providerEditorSection = "capabilities";
+      this.recordLocationState();
     },
 
     selectedProviderCapabilitiesLabel() {
@@ -2439,9 +2729,9 @@ export function registerPage(alpine) {
       }
       if (capability === "embedding") {
         return [
-          { label: "OpenAI-compatible search model", value: "openai-compatible-embedding" },
-          { label: "Ollama search model", value: "ollama-embedding" },
-          { label: "Cohere search model", value: "cohere-embedding" },
+          { label: "OpenAI-compatible embedding model", value: "openai-compatible-embedding" },
+          { label: "Ollama embedding model", value: "ollama-embedding" },
+          { label: "Cohere embedding model", value: "cohere-embedding" },
         ];
       }
       if (capability === "reranking") {

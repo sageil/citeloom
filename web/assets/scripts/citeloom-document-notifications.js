@@ -3,8 +3,8 @@ import {
   readBoolean,
   readEnum,
   readNonEmptyString,
+  readNullableString,
   readPlainObject,
-  readString,
 } from "./citeloom-boundaries.js";
 
 const DOCUMENT_NOTIFICATION_CHANGE_EVENT = "citeloom:document-notification-change";
@@ -193,13 +193,6 @@ function readDocumentNotificationCatalogEntry(value) {
       "document notification catalog status",
     ),
   };
-}
-
-function readNullableString(value, label) {
-  if (value === null) {
-    return null;
-  }
-  return readString(value, label);
 }
 
 function readDocumentNotificationCatalogStatus(value, sourceFile) {

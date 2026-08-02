@@ -31,7 +31,6 @@
 
 .primary-navigation-button,
 .utility-navigation-button {
-  appearance: none;
   display: inline-flex;
   align-items: center;
   min-height: 40px;
@@ -40,7 +39,6 @@
   border: 0;
   background: transparent;
   color: #e2e8f0;
-  cursor: pointer;
   font-family: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
   font-size: 14px;
   font-weight: 540;
@@ -132,7 +130,6 @@
 }
 
 .account-navigation-item {
-  appearance: none;
   display: flex;
   align-items: center;
   width: 100%;
@@ -261,7 +258,6 @@
 }
 
 .task-button {
-  appearance: none;
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr) 18px;
   align-items: center;
@@ -272,7 +268,6 @@
   border-radius: 12px;
   background: rgba(11, 16, 32, 0.88);
   color: var(--muted);
-  cursor: pointer;
   text-align: left;
   transition: border-color 180ms ease, transform 180ms ease;
 }
@@ -375,10 +370,6 @@
 
   .task-navigation-primary-nav {
     gap: 14px;
-  }
-
-  .task-navigation-utility-nav .system-health-navigation-button {
-    margin-left: auto;
   }
 
   .task-navigation-stage {

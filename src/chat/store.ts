@@ -1524,7 +1524,6 @@ export class ChatStore {
       this.config.inference.chat?.timeoutMs
         ?? this.config.inference.answer.timeoutMs,
       this.config.inference.embedding.timeoutMs,
-      this.config.inference.queryExpansion.timeoutMs,
       this.config.claimVerifier.timeoutMs,
     );
     const leaseMs = Math.max(

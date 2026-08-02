@@ -180,7 +180,7 @@
   </div>
 
   <footer
-    class="error-reports-pagination"
+    class="pagination error-reports-pagination"
     x-cloak
     x-show="errorPage.total > 0"
   >
@@ -189,7 +189,7 @@
       <span aria-hidden="true">·</span>
       <span x-text="`Page ${errorPage.page} of ${errorPage.pageCount}`"></span>
     </p>
-    <div>
+    <div class="pagination-actions">
       <button
         class="button secondary"
         type="button"

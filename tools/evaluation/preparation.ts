@@ -128,8 +128,8 @@ interface PreparedRerankerPreparation {
 
 interface EvaluationRuntime {
   embeddingScheduler: TaskScheduler;
-  summarizationScheduler: TaskScheduler;
   models: InferenceModelRegistry;
+  queryExpansionScheduler: TaskScheduler | null;
   rerankingScheduler: TaskScheduler;
   session: DatabaseSession;
 }
@@ -229,7 +229,7 @@ export async function prepareComparativeEvaluation(
       provenance,
       skippedModes: modes.skipped,
       telemetry,
-      version: 11,
+      version: 13,
     }, "generated output");
   } finally {
     await runtime.session.close();
@@ -370,7 +370,7 @@ export async function prepareAnswerThresholdCalibration(
         }),
       },
       provenance,
-      version: 6,
+      version: 7,
     }, "generated output");
   } finally {
     await runtime.session.close();
@@ -502,12 +502,15 @@ async function createEvaluationRuntime(
       "embedding",
       "offline-tool",
     );
-    const summarizationScheduler = createRuntimeTaskScheduler(
-      config,
-      coordinator,
-      "summarization",
-      "offline-tool",
-    );
+    let queryExpansionScheduler: TaskScheduler | null = null;
+    if (config.retrieval.queryExpansions > 0) {
+      queryExpansionScheduler = createRuntimeTaskScheduler(
+        config,
+        coordinator,
+        "queryExpansion",
+        "offline-tool",
+      );
+    }
     const rerankingScheduler = createRuntimeTaskScheduler(
       config,
       coordinator,
@@ -518,9 +521,9 @@ async function createEvaluationRuntime(
     return {
       embeddingScheduler,
       models,
+      queryExpansionScheduler,
       rerankingScheduler,
       session,
-      summarizationScheduler,
     };
   } catch (error: unknown) {
     await session.close();
@@ -700,7 +703,7 @@ async function prepareEvaluationCaseInputs(
     evaluationCase.question,
     reportProgress,
     runtime.embeddingScheduler,
-    runtime.summarizationScheduler,
+    runtime.queryExpansionScheduler,
     passiveAbortSignal,
     generationSeed,
     runTelemetry,
@@ -1183,10 +1186,12 @@ function buildEvaluationProvenance(
         modelId: models.queryEmbedding.modelId,
         provider: models.queryEmbedding.provider,
       },
-      queryExpansion: {
-        modelId: models.summary.modelId,
-        provider: models.summary.provider,
-      },
+      queryExpansion: models.queryExpansion === null
+        ? null
+        : {
+          modelId: models.queryExpansion.modelId,
+          provider: models.queryExpansion.provider,
+        },
       reranker: rerankerIdentity,
     },
     retrieval: {
@@ -1196,7 +1201,6 @@ function buildEvaluationProvenance(
       queryExpansions: config.retrieval.queryExpansions,
       rrfK: config.retrieval.rrfK,
       topK: config.retrieval.topK,
-      variantConcurrency: config.retrieval.variantConcurrency,
     },
     settingsVersion: context.settingsVersion,
   };

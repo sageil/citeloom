@@ -11,7 +11,7 @@
       <p>Choose the services and settings CiteLoom uses for search, answers, document processing, and audio.</p>
     </div>
     <div class="settings-header-actions">
-      <label class="settings-search-input settings-header-search">
+      <label class="search-control settings-search-input settings-header-search">
         <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
           <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
         </svg>
@@ -28,6 +28,7 @@
       <label class="settings-header-source">
         <span class="visually-hidden">Filter setting source</span>
         <select
+          class="form-control"
           aria-label="Filter setting source"
           :value="sourceFilter"
           @change="changeSourceFilter($event.target.value)"
@@ -75,7 +76,7 @@
     </div>
   </header>
 
-  <div class="settings-message error" role="alert" x-cloak x-show="errorMessage !== ''">
+  <div class="status-message settings-message error" role="alert" x-cloak x-show="errorMessage !== ''">
     <svg aria-hidden="true" class="citeloom-icon status-icon error">
       <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
     </svg>
@@ -88,7 +89,7 @@
     >Retry</button>
   </div>
 
-  <div class="settings-message success" role="status" x-cloak x-show="saved">
+  <div class="status-message settings-message success" role="status" x-cloak x-show="saved">
     <svg aria-hidden="true" class="citeloom-icon status-icon">
       <use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use>
     </svg>
@@ -96,7 +97,7 @@
   </div>
 
   <template x-if="settings !== null &amp;&amp; settings.warnings.length > 0">
-    <div class="settings-message warning" role="status">
+    <div class="status-message settings-message warning" role="status">
       <svg aria-hidden="true" class="citeloom-icon status-icon">
         <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
       </svg>
@@ -236,7 +237,7 @@
           <section class="settings-feature-step">
             <header><span>1</span><h3>Provider</h3></header>
             <div class="settings-feature-form-grid">
-              <label class="provider-form-field">
+              <label class="form-field">
                 <span>Provider</span>
                 <select
                   :aria-label="`${capabilityLabel(selectedFeatureCapability)} provider`"
@@ -254,7 +255,7 @@
                   </template>
                 </select>
               </label>
-              <div class="provider-form-field settings-readonly-field settings-feature-url">
+              <div class="form-field settings-readonly-field settings-feature-url">
                 <span>Provider URL</span>
                 <output class="settings-readonly-control">
                   <code x-text="valueOrFallback(featureBaseUrl(selectedFeatureCapability), 'Not configured')"></code>
@@ -272,7 +273,7 @@
           <section class="settings-feature-step" x-show="featureConnection(selectedFeatureCapability) !== null">
             <header><span>2</span><h3>Model settings</h3><p>Choose the model and limits used by this feature.</p></header>
             <div class="settings-feature-form-grid">
-              <label class="provider-form-field">
+              <label class="form-field">
                 <span x-text="featureModelFieldLabel(selectedFeatureCapability)"></span>
                 <input
                   :placeholder="featureModelInputPlaceholder(selectedFeatureCapability)"
@@ -283,7 +284,7 @@
                 />
                 <small x-text="featureModelFieldHelp(selectedFeatureCapability)"></small>
               </label>
-              <label class="provider-form-field" x-show="capabilityHasModelContext(selectedFeatureCapability)">
+              <label class="form-field" x-show="capabilityHasModelContext(selectedFeatureCapability)">
                 <span>Maximum input tokens for this feature</span>
                 <input
                   min="1"
@@ -295,7 +296,7 @@
                 />
                 <small x-text="featureContextCapacityTokensOverride(selectedFeatureCapability) === null ? 'The provider default is used.' : 'This limit is used for this feature instead of the provider default.'"></small>
               </label>
-              <label class="provider-form-field" x-cloak x-show="capabilitySupportsThinking(selectedFeatureCapability)">
+              <label class="form-field" x-cloak x-show="capabilitySupportsThinking(selectedFeatureCapability)">
                 <span>Thinking mode for this feature</span>
                 <select :value="featureThinkingModeOverride(selectedFeatureCapability) ?? ''" @change="writeFeatureThinkingModeOverride(selectedFeatureCapability, $event.target.value)">
                   <option value="">Inherit provider setting</option>
@@ -308,7 +309,7 @@
               <template x-if="featureFieldsFor(selectedFeatureCapability).length > 0">
                 <div class="settings-feature-primary-field">
                   <template x-for="field in featureFieldsFor(selectedFeatureCapability).slice(0, 1)" :key="field.key">
-                    <label class="provider-form-field">
+                    <label class="form-field">
                       <span x-text="field.label"></span>
                       <template x-if="field.input === 'select'">
                         <select @change="writeFieldDraft(field, $event.target.value)">
@@ -325,7 +326,7 @@
               </template>
             </div>
             <template x-if="selectedFeatureCapability === 'textToSpeech'">
-              <label class="provider-form-field settings-feature-voice">
+              <label class="form-field settings-feature-voice">
                 <span>Voice for this feature</span>
                 <input placeholder="Use provider default" type="text" :value="featureVoiceOverride() ?? ''" @input="writeFeatureVoiceOverride($event.target.value)" />
                 <small x-text="featureVoiceOverride() === null ? 'The provider default voice is used.' : 'This voice is used instead of the provider default.'"></small>
@@ -361,7 +362,7 @@
                       <p>Saving creates a new format. The original remains unchanged.</p>
                     </header>
                     <div class="settings-input-format-guidance">
-                      <strong>Match the search model's instructions</strong>
+                      <strong>Match the embedding model's instructions</strong>
                       <span>The document template prepares each searchable document section. The query template prepares each question or semantic search.</span>
                       <span>Use the exact prefixes required by the model and place one <code>{{text}}</code> where CiteLoom should insert the document section or question.</span>
                       <a class="text-action inline-help" data-view="help" href="./index.html?view=help#embedding-input-formats" hx-get="./fragments/help.html" hx-push-url="./index.html?view=help#embedding-input-formats">View examples and step-by-step guidance</a>
@@ -404,9 +405,9 @@
                   <div class="settings-field-heading"><label :for="`setting-${field.key}`" x-text="field.label"></label><span class="setting-source" :class="fieldSourceClass(field)" x-text="fieldSourceLabel(field)"></span></div>
                   <p x-text="field.description"></p>
                   <div class="settings-control-row">
-                    <template x-if="field.input === 'boolean'"><select :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value === 'true')"><option value="true">Enabled</option><option value="false">Disabled</option></select></template>
-                    <template x-if="field.input === 'select'"><select :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template></select></template>
-                    <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input :id="`setting-${field.key}`" :max="field.max" :min="field.min" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
+                    <template x-if="field.input === 'boolean'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value === 'true')"><option value="true">Enabled</option><option value="false">Disabled</option></select></template>
+                    <template x-if="field.input === 'select'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template></select></template>
+                    <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input class="form-control" :id="`setting-${field.key}`" :max="field.max" :min="field.min" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
                     <span class="setting-unit" x-show="field.unit !== null" x-text="field.unit"></span>
                     <button class="text-button" type="button" :disabled="fieldResetDisabled(field)" @click="resetField(field)">Reset</button>
                   </div>
@@ -501,18 +502,18 @@
               <p>Set where CiteLoom connects, how many requests it may send at once, and how it signs in.</p>
             </header>
             <div class="provider-form-grid settings-provider-connection-grid">
-              <label class="provider-form-field">
+              <label class="form-field">
                 <span>Provider base URL</span>
                 <input placeholder="Enter the provider base URL" type="url" :disabled="providerUsesDeviceAuth()" :value="selectedProviderConnection?.configuration.baseUrl ?? ''" @input="writeProviderBaseUrl($event.target.value)" />
                 <small x-show="providerUsesDeviceAuth()">Fixed to the ChatGPT Codex subscription endpoint.</small>
                 <small x-show="!providerUsesDeviceAuth()" x-text="selectedProviderConnection?.configuration.baseUrl === null ? 'Enter the address used to reach this provider.' : 'Used by all features unless a feature has its own URL.'"></small>
               </label>
-              <label class="provider-form-field">
+              <label class="form-field">
                 <span>Maximum parallel requests</span>
                 <input max="16" min="1" step="1" type="number" :disabled="providerAdaptiveContextEnabled()" :value="providerMaximumParallelRequests() ?? 1" @change="writeProviderMaximumParallelRequests($event.target.value)" />
                 <small>Higher values may reduce waiting when the provider has spare capacity, but they increase load and can cause rate-limit errors. This does not improve answer quality.</small>
               </label>
-              <label class="provider-form-field" x-cloak x-show="providerSupportsThinking()">
+              <label class="form-field" x-cloak x-show="providerSupportsThinking()">
                 <span>Default thinking mode</span>
                 <select :value="providerThinkingMode()" @change="writeProviderThinkingMode($event.target.value)">
                   <option value="disabled">Disabled</option>
@@ -521,12 +522,12 @@
                 </select>
                 <small>Used for this provider's language features unless a feature has its own setting. Disabled is the default.</small>
               </label>
-              <div class="provider-form-field" x-cloak x-show="selectedProviderId === 'ollama'">
+              <div class="form-field" x-cloak x-show="selectedProviderId === 'ollama'">
                 <span>Automatic context size</span>
-                <label class="setting-toggle">
+                <label class="toggle-control settings-toggle-control">
                   <input type="checkbox" :checked="providerAdaptiveContextEnabled()" @change="writeProviderAdaptiveContextEnabled($event.target.checked)" />
-                  <span aria-hidden="true"></span>
-                  <strong x-text="providerAdaptiveContextEnabled() ? 'Enabled' : 'Off'"></strong>
+                  <span class="toggle-track" aria-hidden="true"><span></span></span>
+                  <span><strong x-text="providerAdaptiveContextEnabled() ? 'Enabled' : 'Off'"></strong></span>
                 </label>
                 <small>Lets CiteLoom give a request more input space when Ollama needs it. This limits the provider to one request at a time, and the Ollama server must use <code>OLLAMA_NUM_PARALLEL=1</code>. Turn it off to always use the configured input limit.</small>
               </div>
@@ -556,7 +557,7 @@
                   <label for="provider-api-token">API token</label>
                   <small>Used by this provider's features unless a feature has its own token. Local providers often do not need one.</small>
                 </div>
-                <div class="provider-secret-control">
+                <div class="form-field provider-secret-control">
                   <input id="provider-api-token" autocomplete="new-password" data-1p-ignore="true" data-bwignore="true" data-lpignore="true" name="provider-credential-replacement" type="password" :placeholder="selectedProviderCredentialPlaceholder()" :value="credentialDrafts[selectedProviderId] ?? ''" @input="writeProviderCredential($event.target.value)" />
                   <button class="button secondary" type="button" :disabled="providerCredentialClearDisabled()" @click="clearProviderCredential()">Clear</button>
                 </div>
@@ -661,22 +662,22 @@
                     </div>
 
                     <div class="settings-provider-inline-fields">
-                      <label class="provider-form-field">
+                      <label class="form-field">
                         <span>Default model</span>
                         <input placeholder="Enter a provider model ID" type="text" :list="selectedProviderId === 'openai-codex' ? 'openai-codex-models' : null" :value="providerCapabilityModel(entry.capability) ?? ''" @input="writeProviderCapabilityModel(entry.capability, $event.target.value)" />
                         <small x-show="providerCapabilityModel(entry.capability) === null">No default model configured.</small>
                       </label>
-                      <label class="provider-form-field" x-show="capabilityHasModelContext(entry.capability)">
+                      <label class="form-field" x-show="capabilityHasModelContext(entry.capability)">
                         <span>Maximum input tokens</span>
                         <input min="1" placeholder="Enter the model limit" step="1" type="number" :value="providerCapabilityContextCapacityTokens(entry.capability) ?? ''" @change="writeProviderCapabilityContextCapacityTokens(entry.capability, $event.target.value)" />
                         <small>The largest input this model accepts, measured in tokens.</small>
                       </label>
-                      <label class="provider-form-field" x-show="entry.capability === 'textToSpeech'">
+                      <label class="form-field" x-show="entry.capability === 'textToSpeech'">
                         <span>Default voice</span>
                         <input placeholder="Enter a provider voice" type="text" :value="providerDefaultVoice() ?? ''" @input="writeProviderDefaultVoice($event.target.value)" />
                         <small x-show="providerDefaultVoice() === null">No default voice configured.</small>
                       </label>
-                      <label class="provider-form-field" x-show="selectedProviderId === 'custom'">
+                      <label class="form-field" x-show="selectedProviderId === 'custom'">
                         <span>Protocol</span>
                         <select :disabled="entry.capability === 'reranking'" :value="providerAdapter(entry.capability)" @change="writeProviderAdapter(entry.capability, $event.target.value)">
                           <template x-for="option in adapterOptions(entry.capability)" :key="option.value">
@@ -684,7 +685,7 @@
                           </template>
                         </select>
                       </label>
-                      <div class="provider-form-field settings-provider-override-field" x-show="!providerUsesDeviceAuth()">
+                      <div class="form-field settings-provider-override-field" x-show="!providerUsesDeviceAuth()">
                         <span class="settings-provider-field-heading">
                           <label :for="`provider-${selectedProviderId}-${entry.capability}-base-url`">URL for this feature</label>
                           <button
@@ -753,7 +754,7 @@
 
     <template x-if="!browsingAreas &amp;&amp; selectedArea !== 'Application Features' &amp;&amp; selectedArea !== 'Providers' &amp;&amp; selectedArea !== 'Startup and deployment'">
     <section class="settings-search-results settings-feature-workbench settings-runtime-workbench" aria-live="polite">
-      <div class="settings-empty-results" x-show="filteredFields.length === 0">
+      <div class="empty-state settings-empty-results" x-show="filteredFields.length === 0">
         <svg aria-hidden="true" class="citeloom-icon">
           <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
         </svg>
@@ -772,26 +773,39 @@
           <aside class="settings-feature-sidebar settings-runtime-sidebar">
             <header><h2 x-text="resultLabel()"></h2><p x-text="areaDescription()"></p></header>
             <nav aria-label="Application settings">
-              <template x-for="field in filteredFields" :key="field.key">
-                <button type="button" :aria-current="field.key === activeRuntimeField()?.key ? 'page' : null" :class="{ active: field.key === activeRuntimeField()?.key }" @click="selectRuntimeField(field.key)">
+              <template x-for="panel in filteredRuntimePanels" :key="panel.id">
+                <button type="button" :aria-current="panel.id === activeRuntimePanel()?.id ? 'page' : null" :class="{ active: panel.id === activeRuntimePanel()?.id }" @click="selectRuntimePanel(panel.id)">
                   <span class="settings-feature-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg></span>
-                  <span class="settings-feature-nav-copy"><span><strong x-text="field.label"></strong><small x-text="fieldSourceLabel(field)"></small></span><span x-text="field.description"></span></span>
+                  <span class="settings-feature-nav-copy"><span><strong x-text="panel.label"></strong><small x-text="runtimePanelBadgeLabel(panel)"></small></span><span x-text="panel.description"></span></span>
                 </button>
               </template>
             </nav>
           </aside>
 
-          <template x-if="activeRuntimeField() !== null">
+          <template x-if="activeRuntimePanel() !== null">
           <section class="settings-feature-editor settings-runtime-editor">
-            <template x-for="field in [activeRuntimeField()]" :key="field.key">
+            <template x-for="panel in [activeRuntimePanel()]" :key="panel.id">
             <div>
-              <header class="settings-feature-editor-heading"><div><span><h2 x-text="field.label"></h2><small x-text="field.group"></small></span><p x-text="field.description"></p></div><span class="setting-source" :class="fieldSourceClass(field)" x-text="fieldSourceLabel(field)"></span></header>
-              <section class="settings-feature-step"><header><span>1</span><h3>Setting value</h3><p>Change the value used by new requests.</p></header><div class="settings-runtime-control">
-                <template x-if="field.input === 'boolean'"><select :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value === 'true')"><option value="true">Enabled</option><option value="false">Disabled</option></select></template>
-                <template x-if="field.input === 'select'"><select :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template></select></template>
-                <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input :autocomplete="field.sensitive ? 'new-password' : 'off'" :data-1p-ignore="field.sensitive ? 'true' : null" :data-bwignore="field.sensitive ? 'true' : null" :data-lpignore="field.sensitive ? 'true' : null" :id="`setting-${field.key}`" :max="field.max" :min="field.min" :name="`setting-${field.key}`" :placeholder="field.sensitive &amp;&amp; field.configured ? 'Configured' : ''" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
-                <span class="setting-unit" x-show="field.unit !== null" x-text="field.unit"></span><button class="text-button" type="button" :disabled="fieldResetDisabled(field)" @click="resetField(field)">Reset to default</button>
-              </div><small class="settings-runtime-credential-note" x-show="fieldCredentialMessageVisible(field)">A credential is configured. Enter a new value to replace it.</small></section>
+              <header class="settings-feature-editor-heading"><div><span><h2 x-text="panel.label"></h2><small x-text="panel.fields[0].group"></small></span><p x-text="panel.description"></p></div><span class="setting-source" :class="runtimePanelBadgeClass(panel)" x-text="runtimePanelBadgeLabel(panel)"></span></header>
+              <section class="settings-feature-step">
+                <header><span>1</span><h3 x-text="panel.fields.length === 1 ? 'Setting value' : 'Setting values'"></h3><p x-text="panel.fields.length === 1 ? 'Change the value used by new requests.' : 'Change the values used by new requests.'"></p></header>
+                <div class="application-feature-settings settings-runtime-panel-fields">
+                  <template x-for="field in panel.fields" :key="field.key">
+                    <div class="settings-field">
+                      <div class="settings-field-heading"><label :for="`setting-${field.key}`" x-text="field.label"></label><span class="setting-source" :class="fieldSourceClass(field)" x-text="fieldSourceLabel(field)"></span></div>
+                      <p x-show="panel.fields.length > 1" x-text="field.description"></p>
+                      <div class="settings-control-row">
+                        <template x-if="field.input === 'boolean'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value === 'true')"><option value="true">Enabled</option><option value="false">Disabled</option></select></template>
+                        <template x-if="field.input === 'select'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template></select></template>
+                        <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input class="form-control" :autocomplete="field.sensitive ? 'new-password' : 'off'" :data-1p-ignore="field.sensitive ? 'true' : null" :data-bwignore="field.sensitive ? 'true' : null" :data-lpignore="field.sensitive ? 'true' : null" :id="`setting-${field.key}`" :max="field.max" :min="field.min" :name="`setting-${field.key}`" :placeholder="field.sensitive &amp;&amp; field.configured ? 'Configured' : ''" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
+                        <span class="setting-unit" x-show="field.unit !== null" x-text="field.unit"></span>
+                        <button class="text-button" type="button" :disabled="fieldResetDisabled(field)" @click="resetField(field)">Reset to default</button>
+                      </div>
+                      <small class="settings-runtime-credential-note" x-show="fieldCredentialMessageVisible(field)">A credential is configured. Enter a new value to replace it.</small>
+                    </div>
+                  </template>
+                </div>
+              </section>
               <section class="settings-feature-step">
                 <header>
                   <span>2</span>
@@ -799,14 +813,9 @@
                   <p>How this setting can affect results, speed, or computer use.</p>
                 </header>
                 <div class="settings-resolved-result settings-runtime-guidance">
-                  <div>
-                    <span>Current value comes from</span>
-                    <strong x-text="fieldSourceLabel(field)"></strong>
-                  </div>
-                  <div>
-                    <span>Changing this setting</span>
-                    <strong x-text="field.changeExample"></strong>
-                  </div>
+                  <template x-for="field in panel.fields" :key="field.key">
+                    <div><span x-text="field.label"></span><strong x-text="field.changeExample"></strong></div>
+                  </template>
                 </div>
               </section>
               <footer class="settings-feature-footer"><span :class="{ changed: changeCount > 0 }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><strong x-text="changeSummaryLabel()"></strong></span><div><button class="button secondary" type="button" :disabled="saving" @click="resetAll()">Reset</button><button class="button primary" type="button" :disabled="!canSave" @click="saveChanges()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="saveLabel()"></span></button></div></footer>

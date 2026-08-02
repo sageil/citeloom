@@ -32,7 +32,7 @@ describe("runtime setting contract", () => {
     );
   });
 
-  it("shows the relationship between the retrieval counts without fixed maximums", () => {
+  it("groups the unbounded retrieval counts in one search-size panel", () => {
     const definitions = new Map(
       runtimeSettingDefinitions.map((definition) => [definition.key, definition]),
     );
@@ -42,17 +42,19 @@ describe("runtime setting contract", () => {
       unit: "sections",
     });
     expect(definitions.get("retrievalCandidates")).not.toHaveProperty("max");
-    expect(definitions.get("retrievalCandidates")?.description).toContain(
-      "must be at least Sections used in answers",
-    );
+    expect(definitions.get("retrievalCandidates")?.panel).toMatchObject({
+      id: "search-size",
+      label: "Search size",
+    });
     expect(definitions.get("topK")).toMatchObject({
       min: 1,
       unit: "sections",
     });
     expect(definitions.get("topK")).not.toHaveProperty("max");
-    expect(definitions.get("topK")?.description).toContain(
-      "cannot exceed Document sections searched",
-    );
+    expect(definitions.get("topK")?.panel).toMatchObject({
+      id: "search-size",
+      label: "Search size",
+    });
   });
 });
 

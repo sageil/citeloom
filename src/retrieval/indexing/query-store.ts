@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { z } from "zod";
 
-import { mapWithConcurrency, type TaskScheduler } from "../../shared/concurrency.js";
+import type { TaskScheduler } from "../../shared/concurrency.js";
 import type {
   EmbeddingSpaceConfig,
   RankFusionConfig,
@@ -612,23 +612,24 @@ export async function queryRetrievalCandidateRankings(
   abortSignal: AbortSignal,
   runTelemetry: RunTelemetry = noopRunTelemetry,
 ): Promise<RetrievalCandidateRankings> {
-  const results = await mapRetrievalVariants(
-    queries,
-    config.variantConcurrency,
-    abortSignal,
-    async (query) => {
-      const rows = await queryRetrievalCandidates(
-        database,
-        queryExecutor,
-        space,
-        query,
-        config,
-        scopeTargets,
-        runTelemetry,
-      );
-      return decodeRetrievalCandidateRankings(rows);
-    },
-  );
+  const pendingResults: Array<Promise<{
+    dense: DenseCandidate[];
+    lexical: LexicalCandidate[];
+  }>> = [];
+  for (const query of queries) {
+    abortSignal.throwIfAborted();
+    const pendingResult = queryRetrievalCandidates(
+      database,
+      queryExecutor,
+      space,
+      query,
+      config,
+      scopeTargets,
+      runTelemetry,
+    ).then(decodeRetrievalCandidateRankings);
+    pendingResults.push(pendingResult);
+  }
+  const results = await Promise.all(pendingResults);
   const denseRankings: DenseCandidate[][] = [];
   const lexicalRankings: LexicalCandidate[][] = [];
   for (const result of results) {
@@ -636,18 +637,6 @@ export async function queryRetrievalCandidateRankings(
     lexicalRankings.push(result.lexical);
   }
   return { dense: denseRankings, lexical: lexicalRankings };
-}
-
-export async function mapRetrievalVariants<Input, Output>(
-  inputs: readonly Input[],
-  concurrency: number,
-  abortSignal: AbortSignal,
-  retrieve: (input: Input, index: number) => Promise<Output>,
-): Promise<Output[]> {
-  return mapWithConcurrency(inputs, concurrency, async (input, index) => {
-    abortSignal.throwIfAborted();
-    return retrieve(input, index);
-  });
 }
 
 function decodeRetrievalCandidateRankings(

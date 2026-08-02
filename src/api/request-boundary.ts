@@ -194,7 +194,7 @@ const documentFileQuerySchema = z.object({
   sourceFile: sourceFileSchema,
 }).strict();
 const documentCatalogQuerySchema = z.object({
-  collection: z.string().min(1).max(80).default("all"),
+  collection: z.string().min(1).max(8_000).default("all"),
   page: z.coerce.number().int().positive().max(1_000_000).default(1),
   pageSize: z.enum(["25", "50", "100"]).default("25"),
   search: z.string().max(500).default(""),
@@ -1094,6 +1094,12 @@ function readUploadedExtension(filename: string): DocumentExtension {
 function decodeDocumentCollection(value: string): DocumentCollection {
   if (value === "all" || value === "uploads" || value === "untagged") {
     return { kind: value };
+  }
+  if (value.startsWith("tags:")) {
+    const tags = decodeTags(value.slice(5));
+    if (tags.length > 0) {
+      return { kind: "tags", tags };
+    }
   }
   if (value.startsWith("tag:")) {
     const result = tagSchema.safeParse(value.slice(4));

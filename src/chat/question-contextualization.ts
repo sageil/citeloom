@@ -29,6 +29,11 @@ interface ContextualizationSettings {
   temperature: number;
 }
 
+interface ChatContextualizationResources {
+  model: InferenceModelRegistry["answer"];
+  timeoutMs: number;
+}
+
 const contextualizedChatQuestionSchema = z.discriminatedUnion("action", [
   z.object({
     candidates: z.array(z.string().trim().min(1)).describe(
@@ -69,18 +74,19 @@ export async function contextualizeChatQuestion(
   reportProgress: (message: string) => void,
   runTelemetry: RunTelemetry = noopRunTelemetry,
 ): Promise<ContextualizedChatQuestion> {
+  const resources = readChatContextualizationResources(models);
   const stage = runTelemetry.startStage({
     model: {
-      modelId: models.queryExpansion.modelId,
-      provider: models.queryExpansion.provider,
+      modelId: resources.model.modelId,
+      provider: resources.model.provider,
     },
     name: "query-contextualization",
     retrievalMode: null,
   });
   const finishMetric = models.metrics.start(
     "contextualize-query",
-    models.queryExpansion.provider,
-    models.queryExpansion.modelId,
+    resources.model.provider,
+    resources.model.modelId,
   );
   let inputTokens: number | null = null;
   let outputTokens: number | null = null;
@@ -100,6 +106,7 @@ export async function contextualizeChatQuestion(
     const runGeneration = (requestSignal: AbortSignal) => {
       return requestContextualizedQuestion(
         models,
+        resources,
         question,
         conversationTurns,
         requestSignal,
@@ -148,13 +155,14 @@ export async function contextualizeChatQuestion(
 
 async function requestContextualizedQuestion(
   models: InferenceModelRegistry,
+  resources: ChatContextualizationResources,
   question: string,
   conversationTurns: readonly AnswerConversationTurn[],
   abortSignal: AbortSignal,
   settings: ContextualizationSettings,
   recordCompletion: (completion: ContextualizationCompletion) => void,
 ) {
-  const timeoutMs = models.timeouts.queryExpansionMs;
+  const timeoutMs = resources.timeoutMs;
   const signals = createInferenceRequestSignal(timeoutMs, abortSignal);
   const telemetry = createInferenceTelemetryOptions(
     models,
@@ -175,7 +183,7 @@ async function requestContextualizedQuestion(
       abortSignal: signals.requestSignal,
       maxRetries: 1,
       messages,
-      model: models.queryExpansion,
+      model: resources.model,
       onFinish: (event) => {
         recordCompletion({
           finishReason: event.finishReason,
@@ -194,12 +202,21 @@ async function requestContextualizedQuestion(
   } catch (error: unknown) {
     throwInferenceRequestFailure(
       error,
-      "queryExpansion",
+      "chat",
       timeoutMs,
       signals.timeoutSignal,
       abortSignal,
     );
   }
+}
+
+function readChatContextualizationResources(
+  models: InferenceModelRegistry,
+): ChatContextualizationResources {
+  return {
+    model: models.chat ?? models.answer,
+    timeoutMs: models.timeouts.chatMs ?? models.timeouts.answerMs,
+  };
 }
 
 function buildContextualizationMessages(

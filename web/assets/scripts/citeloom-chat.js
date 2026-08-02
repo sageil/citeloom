@@ -10,6 +10,7 @@ import {
   readPositiveInteger,
   readString,
 } from "./citeloom-boundaries.js";
+import { readDocumentCatalog } from "./citeloom-documents.js";
 import { dispatchNotice } from "./citeloom-notices.js";
 
 const chatRunStates = Object.freeze([
@@ -44,6 +45,9 @@ const chatVerificationStates = Object.freeze([
   "completed",
   "failed",
 ]);
+const chatSwitcherRequestEvent = "citeloom:chat-switcher-request";
+const chatTitleChangeEvent = "citeloom:chat-title-change";
+const newChatRequestEvent = "citeloom:new-chat-request";
 
 function readChatSummaries(value) {
   return readArray(value, "chat list").map((item) => {
@@ -112,6 +116,21 @@ function readChatScope(value) {
     tags: readArray(scope.tags, "scope tags")
       .map((tag) => readNonEmptyString(tag, "scope tag")),
   };
+}
+
+function appendUniqueNewChatDocuments(current, additions) {
+  const documents = [...current];
+  const sourceFiles = new Set(
+    current.map((document) => document.sourceFile),
+  );
+  for (const document of additions) {
+    if (sourceFiles.has(document.sourceFile)) {
+      continue;
+    }
+    sourceFiles.add(document.sourceFile);
+    documents.push(document);
+  }
+  return documents;
 }
 
 function readChatRun(value) {
@@ -366,26 +385,148 @@ function readMessageResponse(value) {
 export function registerPage(alpine) {
   alpine.data("citeloomChatPage", () => ({
     busy: false,
+    chatSearchQuery: "",
+    chatSwitcherActiveIndex: 0,
+    chatSwitcherOpen: false,
+    chatSwitcherRequestListener: null,
+    chatSwitcherReturnFocus: null,
     conversation: null,
+    conversationMenuOpen: false,
     conversations: [],
     draft: "",
     errorMessage: "",
     loading: true,
+    newChatCatalogController: null,
+    newChatCatalogLoading: false,
+    newChatDocumentOptions: [],
+    newChatDocumentPage: 1,
+    newChatDocumentSearch: "",
+    newChatDocumentTotal: 0,
+    newChatErrorMessage: "",
+    newChatIncludedSearch: "",
     newChatOpen: false,
+    newChatPreviewController: null,
+    newChatPreviewDocuments: [],
+    newChatPreviewLoading: false,
+    newChatPreviewPage: 1,
+    newChatPreviewTotal: 0,
+    newChatRequestListener: null,
+    newChatScopeMode: "all",
+    newChatSelectedDocuments: [],
+    newChatSelectedTags: [],
+    newChatTagOptions: [],
+    newChatTagSearch: "",
     newChatTitle: "",
+    newChatTotalDocuments: 0,
     pendingContent: "",
     selectedCitation: null,
     verificationRefreshTimer: null,
 
+    get filteredConversations() {
+      const query = this.chatSearchQuery.trim().toLocaleLowerCase();
+      if (query === "") {
+        return this.conversations.slice(0, 6);
+      }
+      return this.conversations.filter((conversation) => {
+        return conversation.title.toLocaleLowerCase().includes(query);
+      }).slice(0, 8);
+    },
+
+    get filteredNewChatTags() {
+      const query = this.newChatTagSearch.trim().toLocaleLowerCase();
+      if (query === "") {
+        return this.newChatTagOptions;
+      }
+      return this.newChatTagOptions.filter((facet) => {
+        return facet.tag.toLocaleLowerCase().includes(query);
+      });
+    },
+
+    get newChatCanCreate() {
+      if (this.newChatTitle.trim() === "") {
+        return false;
+      }
+      if (this.newChatScopeMode === "tags") {
+        return this.newChatSelectedTags.length > 0;
+      }
+      if (this.newChatScopeMode === "documents") {
+        return this.newChatSelectedDocuments.length > 0;
+      }
+      return true;
+    },
+
+    get newChatCanLoadMoreDocuments() {
+      return this.newChatDocumentOptions.length < this.newChatDocumentTotal;
+    },
+
+    get newChatCanLoadMorePreview() {
+      if (this.newChatScopeMode === "documents") {
+        return false;
+      }
+      return this.newChatPreviewDocuments.length < this.newChatPreviewTotal;
+    },
+
+    get newChatIncludedDocuments() {
+      if (this.newChatScopeMode !== "documents") {
+        return this.newChatPreviewDocuments;
+      }
+      const query = this.newChatIncludedSearch.trim().toLocaleLowerCase();
+      if (query === "") {
+        return this.newChatSelectedDocuments;
+      }
+      return this.newChatSelectedDocuments.filter((document) => {
+        return this.sourceTitle(document.sourceFile)
+          .toLocaleLowerCase()
+          .includes(query);
+      });
+    },
+
+    get newChatIncludedTotal() {
+      if (this.newChatScopeMode === "documents") {
+        return this.newChatSelectedDocuments.length;
+      }
+      return this.newChatPreviewTotal;
+    },
+
     async initialize() {
+      this.chatSwitcherRequestListener = () => {
+        this.openChatSwitcher();
+      };
+      this.newChatRequestListener = () => {
+        this.openNewChat();
+      };
+      window.addEventListener(
+        chatSwitcherRequestEvent,
+        this.chatSwitcherRequestListener,
+      );
+      window.addEventListener(
+        newChatRequestEvent,
+        this.newChatRequestListener,
+      );
       await this.refreshConversations();
       if (this.conversations.length > 0) {
         await this.selectConversation(this.conversations[0].id);
+      } else {
+        this.broadcastConversationTitle();
       }
       this.loading = false;
     },
 
     destroy() {
+      if (this.chatSwitcherRequestListener !== null) {
+        window.removeEventListener(
+          chatSwitcherRequestEvent,
+          this.chatSwitcherRequestListener,
+        );
+      }
+      if (this.newChatRequestListener !== null) {
+        window.removeEventListener(
+          newChatRequestEvent,
+          this.newChatRequestListener,
+        );
+      }
+      this.newChatCatalogController?.abort();
+      this.newChatPreviewController?.abort();
       this.clearVerificationRefresh();
     },
 
@@ -405,6 +546,7 @@ export function registerPage(alpine) {
     async selectConversation(id) {
       this.clearVerificationRefresh();
       this.errorMessage = "";
+      this.conversationMenuOpen = false;
       this.selectedCitation = null;
       try {
         const response = await fetch(
@@ -415,6 +557,7 @@ export function registerPage(alpine) {
           "Chat",
           readChatConversation,
         );
+        this.broadcastConversationTitle();
         this.$nextTick(() => this.scrollToLatest());
         this.scheduleVerificationRefresh();
       } catch (error) {
@@ -423,31 +566,385 @@ export function registerPage(alpine) {
     },
 
     openNewChat() {
-      this.newChatTitle = "";
+      if (this.chatSwitcherOpen) {
+        this.closeChatSwitcher({ restoreFocus: false });
+      }
+      this.resetNewChatForm();
       this.newChatOpen = true;
       this.$nextTick(() => this.$refs.newChatTitle?.focus());
+      void this.loadNewChatDocumentOptions();
+      void this.loadNewChatPreview();
     },
 
     closeNewChat() {
       if (this.busy) {
         return;
       }
+      this.newChatCatalogController?.abort();
+      this.newChatPreviewController?.abort();
       this.newChatOpen = false;
+      this.resetNewChatForm();
+    },
+
+    resetNewChatForm() {
+      this.newChatCatalogController = null;
+      this.newChatCatalogLoading = false;
+      this.newChatDocumentOptions = [];
+      this.newChatDocumentPage = 1;
+      this.newChatDocumentSearch = "";
+      this.newChatDocumentTotal = 0;
+      this.newChatErrorMessage = "";
+      this.newChatIncludedSearch = "";
+      this.newChatPreviewController = null;
+      this.newChatPreviewDocuments = [];
+      this.newChatPreviewLoading = false;
+      this.newChatPreviewPage = 1;
+      this.newChatPreviewTotal = 0;
+      this.newChatScopeMode = "all";
+      this.newChatSelectedDocuments = [];
+      this.newChatSelectedTags = [];
+      this.newChatTagOptions = [];
+      this.newChatTagSearch = "";
       this.newChatTitle = "";
+      this.newChatTotalDocuments = 0;
+    },
+
+    setNewChatScopeMode(mode) {
+      if (!["all", "tags", "documents"].includes(mode)) {
+        return;
+      }
+      this.newChatScopeMode = mode;
+      this.newChatIncludedSearch = "";
+      this.newChatErrorMessage = "";
+      if (mode === "documents") {
+        this.newChatPreviewController?.abort();
+        this.newChatPreviewDocuments = [];
+        this.newChatPreviewPage = 1;
+        this.newChatPreviewTotal = 0;
+        return;
+      }
+      void this.loadNewChatPreview();
+    },
+
+    isNewChatTagSelected(tag) {
+      return this.newChatSelectedTags.includes(tag);
+    },
+
+    toggleNewChatTag(tag) {
+      this.newChatScopeMode = "tags";
+      if (this.isNewChatTagSelected(tag)) {
+        this.newChatSelectedTags = this.newChatSelectedTags.filter((item) => {
+          return item !== tag;
+        });
+      } else {
+        this.newChatSelectedTags = [...this.newChatSelectedTags, tag].sort();
+      }
+      this.newChatIncludedSearch = "";
+      this.newChatErrorMessage = "";
+      void this.loadNewChatPreview();
+    },
+
+    isNewChatDocumentSelected(sourceFile) {
+      return this.newChatSelectedDocuments.some((document) => {
+        return document.sourceFile === sourceFile;
+      });
+    },
+
+    toggleNewChatDocument(document) {
+      this.newChatScopeMode = "documents";
+      if (this.isNewChatDocumentSelected(document.sourceFile)) {
+        this.removeNewChatDocument(document.sourceFile);
+        return;
+      }
+      this.newChatSelectedDocuments = [
+        ...this.newChatSelectedDocuments,
+        document,
+      ].sort((left, right) => {
+        return this.sourceTitle(left.sourceFile).localeCompare(
+          this.sourceTitle(right.sourceFile),
+        );
+      });
+      this.newChatErrorMessage = "";
+    },
+
+    removeNewChatDocument(sourceFile) {
+      this.newChatSelectedDocuments = this.newChatSelectedDocuments.filter(
+        (document) => document.sourceFile !== sourceFile,
+      );
+    },
+
+    clearNewChatSelection() {
+      this.newChatScopeMode = "all";
+      this.newChatSelectedDocuments = [];
+      this.newChatSelectedTags = [];
+      this.newChatIncludedSearch = "";
+      this.newChatErrorMessage = "";
+      void this.loadNewChatPreview();
+    },
+
+    newChatScope() {
+      if (this.newChatScopeMode === "tags") {
+        return {
+          kind: "tags",
+          tags: [...this.newChatSelectedTags],
+        };
+      }
+      if (this.newChatScopeMode === "documents") {
+        return {
+          kind: "sourceFiles",
+          sourceFiles: this.newChatSelectedDocuments.map((document) => {
+            return document.sourceFile;
+          }),
+        };
+      }
+      return { kind: "all" };
+    },
+
+    async loadNewChatDocumentOptions(options = {}) {
+      const append = options.append === true;
+      const page = append ? this.newChatDocumentPage + 1 : 1;
+      this.newChatCatalogController?.abort();
+      const controller = new AbortController();
+      this.newChatCatalogController = controller;
+      this.newChatCatalogLoading = true;
+      const parameters = new URLSearchParams({
+        collection: "all",
+        page: String(page),
+        pageSize: "100",
+        search: this.newChatDocumentSearch.trim(),
+        sort: "name-asc",
+        status: "queryable",
+        tag: "",
+      });
+      try {
+        const response = await fetch(`/api/documents?${parameters.toString()}`, {
+          headers: { accept: "application/json" },
+          signal: controller.signal,
+        });
+        const catalog = await readJsonResponse(
+          response,
+          "Chat documents",
+          readDocumentCatalog,
+        );
+        if (controller.signal.aborted) {
+          return;
+        }
+        this.newChatDocumentOptions = append
+          ? appendUniqueNewChatDocuments(
+            this.newChatDocumentOptions,
+            catalog.documents,
+          )
+          : catalog.documents;
+        this.newChatDocumentPage = catalog.page;
+        this.newChatDocumentTotal = catalog.total;
+        this.newChatTagOptions = catalog.facets.queryableTags;
+        this.newChatTotalDocuments = catalog.facets.queryable;
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          this.newChatErrorMessage = error instanceof Error
+            ? error.message
+            : "Documents could not be loaded.";
+        }
+      } finally {
+        if (this.newChatCatalogController === controller) {
+          this.newChatCatalogController = null;
+          this.newChatCatalogLoading = false;
+        }
+      }
+    },
+
+    async loadNewChatPreview(options = {}) {
+      if (this.newChatScopeMode === "documents") {
+        return;
+      }
+      if (
+        this.newChatScopeMode === "tags"
+        && this.newChatSelectedTags.length === 0
+      ) {
+        this.newChatPreviewController?.abort();
+        this.newChatPreviewDocuments = [];
+        this.newChatPreviewPage = 1;
+        this.newChatPreviewTotal = 0;
+        return;
+      }
+      const append = options.append === true;
+      const page = append ? this.newChatPreviewPage + 1 : 1;
+      this.newChatPreviewController?.abort();
+      const controller = new AbortController();
+      this.newChatPreviewController = controller;
+      this.newChatPreviewLoading = true;
+      const collection = this.newChatScopeMode === "tags"
+        ? `tags:${this.newChatSelectedTags.join(",")}`
+        : "all";
+      const parameters = new URLSearchParams({
+        collection,
+        page: String(page),
+        pageSize: "100",
+        search: this.newChatIncludedSearch.trim(),
+        sort: "name-asc",
+        status: "queryable",
+        tag: "",
+      });
+      try {
+        const response = await fetch(`/api/documents?${parameters.toString()}`, {
+          headers: { accept: "application/json" },
+          signal: controller.signal,
+        });
+        const catalog = await readJsonResponse(
+          response,
+          "Chat document preview",
+          readDocumentCatalog,
+        );
+        if (controller.signal.aborted) {
+          return;
+        }
+        this.newChatPreviewDocuments = append
+          ? appendUniqueNewChatDocuments(
+            this.newChatPreviewDocuments,
+            catalog.documents,
+          )
+          : catalog.documents;
+        this.newChatPreviewPage = catalog.page;
+        this.newChatPreviewTotal = catalog.total;
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          this.newChatErrorMessage = error instanceof Error
+            ? error.message
+            : "The included documents could not be loaded.";
+        }
+      } finally {
+        if (this.newChatPreviewController === controller) {
+          this.newChatPreviewController = null;
+          this.newChatPreviewLoading = false;
+        }
+      }
+    },
+
+    newChatDocumentTags(document) {
+      return document.tags.slice(0, 2);
+    },
+
+    toggleChatSwitcher() {
+      if (this.chatSwitcherOpen) {
+        this.closeChatSwitcher();
+        return;
+      }
+      this.openChatSwitcher();
+    },
+
+    openChatSwitcher() {
+      if (this.newChatOpen) {
+        return;
+      }
+      const activeElement = document.activeElement;
+      this.chatSwitcherReturnFocus = activeElement instanceof HTMLElement
+        ? activeElement
+        : null;
+      this.chatSearchQuery = "";
+      this.chatSwitcherActiveIndex = this.activeConversationIndex();
+      this.chatSwitcherOpen = true;
+      this.$nextTick(() => this.$refs.chatSwitcherSearch?.focus());
+    },
+
+    closeChatSwitcher(options = {}) {
+      if (!this.chatSwitcherOpen) {
+        return;
+      }
+      const restoreFocus = options.restoreFocus !== false;
+      const returnFocus = this.chatSwitcherReturnFocus;
+      this.chatSwitcherOpen = false;
+      this.chatSearchQuery = "";
+      this.chatSwitcherActiveIndex = 0;
+      this.chatSwitcherReturnFocus = null;
+      if (restoreFocus && returnFocus instanceof HTMLElement) {
+        this.$nextTick(() => returnFocus.focus());
+      }
+    },
+
+    activeConversationIndex() {
+      const activeId = this.conversation?.id;
+      if (activeId === undefined) {
+        return 0;
+      }
+      const index = this.filteredConversations.findIndex((conversation) => {
+        return conversation.id === activeId;
+      });
+      return index < 0 ? 0 : index;
+    },
+
+    resetChatSwitcherSelection() {
+      this.chatSwitcherActiveIndex = this.filteredConversations.length === 0
+        ? -1
+        : 0;
+    },
+
+    moveChatSwitcherSelection(offset) {
+      const conversationCount = this.filteredConversations.length;
+      if (conversationCount === 0) {
+        this.chatSwitcherActiveIndex = -1;
+        return;
+      }
+      const currentIndex = this.chatSwitcherActiveIndex < 0
+        ? 0
+        : this.chatSwitcherActiveIndex;
+      this.chatSwitcherActiveIndex = (
+        currentIndex + offset + conversationCount
+      ) % conversationCount;
+    },
+
+    async selectActiveChatFromSwitcher() {
+      const conversation = this.filteredConversations[
+        this.chatSwitcherActiveIndex
+      ];
+      if (conversation === undefined) {
+        return;
+      }
+      await this.selectConversationFromSwitcher(conversation.id);
+    },
+
+    async selectConversationFromSwitcher(id) {
+      await this.selectConversation(id);
+      this.closeChatSwitcher({ restoreFocus: false });
+      this.$nextTick(() => this.$refs.messageComposer?.focus());
+    },
+
+    chatSwitcherOptionId(index) {
+      return `chat-switcher-option-${index}`;
+    },
+
+    chatSwitcherActiveDescendant() {
+      if (this.chatSwitcherActiveIndex < 0) {
+        return null;
+      }
+      return this.chatSwitcherOptionId(this.chatSwitcherActiveIndex);
+    },
+
+    broadcastConversationTitle() {
+      const title = this.conversation?.title ?? "Chat";
+      window.dispatchEvent(new CustomEvent(chatTitleChangeEvent, {
+        detail: title,
+      }));
     },
 
     async createConversation() {
       const title = this.newChatTitle.trim();
       if (title === "") {
-        this.errorMessage = "Enter a chat title.";
+        this.newChatErrorMessage = "Enter a chat title.";
+        this.$nextTick(() => this.$refs.newChatTitle?.focus());
+        return;
+      }
+      if (!this.newChatCanCreate) {
+        this.newChatErrorMessage = this.newChatScopeMode === "tags"
+          ? "Select at least one tag."
+          : "Select at least one document.";
         return;
       }
       this.busy = true;
-      this.errorMessage = "";
+      this.newChatErrorMessage = "";
       try {
         const response = await fetch("/api/chat/conversations", {
           body: JSON.stringify({
-            scope: { kind: "all" },
+            scope: this.newChatScope(),
             title,
           }),
           headers: { "Content-Type": "application/json" },
@@ -459,11 +956,13 @@ export function registerPage(alpine) {
           readCreatedChat,
         );
         this.newChatOpen = false;
-        this.newChatTitle = "";
+        this.resetNewChatForm();
         await this.refreshConversations();
         await this.selectConversation(conversation.id);
       } catch (error) {
-        this.reportError(error, "The chat could not be created.");
+        this.newChatErrorMessage = error instanceof Error
+          ? error.message
+          : "The chat could not be created.";
       } finally {
         this.busy = false;
       }
@@ -489,6 +988,7 @@ export function registerPage(alpine) {
           await readJsonResponse(response, "Delete chat");
         }
         this.conversation = null;
+        this.broadcastConversationTitle();
         this.selectedCitation = null;
         this.clearVerificationRefresh();
         await this.refreshConversations();
@@ -693,6 +1193,41 @@ export function registerPage(alpine) {
       this.selectedCitation = null;
     },
 
+    toggleConversationMenu() {
+      this.conversationMenuOpen = !this.conversationMenuOpen;
+    },
+
+    scrollToEvidence() {
+      const evidenceSections = this.$root.querySelectorAll(
+        ".chat-answer-evidence",
+      );
+      const latestEvidence = evidenceSections[evidenceSections.length - 1];
+      if (latestEvidence instanceof HTMLElement) {
+        latestEvidence.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    },
+
+    statementSectionHeading(section) {
+      if (section === "key-points") {
+        return "Key findings";
+      }
+      if (section === "conflicting-evidence") {
+        return "Conflicting evidence";
+      }
+      return "Answer";
+    },
+
+    shouldShowStatementSectionHeading(message, statementIndex) {
+      const statement = message.answerDocument.statements[statementIndex];
+      if (statement === undefined || statement.section === "answer") {
+        return false;
+      }
+      const previousStatement = message.answerDocument.statements[
+        statementIndex - 1
+      ];
+      return previousStatement?.section !== statement.section;
+    },
+
     evidenceText(citation) {
       if (citation.evidence.kind === "text") {
         return citation.evidence.excerpt;
@@ -723,7 +1258,7 @@ export function registerPage(alpine) {
         return `${this.conversation.scope.documentIds.length} selected documents`;
       }
       if (this.conversation?.scope.kind === "sourceFiles") {
-        return `${this.conversation.scope.sourceFiles.length} selected files`;
+        return `${this.conversation.scope.sourceFiles.length} selected documents`;
       }
       return `Documents tagged ${this.conversation?.scope.tags.join(", ")}`;
     },
@@ -806,6 +1341,34 @@ export function registerPage(alpine) {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(new Date(readString(value, "chat time")));
+    },
+
+    formatRecency(value) {
+      const date = new Date(readString(value, "chat time"));
+      const today = new Date();
+      const dateDay = new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+      );
+      const todayDay = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+      );
+      const dayDifference = Math.round(
+        (todayDay.getTime() - dateDay.getTime()) / 86_400_000,
+      );
+      if (dayDifference === 0) {
+        return "Today";
+      }
+      if (dayDifference === 1) {
+        return "Yesterday";
+      }
+      return new Intl.DateTimeFormat(undefined, {
+        month: "short",
+        day: "numeric",
+      }).format(date);
     },
 
     scrollToLatest() {

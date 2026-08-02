@@ -27,7 +27,7 @@ interface ChatAnswerModelResponse {
   findings: ChatGroundedClaim[];
 }
 
-export const CHAT_ANSWER_RESPONSE_CONTRACT: AnswerResponseContract = {
+export const CHAT_ANSWER_RESPONSE: AnswerResponseContract = {
   createSchema: createChatAnswerModelResponseSchema,
   decode: decodeChatAnswerModelResponse,
   description:

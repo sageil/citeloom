@@ -108,12 +108,12 @@ export const runtimeSettingsSchema = z.object({
   queryExpansions: z.number().int().min(0).max(4),
   queryExpansionTemperature: z.number().min(0).max(2),
   answerTemperature: z.number().min(0).max(2),
+  chatTemperature: z.number().min(0).max(2),
   generationSeedMode: z.enum(["random", "stable"]),
   rerankDiscoveryMinimumScore: z.number().min(-1_000).max(1_000),
   rerankTimeoutSeconds: z.number().int().min(1).max(3_600),
   retrievalCandidates: z.number().int().min(1),
   retrievalChunkTargetTokens: z.number().int().positive(),
-  retrievalVariantConcurrency: z.number().int().min(1).max(16),
   retrievalWindowPolicy: z.literal("structured-token-v3"),
   retryBaseMs: z.number().int().min(100).max(3_600_000),
   rrfK: z.number().int().min(1).max(1_000),
@@ -140,7 +140,7 @@ export const runtimeSettingsSchema = z.object({
   if (settings.retrievalCandidates < settings.topK) {
     context.addIssue({
       code: "custom",
-      message: "Document sections searched must be greater than or equal to Sections used in answers",
+      message: "Sections considered must be greater than or equal to Sections used in answers",
       path: ["retrievalCandidates"],
     });
   }

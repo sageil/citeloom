@@ -147,7 +147,7 @@
         <button class="text-button" type="button" @click="clearFiles()">Clear</button>
       </div>
 
-      <div class="field-label tag-field">
+      <div class="form-field tag-field">
         <label for="ingestion-tags">Tags</label>
         <div class="tag-entry">
           <template x-for="tag in tags" :key="tag.toLocaleLowerCase()">
@@ -167,7 +167,7 @@
             @keydown.enter.prevent="commitTagDraft()"
           />
         </div>
-        <span id="ingestion-tags-help">Type a word to use as a tag and press Enter. Tags help you search a smaller part of your knowledge library instead of every document. Try legal or veterinary.</span>
+        <span class="field-help" id="ingestion-tags-help">Type a word to use as a tag and press Enter. Tags help you search a smaller part of your knowledge library instead of every document. Try legal or veterinary.</span>
       </div>
 
       <div class="toggle-row">

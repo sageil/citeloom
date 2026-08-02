@@ -393,12 +393,14 @@ export async function prepareRetrieval(
     "answer",
     workload,
   );
-  const queryExpansionScheduler = createRuntimeTaskScheduler(
-    config,
-    coordinator,
-    "queryExpansion",
-    workload,
-  );
+  const queryExpansionScheduler = config.retrieval.queryExpansions === 0
+    ? null
+    : createRuntimeTaskScheduler(
+      config,
+      coordinator,
+      "queryExpansion",
+      workload,
+    );
   const rerankingScheduler = config.retrieval.reranker === null
     ? null
     : createRuntimeTaskScheduler(
@@ -451,7 +453,9 @@ export async function prepareRetrievalWithRuntime(
     runtime.models,
     runtime.scheduler("answer", workload),
     runtime.scheduler("embedding", workload),
-    runtime.scheduler("queryExpansion", workload),
+    config.retrieval.queryExpansions === 0
+      ? null
+      : runtime.scheduler("queryExpansion", workload),
     config.retrieval.reranker === null
       ? null
       : runtime.scheduler("reranking", workload),
@@ -470,7 +474,7 @@ async function prepareRetrievalWithResources(
   models: InferenceModelRegistry,
   answerScheduler: TaskScheduler,
   embeddingScheduler: TaskScheduler,
-  queryExpansionScheduler: TaskScheduler,
+  queryExpansionScheduler: TaskScheduler | null,
   rerankingScheduler: TaskScheduler | null,
   question: QuestionInput,
   reportProgress: (message: string) => void,
@@ -592,7 +596,7 @@ export async function prepareRetrievalQueries(
   question: string,
   reportProgress: (message: string) => void,
   embeddingScheduler: TaskScheduler,
-  queryExpansionScheduler: TaskScheduler,
+  queryExpansionScheduler: TaskScheduler | null,
   abortSignal: AbortSignal,
   generationSettings: QueryExpansionGenerationSettings,
   runTelemetry: RunTelemetry = noopRunTelemetry,
@@ -617,7 +621,7 @@ export async function prepareRetrievalQueriesWithSeed(
   question: string,
   reportProgress: (message: string) => void,
   embeddingScheduler: TaskScheduler,
-  queryExpansionScheduler: TaskScheduler,
+  queryExpansionScheduler: TaskScheduler | null,
   abortSignal: AbortSignal,
   generationSeed: number,
   runTelemetry: RunTelemetry = noopRunTelemetry,
@@ -646,7 +650,7 @@ async function prepareQuestionRetrievalQueries(
   question: QuestionInput,
   reportProgress: (message: string) => void,
   embeddingScheduler: TaskScheduler,
-  queryExpansionScheduler: TaskScheduler,
+  queryExpansionScheduler: TaskScheduler | null,
   abortSignal: AbortSignal,
   generationSettings: QueryExpansionGenerationSettings | undefined,
   runTelemetry: RunTelemetry,
@@ -683,7 +687,7 @@ async function prepareRetrievalQuerySeedsWithGenerationSettings(
   seeds: readonly RetrievalQuerySeed[],
   reportProgress: (message: string) => void,
   embeddingScheduler: TaskScheduler,
-  queryExpansionScheduler: TaskScheduler,
+  queryExpansionScheduler: TaskScheduler | null,
   abortSignal: AbortSignal,
   generationSettings: QueryExpansionGenerationSettings | undefined,
   runTelemetry: RunTelemetry,
@@ -717,7 +721,7 @@ async function buildRetrievalQueries(
   question: string,
   seeds: readonly RetrievalQuerySeed[],
   reportProgress: (message: string) => void,
-  queryExpansionScheduler: TaskScheduler,
+  queryExpansionScheduler: TaskScheduler | null,
   abortSignal: AbortSignal,
   generationSettings: QueryExpansionGenerationSettings | undefined,
   runTelemetry: RunTelemetry,
@@ -728,6 +732,11 @@ async function buildRetrievalQueries(
   const querySeeds = [...seeds];
   if (config.retrieval.queryExpansions <= 0) {
     return querySeeds;
+  }
+  if (queryExpansionScheduler === null || models.queryExpansion === null) {
+    throw new Error(
+      "Query expansion is enabled but its model or scheduler is unavailable.",
+    );
   }
   reportProgress("Generating extra search queries");
   try {

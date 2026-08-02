@@ -1,44 +1,14 @@
-<section class="chat-feature-page" x-data="citeloomChatPage" x-init="initialize()">
-  <aside class="chat-sidebar" aria-label="Document chats">
-    <header>
-      <div>
-        <p class="section-kicker">Grounded conversations</p>
-        <h1>Chat</h1>
-      </div>
-      <button class="chat-icon-button" type="button" aria-label="Create chat" @click="openNewChat()">
-        <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
-      </button>
-    </header>
-
-    <button class="chat-new-button" type="button" @click="openNewChat()">
-      <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
-      <span>New document chat</span>
-    </button>
-
-    <p class="chat-sidebar-status" x-show="loading">Loading chats…</p>
-    <p class="chat-sidebar-status" x-show="!loading &amp;&amp; conversations.length === 0">No chats yet.</p>
-
-    <nav class="chat-conversation-list" aria-label="Saved chats">
-      <template x-for="item in conversations" :key="item.id">
-        <button
-          type="button"
-          :class="{ active: conversation?.id === item.id }"
-          :aria-current="conversation?.id === item.id ? 'page' : null"
-          @click="selectConversation(item.id)"
-        >
-          <strong x-text="item.title"></strong>
-          <span>
-            <span x-text="`${item.messageCount} messages`"></span>
-            <time :datetime="item.updatedAt" x-text="formatTime(item.updatedAt)"></time>
-          </span>
-        </button>
-      </template>
-    </nav>
-  </aside>
-
+<section
+  class="chat-feature-page"
+  x-data="citeloomChatPage"
+  x-init="initialize()"
+  @keydown.meta.k.window.prevent="toggleChatSwitcher()"
+  @keydown.ctrl.k.window.prevent="toggleChatSwitcher()"
+  @keydown.escape.window="chatSwitcherOpen &amp;&amp; closeChatSwitcher()"
+>
   <main class="chat-workspace">
     <template x-if="conversation === null">
-      <section class="chat-empty-state">
+      <section class="empty-state chat-empty-state">
         <span class="chat-empty-icon">
           <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
         </span>
@@ -51,19 +21,44 @@
     <template x-if="conversation !== null">
       <div class="chat-conversation">
         <header class="chat-conversation-header">
-          <div class="chat-conversation-heading">
-            <p class="section-kicker">Private to you in this workspace</p>
-            <h2 x-text="conversation.title"></h2>
-            <p x-text="scopeLabel()"></p>
+          <div class="chat-context-bar">
+            <div class="chat-context-scope">
+              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
+              <span x-text="scopeLabel()"></span>
+            </div>
             <div class="chat-grounding-note">
               <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-shield-check"></use></svg>
-              <p>Answers are grounded in your documents. CiteLoom may make mistakes - verify important information.</p>
+              <span>Grounded</span>
+            </div>
+            <div class="chat-context-actions">
+              <button class="chat-context-button" type="button" @click="scrollToEvidence()">
+                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg>
+                <span>Sources</span>
+              </button>
+              <div class="chat-conversation-menu" @click.outside="conversationMenuOpen = false">
+                <button
+                  class="chat-context-menu-button"
+                  type="button"
+                  aria-label="Conversation actions"
+                  :aria-expanded="conversationMenuOpen.toString()"
+                  @click="toggleConversationMenu()"
+                >
+                  <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-queue"></use></svg>
+                </button>
+                <div
+                  class="popover chat-conversation-menu-popover"
+                  x-cloak
+                  x-show="conversationMenuOpen"
+                  x-transition.opacity.duration.120ms
+                >
+                  <button type="button" :disabled="busy" @click="deleteConversation()">
+                    <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use></svg>
+                    <span>Delete chat</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-          <button class="chat-delete-button" type="button" :disabled="busy" @click="deleteConversation()">
-            <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use></svg>
-            <span>Delete chat</span>
-          </button>
         </header>
 
         <div class="chat-thread" x-ref="thread" aria-live="polite">
@@ -73,8 +68,14 @@
                 <div class="chat-message" :class="`chat-message-${message.role}`">
                   <template x-if="message.role === 'user'">
                     <div class="chat-user-message">
+                      <header>
+                        <span class="chat-user-avatar">
+                          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-user-edit"></use></svg>
+                        </span>
+                        <strong>You</strong>
+                        <time :datetime="message.createdAt" x-text="formatTime(message.createdAt)"></time>
+                      </header>
                       <p class="chat-user-content" x-text="message.content"></p>
-                      <time :datetime="message.createdAt" x-text="formatTime(message.createdAt)"></time>
                     </div>
                   </template>
 
@@ -82,7 +83,7 @@
                     <div class="chat-assistant-message">
                       <header>
                         <span class="chat-assistant-avatar">
-                          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
+                          <img alt="" aria-hidden="true" src="./assets/images/citeloom-mark.png" />
                         </span>
                         <strong>CiteLoom</strong>
                         <time :datetime="message.createdAt" x-text="formatTime(message.createdAt)"></time>
@@ -93,6 +94,10 @@
                         </template>
                         <template x-for="(statement, statementIndex) in message.answerDocument.statements" :key="`${message.id}-${statementIndex}`">
                           <div class="chat-statement" :class="`chat-statement-${statement.presentation}`">
+                            <h3
+                              x-show="shouldShowStatementSectionHeading(message, statementIndex)"
+                              x-text="statementSectionHeading(statement.section)"
+                            ></h3>
                             <p x-text="statement.content"></p>
                             <div
                               class="chat-statement-citations"
@@ -141,7 +146,7 @@
                 </div>
               </template>
 
-              <div class="chat-run-error" role="status" x-show="run.state === 'failed' || run.state === 'canceled'">
+              <div class="status-message chat-run-error error" role="status" x-show="run.state === 'failed' || run.state === 'canceled'">
                 <strong x-text="runStatusLabel(run)"></strong>
                 <span x-text="run.errorMessage ?? 'The request was canceled before a response was published.'"></span>
               </div>
@@ -161,13 +166,14 @@
         </div>
 
         <form class="chat-composer" @submit.prevent="sendMessage()">
-          <label for="chat-message">Message</label>
+          <label class="visually-hidden" for="chat-message">Message</label>
           <div>
             <textarea
               id="chat-message"
               maxlength="8000"
               placeholder="Ask a follow-up about your documents…"
               rows="2"
+              x-ref="messageComposer"
               x-model="draft"
               :disabled="busy"
               @keydown.meta.enter.prevent="sendMessage()"
@@ -178,11 +184,91 @@
               <span x-text="busy ? 'Working…' : 'Send'"></span>
             </button>
           </div>
-          <small>Chat uses indexed documents only. Press Ctrl+Enter or Command+Enter to send.</small>
         </form>
       </div>
     </template>
   </main>
+
+  <div
+    class="chat-switcher-backdrop"
+    x-cloak
+    x-show="chatSwitcherOpen"
+    x-transition.opacity.duration.120ms
+    @click.self="closeChatSwitcher()"
+  >
+    <section
+      class="chat-switcher"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="chat-switcher-title"
+    >
+      <h2 class="visually-hidden" id="chat-switcher-title">Open a previous chat</h2>
+      <div class="search-control chat-switcher-search">
+        <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-search"></use></svg>
+        <label class="visually-hidden" for="chat-switcher-search">Search previous chats</label>
+        <input
+          id="chat-switcher-search"
+          type="search"
+          placeholder="Search previous chats"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-controls="chat-switcher-list"
+          aria-expanded="true"
+          :aria-activedescendant="chatSwitcherActiveDescendant()"
+          x-ref="chatSwitcherSearch"
+          x-model="chatSearchQuery"
+          @input="resetChatSwitcherSelection()"
+          @keydown.arrow-down.prevent="moveChatSwitcherSelection(1)"
+          @keydown.arrow-up.prevent="moveChatSwitcherSelection(-1)"
+          @keydown.enter.prevent="selectActiveChatFromSwitcher()"
+        />
+        <kbd>⌘ K</kbd>
+        <kbd>Esc</kbd>
+      </div>
+
+      <div class="chat-switcher-content">
+        <p class="chat-switcher-label">Recent chats</p>
+        <div class="chat-switcher-list" id="chat-switcher-list" role="listbox">
+          <template x-for="(item, itemIndex) in filteredConversations" :key="item.id">
+            <button
+              type="button"
+              role="option"
+              :id="chatSwitcherOptionId(itemIndex)"
+              :aria-selected="(chatSwitcherActiveIndex === itemIndex).toString()"
+              :class="{
+                active: chatSwitcherActiveIndex === itemIndex,
+                current: conversation?.id === item.id,
+              }"
+              @mouseenter="chatSwitcherActiveIndex = itemIndex"
+              @click="selectConversationFromSwitcher(item.id)"
+            >
+              <span class="chat-switcher-row-icon">
+                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
+              </span>
+                <strong class="truncate" x-text="item.title"></strong>
+              <span x-text="`${item.messageCount} messages`"></span>
+              <time :datetime="item.updatedAt" x-text="formatRecency(item.updatedAt)"></time>
+              <span class="chat-switcher-return" x-show="chatSwitcherActiveIndex === itemIndex">Return</span>
+            </button>
+          </template>
+          <p class="chat-switcher-empty" x-show="filteredConversations.length === 0">No chats match your search.</p>
+        </div>
+
+        <button class="chat-switcher-new" type="button" @click="openNewChat()">
+          <span class="chat-switcher-row-icon">
+            <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-user-plus"></use></svg>
+          </span>
+          <strong class="truncate">New document chat</strong>
+        </button>
+      </div>
+
+      <footer class="chat-switcher-footer">
+        <span><kbd>↑</kbd><kbd>↓</kbd> to navigate</span>
+        <span><kbd>Return</kbd> to open</span>
+        <span><kbd>Esc</kbd> to close</span>
+      </footer>
+    </section>
+  </div>
 
   <aside class="chat-evidence-panel" x-cloak x-show="selectedCitation !== null" aria-label="Citation evidence">
     <header>
@@ -190,7 +276,7 @@
         <p class="section-kicker">Retained evidence</p>
         <h2 x-text="selectedCitation === null ? '' : citationLabel(selectedCitation)"></h2>
       </div>
-      <button class="chat-icon-button" type="button" aria-label="Close evidence" @click="closeCitation()">
+      <button class="icon-button chat-icon-button" type="button" aria-label="Close evidence" @click="closeCitation()">
         <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg>
       </button>
     </header>
@@ -230,22 +316,196 @@
     </template>
   </aside>
 
-  <div class="chat-modal-backdrop" x-cloak x-show="newChatOpen" @click.self="closeNewChat()">
-    <form class="chat-modal" role="dialog" aria-modal="true" aria-labelledby="new-chat-title" @submit.prevent="createConversation()">
+  <div
+    class="dialog-backdrop chat-modal-backdrop"
+    x-cloak
+    x-show="newChatOpen"
+    @click.self="closeNewChat()"
+    @keydown.escape.window="newChatOpen &amp;&amp; closeNewChat()"
+  >
+    <form class="dialog chat-modal" role="dialog" aria-modal="true" aria-labelledby="new-chat-title" @submit.prevent="createConversation()">
       <header>
-        <div><p class="section-kicker">New conversation</p><h2 id="new-chat-title">Create a document chat</h2></div>
-        <button class="chat-icon-button" type="button" aria-label="Close" @click="closeNewChat()">
+        <p class="section-kicker" id="new-chat-title">Create chat</p>
+        <button class="icon-button chat-icon-button" type="button" aria-label="Close" @click="closeNewChat()">
           <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg>
         </button>
       </header>
-      <label>
+
+      <label class="form-field chat-title-field">
         <span>Chat title</span>
-        <input x-ref="newChatTitle" maxlength="500" placeholder="Quarterly research" required type="text" x-model="newChatTitle" />
+        <input
+          x-ref="newChatTitle"
+          maxlength="500"
+          placeholder="Quarterly research"
+          required
+          type="text"
+          x-model="newChatTitle"
+          @input="newChatErrorMessage = ''"
+        />
       </label>
-      <p>Version one searches all currently indexed documents. Each response keeps its own citation evidence even if a source is later removed from the library.</p>
-      <footer>
-        <button class="chat-secondary-button" type="button" :disabled="busy" @click="closeNewChat()">Cancel</button>
-        <button class="chat-primary-button" type="submit" :disabled="busy" x-text="busy ? 'Creating…' : 'Create chat'"></button>
+
+      <div class="chat-source-browser">
+        <section class="chat-source-picker" aria-label="Choose chat documents">
+          <button
+            class="chat-source-all"
+            type="button"
+            :class="{ active: newChatScopeMode === 'all' }"
+            :aria-pressed="(newChatScopeMode === 'all').toString()"
+            @click="setNewChatScopeMode('all')"
+          >
+            <span>
+              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
+              <strong>All documents</strong>
+            </span>
+            <small x-text="newChatTotalDocuments"></small>
+          </button>
+
+          <div class="segmented-control chat-source-tabs" role="tablist" aria-label="Choose by tags or documents">
+            <button
+              role="tab"
+              type="button"
+              :aria-selected="(newChatScopeMode !== 'documents').toString()"
+              :class="{ active: newChatScopeMode !== 'documents' }"
+              @click="setNewChatScopeMode('tags')"
+            >Tags</button>
+            <button
+              role="tab"
+              type="button"
+              :aria-selected="(newChatScopeMode === 'documents').toString()"
+              :class="{ active: newChatScopeMode === 'documents' }"
+              @click="setNewChatScopeMode('documents')"
+            >Documents</button>
+          </div>
+
+          <div class="chat-source-options" x-show="newChatScopeMode !== 'documents'">
+            <label class="chat-source-search">
+              <span class="visually-hidden">Search tags</span>
+              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-search"></use></svg>
+              <input type="search" placeholder="Search tags" x-model="newChatTagSearch" />
+            </label>
+            <div class="chat-source-option-list">
+              <template x-for="facet in filteredNewChatTags" :key="facet.tag">
+                <button
+                  class="chat-source-option"
+                  type="button"
+                  :aria-pressed="isNewChatTagSelected(facet.tag).toString()"
+                  @click="toggleNewChatTag(facet.tag)"
+                >
+                  <span class="chat-source-checkbox" :class="{ checked: isNewChatTagSelected(facet.tag) }">
+                    <svg aria-hidden="true" class="citeloom-icon" x-show="isNewChatTagSelected(facet.tag)"><use href="./assets/images/citeloom-icons.svg#citeloom-check"></use></svg>
+                  </span>
+                  <span x-text="facet.tag"></span>
+                  <small x-text="facet.count"></small>
+                </button>
+              </template>
+              <p class="chat-source-empty" x-show="!newChatCatalogLoading &amp;&amp; filteredNewChatTags.length === 0">No tags match this search.</p>
+            </div>
+          </div>
+
+          <div class="chat-source-options" x-show="newChatScopeMode === 'documents'">
+            <label class="chat-source-search">
+              <span class="visually-hidden">Search documents</span>
+              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-search"></use></svg>
+              <input
+                type="search"
+                placeholder="Search documents"
+                x-model="newChatDocumentSearch"
+                @input.debounce.250ms="loadNewChatDocumentOptions()"
+              />
+            </label>
+            <div class="chat-source-option-list">
+              <template x-for="document in newChatDocumentOptions" :key="document.sourceFile">
+                <button
+                  class="chat-source-option document"
+                  type="button"
+                  :aria-pressed="isNewChatDocumentSelected(document.sourceFile).toString()"
+                  :title="document.sourceFile"
+                  @click="toggleNewChatDocument(document)"
+                >
+                  <span class="chat-source-checkbox" :class="{ checked: isNewChatDocumentSelected(document.sourceFile) }">
+                    <svg aria-hidden="true" class="citeloom-icon" x-show="isNewChatDocumentSelected(document.sourceFile)"><use href="./assets/images/citeloom-icons.svg#citeloom-check"></use></svg>
+                  </span>
+                  <span x-text="sourceTitle(document.sourceFile)"></span>
+                </button>
+              </template>
+              <p class="chat-source-empty" x-show="!newChatCatalogLoading &amp;&amp; newChatDocumentOptions.length === 0">No documents match this search.</p>
+              <button
+                class="chat-source-load-more"
+                type="button"
+                x-show="newChatCanLoadMoreDocuments"
+                :disabled="newChatCatalogLoading"
+                @click="loadNewChatDocumentOptions({ append: true })"
+              >Load more</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="chat-included-documents" aria-label="Included documents">
+          <header>
+            <h2>Included documents</h2>
+          </header>
+          <label class="chat-source-search included">
+            <span class="visually-hidden">Search included documents</span>
+            <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-search"></use></svg>
+            <input
+              type="search"
+              placeholder="Search included documents"
+              x-model="newChatIncludedSearch"
+              @input.debounce.250ms="newChatScopeMode === 'documents' || loadNewChatPreview()"
+            />
+          </label>
+          <div class="chat-included-list">
+            <template x-for="document in newChatIncludedDocuments" :key="document.sourceFile">
+              <div class="chat-included-row">
+                <span class="chat-source-checkbox checked" aria-hidden="true">
+                  <svg class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-check"></use></svg>
+                </span>
+                <svg aria-hidden="true" class="citeloom-icon chat-included-document-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
+                <span class="truncate chat-included-name" :title="document.sourceFile" x-text="sourceTitle(document.sourceFile)"></span>
+                <span class="chat-included-tags">
+                  <template x-for="tag in newChatDocumentTags(document)" :key="tag">
+                    <small x-text="tag"></small>
+                  </template>
+                </span>
+                <button
+                  class="chat-included-remove"
+                  type="button"
+                  x-show="newChatScopeMode === 'documents'"
+                  :aria-label="`Remove ${sourceTitle(document.sourceFile)}`"
+                  @click="removeNewChatDocument(document.sourceFile)"
+                >
+                  <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg>
+                </button>
+              </div>
+            </template>
+            <p class="chat-source-empty included" x-show="!newChatPreviewLoading &amp;&amp; newChatIncludedDocuments.length === 0">
+              <span x-show="newChatScopeMode === 'tags'">Select at least one tag.</span>
+              <span x-show="newChatScopeMode === 'documents'">Select at least one document.</span>
+              <span x-show="newChatScopeMode === 'all'">No indexed documents are available.</span>
+            </p>
+            <button
+              class="chat-source-load-more"
+              type="button"
+              x-show="newChatCanLoadMorePreview"
+              :disabled="newChatPreviewLoading"
+              @click="loadNewChatPreview({ append: true })"
+            >Load more</button>
+          </div>
+          <footer>
+            <strong x-text="`${newChatIncludedTotal} ${newChatIncludedTotal === 1 ? 'document' : 'documents'} included`"></strong>
+            <button type="button" x-show="newChatScopeMode !== 'all'" @click="clearNewChatSelection()">Clear selection</button>
+          </footer>
+        </section>
+      </div>
+
+      <p class="chat-modal-error" role="alert" x-show="newChatErrorMessage !== ''" x-text="newChatErrorMessage"></p>
+
+      <footer class="dialog-actions chat-modal-actions">
+        <button class="button secondary" type="button" :disabled="busy" @click="closeNewChat()">Cancel</button>
+        <button class="button primary" type="submit" :disabled="busy || newChatCatalogLoading || !newChatCanCreate">
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
+          <span x-text="busy ? 'Creating…' : 'Create chat'"></span>
+        </button>
       </footer>
     </form>
   </div>

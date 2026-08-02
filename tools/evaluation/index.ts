@@ -124,12 +124,11 @@ export interface EvaluationConfiguration {
   candidateK: number;
   embeddingSpaceId: string;
   fusion: RankFusionConfig;
-  queryExpansionModel: string;
+  queryExpansionModel: string | null;
   queryExpansions: number;
   rerankerModel: string | null;
   rrfK: number;
   topK: number;
-  variantConcurrency: number;
 }
 
 export interface EvaluationResult {
@@ -250,12 +249,11 @@ export function scorePreparedEvaluation(
       candidateK: provenance.retrieval.candidateK,
       embeddingSpaceId: provenance.embeddingSpace.id,
       fusion: { ...provenance.retrieval.fusion },
-      queryExpansionModel: provenance.models.queryExpansion.modelId,
+      queryExpansionModel: provenance.models.queryExpansion?.modelId ?? null,
       queryExpansions: provenance.retrieval.queryExpansions,
       rerankerModel: provenance.models.reranker?.modelId ?? null,
       rrfK: provenance.retrieval.rrfK,
       topK: provenance.retrieval.topK,
-      variantConcurrency: provenance.retrieval.variantConcurrency,
     },
     coverage: buildEvaluationCoverage(preparation.cases),
     datasetName: provenance.dataset.name,

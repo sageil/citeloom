@@ -2,6 +2,7 @@ import { formatDurationMilliseconds } from "../shared/duration.js";
 
 export type InferenceFeature =
   | "answer"
+  | "chat"
   | "embedding"
   | "queryExpansion"
   | "summarization";
@@ -56,8 +57,11 @@ function formatInferenceFeature(feature: InferenceFeature): string {
   if (feature === "embedding") {
     return "Embedding generation";
   }
+  if (feature === "chat") {
+    return "Chat question contextualization";
+  }
   if (feature === "queryExpansion") {
     return "Extra search query generation";
   }
-  return "Summarization";
+  return "Indexing model";
 }

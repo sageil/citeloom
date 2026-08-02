@@ -6,6 +6,7 @@ import { createTurnGenerationSettings } from "../src/inference/generation-settin
 const retrieval: RetrievalConfig = {
   answerTemperature: 0,
   candidateK: 50,
+  chatTemperature: 0,
   fusion: {
     denseWeight: 1,
     expansionDecay: 1,
@@ -20,7 +21,6 @@ const retrieval: RetrievalConfig = {
   reranker: null,
   rrfK: 60,
   topK: 10,
-  variantConcurrency: 2,
 };
 
 describe("turn generation settings", () => {

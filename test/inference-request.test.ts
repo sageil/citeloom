@@ -17,10 +17,14 @@ describe("feature-specific inference deadlines", () => {
         summaryTimeoutSeconds: 1_000,
       },
     });
+    const queryExpansion = config.inference.queryExpansion;
+    if (queryExpansion === null) {
+      throw new Error("Expected query expansion to be configured.");
+    }
 
     expect(config.inference.answer.timeoutMs).toBe(1_200_000);
     expect(config.inference.embedding.timeoutMs).toBe(28_800_000);
-    expect(config.inference.queryExpansion.timeoutMs).toBe(800_000);
+    expect(queryExpansion.timeoutMs).toBe(800_000);
     expect(config.inference.summary.timeoutMs).toBe(1_000_000);
   });
 

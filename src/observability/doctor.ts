@@ -284,16 +284,15 @@ async function checkStructuredAnswerCapability(
         model,
         output: createAnswerModelOutput(allowedEvidenceRefs),
         prompt: [
-          "ORIGINAL QUESTION:",
-          "What does the retrieved source material say about structured answer generation?",
-          "",
-          "Retrieved source material:",
-          "",
-          "Use the exact source reference shown with each passage when identifying support for the answer.",
-          "Do not invent, change, or guess evidence references.",
-          "",
+          "USER_PROMPT",
+          "---------",
+          "<retrieved_sources>",
           "EVID_A: A readiness probe checks structured answer generation.",
-          "Return a direct answer and one finding supported by evidence reference EVID_A.",
+          "</retrieved_sources>",
+          "",
+          "<current_question>",
+          "What does the retrieved source material say about structured answer generation?",
+          "</current_question>",
         ].join("\n"),
         system: createAnswerSystemPrompt(),
         telemetry: {
@@ -333,10 +332,13 @@ interface InferenceProviderGroup {
 }
 
 function groupInferenceProviders(
-  configurations: readonly InferenceProviderConfig[],
+  configurations: readonly (InferenceProviderConfig | null)[],
 ): InferenceProviderGroup[] {
   const groups: InferenceProviderGroup[] = [];
   for (const config of configurations) {
+    if (config === null) {
+      continue;
+    }
     const existing = groups.find((candidate) => {
       return candidate.config.adapter === config.adapter
         && candidate.config.apiToken === config.apiToken

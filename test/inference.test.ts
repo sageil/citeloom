@@ -402,11 +402,15 @@ describe("createInferenceModelRegistry", () => {
     });
 
     const models = createInferenceModelRegistry(config);
+    const queryExpansion = models.queryExpansion;
+    if (queryExpansion === null) {
+      throw new Error("Expected query expansion to be configured.");
+    }
 
     expect(models.answer.modelId).toBe("vision-model:answer");
     expect(models.claimVerifier.modelId).toBe(HHEM_DISPLAY_MODEL);
     expect(models.claimVerifier.provider).toBe("HHEM-2.1-Open");
-    expect(models.queryExpansion.modelId).toBe(
+    expect(queryExpansion.modelId).toBe(
       "expansion-model:query-expansion",
     );
     expect(models.summary.modelId).toBe("summary-model:summary");
@@ -985,6 +989,18 @@ describe("buildAnswerContent", () => {
 
     const textParts = content.filter((part) => part.type === "text");
     const fileParts = content.filter((part) => part.type === "file");
+    expect(textParts[0]?.text).toBe([
+      "USER_PROMPT",
+      "---------",
+      "<retrieved_sources>",
+    ].join("\n"));
+    expect(textParts[textParts.length - 1]?.text).toBe([
+      "</retrieved_sources>",
+      "",
+      "<current_question>",
+      "What changed?",
+      "</current_question>",
+    ].join("\n"));
     expect(textParts.some((part) => part.text.includes("Revenue growth"))).toBe(
       true,
     );

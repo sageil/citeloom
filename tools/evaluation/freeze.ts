@@ -38,7 +38,7 @@ const freezePayloadSchema = z.object({
   }).strict(),
   models: z.object({
     queryEmbedding: modelIdentitySchema,
-    queryExpansion: modelIdentitySchema,
+    queryExpansion: modelIdentitySchema.nullable(),
     reranker: modelIdentitySchema.nullable(),
   }).strict(),
   retrieval: z.object({
@@ -48,14 +48,13 @@ const freezePayloadSchema = z.object({
     queryExpansions: z.number().int().nonnegative(),
     rrfK: z.number().int().positive(),
     topK: z.number().int().positive(),
-    variantConcurrency: z.number().int().min(1).max(16),
   }).strict(),
   settingsVersion: z.number().int().nonnegative(),
 }).strict();
 const evaluationConfigurationFreezeSchema = z.object({
   fingerprintSha256: sha256Schema,
   payload: freezePayloadSchema,
-  version: z.literal(6),
+  version: z.literal(8),
 }).strict();
 
 export type EvaluationConfigurationFreeze = z.output<
@@ -78,10 +77,12 @@ export function createEvaluationConfigurationFreeze(
         modelId: models.queryEmbedding.modelId,
         provider: models.queryEmbedding.provider,
       },
-      queryExpansion: {
-        modelId: models.summary.modelId,
-        provider: models.summary.provider,
-      },
+      queryExpansion: models.queryExpansion === null
+        ? null
+        : {
+          modelId: models.queryExpansion.modelId,
+          provider: models.queryExpansion.provider,
+        },
       reranker: reranker === null
         ? null
         : {
@@ -96,14 +97,13 @@ export function createEvaluationConfigurationFreeze(
       queryExpansions: config.retrieval.queryExpansions,
       rrfK: config.retrieval.rrfK,
       topK: config.retrieval.topK,
-      variantConcurrency: config.retrieval.variantConcurrency,
     },
     settingsVersion,
   };
   return {
     fingerprintSha256: calculateJsonSha256(payload),
     payload,
-    version: 6,
+    version: 8,
   };
 }
 
@@ -157,9 +157,9 @@ function rejectIncompatibleFreezeVersion(
     return;
   }
   const version = value.version;
-  if (version !== 6) {
+  if (version !== 8) {
     throw new Error(
-      `Incompatible frozen evaluation configuration ${sourceLabel}: expected version 6, received ${String(version)}.`,
+      `Incompatible frozen evaluation configuration ${sourceLabel}: expected version 8, received ${String(version)}.`,
     );
   }
 }

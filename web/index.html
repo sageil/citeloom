@@ -29,7 +29,10 @@
   <body>
     <main
       class="app-shell"
-      :class="{ 'login-surface': activeView === 'login' }"
+      :class="{
+        'chat-surface': activeView === 'chat',
+        'login-surface': activeView === 'login',
+      }"
       hx-indicator="#navigation-progress"
       hx-swap="innerHTML"
       hx-sync="#workspace:replace"
@@ -69,7 +72,12 @@
               <span>CiteLoom</span>
             </a>
 
-            <nav class="task-navigation-primary-nav" aria-label="Primary workspace">
+            <nav
+              class="task-navigation-primary-nav"
+              aria-label="Primary workspace"
+              x-cloak
+              x-show="activeView !== 'chat'"
+            >
               <a
                 class="primary-navigation-button citeloom-navigation-link"
                 data-view="documents"
@@ -116,6 +124,25 @@
                 <span>Chat</span>
               </a>
             </nav>
+
+            <div
+              class="chat-focus-navigation"
+              x-cloak
+              x-show="activeView === 'chat'"
+            >
+              <button
+                class="chat-focus-back-button"
+                type="button"
+                @click="requestChatSwitcher()"
+              >
+                <svg aria-hidden="true" class="citeloom-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+                </svg>
+                <span>Back to chats</span>
+              </button>
+              <span class="chat-focus-divider" aria-hidden="true"></span>
+              <strong class="chat-focus-title" x-text="activeChatTitle"></strong>
+            </div>
           </div>
 
           <nav class="task-navigation-utility-nav" aria-label="Workspace utilities">
@@ -237,6 +264,18 @@
               </span>
               <span>Help</span>
             </a>
+            <button
+              class="chat-shell-new-button"
+              type="button"
+              x-cloak
+              x-show="activeView === 'chat'"
+              @click="requestNewChat()"
+            >
+              <svg aria-hidden="true" class="citeloom-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use>
+              </svg>
+              <span>New chat</span>
+            </button>
           </nav>
         </header>
 

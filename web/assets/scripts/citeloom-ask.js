@@ -2,9 +2,12 @@ import {
   readArray,
   readBoolean,
   readEnum,
+  readFiniteNumber,
   readJsonResponse,
   readNonEmptyString,
   readNonNegativeInteger,
+  readNullableNonEmptyString,
+  readNullableNonNegativeInteger,
   readPlainObject as readObject,
   readPositiveInteger,
   readString,
@@ -215,20 +218,6 @@ function drawVerificationField(context, width, height, colors, phase) {
   context.globalAlpha = 1;
 }
 
-function readNullableNonEmptyString(value, label) {
-  if (value === null) {
-    return null;
-  }
-  return readNonEmptyString(value, label);
-}
-
-function readNullableNonNegativeInteger(value, label) {
-  if (value === null) {
-    return null;
-  }
-  return readNonNegativeInteger(value, label);
-}
-
 function readStringArray(value, label) {
   const values = readArray(value, label);
   const result = [];
@@ -254,13 +243,6 @@ function readStringEnumArray(value, allowedValues, label) {
     result.push(readEnum(item, allowedValues, `${label} item`));
   }
   return result;
-}
-
-function readFiniteNumber(value, label) {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`The ${label} response is invalid.`);
-  }
-  return value;
 }
 
 function readSourceRegion(value, label) {

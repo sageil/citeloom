@@ -52,7 +52,7 @@ const answerThresholdPreparationSchema = z.object({
     sha256: sha256Schema,
   }).strict(),
   provenance: evaluationProvenanceSchema,
-  version: z.literal(6),
+  version: z.literal(7),
 }).strict().superRefine((value, context) => {
   const familyIds = new Set<string>();
   for (let index = 0; index < value.cases.length; index += 1) {
@@ -225,9 +225,9 @@ function rejectIncompatiblePreparationVersion(
     return;
   }
   const version = value.version;
-  if (version !== 6) {
+  if (version !== 7) {
     throw new Error(
-      `Incompatible answer-threshold preparation ${sourceLabel}: expected version 6, received ${String(version)}.`,
+      `Incompatible answer-threshold preparation ${sourceLabel}: expected version 7, received ${String(version)}.`,
     );
   }
 }

@@ -191,7 +191,6 @@
 }
 
 .login-password-toggle {
-  appearance: none;
   display: grid;
   width: 42px;
   height: 42px;
@@ -231,7 +230,6 @@
 }
 
 .login-remember input {
-  appearance: none;
   width: 22px;
   height: 22px;
   margin: 0;
@@ -263,7 +261,6 @@
 }
 
 .login-link-button {
-  appearance: none;
   padding: 0;
   border: 0;
   background: transparent;
@@ -281,7 +278,6 @@
 }
 
 .login-submit {
-  appearance: none;
   min-height: 68px;
   margin-top: 7px;
   border: 1px solid #67e8f9;

@@ -891,7 +891,6 @@ function estimateP95Latency(
         trace.stages,
         configuration,
         preparedCase.id,
-        preparation.provenance.retrieval.variantConcurrency,
       ));
     }
   }
@@ -908,7 +907,6 @@ function estimateCaseLatency(
   stages: TelemetryStageSnapshot[],
   configuration: TunedRetrievalConfiguration,
   caseId: string,
-  variantConcurrency: number,
 ): number {
   let total = 0;
   if (configuration.queryExpansions > 0) {
@@ -964,25 +962,22 @@ function estimateCaseLatency(
     queryCount,
     caseId,
   );
-  for (let start = 0; start < queryCount; start += variantConcurrency) {
-    let batchDuration = 0;
-    const end = Math.min(queryCount, start + variantConcurrency);
-    for (let index = start; index < end; index += 1) {
-      const denseStage = denseStages[index];
-      const lexicalStage = lexicalStages[index];
-      if (denseStage === undefined || lexicalStage === undefined) {
-        throw new Error(
-          `Tuning telemetry retrieval stages for ${caseId} are incomplete.`,
-        );
-      }
-      const variantDuration = Math.max(
-        denseStage.durationMs,
-        lexicalStage.durationMs,
+  let retrievalDuration = 0;
+  for (let index = 0; index < queryCount; index += 1) {
+    const denseStage = denseStages[index];
+    const lexicalStage = lexicalStages[index];
+    if (denseStage === undefined || lexicalStage === undefined) {
+      throw new Error(
+        `Tuning telemetry retrieval stages for ${caseId} are incomplete.`,
       );
-      batchDuration = Math.max(batchDuration, variantDuration);
     }
-    total += batchDuration;
+    const variantDuration = Math.max(
+      denseStage.durationMs,
+      lexicalStage.durationMs,
+    );
+    retrievalDuration = Math.max(retrievalDuration, variantDuration);
   }
+  total += retrievalDuration;
   for (const stageName of ["hydration", "reranking"] as const) {
     const stage = readRequiredStages(stages, stageName, 1, caseId)[0];
     if (stage === undefined || stage.inputCount === null || stage.inputCount < 1) {

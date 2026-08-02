@@ -9,8 +9,6 @@ import {
   formatEmbeddingInputs,
   type InferenceModelRegistry,
 } from "../src/inference/registry.js";
-import { mapRetrievalVariants } from "../src/retrieval/indexing/query-store.js";
-import { createDeferred } from "./deferred-fixture.js";
 import { FakeHhemClient } from "./hhem-fixture.js";
 import { TEST_EMBEDDING_INPUT_FORMAT } from "./config-fixture.js";
 
@@ -97,65 +95,6 @@ describe("batched retrieval queries", () => {
   });
 });
 
-describe("bounded retrieval variant concurrency", () => {
-  it("preserves input ordering while enforcing the configured bound", async () => {
-    let active = 0;
-    let maximumActive = 0;
-    const gates = Array.from({ length: 4 }, () => createDeferred());
-    const operation = mapRetrievalVariants(
-      [0, 1, 2, 3],
-      2,
-      new AbortController().signal,
-      async (value) => {
-        active += 1;
-        maximumActive = Math.max(maximumActive, active);
-        await gates[value]?.promise;
-        active -= 1;
-        return `result-${value}`;
-      },
-    );
-
-    await waitFor(() => active === 2);
-    gates[1]?.resolve();
-    await waitFor(() => active === 2);
-    gates[0]?.resolve();
-    await waitFor(() => active === 2);
-    gates[3]?.resolve();
-    gates[2]?.resolve();
-
-    await expect(operation).resolves.toEqual([
-      "result-0",
-      "result-1",
-      "result-2",
-      "result-3",
-    ]);
-    expect(maximumActive).toBe(2);
-  });
-
-  it("does not start queued variants after cancellation", async () => {
-    const abortController = new AbortController();
-    const gate = createDeferred();
-    const started: number[] = [];
-    const operation = mapRetrievalVariants(
-      [0, 1, 2, 3],
-      2,
-      abortController.signal,
-      async (value) => {
-        started.push(value);
-        await gate.promise;
-        return value;
-      },
-    );
-
-    await waitFor(() => started.length === 2);
-    abortController.abort(new Error("retrieval cancelled"));
-    gate.resolve();
-
-    await expect(operation).rejects.toThrow("retrieval cancelled");
-    expect(started).toEqual([0, 1]);
-  });
-});
-
 function buildEmbeddingModel(): MockEmbeddingModelV4 {
   return new MockEmbeddingModelV4({
     doEmbed: async ({ values }) => ({
@@ -194,14 +133,4 @@ function buildModelRegistry(
       queryExpansionMs: 900_000,
     },
   };
-}
-
-async function waitFor(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (predicate()) {
-      return;
-    }
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-  }
-  throw new Error("Timed out waiting for test condition.");
 }

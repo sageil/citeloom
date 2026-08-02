@@ -3,7 +3,7 @@
   aria-label="Documents page"
   x-data="citeloomDocumentsPage"
 >
-  <section class="documents-section" id="documents" aria-label="Documents">
+  <section class="feature-section documents-section" id="documents" aria-label="Documents">
     <div
       class="document-explorer"
       :class="{ 'low-document-count': lowDocumentCount }"
@@ -20,7 +20,7 @@
               <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
                 <use :href="collectionIcon(item.key)"></use>
               </svg>
-              <span x-text="item.label"></span>
+              <span class="truncate" x-text="item.label"></span>
               <small x-text="displayCount(item.count)"></small>
             </button>
           </template>
@@ -36,7 +36,7 @@
             <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use>
             </svg>
-            <span>Processing</span>
+            <span class="truncate">Processing</span>
             <small x-text="displayCount(facets.processing)"></small>
           </button>
           <button
@@ -47,7 +47,7 @@
             <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
             </svg>
-            <span>Failed</span>
+            <span class="truncate">Failed</span>
             <small x-text="displayCount(facets.failed)"></small>
           </button>
         </div>
@@ -55,7 +55,7 @@
 
       <div class="document-browser-main">
         <div class="catalog-toolbar">
-          <label class="catalog-search">
+          <label class="search-control catalog-search">
             <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
             </svg>
@@ -69,7 +69,7 @@
           </label>
           <label>
             <span class="visually-hidden">Filter by status</span>
-            <select :value="status" @change="chooseStatus($event.target.value)">
+            <select class="form-control" :value="status" @change="chooseStatus($event.target.value)">
               <option value="all">Status: All</option>
               <option value="ready">Ready</option>
               <option value="processing">Processing</option>
@@ -79,7 +79,7 @@
           </label>
           <label>
             <span class="visually-hidden">Filter by tag</span>
-            <select :value="tagFilter" @change="chooseTag($event.target.value)">
+            <select class="form-control" :value="tagFilter" @change="chooseTag($event.target.value)">
               <option value="">Tags: All</option>
               <template x-for="facet in facets.tags" :key="facet.tag">
                 <option
@@ -91,7 +91,7 @@
           </label>
           <label>
             <span class="visually-hidden">Sort documents</span>
-            <select :value="sort" @change="chooseSort($event.target.value)">
+            <select class="form-control" :value="sort" @change="chooseSort($event.target.value)">
               <option value="updated-desc">Updated: newest</option>
               <option value="updated-asc">Updated: oldest</option>
               <option value="name-asc">Name: A-Z</option>
@@ -101,7 +101,7 @@
         </div>
 
         <div
-          class="catalog-error"
+          class="status-message catalog-error error"
           role="alert"
           x-cloak
           x-show="loadErrorMessage !== ''"
@@ -156,12 +156,13 @@
                     </svg>
                   </span>
                   <span class="attention-name">
-                    <strong x-text="document.filename"></strong>
-                    <small x-text="document.tags[0] ?? document.fileType"></small>
+                    <strong class="truncate" x-text="document.filename"></strong>
+                    <small class="truncate" x-text="document.tags[0] ?? document.fileType"></small>
                   </span>
                   <span class="attention-status" :class="document.displayStatus">
-                    <strong x-text="document.statusLabel"></strong>
+                    <strong class="truncate" x-text="document.statusLabel"></strong>
                     <small
+                      class="truncate"
                       x-cloak
                       x-show="document.statusDetail !== null"
                       x-text="document.statusDetail"
@@ -293,7 +294,7 @@
             </template>
 
             <div
-              class="catalog-empty"
+              class="empty-state catalog-empty"
               x-cloak
               x-show="!loading &amp;&amp; catalogDocuments.length === 0"
             >
@@ -305,17 +306,17 @@
             </div>
           </div>
 
-          <footer class="catalog-pagination">
+          <footer class="pagination catalog-pagination">
             <span x-text="`Showing ${firstResult}-${lastResult} of ${displayCount(total)}`"></span>
             <label>
               <span class="visually-hidden">Documents per page</span>
-              <select :value="pageSize" @change="choosePageSize($event.target.value)">
+              <select class="form-control" :value="pageSize" @change="choosePageSize($event.target.value)">
                 <option value="25">25 per page</option>
                 <option value="50">50 per page</option>
                 <option value="100">100 per page</option>
               </select>
             </label>
-            <div class="page-buttons" aria-label="Document pages">
+            <div class="pagination-actions page-buttons" aria-label="Document pages">
               <button
                 aria-label="Previous page"
                 type="button"
@@ -342,7 +343,7 @@
         </section>
       </div>
 
-      <aside class="document-inspector empty-inspector" x-show="selectedDocument === null">
+      <aside class="document-inspector empty-state empty-inspector" x-show="selectedDocument === null">
         <svg aria-hidden="true" class="citeloom-icon citeloom-large-icon">
           <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
         </svg>
@@ -814,6 +815,7 @@
         <template x-for="document in questionSelectionPreview" :key="document.sourceFile">
           <span class="question-selection-chip">
             <span
+              class="truncate"
               :title="questionDocumentName(document.sourceFile)"
               x-text="questionDocumentName(document.sourceFile)"
             ></span>
@@ -846,7 +848,7 @@
   </section>
 
   <div
-    class="question-selection-dialog-backdrop"
+    class="dialog-backdrop question-selection-dialog-backdrop"
     role="presentation"
     x-cloak
     x-show="questionSelectionOpen"
@@ -857,7 +859,7 @@
     <section
       aria-labelledby="question-selection-dialog-title"
       aria-modal="true"
-      class="question-selection-dialog"
+      class="dialog question-selection-dialog"
       role="dialog"
     >
       <header>
@@ -871,12 +873,13 @@
           <p x-text="`${questionDocuments.length} selected`"></p>
         </div>
         <button
+          class="icon-button question-selection-close"
           aria-label="Close selection manager"
           type="button"
           @click="selectionSearch = ''; closeQuestionSelection()"
         >×</button>
       </header>
-      <label class="question-selection-search">
+      <label class="search-control question-selection-search">
         <span class="visually-hidden">Search selected documents</span>
         <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
           <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
@@ -895,6 +898,7 @@
         >
           <li>
             <span
+              class="truncate"
               :title="questionDocumentName(document.sourceFile)"
               x-text="questionDocumentName(document.sourceFile)"
             ></span>

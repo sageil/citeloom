@@ -102,7 +102,6 @@ const runConfigurationSchema = z.object({
     rrfK: z.number().int().positive(),
     tocRoutingEnabled: z.boolean().default(false),
     topK: z.number().int().positive(),
-    variantConcurrency: z.number().int().positive(),
   }).strict(),
   settingsVersion: z.number().int().nonnegative(),
 }).strict();
@@ -1210,7 +1209,6 @@ export function buildResearchRunConfiguration(
       rrfK: config.retrieval.rrfK,
       tocRoutingEnabled: config.docling.tocEnabled,
       topK: config.retrieval.topK,
-      variantConcurrency: config.retrieval.variantConcurrency,
     },
     settingsVersion: config.settingsVersion,
   };

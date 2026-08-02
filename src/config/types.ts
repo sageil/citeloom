@@ -141,7 +141,7 @@ export interface InferenceConfig {
   };
   chat: LanguageInferenceConfig;
   embedding: EmbeddingInferenceConfig;
-  queryExpansion: LanguageInferenceConfig;
+  queryExpansion: LanguageInferenceConfig | null;
   summary: LanguageInferenceConfig;
 }
 
@@ -252,6 +252,7 @@ export interface RankFusionConfig {
 export interface RetrievalConfig {
   answerTemperature: number;
   candidateK: number;
+  chatTemperature: number;
   fusion: RankFusionConfig;
   generationSeedMode: "random" | "stable";
   mode: RetrievalMode;
@@ -260,7 +261,6 @@ export interface RetrievalConfig {
   reranker: RerankerConfig | null;
   rrfK: number;
   topK: number;
-  variantConcurrency: number;
 }
 
 export interface SourceDiscoveryConfig {
@@ -285,6 +285,7 @@ export interface RuntimeSettings {
   claimVerifierRuntimeName: string;
   claimVerifierSupportThreshold: number;
   claimVerifierTimeoutSeconds: number;
+  chatTemperature: number;
   denseWeight: number;
   doclingApiKey: string | null;
   doclingBaseUrl: string;
@@ -321,7 +322,6 @@ export interface RuntimeSettings {
   rerankTimeoutSeconds: number;
   retrievalCandidates: number;
   retrievalChunkTargetTokens: number;
-  retrievalVariantConcurrency: number;
   retrievalWindowPolicy: "structured-token-v3";
   retryBaseMs: number;
   rrfK: number;

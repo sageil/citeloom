@@ -94,7 +94,7 @@ flowchart LR
     Builder --> Answer[Answer]
     Builder --> Chat[Chat]
     Builder --> Expansion[Extra search queries]
-    Builder --> Summary[Summarization]
+    Builder --> Summary[Indexing model]
     Builder --> Embedding[Embedding]
     Builder --> Reranking[Reranking]
     Builder --> STT[Speech-to-text]

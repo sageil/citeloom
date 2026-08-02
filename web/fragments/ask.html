@@ -6,12 +6,12 @@
   @keydown.escape.window="deleteThreadConfirmationOpen = false; closeTagPicker()"
 >
   <section
-    class="question-section"
+    class="feature-section question-section"
     id="ask"
     aria-label="Ask questions or find sources"
   >
     <div
-      class="question-mode-switch"
+      class="segmented-control question-mode-switch"
       role="group"
       aria-label="Choose Ask or Find Sources"
     >
@@ -37,6 +37,7 @@
       <label>
         Research thread
         <select
+          class="form-control"
           x-model="threadId"
           :disabled="threadsLoading || operation === 'answer'"
           @change="selectResearchThread($event.target.value)"
@@ -53,6 +54,7 @@
       <label>
         Thread title (optional)
         <input
+          class="form-control"
           maxlength="500"
           placeholder="Default"
           type="text"
@@ -71,6 +73,7 @@
       <label x-cloak x-show="thread !== null && thread.turns.length > 0">
         Historical turn
         <select
+          class="form-control"
           x-model="turnId"
           :disabled="operation === 'answer'"
           @change="selectHistoricalTurn($event.target.value)"
@@ -142,11 +145,11 @@
     ></p>
 
     <div class="question-layout">
-      <div class="question-composer">
+      <div class="panel question-composer">
         <template x-if="questionDocuments.length > 0">
           <div>
-            <div class="field-label">
-              <span class="field-label-heading">
+            <div class="form-field">
+              <span class="form-field-heading">
                 <label for="question-search-scope-selected">Search scope</label>
                 <a
                   class="text-action inline-help"
@@ -182,8 +185,8 @@
 
         <template x-if="questionDocuments.length === 0">
           <div>
-            <div class="field-label">
-              <span class="field-label-heading">
+            <div class="form-field">
+              <span class="form-field-heading">
                 <label for="question-search-scope">Search scope</label>
                 <a
                   class="text-action inline-help"
@@ -227,7 +230,7 @@
                     >Select tags</span>
                     <template x-for="selectedTag in selectedTags" :key="selectedTag">
                       <span class="tag-chip tag-scope-chip">
-                        <span x-text="selectedTag"></span>
+                        <span class="truncate" x-text="selectedTag"></span>
                         <button
                           type="button"
                           :aria-label="`Remove ${selectedTag} tag`"
@@ -255,13 +258,13 @@
                   </button>
                 </div>
                 <div
-                  class="tag-scope-menu"
+                  class="popover tag-scope-menu"
                   id="question-tag-options"
                   x-cloak
                   x-show="tagPickerOpen"
                   @keydown.escape.stop.prevent="closeTagPicker(); $refs.tagScopeTrigger.focus()"
                 >
-                  <label class="tag-scope-search">
+                  <label class="search-control tag-scope-search">
                     <svg aria-hidden="true" class="citeloom-icon">
                       <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
                     </svg>
@@ -318,7 +321,7 @@
           </div>
         </template>
 
-        <div class="field-label question-field">
+        <div class="form-field question-field">
           <label for="question-input" x-text="mode === 'ask' ? 'Question' : 'Topic or keywords'"></label>
           <textarea
             id="question-input"
@@ -419,7 +422,7 @@
       <div class="ask-result-column">
         <template x-if="mode === 'ask' && operation === 'answer' && answer === null">
           <div
-            class="answer-panel answer-panel-loading"
+            class="panel answer-panel answer-panel-loading"
             aria-busy="true"
             aria-live="polite"
           >
@@ -447,7 +450,7 @@
         </template>
 
         <template x-if="mode === 'ask' && answer === null && operation !== 'answer'">
-          <div class="answer-panel empty-answer">
+          <div class="panel empty-state answer-panel empty-answer">
             <svg aria-hidden="true" class="citeloom-icon ask-empty-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
             </svg>
@@ -467,7 +470,7 @@
         </template>
 
         <template x-if="mode === 'ask' && answer !== null">
-          <div class="answer-panel" aria-live="polite">
+          <div class="panel answer-panel" aria-live="polite">
             <div class="answer-heading">
               <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
                 <use href="./assets/images/citeloom-icons.svg#citeloom-brain"></use>
@@ -728,7 +731,7 @@
 
         <template x-if="mode === 'discover' && discoveryResult === null && operation === 'search'">
           <div
-            class="answer-panel answer-panel-loading discovery-panel"
+            class="panel answer-panel answer-panel-loading discovery-panel"
             aria-busy="true"
             aria-live="polite"
           >
@@ -754,7 +757,7 @@
         </template>
 
         <template x-if="mode === 'discover' && discoveryResult === null && operation !== 'search'">
-          <div class="answer-panel empty-answer discovery-panel">
+          <div class="panel empty-state answer-panel empty-answer discovery-panel">
             <p class="visually-hidden" role="status" x-text="discoveryStatus"></p>
             <svg aria-hidden="true" class="citeloom-icon ask-empty-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
@@ -774,7 +777,7 @@
         </template>
 
         <template x-if="mode === 'discover' && discoveryResult !== null">
-          <div class="answer-panel discovery-panel" :aria-busy="operation === 'search' || discoveryPageLoading">
+          <div class="panel answer-panel discovery-panel" :aria-busy="operation === 'search' || discoveryPageLoading">
             <p class="visually-hidden" role="status" x-text="discoveryStatus"></p>
             <div class="discovery-panel-heading">
               <div>
@@ -846,7 +849,7 @@
                     </template>
                   </div>
                   <nav
-                    class="discovery-pagination"
+                    class="pagination discovery-pagination"
                     aria-label="Keyword match pages"
                     x-cloak
                     x-show="group.key === 'keyword' && discoveryTotalPages() > 1"

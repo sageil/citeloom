@@ -135,15 +135,16 @@ export async function answerChatMessageWithRuntime(
       "embedding",
       "retrieving",
     );
+    const chatScheduler = runtime.scheduler("chat", "interactive-answer");
     const questionResolution = await contextualizeChatQuestion(
       runtime.models,
       accepted.userMessage.content,
       memory.questionContextTurns,
-      runtime.scheduler("queryExpansion", "interactive-answer"),
+      chatScheduler,
       lease.signal,
       {
         seedMode: runtime.config.retrieval.generationSeedMode,
-        temperature: runtime.config.retrieval.queryExpansionTemperature,
+        temperature: runtime.config.retrieval.chatTemperature,
       },
       reportProgress,
       runTelemetry,
@@ -154,7 +155,6 @@ export async function answerChatMessageWithRuntime(
     );
     reportProgress("Retrieving evidence from indexed documents");
     const chatModels = selectChatInferenceModels(runtime.models);
-    const chatScheduler = runtime.scheduler("chat", "interactive-answer");
     const prepared = await prepareRetrievalWithRuntime(
       runtime,
       questionInput,
@@ -367,6 +367,7 @@ function buildChatRunConfiguration(
     },
     retrieval: {
       ...research.retrieval,
+      answerTemperature: runtime.config.retrieval.chatTemperature,
       queryExpansions: CHAT_QUERY_EXPANSIONS,
     },
   };
@@ -377,6 +378,7 @@ function createChatRetrievalConfig(config: AppConfig): AppConfig {
     ...config,
     retrieval: {
       ...config.retrieval,
+      answerTemperature: config.retrieval.chatTemperature,
       queryExpansions: CHAT_QUERY_EXPANSIONS,
     },
   };

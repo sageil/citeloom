@@ -221,7 +221,7 @@ export interface DashboardResponse {
       name: string;
     };
     name: string;
-    queryExpansionModel: string;
+    queryExpansionModel: string | null;
     reranker: {
       model: string;
       name: string;
@@ -1803,7 +1803,8 @@ async function buildDashboardResponse(
         name: effectiveConfig.claimVerifier.runtimeName,
       },
       name: effectiveConfig.inference.answer.runtimeName,
-      queryExpansionModel: effectiveConfig.inference.queryExpansion.model,
+      queryExpansionModel:
+        effectiveConfig.inference.queryExpansion?.model ?? null,
       reranker,
       summaryModel: effectiveConfig.inference.summary.model,
     },

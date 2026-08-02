@@ -60,7 +60,7 @@ export interface InferenceModelRegistry {
   claimVerifier: HhemClient;
   documentEmbedding: EmbeddingModelV4;
   metrics: InferenceMetricsReporter;
-  queryExpansion: LanguageModelV4;
+  queryExpansion: LanguageModelV4 | null;
   queryEmbedding: EmbeddingModelV4;
   reranker: ResolvedReranker | null;
   summary: LanguageModelV4;
@@ -69,8 +69,48 @@ export interface InferenceModelRegistry {
     chatMs?: number;
     embeddingMs: number;
     summarizationMs: number;
-    queryExpansionMs: number;
+    queryExpansionMs: number | null;
   };
+}
+
+interface QueryExpansionRuntime {
+  model: LanguageModelV4;
+  timeoutMs: number;
+}
+
+function createQueryExpansionRuntime(
+  config: LanguageInferenceConfig | null,
+  database: CiteLoomDatabase | undefined,
+): QueryExpansionRuntime | null {
+  if (config === null) {
+    return null;
+  }
+  const runtime = createLanguageModel(
+    config,
+    INFERENCE_PROVIDER_OPTIONS_KEY,
+    true,
+    database,
+    "query-expansion",
+    0,
+  );
+  const thinkingProviderOptions = buildLanguageThinkingProviderOptions(
+    config,
+    config.thinkingMode,
+  );
+  const reasoning = buildLanguageReasoning(config, config.thinkingMode);
+  const model = wrapLanguageModel({
+    middleware: defaultSettingsMiddleware({
+      settings: buildLanguageModelSettings(
+        null,
+        0.1,
+        thinkingProviderOptions,
+        reasoning,
+      ),
+    }),
+    model: runtime.model,
+    modelId: `${config.model}:query-expansion`,
+  });
+  return { model, timeoutMs: config.timeoutMs };
 }
 
 export function createInferenceModelRegistry(
@@ -103,18 +143,9 @@ export function createInferenceModelRegistry(
     "summary",
     0,
   );
-  const queryExpansionRuntime = createLanguageModel(
-    config.inference.queryExpansion,
-    INFERENCE_PROVIDER_OPTIONS_KEY,
-    true,
-    database,
-    "query-expansion",
-    0,
-  );
   const baseLanguageModel = answerRuntime.model;
   const baseChatModel = chatRuntime.model;
   const baseSummaryModel = summaryRuntime.model;
-  const baseQueryExpansionModel = queryExpansionRuntime.model;
   const answerThinkingProviderOptions = buildLanguageThinkingProviderOptions(
     config.inference.answer,
     config.inference.answer.thinkingMode,
@@ -127,11 +158,6 @@ export function createInferenceModelRegistry(
     config.inference.summary,
     config.inference.summary.thinkingMode,
   );
-  const queryExpansionThinkingProviderOptions =
-    buildLanguageThinkingProviderOptions(
-      config.inference.queryExpansion,
-      config.inference.queryExpansion.thinkingMode,
-    );
   const answerReasoning = buildLanguageReasoning(
     config.inference.answer,
     config.inference.answer.thinkingMode,
@@ -143,10 +169,6 @@ export function createInferenceModelRegistry(
   const summaryReasoning = buildLanguageReasoning(
     config.inference.summary,
     config.inference.summary.thinkingMode,
-  );
-  const queryExpansionReasoning = buildLanguageReasoning(
-    config.inference.queryExpansion,
-    config.inference.queryExpansion.thinkingMode,
   );
   const answerModel = wrapLanguageModel({
     middleware: defaultSettingsMiddleware({
@@ -184,18 +206,10 @@ export function createInferenceModelRegistry(
     model: baseSummaryModel,
     modelId: `${config.inference.summary.model}:summary`,
   });
-  const queryExpansionModel = wrapLanguageModel({
-    middleware: defaultSettingsMiddleware({
-      settings: buildLanguageModelSettings(
-        null,
-        0.1,
-        queryExpansionThinkingProviderOptions,
-        queryExpansionReasoning,
-      ),
-    }),
-    model: baseQueryExpansionModel,
-    modelId: `${config.inference.queryExpansion.model}:query-expansion`,
-  });
+  const queryExpansionRuntime = createQueryExpansionRuntime(
+    config.inference.queryExpansion,
+    database,
+  );
   const claimVerifier = new HttpHhemClient(config.claimVerifier);
   const baseEmbeddingModel = createEmbeddingModel(
     config.inference.embedding,
@@ -218,17 +232,20 @@ export function createInferenceModelRegistry(
     modelId: `${config.inference.embedding.model}:query`,
   });
 
+  const languageModels: Record<string, LanguageModelV4> = {
+    answer: answerModel,
+    chat: chatModel,
+    summary: summaryModel,
+  };
+  if (queryExpansionRuntime !== null) {
+    languageModels.queryExpansion = queryExpansionRuntime.model;
+  }
   const inferenceProvider = customProvider({
     embeddingModels: {
       document: documentEmbeddingModel,
       query: queryEmbeddingModel,
     },
-    languageModels: {
-      answer: answerModel,
-      chat: chatModel,
-      queryExpansion: queryExpansionModel,
-      summary: summaryModel,
-    },
+    languageModels,
   });
   let retrievalProvider = customProvider({});
   if (config.retrieval.reranker !== null) {
@@ -270,7 +287,9 @@ export function createInferenceModelRegistry(
     documentEmbedding: registry.embeddingModel("inference:document"),
     metrics,
     queryEmbedding: registry.embeddingModel("inference:query"),
-    queryExpansion: registry.languageModel("inference:queryExpansion"),
+    queryExpansion: queryExpansionRuntime === null
+      ? null
+      : registry.languageModel("inference:queryExpansion"),
     readAnswerCapabilities: answerRuntime.readCapabilities,
     readChatCapabilities: chatRuntime.readCapabilities,
     reranker,
@@ -280,7 +299,7 @@ export function createInferenceModelRegistry(
       chatMs: chatConfig.timeoutMs,
       embeddingMs: config.inference.embedding.timeoutMs,
       summarizationMs: config.inference.summary.timeoutMs,
-      queryExpansionMs: config.inference.queryExpansion.timeoutMs,
+      queryExpansionMs: queryExpansionRuntime?.timeoutMs ?? null,
     },
   };
 }

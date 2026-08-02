@@ -1,14 +1,16 @@
 import {
   readArray,
-  readBoolean,
   readEnum,
   readJsonResponse,
   readNonEmptyString,
   readNonNegativeInteger,
+  readNullableBoolean,
   readNullableNonEmptyString,
   readNullableNonNegativeInteger,
+  readNullablePositiveInteger,
   readPlainObject,
   readPositiveInteger,
+  readTimestamp,
 } from "./citeloom-boundaries.js";
 
 const errorAreas = Object.freeze([
@@ -210,28 +212,6 @@ function readDoclingErrorDetail(value) {
       "Docling source reference",
     ),
   };
-}
-
-function readTimestamp(value, label) {
-  const timestamp = readNonEmptyString(value, label);
-  if (!Number.isFinite(Date.parse(timestamp))) {
-    throw new Error(`The ${label} response is invalid.`);
-  }
-  return timestamp;
-}
-
-function readNullablePositiveInteger(value, label) {
-  if (value === null) {
-    return null;
-  }
-  return readPositiveInteger(value, label);
-}
-
-function readNullableBoolean(value, label) {
-  if (value === null) {
-    return null;
-  }
-  return readBoolean(value, label);
 }
 
 function buildContextRows(error) {
