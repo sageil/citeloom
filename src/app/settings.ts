@@ -50,6 +50,26 @@ import {
   readEmbeddingInputFormatContract,
   type EmbeddingInputFormatContract,
 } from "../embedding/input-format-model.js";
+import {
+  featureSetting,
+  nullableSetting,
+  numberSetting,
+  panelSetting,
+  positiveIntegerSetting,
+  selectSetting,
+  sensitiveSetting,
+  setting,
+  type RuntimeSettingDefinition,
+  type RuntimeSettingPanel,
+} from "./runtime-setting-definition.js";
+
+export type {
+  RuntimeSettingDefinition,
+  RuntimeSettingGroup,
+  RuntimeSettingInput,
+  RuntimeSettingOption,
+  RuntimeSettingPanel,
+} from "./runtime-setting-definition.js";
 
 const SETTINGS_ID = "runtime";
 const runtimeSettingKeySchema = z.enum([
@@ -120,54 +140,6 @@ const storedSettingsRowSchema = z.object({
   updatedAt: z.date(),
   version: z.number().int().positive(),
 });
-
-export type RuntimeSettingGroup =
-  | "Docling"
-  | "Answers and citation checks"
-  | "Document processing"
-  | "Search and answers"
-  | "Embedding model"
-  | "Search ranking"
-  | "Speech input"
-  | "Spoken answers"
-  | "Usage diagnostics";
-
-export type RuntimeSettingInput =
-  | "boolean"
-  | "number"
-  | "password"
-  | "select"
-  | "text"
-  | "url";
-
-export interface RuntimeSettingOption {
-  label: string;
-  value: string | number;
-}
-
-export interface RuntimeSettingPanel {
-  description: string;
-  id: string;
-  label: string;
-}
-
-export interface RuntimeSettingDefinition {
-  description: string;
-  feature?: ProviderCapability;
-  group: RuntimeSettingGroup;
-  input: RuntimeSettingInput;
-  key: RuntimeSettingKey;
-  label: string;
-  providerManagedSetting?: boolean;
-  nullable?: boolean;
-  max?: number;
-  min?: number;
-  options?: RuntimeSettingOption[];
-  panel?: RuntimeSettingPanel;
-  sensitive?: boolean;
-  step?: number;
-  unit?: string;
-}
 
 export type NormalizedRuntimeSettingChange =
   | { key: RuntimeSettingKey; reset: true }
@@ -1337,117 +1309,4 @@ function runtimeSettingsSchemaForKey(
   key: RuntimeSettingKey,
 ): z.ZodType<RuntimeSettingValue> {
   return runtimeSettingsSchema.shape[key] as z.ZodType<RuntimeSettingValue>;
-}
-
-function setting(
-  key: RuntimeSettingKey,
-  group: RuntimeSettingGroup,
-  label: string,
-  input: RuntimeSettingInput,
-  description: string,
-): RuntimeSettingDefinition {
-  return { description, group, input, key, label };
-}
-
-function featureSetting(
-  definition: RuntimeSettingDefinition,
-  feature: ProviderCapability,
-): RuntimeSettingDefinition {
-  return { ...definition, feature };
-}
-
-function panelSetting(
-  definition: RuntimeSettingDefinition,
-  panel: RuntimeSettingPanel,
-): RuntimeSettingDefinition {
-  return { ...definition, panel };
-}
-
-function sensitiveSetting(
-  key: RuntimeSettingKey,
-  group: RuntimeSettingGroup,
-  label: string,
-  description: string,
-): RuntimeSettingDefinition {
-  return {
-    description,
-    group,
-    input: "password",
-    key,
-    label,
-    nullable: true,
-    sensitive: true,
-  };
-}
-
-function nullableSetting(
-  key: RuntimeSettingKey,
-  group: RuntimeSettingGroup,
-  label: string,
-  input: RuntimeSettingInput,
-  description: string,
-): RuntimeSettingDefinition {
-  return { description, group, input, key, label, nullable: true };
-}
-
-function numberSetting(
-  key: RuntimeSettingKey,
-  group: RuntimeSettingGroup,
-  label: string,
-  description: string,
-  min: number,
-  max: number,
-  step: number,
-  unit?: string,
-): RuntimeSettingDefinition {
-  const definition: RuntimeSettingDefinition = {
-    description,
-    group,
-    input: "number",
-    key,
-    label,
-    max,
-    min,
-    step,
-  };
-  if (unit !== undefined) {
-    definition.unit = unit;
-  }
-  return definition;
-}
-
-function positiveIntegerSetting(
-  key: RuntimeSettingKey,
-  group: RuntimeSettingGroup,
-  label: string,
-  description: string,
-  unit: string,
-): RuntimeSettingDefinition {
-  return {
-    description,
-    group,
-    input: "number",
-    key,
-    label,
-    min: 1,
-    step: 1,
-    unit,
-  };
-}
-
-function selectSetting(
-  key: RuntimeSettingKey,
-  group: RuntimeSettingGroup,
-  label: string,
-  description: string,
-  options: RuntimeSettingOption[],
-): RuntimeSettingDefinition {
-  return {
-    description,
-    group,
-    input: "select",
-    key,
-    label,
-    options,
-  };
 }
