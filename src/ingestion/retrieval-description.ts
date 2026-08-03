@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import {
   generateText,
   NoOutputGeneratedError,
-  Output,
   type FilePart,
 } from "ai";
 
@@ -30,6 +29,7 @@ import {
   createInferenceTelemetryOptions,
   MAX_SOURCE_CHARACTERS,
 } from "../inference/shared.js";
+import { createStructuredOutput } from "../inference/structured-output.js";
 import type { TaskScheduler } from "../shared/concurrency.js";
 import {
   IMAGE_RETRIEVAL_DESCRIPTION_SYSTEM_PROMPT,
@@ -210,11 +210,12 @@ async function requestTableDescription(
       abortSignal: requestSignal,
       maxRetries: 1,
       model: models.summary,
-      output: Output.object({
+      output: createStructuredOutput({
         description:
           "A concise, factual, self-contained table description for semantic and keyword retrieval.",
         name: "table_retrieval_description",
         schema: tableRetrievalDescriptionSchema,
+        validation: "local",
       }),
       prompt,
       system: TABLE_RETRIEVAL_DESCRIPTION_SYSTEM_PROMPT,
@@ -248,11 +249,12 @@ async function requestImageDescription(
       maxRetries: 1,
       messages: [{ content, role: "user" }],
       model: models.summary,
-      output: Output.object({
+      output: createStructuredOutput({
         description:
           "A factual visual retrieval description and substantive-content classification.",
         name: "image_retrieval_description",
         schema: imageRetrievalDescriptionSchema,
+        validation: "local",
       }),
       system: IMAGE_RETRIEVAL_DESCRIPTION_SYSTEM_PROMPT,
       telemetry: createInferenceTelemetryOptions(

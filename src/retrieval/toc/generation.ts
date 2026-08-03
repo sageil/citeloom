@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { generateText, NoOutputGeneratedError, Output } from "ai";
+import { generateText, NoOutputGeneratedError } from "ai";
 import { z } from "zod";
 
 import type { EmbeddingSpaceConfig } from "../../config/index.js";
@@ -19,6 +19,7 @@ import {
   throwInferenceRequestFailure,
 } from "../../inference/request.js";
 import { createInferenceTelemetryOptions } from "../../inference/shared.js";
+import { createStructuredOutput } from "../../inference/structured-output.js";
 import { mapWithConcurrency, type TaskScheduler } from "../../shared/concurrency.js";
 import { createRetrievalWindows } from "../windows.js";
 
@@ -239,11 +240,12 @@ async function requestCondensedToc(
       abortSignal: signals.requestSignal,
       maxRetries: 1,
       model: models.summary,
-      output: Output.object({
+      output: createStructuredOutput({
         description:
           "The identifiers of the most useful structural headings for a compact document table of contents.",
         name: "document_toc_selection",
         schema: condensedTocSchema,
+        validation: "local",
       }),
       prompt: JSON.stringify(batch.map((candidate) => ({
         id: candidate.id,

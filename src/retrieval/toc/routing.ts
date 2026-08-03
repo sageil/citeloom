@@ -1,4 +1,4 @@
-import { generateText, NoOutputGeneratedError, Output } from "ai";
+import { generateText, NoOutputGeneratedError } from "ai";
 import { z } from "zod";
 
 import type { InferenceModelRegistry } from "../../inference/registry.js";
@@ -8,6 +8,7 @@ import {
   throwInferenceRequestFailure,
 } from "../../inference/request.js";
 import { createInferenceTelemetryOptions } from "../../inference/shared.js";
+import { createStructuredOutput } from "../../inference/structured-output.js";
 import {
   createTelemetryStageResult,
   noopRunTelemetry,
@@ -183,11 +184,12 @@ async function requestTocSelections(
       abortSignal: signals.requestSignal,
       maxRetries: 1,
       model: models.answer,
-      output: Output.object({
+      output: createStructuredOutput({
         description:
           "The document TOC entries whose sections are most likely to contain source material for the question.",
         name: "document_toc_routing",
         schema: tocRoutingResultSchema,
+        validation: "local",
       }),
       prompt: [
         "Question:",

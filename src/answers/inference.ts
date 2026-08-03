@@ -1,9 +1,7 @@
 import { createHash } from "node:crypto";
 
 import {
-  jsonSchema,
   NoObjectGeneratedError,
-  Output,
   streamText,
   type TextPart,
   type UserContent,
@@ -39,6 +37,7 @@ import {
 import {
   createInferenceTelemetryOptions,
 } from "../inference/shared.js";
+import { createStructuredOutput } from "../inference/structured-output.js";
 import {
   AnswerCapacityError,
   planAnswerRequest,
@@ -928,12 +927,13 @@ function createAdaptiveAnswerContext(
 export function createAnswerModelOutput(
   allowedEvidenceRefs: readonly EvidenceReference[],
   responseContract: AnswerResponseContract = defaultAnswerResponse,
-): ReturnType<typeof Output.object<unknown>> {
+): ReturnType<typeof createStructuredOutput<unknown>> {
   const responseSchema = responseContract.createSchema(allowedEvidenceRefs);
-  return Output.object({
+  return createStructuredOutput({
     description: responseContract.description,
     name: responseContract.name,
-    schema: jsonSchema<unknown>(z.toJSONSchema(responseSchema)),
+    schema: responseSchema,
+    validation: "provider-only",
   });
 }
 

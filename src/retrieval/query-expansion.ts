@@ -1,4 +1,4 @@
-import { generateText, Output } from "ai";
+import { generateText } from "ai";
 import { z } from "zod";
 
 import type { TaskScheduler } from "../shared/concurrency.js";
@@ -8,6 +8,7 @@ import {
   throwInferenceRequestFailure,
 } from "../inference/request.js";
 import { createInferenceTelemetryOptions } from "../inference/shared.js";
+import { createStructuredOutput } from "../inference/structured-output.js";
 import {
   createTelemetryStageResult,
   noopRunTelemetry,
@@ -136,10 +137,11 @@ async function requestQueryExpansions(
           outputTokens: event.usage.outputTokens ?? null,
         });
       },
-      output: Output.object({
+      output: createStructuredOutput({
         description: "Extra search queries that seek evidence not already targeted by the original question.",
         name: "extra_search_queries",
         schema: createQueryExpansionSchema(expansionCount),
+        validation: "local",
       }),
       prompt: question,
       system,

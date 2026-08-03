@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { generateText, Output } from "ai";
+import { generateText } from "ai";
 import { z } from "zod";
 
 import type { AnswerConversationTurn } from "../answers/inference.js";
@@ -11,6 +11,7 @@ import {
   throwInferenceRequestFailure,
 } from "../inference/request.js";
 import { createInferenceTelemetryOptions } from "../inference/shared.js";
+import { createStructuredOutput } from "../inference/structured-output.js";
 import {
   createTelemetryStageResult,
   noopRunTelemetry,
@@ -34,30 +35,33 @@ interface ChatContextualizationResources {
   timeoutMs: number;
 }
 
-const contextualizedChatQuestionSchema = z.discriminatedUnion("action", [
-  z.object({
-    candidates: z.array(z.string().trim().min(1)).describe(
-      "Subjects or scopes from the current message and conversation that could satisfy a context-dependent reference.",
-    ),
-    question: z.string().trim().min(1).describe(
-      "The current question rewritten as a self-contained retrieval query.",
-    ),
-    action: z.literal("retrieve"),
-    clarification: z.null(),
-  }).strict(),
-  z.object({
-    candidates: z.array(z.string().trim().min(1)).describe(
-      "The materially different subjects or scopes offered by the clarification, or an empty array when required context is absent.",
-    ),
-    question: z.string().trim().min(1).describe(
-      "The unchanged current message.",
-    ),
-    action: z.literal("clarify"),
-    clarification: z.string().trim().min(1).describe(
-      "One focused clarification question using exact subject names from the conversation and meaningful options when useful.",
-    ),
-  }).strict(),
-]);
+const contextualizedChatQuestionSchema = z.object({
+  action: z.enum(["retrieve", "clarify"]),
+  candidates: z.array(z.string().trim().min(1)).describe(
+    "Materially distinct subjects or scopes from the current message and conversation that could satisfy a context-dependent reference.",
+  ),
+  clarification: z.string().trim().min(1).nullable().describe(
+    "A focused clarification question for clarify, otherwise null.",
+  ),
+  question: z.string().trim().min(1).describe(
+    "A self-contained retrieval question for retrieve, otherwise the unchanged current message.",
+  ),
+}).strict().superRefine((result, context) => {
+  if (result.action === "retrieve" && result.clarification !== null) {
+    context.addIssue({
+      code: "custom",
+      message: "A retrieval response must set clarification to null.",
+      path: ["clarification"],
+    });
+  }
+  if (result.action === "clarify" && result.clarification === null) {
+    context.addIssue({
+      code: "custom",
+      message: "A clarification response must include a clarification question.",
+      path: ["clarification"],
+    });
+  }
+});
 
 export interface ContextualizedChatQuestion {
   clarification: string | null;
@@ -193,10 +197,11 @@ async function requestContextualizedQuestion(
           outputTokens: event.usage.outputTokens ?? null,
         });
       },
-      output: Output.object({
+      output: createStructuredOutput({
         description: "A clarification request when user intent is materially ambiguous, otherwise a self-contained question for document retrieval.",
         name: "contextualized_chat_question",
         schema: contextualizedChatQuestionSchema,
+        validation: "local",
       }),
       system: buildContextualizationSystemPrompt(),
       telemetry,
