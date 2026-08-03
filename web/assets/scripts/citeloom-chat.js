@@ -2,6 +2,7 @@ import {
   readArray,
   readBoolean,
   readEnum,
+  readFiniteNumber,
   readJsonResponse,
   readNonEmptyString,
   readNonNegativeInteger,
@@ -17,6 +18,7 @@ import {
   createEmptyAnswerContent,
   readAnswerContentUpdate,
 } from "./citeloom-answer-content.js";
+import { requestAnswerSpeech } from "./citeloom-answer-speech.js";
 import { readDocumentCatalog } from "./citeloom-documents.js";
 import { buildPdfViewerUrl } from "./citeloom-file-links.js";
 import { focusTextArea } from "./citeloom-focus.js";
@@ -54,6 +56,13 @@ const chatVerificationStates = Object.freeze([
   "completed",
   "failed",
 ]);
+const answerSections = Object.freeze([
+  "answer",
+  "conflicting-evidence",
+  "key-points",
+]);
+const evidenceKinds = Object.freeze(["image", "table", "text"]);
+const statementPresentations = Object.freeze(["bullet", "paragraph"]);
 const chatSwitcherRequestEvent = "citeloom:chat-switcher-request";
 
 function readChatSummaries(value) {
@@ -70,6 +79,21 @@ function readChatSummaries(value) {
       updatedAt: readNonEmptyString(summary.updatedAt, "chat update time"),
     };
   });
+}
+
+function readChatSpeechFeatures(value) {
+  const dashboard = readPlainObject(value, "dashboard");
+  const features = readPlainObject(dashboard.features, "dashboard features");
+  return {
+    textToSpeechEnabled: readBoolean(
+      features.textToSpeech,
+      "text-to-speech feature",
+    ),
+    textToSpeechPreloadEnabled: readBoolean(
+      features.textToSpeechPreload,
+      "text-to-speech preload feature",
+    ),
+  };
 }
 
 function readChatConversation(value) {
@@ -270,38 +294,231 @@ function readChatEvidenceUnits(value, citationNumberValue, label) {
   return evidenceUnits;
 }
 
+function readStringArray(value, label) {
+  const values = readArray(value, label);
+  const result = [];
+  for (const item of values) {
+    result.push(readNonEmptyString(item, `${label} item`));
+  }
+  return result;
+}
+
+function readPositiveIntegerArray(value, label) {
+  const values = readArray(value, label);
+  const result = [];
+  for (const item of values) {
+    result.push(readPositiveInteger(item, `${label} item`));
+  }
+  return result;
+}
+
+function readAnswerSourceRegion(value, label) {
+  const region = readPlainObject(value, label);
+  const boundingBox = readPlainObject(
+    region.boundingBox,
+    `${label} bounding box`,
+  );
+  const characterSpan = readPlainObject(
+    region.characterSpan,
+    `${label} character span`,
+  );
+  return {
+    boundingBox: {
+      bottom: readFiniteNumber(
+        boundingBox.bottom,
+        `${label} bounding box bottom`,
+      ),
+      left: readFiniteNumber(
+        boundingBox.left,
+        `${label} bounding box left`,
+      ),
+      right: readFiniteNumber(
+        boundingBox.right,
+        `${label} bounding box right`,
+      ),
+      top: readFiniteNumber(
+        boundingBox.top,
+        `${label} bounding box top`,
+      ),
+    },
+    characterSpan: {
+      end: readNonNegativeInteger(
+        characterSpan.end,
+        `${label} character span end`,
+      ),
+      start: readNonNegativeInteger(
+        characterSpan.start,
+        `${label} character span start`,
+      ),
+    },
+    pageNumber: readPositiveInteger(region.pageNumber, `${label} page number`),
+  };
+}
+
+function readAnswerSourceRegions(value, label) {
+  const values = readArray(value, label);
+  const regions = [];
+  for (let index = 0; index < values.length; index += 1) {
+    regions.push(
+      readAnswerSourceRegion(values[index], `${label} item ${index + 1}`),
+    );
+  }
+  return regions;
+}
+
+function readAnswerTableCell(value, label) {
+  const cell = readPlainObject(value, label);
+  return {
+    columnHeader: readBoolean(cell.columnHeader, `${label} column header`),
+    columnSpan: readPositiveInteger(cell.columnSpan, `${label} column span`),
+    endColumn: readPositiveInteger(cell.endColumn, `${label} end column`),
+    endRow: readPositiveInteger(cell.endRow, `${label} end row`),
+    rowHeader: readBoolean(cell.rowHeader, `${label} row header`),
+    rowSection: readBoolean(cell.rowSection, `${label} row section`),
+    rowSpan: readPositiveInteger(cell.rowSpan, `${label} row span`),
+    startColumn: readNonNegativeInteger(
+      cell.startColumn,
+      `${label} start column`,
+    ),
+    startRow: readNonNegativeInteger(cell.startRow, `${label} start row`),
+    text: readString(cell.text, `${label} text`),
+  };
+}
+
+function readAnswerTableStructure(value, label) {
+  const table = readPlainObject(value, label);
+  const cellValues = readArray(table.cells, `${label} cells`);
+  const cells = [];
+  for (let index = 0; index < cellValues.length; index += 1) {
+    cells.push(
+      readAnswerTableCell(cellValues[index], `${label} cell ${index + 1}`),
+    );
+  }
+  return {
+    cells,
+    columnCount: readPositiveInteger(
+      table.columnCount,
+      `${label} column count`,
+    ),
+    rowCount: readPositiveInteger(table.rowCount, `${label} row count`),
+    rowEnd: readPositiveInteger(table.rowEnd, `${label} row end`),
+    rowStart: readNonNegativeInteger(table.rowStart, `${label} row start`),
+  };
+}
+
+function readAnswerEvidence(value, label) {
+  const evidence = readPlainObject(value, label);
+  const kind = readEnum(evidence.kind, evidenceKinds, `${label} kind`);
+  if (kind === "text") {
+    return {
+      excerpt: readNonEmptyString(evidence.excerpt, `${label} excerpt`),
+      kind,
+    };
+  }
+  if (kind === "table") {
+    return {
+      content: readNonEmptyString(evidence.content, `${label} content`),
+      kind,
+      table: readAnswerTableStructure(
+        evidence.table,
+        `${label} table structure`,
+      ),
+    };
+  }
+  return {
+    kind,
+    mimeType: readNonEmptyString(evidence.mimeType, `${label} media type`),
+  };
+}
+
+function readAnswerCitation(value, label) {
+  const citation = readPlainObject(value, label);
+  const kind = readEnum(citation.kind, evidenceKinds, `${label} kind`);
+  const evidence = readAnswerEvidence(citation.evidence, `${label} evidence`);
+  if (evidence.kind !== kind) {
+    throw new Error(`The ${label} evidence kind does not match.`);
+  }
+  return {
+    citationNumber: readPositiveInteger(
+      citation.citationNumber,
+      `${label} number`,
+    ),
+    documentId: readNonEmptyString(citation.documentId, `${label} document ID`),
+    documentVersionId: readNonEmptyString(
+      citation.documentVersionId,
+      `${label} document version ID`,
+    ),
+    elementId: readNonEmptyString(citation.elementId, `${label} element ID`),
+    evidence,
+    id: readNonEmptyString(citation.id, `${label} ID`),
+    kind,
+    pageNumbers: readPositiveIntegerArray(
+      citation.pageNumbers,
+      `${label} page numbers`,
+    ),
+    regions: readAnswerSourceRegions(citation.regions, `${label} regions`),
+    sectionPath: readStringArray(citation.sectionPath, `${label} section path`),
+    sourceFile: readNonEmptyString(citation.sourceFile, `${label} source file`),
+  };
+}
+
 function readAnswerDocument(value) {
   const answer = readPlainObject(value, "chat answer");
-  const citations = readArray(answer.citations, "answer citations").map((item) => {
-    const citation = readPlainObject(item, "answer citation");
-    return {
-      id: readNonEmptyString(citation.id, "answer citation ID"),
-    };
-  });
   const schemaVersion = readPositiveInteger(
     answer.schemaVersion,
     "answer schema version",
   );
-  const statements = readArray(answer.statements, "answer statements").map((item) => {
-    const statement = readPlainObject(item, "answer statement");
-    return {
-      citationIds: readArray(
-        statement.citationIds,
-        "statement citation IDs",
-      ).map((id) => readNonEmptyString(id, "statement citation ID")),
+  if (schemaVersion !== 1) {
+    throw new Error("The answer schema version is unsupported.");
+  }
+  const citationValues = readArray(answer.citations, "answer citations");
+  const citations = [];
+  const citationIds = new Set();
+  const citationNumbers = new Set();
+  for (let index = 0; index < citationValues.length; index += 1) {
+    const citation = readAnswerCitation(
+      citationValues[index],
+      `answer citation ${index + 1}`,
+    );
+    if (citationIds.has(citation.id)) {
+      throw new Error("The answer contains a duplicate citation.");
+    }
+    if (citationNumbers.has(citation.citationNumber)) {
+      throw new Error("The answer contains a duplicate citation number.");
+    }
+    citationIds.add(citation.id);
+    citationNumbers.add(citation.citationNumber);
+    citations.push(citation);
+  }
+  const statementValues = readArray(answer.statements, "answer statements");
+  const statements = [];
+  for (let index = 0; index < statementValues.length; index += 1) {
+    const label = `answer statement ${index + 1}`;
+    const statement = readPlainObject(statementValues[index], label);
+    const statementCitationIds = readStringArray(
+      statement.citationIds,
+      `${label} citation IDs`,
+    );
+    for (const citationId of statementCitationIds) {
+      if (!citationIds.has(citationId)) {
+        throw new Error("The answer references an unavailable citation.");
+      }
+    }
+    statements.push({
+      citationIds: statementCitationIds,
       content: readNonEmptyString(statement.content, "statement content"),
       presentation: readEnum(
         statement.presentation,
-        ["bullet", "paragraph"],
+        statementPresentations,
         "statement presentation",
       ),
       section: readEnum(
         statement.section,
-        ["answer", "conflicting-evidence", "key-points"],
+        answerSections,
         "statement section",
       ),
-    };
-  });
+    });
+  }
   const hasCitations = citations.length > 0;
   const hasStatements = statements.length > 0;
   if (hasCitations !== hasStatements) {
@@ -479,6 +696,30 @@ function updatePendingChatAnswer(conversation, runId, answerContentUpdate) {
   return replaceChatRun(conversation, { ...run, messages });
 }
 
+function findLatestChatSpeechTarget(conversation) {
+  if (conversation === null) {
+    return null;
+  }
+  let latest = null;
+  let latestSequence = 0;
+  for (const run of conversation.runs) {
+    if (run.state !== "completed" || run.sequence < latestSequence) {
+      continue;
+    }
+    for (const message of run.messages) {
+      if (message.role !== "assistant") {
+        continue;
+      }
+      latest = {
+        answerDocument: message.answerDocument,
+        messageId: message.id,
+      };
+      latestSequence = run.sequence;
+    }
+  }
+  return latest;
+}
+
 export function registerPage(alpine) {
   alpine.data("citeloomChatPage", () => ({
     busy: false,
@@ -514,6 +755,15 @@ export function registerPage(alpine) {
     newChatTitle: "",
     newChatTotalDocuments: 0,
     selectedCitation: null,
+    speechAbortController: null,
+    speechAnswerMessageId: null,
+    speechAudioError: "",
+    speechAudioLoading: false,
+    speechAudioPlaying: false,
+    speechAudioUrl: "",
+    speechSettingsRefreshListener: null,
+    textToSpeechEnabled: false,
+    textToSpeechPreloadEnabled: false,
     verificationRefreshTimer: null,
 
     get filteredConversations() {
@@ -586,11 +836,21 @@ export function registerPage(alpine) {
       this.chatSwitcherRequestListener = () => {
         this.openChatSwitcher();
       };
+      this.speechSettingsRefreshListener = () => {
+        void this.loadSpeechFeatures();
+      };
       window.addEventListener(
         chatSwitcherRequestEvent,
         this.chatSwitcherRequestListener,
       );
-      await this.refreshConversations();
+      window.addEventListener(
+        "citeloom:settings-revision",
+        this.speechSettingsRefreshListener,
+      );
+      await Promise.all([
+        this.refreshConversations(),
+        this.loadSpeechFeatures(),
+      ]);
       if (this.conversations.length > 0) {
         await this.selectConversation(this.conversations[0].id);
       }
@@ -605,9 +865,44 @@ export function registerPage(alpine) {
           this.chatSwitcherRequestListener,
         );
       }
+      if (this.speechSettingsRefreshListener !== null) {
+        window.removeEventListener(
+          "citeloom:settings-revision",
+          this.speechSettingsRefreshListener,
+        );
+      }
       this.newChatCatalogController?.abort();
       this.newChatPreviewController?.abort();
       this.clearVerificationRefresh();
+      this.resetChatSpeechAudio();
+    },
+
+    async loadSpeechFeatures() {
+      try {
+        const response = await fetch("/api/dashboard", {
+          headers: { accept: "application/json" },
+        });
+        const features = await readJsonResponse(
+          response,
+          "Dashboard request",
+          readChatSpeechFeatures,
+        );
+        this.textToSpeechEnabled = features.textToSpeechEnabled;
+        this.textToSpeechPreloadEnabled =
+          features.textToSpeechPreloadEnabled;
+        if (!this.textToSpeechEnabled) {
+          this.resetChatSpeechAudio();
+          return;
+        }
+        this.prepareSpeechForLatestAnswer();
+        this.maybePreloadChatSpeech();
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : "Chat speech configuration could not be loaded.";
+        this.speechAudioError = message;
+        dispatchNotice("error", message);
+      }
     },
 
     async refreshConversations() {
@@ -625,6 +920,7 @@ export function registerPage(alpine) {
 
     async selectConversation(id) {
       this.clearVerificationRefresh();
+      this.resetChatSpeechAudio();
       this.errorMessage = "";
       this.selectedCitation = null;
       try {
@@ -638,10 +934,173 @@ export function registerPage(alpine) {
         );
         this.$nextTick(() => this.scrollToLatest());
         this.scheduleVerificationRefresh();
+        this.prepareSpeechForLatestAnswer();
+        this.maybePreloadChatSpeech();
         this.focusMessageComposer();
       } catch (error) {
         this.reportError(error, "The chat could not be loaded.");
       }
+    },
+
+    canUseChatSpeech() {
+      return this.textToSpeechEnabled
+        && findLatestChatSpeechTarget(this.conversation) !== null;
+    },
+
+    chatSpeechActionLabel() {
+      if (this.speechAudioLoading) {
+        return "Preparing latest answer audio";
+      }
+      if (this.speechAudioPlaying) {
+        return "Pause latest answer";
+      }
+      return "Play latest answer";
+    },
+
+    chatSpeechIcon() {
+      if (this.speechAudioLoading) {
+        return "./assets/images/citeloom-icons.svg#citeloom-refresh";
+      }
+      if (this.speechAudioPlaying) {
+        return "./assets/images/citeloom-icons.svg#citeloom-pause";
+      }
+      return "./assets/images/citeloom-icons.svg#citeloom-speaker";
+    },
+
+    prepareSpeechForLatestAnswer() {
+      const target = findLatestChatSpeechTarget(this.conversation);
+      if (target?.messageId === this.speechAnswerMessageId) {
+        return;
+      }
+      this.resetChatSpeechAudio();
+    },
+
+    maybePreloadChatSpeech() {
+      if (
+        !this.textToSpeechEnabled
+        || !this.textToSpeechPreloadEnabled
+        || this.speechAudioLoading
+        || this.speechAudioUrl !== ""
+        || findLatestChatSpeechTarget(this.conversation) === null
+      ) {
+        return;
+      }
+      void this.loadLatestChatSpeech(false);
+    },
+
+    async loadLatestChatSpeech(surfaceError = true) {
+      const target = findLatestChatSpeechTarget(this.conversation);
+      if (target === null || this.speechAudioLoading) {
+        return false;
+      }
+      if (
+        this.speechAnswerMessageId === target.messageId
+        && this.speechAudioUrl !== ""
+      ) {
+        return true;
+      }
+      this.resetChatSpeechAudio();
+      const controller = new AbortController();
+      this.speechAbortController = controller;
+      this.speechAnswerMessageId = target.messageId;
+      this.speechAudioLoading = true;
+      this.speechAudioError = "";
+      try {
+        const audioBlob = await requestAnswerSpeech(
+          target.answerDocument,
+          controller.signal,
+        );
+        const currentTarget = findLatestChatSpeechTarget(this.conversation);
+        if (
+          controller.signal.aborted
+          || currentTarget?.messageId !== target.messageId
+        ) {
+          return false;
+        }
+        const audio = this.$refs.chatSpeechAudio;
+        if (!(audio instanceof HTMLAudioElement)) {
+          throw new Error("The chat audio player is unavailable.");
+        }
+        const audioUrl = URL.createObjectURL(audioBlob);
+        this.speechAudioUrl = audioUrl;
+        audio.src = audioUrl;
+        audio.load();
+        return true;
+      } catch (error) {
+        if (!controller.signal.aborted && surfaceError) {
+          const message = error instanceof Error
+            ? error.message
+            : "The latest answer audio could not be generated.";
+          this.speechAudioError = message;
+          dispatchNotice("error", message);
+        }
+        return false;
+      } finally {
+        if (this.speechAbortController === controller) {
+          this.speechAbortController = null;
+          this.speechAudioLoading = false;
+        }
+      }
+    },
+
+    async toggleChatSpeech() {
+      const audio = this.$refs.chatSpeechAudio;
+      if (!(audio instanceof HTMLAudioElement)) {
+        return;
+      }
+      if (!audio.paused && !audio.ended) {
+        audio.pause();
+        return;
+      }
+      if (this.speechAudioUrl === "") {
+        const loaded = await this.loadLatestChatSpeech(true);
+        if (!loaded) {
+          return;
+        }
+      }
+      if (audio.ended) {
+        audio.currentTime = 0;
+      }
+      try {
+        await audio.play();
+      } catch (error) {
+        const message = error instanceof Error
+          ? error.message
+          : "The latest answer audio could not be played.";
+        this.speechAudioError = message;
+        this.speechAudioPlaying = false;
+        dispatchNotice("error", message);
+      }
+    },
+
+    resetChatSpeechAudio() {
+      this.speechAbortController?.abort();
+      this.speechAbortController = null;
+      this.speechAnswerMessageId = null;
+      this.speechAudioError = "";
+      this.speechAudioLoading = false;
+      this.speechAudioPlaying = false;
+      const audioUrl = this.speechAudioUrl;
+      this.speechAudioUrl = "";
+      const audio = this.$refs.chatSpeechAudio;
+      if (audio instanceof HTMLAudioElement) {
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+      }
+      if (audioUrl !== "") {
+        URL.revokeObjectURL(audioUrl);
+      }
+    },
+
+    handleChatSpeechError() {
+      if (this.speechAudioUrl === "") {
+        return;
+      }
+      this.speechAudioPlaying = false;
+      const message = "The latest answer audio could not be played.";
+      this.speechAudioError = message;
+      dispatchNotice("error", message);
     },
 
     openNewChat() {
@@ -1059,6 +1518,7 @@ export function registerPage(alpine) {
           await readJsonResponse(response, "Delete chat");
         }
         this.conversation = null;
+        this.resetChatSpeechAudio();
         this.selectedCitation = null;
         this.clearVerificationRefresh();
         await this.refreshConversations();
@@ -1126,6 +1586,8 @@ export function registerPage(alpine) {
             completed = true;
             this.$nextTick(() => this.scrollToLatest());
             this.scheduleVerificationRefresh();
+            this.prepareSpeechForLatestAnswer();
+            this.maybePreloadChatSpeech();
           },
           (answerContentUpdate) => {
             if (this.conversation?.id !== conversationId) {

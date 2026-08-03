@@ -1401,7 +1401,8 @@ export async function buildWebServer(
   server.setErrorHandler(async (error, request, reply) => {
     const statusCode = normalizeHttpFailureStatus(readErrorStatus(error));
     const errorMessage = readServerErrorMessage(error);
-    if (isExpectedRequestCancellation(error, request.raw.destroyed)) {
+    const requestDisconnected = request.raw.destroyed && !request.raw.complete;
+    if (isExpectedRequestCancellation(error, requestDisconnected)) {
       return reply.status(499).send({
         error: {
           code: "request_cancelled",
@@ -1479,9 +1480,9 @@ export async function buildWebServer(
 
 function isExpectedRequestCancellation(
   error: unknown,
-  requestAborted: boolean,
+  requestDisconnected: boolean,
 ): boolean {
-  if (requestAborted) {
+  if (requestDisconnected) {
     return true;
   }
   const pending: unknown[] = [error];

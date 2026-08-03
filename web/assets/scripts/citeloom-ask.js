@@ -20,6 +20,7 @@ import {
   createEmptyAnswerContent,
   readAnswerContentUpdate,
 } from "./citeloom-answer-content.js";
+import { requestAnswerSpeech } from "./citeloom-answer-speech.js";
 import { buildPdfViewerUrl } from "./citeloom-file-links.js";
 import { focusTextArea } from "./citeloom-focus.js";
 import { dispatchNotice } from "./citeloom-notices.js";
@@ -2214,23 +2215,10 @@ export function registerPage(alpine) {
       this.speechAudioError = "";
       this.revokeSpeechAudio();
       try {
-        const response = await fetch("/api/speech", {
-          body: JSON.stringify({ answerDocument: this.answer.answerDocument }),
-          headers: { "content-type": "application/json" },
-          method: "POST",
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          await readJsonResponse(response, "Answer speech request");
-        }
-        const contentType = response.headers.get("content-type") ?? "";
-        if (!contentType.toLowerCase().startsWith("audio/")) {
-          throw new Error("The speech response was not audio.");
-        }
-        const audio = await response.blob();
-        if (audio.size === 0) {
-          throw new Error("The speech response was empty.");
-        }
+        const audio = await requestAnswerSpeech(
+          this.answer.answerDocument,
+          controller.signal,
+        );
         if (!controller.signal.aborted) {
           this.speechAudioUrl = URL.createObjectURL(audio);
         }

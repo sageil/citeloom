@@ -41,6 +41,24 @@
                 <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
               </button>
               <button
+                class="chat-context-icon-button"
+                type="button"
+                x-cloak
+                x-show="canUseChatSpeech()"
+                :aria-label="chatSpeechActionLabel()"
+                :title="chatSpeechActionLabel()"
+                :disabled="speechAudioLoading"
+                @click="toggleChatSpeech()"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="citeloom-icon"
+                  :class="{ spin: speechAudioLoading }"
+                >
+                  <use :href="chatSpeechIcon()"></use>
+                </svg>
+              </button>
+              <button
                 class="chat-context-icon-button danger"
                 type="button"
                 aria-label="Delete chat"
@@ -175,6 +193,17 @@
       </div>
     </template>
   </main>
+
+  <audio
+    aria-hidden="true"
+    class="visually-hidden"
+    preload="metadata"
+    x-ref="chatSpeechAudio"
+    @ended="speechAudioPlaying = false"
+    @error="handleChatSpeechError()"
+    @pause="speechAudioPlaying = false"
+    @playing="speechAudioPlaying = true"
+  ></audio>
 
   <div
     class="chat-switcher-backdrop"
