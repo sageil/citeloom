@@ -650,12 +650,12 @@
 
             <section
               class="claim-checks"
-              aria-label="Advisory HHEM evidence checks"
+              aria-label="Advisory Hughes Hallucination Evaluation Model evidence checks"
               x-cloak
               x-show="answer.claims.length > 0"
             >
-              <h3>HHEM evidence check</h3>
-              <p>These results are advisory. HHEM does not remove or alter answer statements or citations. Inspect the original evidence before relying on a claim.</p>
+              <h3>Evidence support check</h3>
+              <p>The Hughes Hallucination Evaluation Model (HHEM) checks whether each answer claim is supported by its cited evidence. Its results are advisory and do not change the answer or citations. Review the original evidence before relying on a claim.</p>
               <ul>
                 <template x-for="claim in answer.claims" :key="claim.id">
                   <li>
