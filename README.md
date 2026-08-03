@@ -67,8 +67,8 @@ Set the initial administrator credentials and release tag in `.env`.
 ```dotenv
 CITELOOM_ADMIN_USERNAME=Mayhem
 CITELOOM_ADMIN_PASSWORD='replace-with-a-private-passphrase'
-CITELOOM_IMAGE_TAG=0.1.2
-CITELOOM_RELEASE=0.1.2
+CITELOOM_IMAGE_TAG=0.2.0
+CITELOOM_RELEASE=0.2.0
 ```
 
 Pull the published images and start CiteLoom.
