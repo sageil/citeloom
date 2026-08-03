@@ -6,6 +6,10 @@
 ![Node.js](https://img.shields.io/badge/node-26.5.0-339933)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+![Docker Image Version](https://img.shields.io/docker/v/sageil/citeloom)
+![Docker Pulls](https://img.shields.io/docker/pulls/sageil/citeloom.svg)
+![GitHub Issues](https://img.shields.io/github/issues/sageil/citeloom)
+![GitHub Stars](https://img.shields.io/github/stars/sageil/citeloom?style=flat-square)
 
 ![CiteLoom product artwork with the message Private by Design](assets/citeloom-readme-private-by-design-caps.png)
 
