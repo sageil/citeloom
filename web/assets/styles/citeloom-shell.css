@@ -171,6 +171,13 @@
   min-height: 420px;
 }
 
+.answer-content {
+  color: #e2e8f0;
+  font-size: 14px;
+  line-height: 1.72;
+  overflow-wrap: anywhere;
+}
+
 .citeloom-noscript {
   max-width: 720px;
   margin: 32px auto;

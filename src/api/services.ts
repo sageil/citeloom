@@ -166,9 +166,8 @@ import type {
 } from "../embedding/input-format-model.js";
 import type { QueryScope } from "../domain/query-scope.js";
 import {
-  answerChatMessageWithRuntime,
+  streamChatMessageWithRuntime,
   type ChatMessageRequest,
-  type ChatMessageResponse,
 } from "../chat/pipeline.js";
 import {
   processNextChatVerificationWithRuntime,
@@ -202,11 +201,11 @@ export interface RuntimeWebServices {
     previousVersionId: string,
     currentVersionId: string,
   ) => Promise<DocumentVersionDifference | null>;
-  answerChatMessage?: (
+  streamChatMessage?: (
     principal: AuthenticatedPrincipal,
     request: ChatMessageRequest,
     abortSignal: AbortSignal,
-  ) => Promise<ChatMessageResponse>;
+  ) => ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>>;
   createChatConversation?: (
     principal: AuthenticatedPrincipal,
     title: string,
@@ -806,8 +805,8 @@ function createRuntimeWebServices(
     compareDocumentVersions: async (previousVersionId, currentVersionId) => {
       return research.compareDocumentVersions(previousVersionId, currentVersionId);
     },
-    answerChatMessage: async (principal, request, abortSignal) => {
-      return answerChatMessageWithRuntime(
+    streamChatMessage: (principal, request, abortSignal) => {
+      return streamChatMessageWithRuntime(
         runtime,
         principal,
         request,
@@ -889,27 +888,7 @@ function createRuntimeWebServices(
       if (document === null) {
         return null;
       }
-      if (document.mediaType !== "application/pdf") {
-        throw new ResearchInputConflictError(
-          "Highlighted evidence files are available only for PDF sources.",
-        );
-      }
-      if (record.citation.regions.length === 0) {
-        throw new ResearchInputConflictError(
-          "The selected citation has no stored PDF regions to highlight.",
-        );
-      }
-      const content = await renderHighlightedPdf(
-        document.content,
-        record.citation.regions,
-      );
-      return {
-        content,
-        documentId: record.citation.documentId,
-        filename: basename(record.citation.sourceFile),
-        mediaType: document.mediaType,
-        sourceFile: record.citation.sourceFile,
-      };
+      return buildHighlightedCitationFile(record.citation, document);
     },
     readCitationImage: async (id) => {
       const record = await research.readCitation(id);
@@ -954,27 +933,7 @@ function createRuntimeWebServices(
       if (record === null || document === null) {
         return null;
       }
-      if (document.mediaType !== "application/pdf") {
-        throw new ResearchInputConflictError(
-          "Highlighted evidence files are available only for PDF sources.",
-        );
-      }
-      if (record.citation.regions.length === 0) {
-        throw new ResearchInputConflictError(
-          "The selected citation has no stored PDF regions to highlight.",
-        );
-      }
-      const content = await renderHighlightedPdf(
-        document.content,
-        record.citation.regions,
-      );
-      return {
-        content,
-        documentId: record.citation.documentId,
-        filename: basename(record.citation.sourceFile),
-        mediaType: document.mediaType,
-        sourceFile: record.citation.sourceFile,
-      };
+      return buildHighlightedCitationFile(record.citation, document);
     },
     readChatCitationImage: async (principal, id) => {
       const record = await chat.readCitation(principal, id);
@@ -1101,6 +1060,30 @@ function createRuntimeWebServices(
     },
   };
   return services;
+}
+
+async function buildHighlightedCitationFile(
+  citation: Pick<StoredCitationRecord, "documentId" | "regions" | "sourceFile">,
+  document: Pick<IndexedDocumentFile, "content" | "mediaType">,
+): Promise<IndexedDocumentFile> {
+  if (document.mediaType !== "application/pdf") {
+    throw new ResearchInputConflictError(
+      "Highlighted evidence files are available only for PDF sources.",
+    );
+  }
+  if (citation.regions.length === 0) {
+    throw new ResearchInputConflictError(
+      "The selected citation has no stored PDF regions to highlight.",
+    );
+  }
+  const content = await renderHighlightedPdf(document.content, citation.regions);
+  return {
+    content,
+    documentId: citation.documentId,
+    filename: basename(citation.sourceFile),
+    mediaType: document.mediaType,
+    sourceFile: citation.sourceFile,
+  };
 }
 
 async function readInitialSettings(

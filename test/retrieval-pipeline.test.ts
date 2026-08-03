@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildTestModelCapabilities } from "./model-capabilities-fixture.js";
 import type { LanguageModelV4, LanguageModelV4GenerateResult } from "@ai-sdk/provider";
-import { type UIMessageStreamWriter } from "ai";
+import {
+  simulateStreamingMiddleware,
+  type UIMessageStreamWriter,
+  wrapLanguageModel,
+} from "ai";
 import { MockEmbeddingModelV4, MockLanguageModelV4 } from "ai/test";
 
 const saveTurnMock = vi.hoisted(() => vi.fn());
@@ -165,6 +169,13 @@ describe("atomic structured answer publication", () => {
       throw new Error("Expected a published answer.");
     }
     expect(saved.answerDocument).toEqual(published.answerDocument);
+    expect(saved.answerDocument.citations).toHaveLength(2);
+    expect(saved.answerDocument.statements.map((statement) => statement.content))
+      .toEqual(["Unsupported statement.", "Revenue decreased."]);
+    expect(saved.claims.map((claim) => claim.status)).toEqual([
+      "unsupported",
+      "partially-supported",
+    ]);
     expect(saved.claims).toEqual(published.claims.map((claim) => {
       const {
         createdAt: _createdAt,
@@ -174,13 +185,6 @@ describe("atomic structured answer publication", () => {
       } = claim;
       return savedClaim;
     }));
-    expect(saved.answerDocument.citations).toHaveLength(2);
-    expect(saved.answerDocument.statements.map((statement) => statement.content))
-      .toEqual(["Unsupported statement.", "Revenue decreased."]);
-    expect(saved.claims.map((claim) => claim.status)).toEqual([
-      "unsupported",
-      "partially-supported",
-    ]);
     expect(published.runDetails?.sourceCount).toBe(2);
     expect(JSON.stringify(published)).toContain("Unsupported statement.");
     expect(JSON.stringify(published)).toContain("b".repeat(64));
@@ -231,6 +235,8 @@ describe("atomic structured answer publication", () => {
           content: "Revenue increased.",
         }],
       },
+    });
+    expect(readSavedTurnInput()).toMatchObject({
       claims: [{
         citationNumbers: [1, 2],
         status: "partially-supported",
@@ -344,26 +350,31 @@ describe("atomic structured answer publication", () => {
     expect(answerModel.doGenerateCalls).toHaveLength(2);
     expect(verifier.scoreCalls).toEqual([]);
     expect(saveTurnMock).not.toHaveBeenCalled();
-    expect(stream.chunks).toEqual([]);
+    expect(readChunks(stream.chunks, "data-answer")).toEqual([]);
+    expect(readChunks(stream.chunks, "finish")).toEqual([]);
   });
 
-  it("preserves verifier failure without persisting or publishing", async () => {
+  it("completes after verifier failure while preserving the unverified answer", async () => {
     const verifierError = new Error("verifier unavailable");
     const verifier = new FakeHhemClient(0.5, async () => {
       throw verifierError;
     });
     const stream = buildWriter();
 
-    await expect(runStreamedAnswer(
+    await runStreamedAnswer(
       buildPrepared(buildAnswerModel(buildAnsweredDraft(["EVID_A"])), verifier),
       stream.writer,
-    )).rejects.toBe(verifierError);
+    );
 
-    expect(saveTurnMock).not.toHaveBeenCalled();
-    expect(stream.chunks).toEqual([]);
+    expect(saveTurnMock).toHaveBeenCalledOnce();
+    expect(readChunks(stream.chunks, "data-answer")).toHaveLength(1);
+    expect(readChunks(stream.chunks, "data-answer")[0]?.data.claims).toEqual([
+      expect.objectContaining({ status: "unverified" }),
+    ]);
+    expect(readChunks(stream.chunks, "finish")).toHaveLength(1);
   });
 
-  it("preserves collective verifier failure without persisting or publishing", async () => {
+  it("completes after collective verifier failure while preserving the unverified answer", async () => {
     const verifierError = new Error("collective verifier unavailable");
     let scoreRequestCount = 0;
     const verifier = new FakeHhemClient(0.5, async (items) => {
@@ -379,18 +390,19 @@ describe("atomic structured answer publication", () => {
     });
     const stream = buildWriter();
 
-    await expect(runStreamedAnswer(
+    await runStreamedAnswer(
       buildPrepared(
         buildAnswerModel(buildAnsweredDraft(["EVID_A", "EVID_B"])),
         verifier,
         [buildTextRetrieved(), buildContradictingTextRetrieved()],
       ),
       stream.writer,
-    )).rejects.toBe(verifierError);
+    );
 
     expect(scoreRequestCount).toBe(2);
-    expect(saveTurnMock).not.toHaveBeenCalled();
-    expect(stream.chunks).toEqual([]);
+    expect(saveTurnMock).toHaveBeenCalledOnce();
+    expect(readChunks(stream.chunks, "data-answer")).toHaveLength(1);
+    expect(readChunks(stream.chunks, "finish")).toHaveLength(1);
   });
 
   it("preserves cancellation without persisting or publishing", async () => {
@@ -410,7 +422,8 @@ describe("atomic structured answer publication", () => {
     )).rejects.toThrow();
 
     expect(saveTurnMock).not.toHaveBeenCalled();
-    expect(stream.chunks).toEqual([]);
+    expect(readChunks(stream.chunks, "data-answer")).toEqual([]);
+    expect(readChunks(stream.chunks, "finish")).toEqual([]);
   });
 
   it("preserves persistence failure without publishing", async () => {
@@ -427,7 +440,8 @@ describe("atomic structured answer publication", () => {
     )).rejects.toBe(persistenceError);
 
     expect(saveTurnMock).toHaveBeenCalledOnce();
-    expect(stream.chunks).toEqual([]);
+    expect(readChunks(stream.chunks, "data-answer")).toEqual([]);
+    expect(readChunks(stream.chunks, "finish")).toEqual([]);
   });
 
   it("preserves cancellation after persistence without publishing", async () => {
@@ -448,7 +462,8 @@ describe("atomic structured answer publication", () => {
     )).rejects.toThrow("cancelled after persistence");
 
     expect(saveTurnMock).toHaveBeenCalledOnce();
-    expect(stream.chunks).toEqual([]);
+    expect(readChunks(stream.chunks, "data-answer")).toEqual([]);
+    expect(readChunks(stream.chunks, "finish")).toEqual([]);
   });
 });
 
@@ -505,7 +520,10 @@ function buildModelRegistry(
 ): InferenceModelRegistry {
   const embedding = new MockEmbeddingModelV4();
   return {
-    answer: answerModel,
+    answer: wrapLanguageModel({
+      middleware: simulateStreamingMiddleware(),
+      model: answerModel,
+    }),
     answerBudget: { maximumOutputTokens: 16_384, minimumOutputTokens: 256, providerSafetyMarginTokens: 0 },
     readAnswerCapabilities: async () => buildTestModelCapabilities(),
     claimVerifier: verifier,

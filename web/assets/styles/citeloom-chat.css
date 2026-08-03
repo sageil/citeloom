@@ -3,23 +3,7 @@
 }
 
 .chat-surface .task-navigation-header {
-  width: min(1840px, calc(100% - 80px));
-  min-height: 70px;
   flex-wrap: nowrap;
-  padding: 0;
-}
-
-.chat-surface .task-navigation-primary-cluster,
-.chat-surface .task-navigation-utility-nav {
-  width: auto;
-}
-
-.chat-surface .task-navigation-primary-cluster {
-  gap: 30px;
-}
-
-.chat-surface .task-navigation-utility-nav {
-  justify-content: flex-end;
 }
 
 .chat-surface .task-navigation-workspace-page {
@@ -31,89 +15,17 @@
   min-height: 0;
 }
 
-.chat-focus-navigation,
-.chat-focus-back-button,
-.chat-shell-new-button,
 .chat-context-scope,
 .chat-grounding-note,
 .chat-context-actions,
-.chat-context-button,
-.chat-context-menu-button {
+.chat-context-icon-button {
   display: inline-flex;
   align-items: center;
 }
 
-.chat-focus-navigation {
-  min-width: 0;
-  gap: 16px;
-}
-
-.chat-focus-back-button,
-.chat-shell-new-button {
-  border: 0;
-  background: transparent;
-  color: #e2e8f0;
-  font: inherit;
-}
-
-.chat-focus-back-button {
-  min-height: 40px;
-  gap: 8px;
-  padding: 0;
-  font-size: 13px;
-}
-
-.chat-focus-back-button:hover,
-.chat-focus-back-button:focus-visible {
-  color: var(--cyan);
-}
-
-.chat-focus-back-button .citeloom-icon {
-  width: 14px;
-  height: 14px;
-  transform: rotate(180deg);
-}
-
-.chat-focus-divider {
-  width: 1px;
-  height: 28px;
-  background: var(--border);
-}
-
-.chat-focus-title {
-  max-width: 280px;
-  overflow: hidden;
-  font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-shell-new-button {
-  min-height: 38px;
-  gap: 8px;
-  padding: 0 13px;
-  border: 1px solid var(--border-strong);
-  border-radius: 9px;
-  background: rgba(11, 16, 32, 0.68);
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.chat-shell-new-button:hover,
-.chat-shell-new-button:focus-visible {
-  border-color: rgba(6, 182, 212, 0.52);
-  color: var(--cyan);
-}
-
-.chat-shell-new-button .citeloom-icon {
-  width: 15px;
-  height: 15px;
-  color: var(--cyan);
-}
-
 .chat-feature-page {
   position: relative;
-  height: calc(100vh - 70px);
+  height: calc(100vh - 78px);
   min-height: 640px;
   overflow: hidden;
   background: rgba(6, 9, 20, 0.9);
@@ -200,8 +112,7 @@
 
 .chat-context-scope .citeloom-icon,
 .chat-grounding-note .citeloom-icon,
-.chat-context-button .citeloom-icon,
-.chat-context-menu-button .citeloom-icon {
+.chat-context-icon-button .citeloom-icon {
   width: 15px;
   height: 15px;
 }
@@ -211,35 +122,26 @@
   margin-left: auto;
 }
 
-.chat-context-button,
-.chat-context-menu-button,
-.chat-conversation-menu-popover button {
+.chat-context-icon-button {
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
 }
 
-.chat-context-button {
-  min-height: 34px;
-  gap: 7px;
-  padding: 0 8px;
-  border-radius: 7px;
-}
-
-.chat-context-button:hover,
-.chat-context-button:focus-visible,
-.chat-context-menu-button:hover,
-.chat-context-menu-button:focus-visible {
+.chat-context-icon-button:hover,
+.chat-context-icon-button:focus-visible {
   background: var(--surface-soft);
   color: var(--text);
 }
 
-.chat-conversation-menu {
-  position: relative;
+.chat-context-icon-button.danger:hover,
+.chat-context-icon-button.danger:focus-visible {
+  background: rgba(248, 113, 113, 0.1);
+  color: #fecaca;
 }
 
-.chat-context-menu-button {
+.chat-context-icon-button {
   display: grid;
   width: 34px;
   height: 34px;
@@ -247,38 +149,15 @@
   border-radius: 7px;
 }
 
-.chat-context-menu-button .citeloom-icon {
-  transform: rotate(90deg);
-}
-
-.chat-conversation-menu-popover {
-  top: calc(100% + 8px);
-  right: 0;
-  width: 170px;
-  padding: 6px;
-  border-color: var(--border);
-}
-
-.chat-conversation-menu-popover button {
-  display: flex;
-  width: 100%;
-  min-height: 38px;
-  align-items: center;
-  gap: 8px;
-  padding: 0 9px;
-  border-radius: 7px;
+.chat-context-icon-button.danger {
   color: #fda4af;
-  font-size: 11px;
-  text-align: left;
 }
 
-.chat-conversation-menu-popover button:hover,
-.chat-conversation-menu-popover button:focus-visible {
-  background: rgba(248, 113, 113, 0.1);
-  color: #fecaca;
+.chat-context-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
-.chat-conversation-menu-popover .citeloom-icon,
 .chat-answer-evidence-icon .citeloom-icon {
   width: 14px;
   height: 14px;
@@ -375,6 +254,10 @@
   margin-left: 36px;
 }
 
+.chat-assistant-content > p {
+  margin: 0;
+}
+
 .chat-statement {
   position: relative;
   margin-bottom: 17px;
@@ -390,9 +273,6 @@
 .chat-statement p {
   display: inline;
   margin: 0;
-  color: #e2e8f0;
-  font-size: 14px;
-  line-height: 1.72;
 }
 
 .chat-statement-citations {
@@ -620,8 +500,7 @@
 }
 
 .chat-send-button:disabled,
-.chat-primary-button:disabled,
-.chat-conversation-menu-popover button:disabled {
+.chat-primary-button:disabled {
   cursor: not-allowed;
   opacity: 0.48;
 }
@@ -629,7 +508,7 @@
 .chat-switcher-backdrop {
   position: fixed;
   z-index: 85;
-  inset: 70px 0 0;
+  inset: 78px 0 0;
   display: grid;
   padding: 74px 24px 24px;
   place-items: start center;
@@ -962,7 +841,19 @@
   flex-direction: column;
   gap: 18px;
   padding: 26px;
-  background: linear-gradient(145deg, rgba(16, 29, 47, 0.99), rgba(11, 21, 36, 0.99));
+  background: var(--surface);
+  font-family: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+}
+
+.chat-modal-header {
+  position: relative;
+  padding-right: 52px;
+}
+
+.chat-modal-header .chat-icon-button {
+  position: absolute;
+  top: 0;
+  right: 0;
 }
 
 .chat-source-search input {
@@ -1317,11 +1208,7 @@
   }
 
   .chat-surface .brand span,
-  .chat-focus-back-button span,
-  .chat-surface .utility-navigation-button span:last-child,
-  .chat-shell-new-button span,
-  .chat-focus-divider,
-  .chat-focus-title {
+  .chat-surface .utility-navigation-button span:last-child {
     display: none;
   }
 
@@ -1349,10 +1236,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .chat-context-button span {
-    display: none;
   }
 
   .chat-thread {

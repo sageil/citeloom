@@ -11,7 +11,17 @@ import {
   readPlainObject as readObject,
   readPositiveInteger,
   readString,
+  readUIMessageStream,
 } from "./citeloom-boundaries.js";
+import {
+  applyAnswerContentUpdate,
+  buildAnswerContentSections,
+  createAnswerContentFromDocument,
+  createEmptyAnswerContent,
+  readAnswerContentUpdate,
+} from "./citeloom-answer-content.js";
+import { buildPdfViewerUrl } from "./citeloom-file-links.js";
+import { focusTextArea } from "./citeloom-focus.js";
 import { dispatchNotice } from "./citeloom-notices.js";
 
 const answerSections = Object.freeze([
@@ -1011,17 +1021,12 @@ function readFeedbackRating(value) {
   throw new Error("The current feedback rating is invalid.");
 }
 
-function readStreamPart(value) {
-  const part = readObject(value, "answer stream part");
-  const type = readNonEmptyString(part.type, "answer stream part type");
+function readStreamPart(part, type) {
   if (type === "data-answer") {
     return { answer: readStreamedAnswer(part.data), type };
   }
-  if (type === "error") {
-    return {
-      errorText: readNonEmptyString(part.errorText, "answer stream error"),
-      type,
-    };
+  if (type === "data-answer-content") {
+    return { update: readAnswerContentUpdate(part.data), type };
   }
   return { type };
 }
@@ -1049,69 +1054,22 @@ function readErrorMessage(error, fallback) {
   return fallback;
 }
 
-async function readAnswerStream(response, receiveAnswer) {
-  if (!response.ok) {
-    await readJsonResponse(response, "Question request");
-    return;
-  }
-  if (response.body === null) {
-    throw new Error("The question response did not contain an answer stream.");
-  }
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
+async function readAnswerStream(response, receiveAnswer, receivePreview) {
   let answerReceived = false;
-  while (true) {
-    const chunk = await reader.read();
-    buffer += decoder.decode(chunk.value, { stream: !chunk.done });
-    const lines = buffer.split(/\r?\n/u);
-    buffer = lines.pop() ?? "";
-    for (const line of lines) {
-      const part = readAnswerStreamLine(line);
-      if (part === null) {
-        continue;
-      }
-      if (part.type === "error") {
-        throw new Error(part.errorText);
-      }
-      if (part.type === "data-answer") {
-        answerReceived = true;
-        receiveAnswer(part.answer);
-      }
+  await readUIMessageStream(response, "Question request", (rawPart, type) => {
+    const part = readStreamPart(rawPart, type);
+    if (part.type === "data-answer-content") {
+      receivePreview(part.update);
+      return;
     }
-    if (chunk.done) {
-      break;
+    if (part.type === "data-answer") {
+      answerReceived = true;
+      receiveAnswer(part.answer);
     }
-  }
-  const finalPart = readAnswerStreamLine(buffer);
-  if (finalPart?.type === "error") {
-    throw new Error(finalPart.errorText);
-  }
-  if (finalPart?.type === "data-answer") {
-    answerReceived = true;
-    receiveAnswer(finalPart.answer);
-  }
+  });
   if (!answerReceived) {
-    throw new Error("The answer stream ended without a verified answer.");
+    throw new Error("The answer stream ended without a completed answer.");
   }
-}
-
-function readAnswerStreamLine(line) {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("data:")) {
-    return null;
-  }
-  const data = trimmed.slice(5).trim();
-  if (data === "" || data === "[DONE]") {
-    return null;
-  }
-  let value;
-  try {
-    value = JSON.parse(data);
-  } catch {
-    throw new Error("The answer stream contained invalid JSON.");
-  }
-  return readStreamPart(value);
 }
 
 function selectMediaRecorderOption() {
@@ -1177,6 +1135,7 @@ function readEvidenceInspectorViewport() {
 export function registerPage(alpine) {
   alpine.data("citeloomAskPage", () => ({
     answer: null,
+    streamedAnswerContent: createEmptyAnswerContent(),
     availableTagFacets: [],
     citationAbortController: null,
     citationError: "",
@@ -1284,6 +1243,7 @@ export function registerPage(alpine) {
         this.loadResearchThreads(),
       ]);
       this.maybePreloadAnswerSpeech();
+      this.focusQuestionInput();
     },
 
     destroy() {
@@ -1732,6 +1692,7 @@ export function registerPage(alpine) {
       this.operation = "answer";
       this.requestError = "";
       this.answer = null;
+      this.streamedAnswerContent = createEmptyAnswerContent();
       this.closeEvidenceInspector();
       this.resetSpeechAudio();
       try {
@@ -1752,11 +1713,22 @@ export function registerPage(alpine) {
           method: "POST",
           signal: controller.signal,
         });
-        await readAnswerStream(response, (answer) => {
-          if (!controller.signal.aborted) {
-            this.answer = answer;
-          }
-        });
+        await readAnswerStream(
+          response,
+          (answer) => {
+            if (!controller.signal.aborted) {
+              this.answer = answer;
+            }
+          },
+          (update) => {
+            if (!controller.signal.aborted && this.answer === null) {
+              this.streamedAnswerContent = applyAnswerContentUpdate(
+                this.streamedAnswerContent,
+                update,
+              );
+            }
+          },
+        );
         const completedTurnId = this.answer?.turn.turnId ?? "";
         if (!controller.signal.aborted) {
           await this.loadResearchThread(answeringThreadId, completedTurnId);
@@ -1774,7 +1746,12 @@ export function registerPage(alpine) {
           this.requestAbortController = null;
           this.operation = null;
         }
+        this.focusQuestionInput();
       }
+    },
+
+    focusQuestionInput() {
+      this.$nextTick(() => focusTextArea(this.$refs.questionInput));
     },
 
     async runDiscovery(
@@ -2518,80 +2495,17 @@ export function registerPage(alpine) {
     },
 
     answerSections() {
-      if (
-        this.answer === null
-        || this.answer.answerDocument.statements.length === 0
-      ) {
-        return [];
+      let content = this.streamedAnswerContent;
+      let sources = [];
+      if (this.answer !== null) {
+        content = createAnswerContentFromDocument(this.answer.answerDocument);
+        sources = this.answer.sources;
       }
-      const citationsById = new Map();
-      for (const citation of this.answer.sources) {
-        citationsById.set(citation.id, citation);
-      }
-      const sections = [];
-      for (const sectionKey of answerSections) {
-        const statements = [];
-        for (let index = 0; index < this.answer.answerDocument.statements.length; index += 1) {
-          const statement = this.answer.answerDocument.statements[index];
-          if (statement.section !== sectionKey) {
-            continue;
-          }
-          const citations = [];
-          for (const citationId of statement.citationIds) {
-            const citation = citationsById.get(citationId);
-            if (citation !== undefined) {
-              citations.push(citation);
-            }
-          }
-          statements.push({
-            citations,
-            content: statement.content,
-            key: `${sectionKey}-${index}`,
-            presentation: statement.presentation,
-          });
-        }
-        if (statements.length === 0) {
-          continue;
-        }
-        const blocks = [];
-        let bulletStatements = [];
-        for (const statement of statements) {
-          if (statement.presentation === "bullet") {
-            bulletStatements.push(statement);
-            continue;
-          }
-          if (bulletStatements.length > 0) {
-            blocks.push({
-              key: `bullets-${bulletStatements[0].key}`,
-              kind: "bullets",
-              statements: bulletStatements,
-            });
-            bulletStatements = [];
-          }
-          blocks.push({
-            key: `paragraph-${statement.key}`,
-            kind: "paragraph",
-            statements: [statement],
-          });
-        }
-        if (bulletStatements.length > 0) {
-          blocks.push({
-            key: `bullets-${bulletStatements[0].key}`,
-            kind: "bullets",
-            statements: bulletStatements,
-          });
-        }
-        let title = null;
-        if (sectionKey === "conflicting-evidence") {
-          title = "Conflicting evidence";
-        } else if (sectionKey === "key-points") {
-          title = "Key points";
-        } else if (sectionKey === "limitations") {
-          title = "Limitations";
-        }
-        sections.push({ blocks, key: sectionKey, title });
-      }
-      return sections;
+      return buildAnswerContentSections(content, sources);
+    },
+
+    hasAnswerContent() {
+      return this.answerSections().length > 0;
     },
 
     citedSourceGroups() {
@@ -2820,7 +2734,13 @@ export function registerPage(alpine) {
       return this.answerCitationStatus(this.selectedCitation.citationNumber);
     },
 
-    claimStatusLabel(status) {
+    claimStatusLabel(status, rationale = "") {
+      if (
+        status === "unverified"
+        && rationale === "Automated evidence verification is pending."
+      ) {
+        return "Checking evidence";
+      }
       return formatClaimStatusLabel(status);
     },
 
@@ -2897,20 +2817,18 @@ export function registerPage(alpine) {
 
     sourceFileUrl(source) {
       const url = this.documentFileUrl(source.documentId, source.sourceFile);
-      const pageNumber = source.pageNumbers[0];
-      if (pageNumber === undefined || !source.sourceFile.toLowerCase().endsWith(".pdf")) {
+      if (!source.sourceFile.toLowerCase().endsWith(".pdf")) {
         return url;
       }
-      return `${url}#page=${pageNumber}`;
+      return buildPdfViewerUrl(url, source.pageNumbers);
     },
 
     discoverySourceUrl(document, passage) {
       const url = this.documentFileUrl(document.documentId, document.sourceFile);
-      const pageNumber = passage.pageNumbers[0];
-      if (pageNumber === undefined || !document.sourceFile.toLowerCase().endsWith(".pdf")) {
+      if (!document.sourceFile.toLowerCase().endsWith(".pdf")) {
         return url;
       }
-      return `${url}#page=${pageNumber}`;
+      return buildPdfViewerUrl(url, passage.pageNumbers);
     },
 
     discoveryPassageDetail(sourceFile, passage) {
@@ -3032,8 +2950,10 @@ export function registerPage(alpine) {
       const sourceFile = this.inspectedCitation.sourceFile.toLowerCase();
       if (sourceFile.endsWith(".pdf") && this.inspectedCitation.regions.length > 0) {
         const citationId = encodeURIComponent(this.inspectedCitation.id);
-        const pageNumber = this.inspectedCitation.pageNumbers[0] ?? 1;
-        return `/api/citations/${citationId}/highlighted-file#page=${pageNumber}`;
+        return buildPdfViewerUrl(
+          `/api/citations/${citationId}/highlighted-file`,
+          this.inspectedCitation.pageNumbers,
+        );
       }
       return this.citationOriginalFileUrl();
     },

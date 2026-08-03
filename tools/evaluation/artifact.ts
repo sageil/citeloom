@@ -61,7 +61,7 @@ const candidateRepresentationSchema = z.object({
   ]),
 }).strict();
 const denseCandidateSchema = z.object({
-  distance: z.number().finite().nonnegative(),
+  distance: z.number().nonnegative(),
   documentId: contentIdSchema,
   elementId: contentIdSchema,
   evidenceContent: z.string().min(1),
@@ -70,7 +70,7 @@ const denseCandidateSchema = z.object({
   sourceFile: z.string().min(1),
 }).strict();
 const lexicalCandidateSchema = z.object({
-  bm25Score: z.number().finite().positive(),
+  bm25Score: z.number().positive(),
   documentId: contentIdSchema,
   elementId: contentIdSchema,
   evidenceContent: z.string().min(1),
@@ -83,7 +83,7 @@ const rerankerScoreSchema = z.object({
   documentVersionId: z.uuid(),
   elementId: contentIdSchema,
   retrievalId: sha256Schema,
-  relevanceScore: z.number().finite(),
+  relevanceScore: z.number(),
   scoringBatchIndex: z.number().int().positive(),
   scoringBatchRank: z.number().int().positive(),
   sourceFile: z.string().min(1),

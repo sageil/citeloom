@@ -140,7 +140,7 @@ export const runtimeSettingsSchema = z.object({
   if (settings.retrievalCandidates < settings.topK) {
     context.addIssue({
       code: "custom",
-      message: "Sections considered must be greater than or equal to Sections used in answers",
+      message: "Matching sections reviewed must be equal to or greater than Sections available for answers",
       path: ["retrievalCandidates"],
     });
   }

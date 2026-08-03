@@ -27,10 +27,10 @@ import type { TelemetryStageSnapshot } from "../../src/observability/run.js";
 
 const MAXIMUM_SEARCH_CANDIDATES = 25_000;
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
-const finitePositiveNumberSchema = z.number().finite().positive().max(100);
+const finitePositiveNumberSchema = z.number().positive().max(100);
 const fusionSchema = z.object({
   denseWeight: finitePositiveNumberSchema,
-  expansionDecay: z.number().finite().positive().max(1),
+  expansionDecay: z.number().positive().max(1),
   expansionQueryWeight: finitePositiveNumberSchema,
   lexicalWeight: finitePositiveNumberSchema,
   originalQueryWeight: finitePositiveNumberSchema,
@@ -46,19 +46,19 @@ const uniquePositiveNumbersSchema = z.array(finitePositiveNumberSchema)
   .max(20)
   .superRefine(requireUniqueNumbers);
 const uniqueDecayNumbersSchema = z.array(
-  z.number().finite().positive().max(1),
+  z.number().positive().max(1),
 ).min(1).max(20).superRefine(requireUniqueNumbers);
 const uniquePositiveIntegersSchema = z.array(
   z.number().int().min(1).max(1_000),
 ).min(1).max(20).superRefine(requireUniqueNumbers);
 const tuningObjectiveSchema = z.object({
   metric: z.literal("domain-macro-mean-ndcg"),
-  minimumImprovement: z.number().finite().positive().max(1),
+  minimumImprovement: z.number().positive().max(1),
 }).strict();
 const tuningConstraintsSchema = z.object({
-  maximumDomainNdcgRegression: z.number().finite().min(0).max(1),
-  maximumEstimatedP95LatencyMs: z.number().finite().positive(),
-  maximumEstimatedP95LatencyRegressionMs: z.number().finite().min(0),
+  maximumDomainNdcgRegression: z.number().min(0).max(1),
+  maximumEstimatedP95LatencyMs: z.number().positive(),
+  maximumEstimatedP95LatencyRegressionMs: z.number().min(0),
 }).strict();
 const evaluationTuningSpecificationSchema = z.object({
   constraints: tuningConstraintsSchema,
@@ -85,23 +85,23 @@ const evaluationTuningSpecificationSchema = z.object({
 const domainMetricSchema = z.object({
   caseCount: z.number().int().positive(),
   domain: z.string().min(1),
-  meanNdcg: z.number().finite().min(0).max(1),
-  meanRecall: z.number().finite().min(0).max(1),
+  meanNdcg: z.number().min(0).max(1),
+  meanRecall: z.number().min(0).max(1),
 }).strict();
 const tuningQualitySummarySchema = z.object({
   caseCount: z.number().int().positive(),
-  domainMacroMeanNdcg: z.number().finite().min(0).max(1),
-  domainMacroMeanRecall: z.number().finite().min(0).max(1),
+  domainMacroMeanNdcg: z.number().min(0).max(1),
+  domainMacroMeanRecall: z.number().min(0).max(1),
   domains: z.array(domainMetricSchema).min(1),
-  meanNdcg: z.number().finite().min(0).max(1),
-  meanRecall: z.number().finite().min(0).max(1),
+  meanNdcg: z.number().min(0).max(1),
+  meanRecall: z.number().min(0).max(1),
 }).strict();
 const tuningMetricsSchema = tuningQualitySummarySchema.extend({
-  estimatedP95LatencyMs: z.number().finite().nonnegative(),
+  estimatedP95LatencyMs: z.number().nonnegative(),
 }).strict();
 const domainRegressionSchema = z.object({
   domain: z.string().min(1),
-  ndcgRegression: z.number().finite(),
+  ndcgRegression: z.number(),
 }).strict();
 const rejectionReasonSchema = z.enum([
   "absolute-latency-limit",
@@ -113,9 +113,9 @@ const candidateAssessmentSchema = z.object({
   configuration: tunedRetrievalConfigurationSchema,
   domainRegressions: z.array(domainRegressionSchema),
   eligible: z.boolean(),
-  estimatedP95LatencyRegressionMs: z.number().finite(),
+  estimatedP95LatencyRegressionMs: z.number(),
   metrics: tuningMetricsSchema,
-  objectiveImprovement: z.number().finite(),
+  objectiveImprovement: z.number(),
   rejectionReasons: z.array(rejectionReasonSchema),
 }).strict().superRefine((value, context) => {
   const reasonCountMatches = value.eligible

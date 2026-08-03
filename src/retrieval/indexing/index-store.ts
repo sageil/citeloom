@@ -486,7 +486,7 @@ export function readEmbedding(
   label: string,
 ): number[] {
   const schema = z
-    .array(z.number().finite())
+    .array(z.number())
     .length(dimensions)
     .refine((values) => values.some((entry) => entry !== 0));
   const result = schema.safeParse(value);

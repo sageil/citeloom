@@ -15,6 +15,6 @@ minimumReleaseAgeExclude:
   - '@biomejs/cli-win32-x64@2.5.5'
 
 overrides:
-  '@esbuild-kit/core-utils>esbuild': 0.25.12
+  'drizzle-kit@0.31.10>@esbuild-kit/esm-loader': '-'
 
 verifyDepsBeforeRun: false

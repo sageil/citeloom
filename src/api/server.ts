@@ -849,27 +849,23 @@ export async function buildWebServer(
       const abort = (): void => abortController.abort();
       request.raw.once("aborted", abort);
       reply.raw.once("close", abort);
-      try {
-        const response = await services.run(async (runtime) => {
-          if (runtime.answerChatMessage === undefined) {
-            throw new Error("Chat generation is not configured.");
-          }
-          return runtime.answerChatMessage(
-            principal,
-            {
-              content: input.content,
-              conversationId,
-              requestId: input.requestId,
-            },
-            abortController.signal,
-          );
-        });
-        reply.header("Cache-Control", "private, no-store");
-        return reply.status(201).send(response);
-      } finally {
-        request.raw.off("aborted", abort);
-        reply.raw.off("close", abort);
-      }
+      const stream = services.stream((runtime) => {
+        if (runtime.streamChatMessage === undefined) {
+          throw new Error("Chat generation is not configured.");
+        }
+        return runtime.streamChatMessage(
+          principal,
+          {
+            content: input.content,
+            conversationId,
+            requestId: input.requestId,
+          },
+          abortController.signal,
+        );
+      });
+      reply.hijack();
+      pipeUIMessageStreamToResponse({ response: reply.raw, stream });
+      return reply;
     },
   );
 
@@ -1405,7 +1401,7 @@ export async function buildWebServer(
   server.setErrorHandler(async (error, request, reply) => {
     const statusCode = normalizeHttpFailureStatus(readErrorStatus(error));
     const errorMessage = readServerErrorMessage(error);
-    if (isExpectedRequestCancellation(error, request.raw.aborted)) {
+    if (isExpectedRequestCancellation(error, request.raw.destroyed)) {
       return reply.status(499).send({
         error: {
           code: "request_cancelled",

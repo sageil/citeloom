@@ -1,10 +1,11 @@
-import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { verifyAnswerClaims } from "../src/answers/claim-verification.js";
+import {
+  readAnswerClaims,
+  verifyAnswerClaims,
+} from "../src/answers/claim-verification.js";
+import type { AnswerSource } from "../src/answers/inference.js";
 import { TaskLimiter } from "../src/shared/concurrency.js";
-import { openDatabase, type DatabaseSession } from "../src/database/client.js";
-import { researchTurns } from "../src/database/schema.js";
 import {
   HHEM_MODEL_ID,
   HHEM_MODEL_REVISION,
@@ -14,10 +15,9 @@ import {
   type HhemScoreResult,
 } from "../src/verification/hhem-client.js";
 import { createInferenceModelRegistry } from "../src/inference/registry.js";
-import { ResearchStore } from "../src/research/store.js";
 import { readEqualWeightTestConfig } from "./config-fixture.js";
+import { buildSourceLocation } from "./source-element-fixture.js";
 
-const CANADA_TURN_ID = "6ff5c518-58b9-4fc7-8972-dab8a2a2ac30";
 const runLiveIntegration = process.env.HHEM_LIVE_TEST === "true";
 
 describe.skipIf(!runLiveIntegration)("live HHEM integration", () => {
@@ -35,16 +35,6 @@ describe.skipIf(!runLiveIntegration)("live HHEM integration", () => {
       claimVerifierTimeoutSeconds: 180,
     },
   });
-  let databaseSession: DatabaseSession;
-
-  beforeAll(async () => {
-    databaseSession = await openDatabase(config.database);
-  });
-
-  afterAll(async () => {
-    await databaseSession.close();
-  });
-
   it("reproduces the six pinned validation cases and exact reorder invariance", async () => {
     const client = new HttpHhemClient(config.claimVerifier);
     const items: HhemScoreItem[] = [
@@ -113,22 +103,8 @@ describe.skipIf(!runLiveIntegration)("live HHEM integration", () => {
     expect(maximumDelta).toBe(0);
   }, 240_000);
 
-  it("scores the stored Canada turn in one isolated batch with claim 16 unsupported", async () => {
-    const turnRows = await databaseSession.database
-      .select({ threadId: researchTurns.threadId })
-      .from(researchTurns)
-      .where(eq(researchTurns.id, CANADA_TURN_ID))
-      .limit(1);
-    const threadId = turnRows[0]?.threadId;
-    if (threadId === undefined) {
-      throw new Error(`Stored Canada turn is missing: ${CANADA_TURN_ID}.`);
-    }
-    const store = new ResearchStore(databaseSession.database, config);
-    const thread = await store.readThread(threadId);
-    const turn = thread?.turns.find((candidate) => candidate.id === CANADA_TURN_ID);
-    if (turn === undefined) {
-      throw new Error(`Stored Canada turn could not be decoded: ${CANADA_TURN_ID}.`);
-    }
+  it("scores twenty isolated claims in one batch with one unsupported claim", async () => {
+    const fixture = buildBatchVerificationFixture();
     const recordingClient = new RecordingHhemClient(
       new HttpHhemClient(config.claimVerifier),
     );
@@ -139,8 +115,8 @@ describe.skipIf(!runLiveIntegration)("live HHEM integration", () => {
 
     const checks = await verifyAnswerClaims(
       models,
-      turn.claims,
-      turn.citations,
+      fixture.claims,
+      fixture.sources,
       new TaskLimiter(1),
       AbortSignal.timeout(180_000),
     );
@@ -154,30 +130,71 @@ describe.skipIf(!runLiveIntegration)("live HHEM integration", () => {
     const scores = recordingClient.scoreResults[0] ?? [];
     expect(scores.filter((score) => readScoredProbability(score) < 0.5)).toEqual([
       {
-        id: "claim-16",
+        id: "claim-16-citation-17",
         outcome: "scored",
-        supportProbability: expect.closeTo(0.164, 3),
+        supportProbability: expect.closeTo(0.010, 3),
       },
     ]);
     expect(checks.filter((check) => check.status === "supported")).toHaveLength(19);
     expect(checks.find((check) => check.claimIndex === 16)).toMatchObject({
       rationale:
-        "HHEM support probability 0.164 is below the configured 0.500 threshold.",
-      status: "unverified",
+        "HHEM support probability 0.010 is below the configured 0.500 threshold.",
+      status: "unsupported",
     });
     for (const result of scores) {
-      if (result.id === "claim-16") {
-        expect(readScoredProbability(result)).toBeCloseTo(0.164, 3);
+      if (result.id === "claim-16-citation-17") {
+        expect(readScoredProbability(result)).toBeCloseTo(0.010, 3);
       } else {
         expect(readScoredProbability(result)).toBeGreaterThan(0.72);
       }
     }
-    expect(turn.question).toBe("What are the rules of evidence in Canada?");
     expect(JSON.stringify(recordingClient.scoreCalls[0])).not.toContain(
-      turn.question,
+      "What are the rules of evidence in Canada?",
     );
   }, 240_000);
 });
+
+function buildBatchVerificationFixture(): {
+  claims: ReturnType<typeof readAnswerClaims>;
+  sources: AnswerSource[];
+} {
+  const answerSentences: string[] = [];
+  const sources: AnswerSource[] = [];
+  for (let index = 0; index < 20; index += 1) {
+    const citationNumber = index + 1;
+    const claim = index === 16
+      ? "The capital of France is Paris."
+      : `Validation fact ${citationNumber} is supported.`;
+    const evidence = index === 16
+      ? "The capital of France is Berlin."
+      : claim;
+    answerSentences.push(`${claim.slice(0, -1)} [${citationNumber}].`);
+    sources.push(buildAnswerSource(citationNumber, evidence));
+  }
+  return {
+    claims: readAnswerClaims(answerSentences.join(" ")),
+    sources,
+  };
+}
+
+function buildAnswerSource(
+  citationNumber: number,
+  excerpt: string,
+): AnswerSource {
+  return {
+    citationNumber,
+    documentId: "a".repeat(64),
+    documentVersionId: "00000000-0000-4000-8000-000000000001",
+    elementId: String(citationNumber).padStart(64, "0"),
+    evidence: { excerpt, kind: "text" },
+    id: `00000000-0000-4000-8000-${String(citationNumber).padStart(12, "0")}`,
+    kind: "text",
+    pageNumbers: [citationNumber],
+    regions: buildSourceLocation(citationNumber).regions,
+    sectionPath: [],
+    sourceFile: "/documents/hhem-batch-fixture.pdf",
+  };
+}
 
 class RecordingHhemClient implements HhemClient {
   public readonly scoreCalls: Array<readonly HhemScoreItem[]> = [];

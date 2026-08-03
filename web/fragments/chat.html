@@ -31,32 +31,25 @@
               <span>Grounded</span>
             </div>
             <div class="chat-context-actions">
-              <button class="chat-context-button" type="button" @click="scrollToEvidence()">
-                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg>
-                <span>Sources</span>
+              <button
+                class="chat-context-icon-button"
+                type="button"
+                aria-label="New chat"
+                title="New chat"
+                @click="openNewChat()"
+              >
+                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
               </button>
-              <div class="chat-conversation-menu" @click.outside="conversationMenuOpen = false">
-                <button
-                  class="chat-context-menu-button"
-                  type="button"
-                  aria-label="Conversation actions"
-                  :aria-expanded="conversationMenuOpen.toString()"
-                  @click="toggleConversationMenu()"
-                >
-                  <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-queue"></use></svg>
-                </button>
-                <div
-                  class="popover chat-conversation-menu-popover"
-                  x-cloak
-                  x-show="conversationMenuOpen"
-                  x-transition.opacity.duration.120ms
-                >
-                  <button type="button" :disabled="busy" @click="deleteConversation()">
-                    <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use></svg>
-                    <span>Delete chat</span>
-                  </button>
-                </div>
-              </div>
+              <button
+                class="chat-context-icon-button danger"
+                type="button"
+                aria-label="Delete chat"
+                title="Delete chat"
+                :disabled="busy"
+                @click="deleteConversation()"
+              >
+                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use></svg>
+              </button>
             </div>
           </div>
         </header>
@@ -64,7 +57,7 @@
         <div class="chat-thread" x-ref="thread" aria-live="polite">
           <template x-for="run in conversation.runs" :key="run.id">
             <article class="chat-turn">
-              <template x-for="message in run.messages" :key="message.id">
+              <template x-for="message in run.messages" :key="`${run.id}-${message.role}`">
                 <div class="chat-message" :class="`chat-message-${message.role}`">
                   <template x-if="message.role === 'user'">
                     <div class="chat-user-message">
@@ -88,11 +81,15 @@
                         <strong>CiteLoom</strong>
                         <time :datetime="message.createdAt" x-text="formatTime(message.createdAt)"></time>
                       </header>
-                      <div class="chat-assistant-content">
-                        <template x-if="message.answerDocument.statements.length === 0">
-                          <p x-text="message.content"></p>
-                        </template>
-                        <template x-for="(statement, statementIndex) in message.answerDocument.statements" :key="`${message.id}-${statementIndex}`">
+                      <div class="answer-content chat-assistant-content">
+                        <div
+                          class="chat-thinking"
+                          x-show="message.streaming === true &amp;&amp; messageAnswerStatements(message).length === 0"
+                        >
+                          <span class="chat-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                          <span>Retrieving evidence and preparing a cited response…</span>
+                        </div>
+                        <template x-for="(statement, statementIndex) in messageAnswerStatements(message)" :key="`${run.id}-statement-${statementIndex}`">
                           <div class="chat-statement" :class="`chat-statement-${statement.presentation}`">
                             <h3
                               x-show="shouldShowStatementSectionHeading(message, statementIndex)"
@@ -153,16 +150,6 @@
             </article>
           </template>
 
-          <article class="chat-turn chat-turn-pending" x-show="pendingContent !== ''">
-            <div class="chat-message chat-message-user">
-              <header><strong>You</strong><span>Now</span></header>
-              <p class="chat-user-content" x-text="pendingContent"></p>
-            </div>
-            <div class="chat-message chat-message-assistant chat-thinking">
-              <span class="chat-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span>Retrieving evidence and preparing a cited response…</span>
-            </div>
-          </article>
         </div>
 
         <form class="chat-composer" @submit.prevent="sendMessage()">
@@ -304,7 +291,6 @@
         </dl>
 
         <div class="chat-evidence-actions">
-          <a :href="sourceFileUrl(selectedCitation)" target="_blank" rel="noopener">Open retained source</a>
           <a
             x-show="selectedCitation.mediaType === 'application/pdf' &amp;&amp; selectedCitation.regions.length > 0"
             :href="highlightedFileUrl(selectedCitation)"
@@ -324,7 +310,7 @@
     @keydown.escape.window="newChatOpen &amp;&amp; closeNewChat()"
   >
     <form class="dialog chat-modal" role="dialog" aria-modal="true" aria-labelledby="new-chat-title" @submit.prevent="createConversation()">
-      <header>
+      <header class="chat-modal-header">
         <p class="section-kicker" id="new-chat-title">Create chat</p>
         <button class="icon-button chat-icon-button" type="button" aria-label="Close" @click="closeNewChat()">
           <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg>
@@ -336,7 +322,7 @@
         <input
           x-ref="newChatTitle"
           maxlength="500"
-          placeholder="Quarterly research"
+          placeholder="My chat"
           required
           type="text"
           x-model="newChatTitle"

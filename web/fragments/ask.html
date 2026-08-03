@@ -420,35 +420,6 @@
       </div>
 
       <div class="ask-result-column">
-        <template x-if="mode === 'ask' && operation === 'answer' && answer === null">
-          <div
-            class="panel answer-panel answer-panel-loading"
-            aria-busy="true"
-            aria-live="polite"
-          >
-            <div class="answer-loading-header">
-              <div class="answer-loading-intro">
-                <div class="answer-heading">
-                  <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                    <use href="./assets/images/citeloom-icons.svg#citeloom-brain"></use>
-                  </svg>
-                  <span>Local answer</span>
-                </div>
-              </div>
-              <span class="answer-loading-badge">Verifying</span>
-            </div>
-            <div class="answer-loading-visual">
-              <canvas
-                aria-label="A living evidence field ripples as supported claims are verified."
-                class="answer-loading-field"
-                role="img"
-                x-init="startAnswerLoadingAnimation($el)"
-              ></canvas>
-            </div>
-            <p class="answer-loading-status visually-hidden" role="status" x-text="answerLoadingStatus()"></p>
-          </div>
-        </template>
-
         <template x-if="mode === 'ask' && answer === null && operation !== 'answer'">
           <div class="panel empty-state answer-panel empty-answer">
             <svg aria-hidden="true" class="citeloom-icon ask-empty-icon">
@@ -469,19 +440,40 @@
           </div>
         </template>
 
-        <template x-if="mode === 'ask' && answer !== null">
-          <div class="panel answer-panel" aria-live="polite">
-            <div class="answer-heading">
-              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                <use href="./assets/images/citeloom-icons.svg#citeloom-brain"></use>
-              </svg>
-              <span>Local answer</span>
+        <template x-if="mode === 'ask' && (answer !== null || operation === 'answer')">
+          <div
+            class="panel answer-panel"
+            :class="{ 'answer-panel-loading': answer === null }"
+            :aria-busy="answer === null"
+            aria-live="polite"
+          >
+            <div class="answer-loading-header">
+              <div class="answer-loading-intro">
+                <div class="answer-heading">
+                  <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-brain"></use>
+                  </svg>
+                  <span>Local answer</span>
+                </div>
+              </div>
+              <span
+                class="answer-loading-badge"
+                x-cloak
+                x-show="answer === null"
+                x-text="hasAnswerContent() ? 'Writing' : 'Preparing'"
+              ></span>
             </div>
 
-            <div class="answer-copy">
-              <template x-if="answer.answerDocument.statements.length === 0">
-                <p x-text="answer.answerDocument.content"></p>
-              </template>
+            <div class="answer-loading-visual" x-show="!hasAnswerContent()">
+              <canvas
+                aria-label="A living evidence field ripples while relevant source material is prepared."
+                class="answer-loading-field"
+                role="img"
+                x-init="startAnswerLoadingAnimation($el)"
+              ></canvas>
+            </div>
+
+            <div class="answer-content answer-copy" x-cloak x-show="hasAnswerContent()">
               <template x-for="section in answerSections()" :key="section.key">
                 <section class="answer-document-section">
                   <h2 x-cloak x-show="section.title !== null" x-text="section.title"></h2>
@@ -528,12 +520,15 @@
                 </section>
               </template>
             </div>
+            <p class="answer-loading-status visually-hidden" role="status" x-show="answer === null" x-text="answerLoadingStatus()"></p>
 
-            <section
-              class="answer-speech-player"
-              x-cloak
-              x-show="textToSpeechEnabled"
-            >
+            <template x-if="answer !== null">
+              <div class="answer-publication-details">
+                <section
+                  class="answer-speech-player"
+                  x-cloak
+                  x-show="textToSpeechEnabled"
+                >
               <div class="answer-speech-heading">
                 <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
                   <use href="./assets/images/citeloom-icons.svg#citeloom-speaker"></use>
@@ -566,7 +561,7 @@
                 </button>
               </div>
               <p class="answer-speech-error" role="alert" x-cloak x-show="speechAudioError !== ''" x-text="speechAudioError"></p>
-            </section>
+                </section>
 
             <div class="no-context-action" x-cloak x-show="answer.matchedDocuments.length === 0">
               <p>No relevant source material was available for this answer.</p>
@@ -668,7 +663,7 @@
                       <span
                         class="claim-status"
                         :class="claim.status"
-                        x-text="claimStatusLabel(claim.status)"
+                        x-text="claimStatusLabel(claim.status, claim.rationale)"
                       ></span>
                       <span class="claim-citation-links">
                         <template x-for="citationNumber in claim.citationNumbers" :key="citationNumber">
@@ -704,7 +699,7 @@
               </div>
             </div>
 
-            <details class="answer-run-details" x-cloak x-show="answer.runDetails !== null">
+                <details class="answer-run-details" x-cloak x-show="answer.runDetails !== null">
               <summary>
                 <span>Run details</span>
                 <small x-text="formatDuration(answer.runDetails?.durationMs ?? 0)"></small>
@@ -725,7 +720,9 @@
                   <div><dt>Finish reason</dt><dd x-text="answer.runDetails?.finishReason ?? 'Unavailable'"></dd></div>
                 </dl>
               </div>
-            </details>
+                </details>
+              </div>
+            </template>
           </div>
         </template>
 

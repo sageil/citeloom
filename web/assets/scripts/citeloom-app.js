@@ -170,37 +170,8 @@ const loadedPageStyles = new Set();
 const pageScriptPromises = new Map();
 const pageStylePromises = new Map();
 const chatSwitcherRequestEvent = "citeloom:chat-switcher-request";
-const chatTitleChangeEvent = "citeloom:chat-title-change";
-const newChatRequestEvent = "citeloom:new-chat-request";
 let pageNavigationGeneration = 0;
 let pendingPageResourceErrorMessage = "";
-let settingsHistoryGuardInstalled = false;
-
-function installSettingsHistoryGuard() {
-  if (settingsHistoryGuardInstalled) {
-    return;
-  }
-  const htmxPopstateHandler = window.onpopstate;
-  window.onpopstate = (event) => {
-    const settingsPageIsActive = document.getElementById("settings") !== null;
-    if (settingsPageIsActive && readLocationView() === "settings") {
-      return;
-    }
-    htmxPopstateHandler?.call(window, event);
-  };
-  settingsHistoryGuardInstalled = true;
-}
-
-function readChatTitleChange(event) {
-  if (!(event instanceof CustomEvent)) {
-    return null;
-  }
-  try {
-    return readNonEmptyString(event.detail, "chat title");
-  } catch {
-    return null;
-  }
-}
 
 function readView(value) {
   if (typeof value !== "string") {
@@ -622,9 +593,8 @@ configureInitialFragment();
 function registerShell(alpine) {
   alpine.data("citeloomShell", () => ({
     accountMenuOpen: false,
-    activeChatTitle: "Chat",
     activeView: readLocationView(),
-    chatTitleChangeListener: null,
+    chatSwitcherPending: false,
     currentDisplayName: "Account",
     currentRole: null,
     currentUserId: null,
@@ -700,17 +670,6 @@ function registerShell(alpine) {
     },
 
     initialize() {
-      installSettingsHistoryGuard();
-      this.chatTitleChangeListener = (event) => {
-        const title = readChatTitleChange(event);
-        if (title !== null) {
-          this.activeChatTitle = title;
-        }
-      };
-      window.addEventListener(
-        chatTitleChangeEvent,
-        this.chatTitleChangeListener,
-      );
       this.dashboardRefreshRequestListener = () => {
         this.scheduleDashboardRefresh();
       };
@@ -777,6 +736,7 @@ function registerShell(alpine) {
         if (!(event instanceof CustomEvent) || typeof event.detail !== "string") {
           return;
         }
+        this.chatSwitcherPending = false;
         this.pendingView = null;
         this.showNotice("error", event.detail);
       };
@@ -809,9 +769,6 @@ function registerShell(alpine) {
         const shouldMoveFocus = this.pendingView !== null;
         this.activeView = this.pendingView ?? readLocationView();
         this.pendingView = null;
-        if (this.activeView !== "chat") {
-          this.activeChatTitle = "Chat";
-        }
         if (this.activeView !== "documents") {
           this.questionSelectionOpen = false;
         }
@@ -829,11 +786,27 @@ function registerShell(alpine) {
           heading.focus({ preventScroll: true });
         }
       });
+      this.$root.addEventListener("htmx:afterSettle", (event) => {
+        const target = event.detail.target;
+        if (!(target instanceof HTMLElement) || target.id !== "workspace") {
+          return;
+        }
+        if (!this.chatSwitcherPending) {
+          return;
+        }
+        this.chatSwitcherPending = false;
+        if (this.activeView !== "chat") {
+          return;
+        }
+        this.requestChatSwitcher();
+      });
       this.$root.addEventListener("htmx:responseError", () => {
+        this.chatSwitcherPending = false;
         this.pendingView = null;
         this.showNotice("error", "The requested workspace could not be loaded.");
       });
       this.$root.addEventListener("htmx:sendError", () => {
+        this.chatSwitcherPending = false;
         this.pendingView = null;
         this.showNotice(
           "error",
@@ -841,6 +814,7 @@ function registerShell(alpine) {
         );
       });
       this.$root.addEventListener("htmx:timeout", () => {
+        this.chatSwitcherPending = false;
         this.pendingView = null;
         this.showNotice("error", "The workspace request timed out.");
       });
@@ -862,12 +836,6 @@ function registerShell(alpine) {
     },
 
     destroy() {
-      if (this.chatTitleChangeListener !== null) {
-        window.removeEventListener(
-          chatTitleChangeEvent,
-          this.chatTitleChangeListener,
-        );
-      }
       if (this.dashboardRefreshRequestListener !== null) {
         window.removeEventListener(
           "citeloom:dashboard-refresh-request",
@@ -925,8 +893,15 @@ function registerShell(alpine) {
       window.dispatchEvent(new CustomEvent(chatSwitcherRequestEvent));
     },
 
-    requestNewChat() {
-      window.dispatchEvent(new CustomEvent(newChatRequestEvent));
+    handlePrimaryChatNavigation(event) {
+      if (this.activeView !== "chat") {
+        this.chatSwitcherPending = true;
+        return;
+      }
+      this.chatSwitcherPending = false;
+      event.preventDefault();
+      event.stopPropagation();
+      this.requestChatSwitcher();
     },
 
     async loadCurrentSession() {
@@ -1421,9 +1396,6 @@ function registerShell(alpine) {
 
     synchronizeHistory() {
       this.activeView = readLocationView();
-      if (this.activeView !== "chat") {
-        this.activeChatTitle = "Chat";
-      }
       document.title = routes[this.activeView].title;
       this.focusLocationAnchor();
     },

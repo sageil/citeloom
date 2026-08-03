@@ -22,7 +22,7 @@ const hhemScoreResponseSchema = z.object({
     z.object({
       id: z.string().trim().min(1).max(128),
       outcome: z.literal("scored"),
-      supportProbability: z.number().finite().min(0).max(1),
+      supportProbability: z.number().min(0).max(1),
     }).strict(),
     z.object({
       id: z.string().trim().min(1).max(128),

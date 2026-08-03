@@ -8,10 +8,10 @@ const UNCLEAR_RECORDING_MESSAGE =
   "The recording did not contain enough clear speech. Try recording again.";
 const transcriptionResponseSchema = z.object({
   text: z.string().trim().min(1).max(8_000),
-}).passthrough();
+}).loose();
 const transcriptionProbeResponseSchema = z.object({
   text: z.string().max(8_000),
-}).passthrough();
+}).loose();
 
 export type TranscriptionMediaType =
   | "audio/mp4"

@@ -80,7 +80,7 @@ const retrievalIdentifierSchema = z.string().regex(
   /^[a-f0-9]{64}(?:-description)?$/u,
 );
 const denseRetrievalRowBase = {
-  distance: z.number().finite().nonnegative(),
+  distance: z.number().nonnegative(),
   documentId: contentIdSchema,
   evidenceContent: z.string().min(1),
   evidenceRetrievalId: retrievalIdentifierSchema,
@@ -107,7 +107,7 @@ const denseRetrievalRowSchema = z.discriminatedUnion("representationType", [
   }),
 ]);
 const lexicalRetrievalRowBase = {
-  bm25Score: z.number().finite().nonnegative(),
+  bm25Score: z.number().nonnegative(),
   documentId: contentIdSchema,
   evidenceContent: z.string().min(1),
   evidenceRetrievalId: retrievalIdentifierSchema,
@@ -142,7 +142,7 @@ type DescriptionDenseRetrievalRow = Exclude<
   { representationType: "exact-window" }
 >;
 const exactEvidenceRowSchema = z.object({
-  distance: z.number().finite().nonnegative(),
+  distance: z.number().nonnegative(),
   documentId: contentIdSchema,
   evidenceContent: z.string().min(1),
   evidenceRetrievalId: retrievalIdentifierSchema,

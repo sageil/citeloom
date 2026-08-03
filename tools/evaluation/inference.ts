@@ -152,8 +152,8 @@ async function requestEvaluationText(
       onFinish: (event) => {
         recordCompletion({
           finishReason: event.finishReason,
-          inputTokens: event.totalUsage.inputTokens ?? null,
-          outputTokens: event.totalUsage.outputTokens ?? null,
+          inputTokens: event.usage.inputTokens ?? null,
+          outputTokens: event.usage.outputTokens ?? null,
         });
       },
       seed,

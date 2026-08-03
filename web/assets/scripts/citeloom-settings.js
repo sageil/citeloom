@@ -77,6 +77,7 @@ const settingsLocationParameters = Object.freeze({
   item: "settings-item",
   section: "settings-section",
 });
+const settingsHistoryState = Object.freeze({ citeloomSettings: true });
 const providerAuthenticationMethods = Object.freeze([
   "api-token",
   "openai-device",
@@ -152,7 +153,7 @@ function readSettingsLocation() {
   };
 }
 
-function pushSettingsLocation(location) {
+function createSettingsLocationUrl(location) {
   const url = new URL(window.location.href);
   for (const parameter of Object.values(settingsLocationParameters)) {
     url.searchParams.delete(parameter);
@@ -172,14 +173,76 @@ function pushSettingsLocation(location) {
   if (location.section !== null) {
     url.searchParams.set(settingsLocationParameters.section, location.section);
   }
+  return url;
+}
+
+function isSettingsRootLocation(location) {
+  return location.area === null
+    && location.capability === null
+    && location.item === null
+    && location.section === null;
+}
+
+function readHistoryOwner(value) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  if (value.citeloomSettings === true) {
+    return "settings";
+  }
+  if (value.htmx === true) {
+    return "htmx";
+  }
+  return null;
+}
+
+function initializeSettingsHistory() {
+  const location = readSettingsLocation();
+  if (location === null) {
+    return;
+  }
+  if (readHistoryOwner(window.history.state) !== null) {
+    return;
+  }
+  if (isSettingsRootLocation(location)) {
+    window.history.replaceState(settingsHistoryState, "", window.location.href);
+    return;
+  }
+  const sectionUrl = createSettingsLocationUrl(location);
+  const rootLocation = {
+    area: null,
+    capability: null,
+    item: null,
+    section: null,
+  };
+  window.history.replaceState(
+    settingsHistoryState,
+    "",
+    createSettingsLocationUrl(rootLocation),
+  );
+  window.history.pushState(settingsHistoryState, "", sectionUrl);
+}
+
+function writeSettingsLocation(location) {
+  const url = createSettingsLocationUrl(location);
   if (url.href === window.location.href) {
     return;
   }
-  const currentState = window.history.state;
-  const nextState = typeof currentState === "object" && currentState !== null
-    ? { ...currentState, citeloomSettings: true }
-    : { citeloomSettings: true };
-  window.history.pushState(nextState, "", url);
+  const currentLocation = readSettingsLocation();
+  if (currentLocation === null) {
+    return;
+  }
+  const targetIsRoot = isSettingsRootLocation(location);
+  const currentIsRoot = isSettingsRootLocation(currentLocation);
+  if (targetIsRoot && !currentIsRoot) {
+    window.history.back();
+    return;
+  }
+  if (currentIsRoot) {
+    window.history.pushState(settingsHistoryState, "", url);
+    return;
+  }
+  window.history.replaceState(settingsHistoryState, "", url);
 }
 
 function readApplicationSettings(value) {
@@ -1222,7 +1285,11 @@ export function registerPage(alpine) {
     },
 
     async initialize() {
-      this.settingsHistoryListener = () => {
+      initializeSettingsHistory();
+      this.settingsHistoryListener = (event) => {
+        if (readHistoryOwner(event.state) !== "settings") {
+          return;
+        }
         this.restoreLocationState();
       };
       window.addEventListener("popstate", this.settingsHistoryListener);
@@ -1562,7 +1629,7 @@ export function registerPage(alpine) {
       if (this.restoringHistory || this.settings === null) {
         return;
       }
-      pushSettingsLocation(this.currentLocationState());
+      writeSettingsLocation(this.currentLocationState());
     },
 
     restoreLocationState() {
@@ -1756,6 +1823,11 @@ export function registerPage(alpine) {
         }
       }
       return this.filteredRuntimePanels[0] ?? null;
+    },
+
+    activeRuntimePanelSelection() {
+      const panel = this.activeRuntimePanel();
+      return panel === null ? [] : [panel];
     },
 
     selectedEmbeddingInputFormat() {

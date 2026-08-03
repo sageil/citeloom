@@ -2,7 +2,15 @@ import { createHash } from "node:crypto";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildTestModelCapabilities } from "./model-capabilities-fixture.js";
-import { APICallError, embedMany, generateText, jsonSchema, Output } from "ai";
+import {
+  APICallError,
+  embedMany,
+  generateText,
+  jsonSchema,
+  Output,
+  simulateStreamingMiddleware,
+  wrapLanguageModel,
+} from "ai";
 import { MockEmbeddingModelV4, MockLanguageModelV4 } from "ai/test";
 import { z } from "zod";
 import {
@@ -50,6 +58,7 @@ import {
   InvalidAnswerDraftError,
   streamAnswerQuestion,
 } from "../src/answers/inference.js";
+import type { AnswerContentSnapshot } from "../src/answers/content-snapshot.js";
 import {
   noopRunTelemetry,
   type RunTelemetry,
@@ -1650,6 +1659,44 @@ describe("answer generation", () => {
       .toBe("Treatment options include phenobarbital.");
   });
 
+  it("includes the direct answer and findings in the streamed preview", async () => {
+    const answerModel = buildAnswerModel({
+      answer: {
+        content: "Zardev sold the riparian lots.",
+        evidenceRefs: ["EVID_A"],
+      },
+      findings: [{
+        content: "The submerged lots were treated as accessories.",
+        evidenceRefs: ["EVID_A"],
+      }],
+    });
+    const previews: AnswerContentSnapshot[] = [];
+
+    await streamAnswerQuestion(
+      buildModelRegistry(answerModel),
+      "What did Zardev sell?",
+      [buildRetrievedElement("a", "b")],
+      new TaskLimiter(1),
+      new AbortController().signal,
+      generationSettings,
+      undefined,
+      { receiveAnswerContent: (content) => previews.push(content) },
+    );
+
+    expect(previews).toHaveLength(1);
+    expect(previews.at(-1)).toEqual({
+      statements: [{
+        content: "Zardev sold the riparian lots.",
+        presentation: "paragraph",
+        section: "answer",
+      }, {
+        content: "The submerged lots were treated as accessories.",
+        presentation: "bullet",
+        section: "key-points",
+      }],
+    });
+  });
+
   it("uses evidenceRefs as citation authority instead of model citation decoration", async () => {
     const answerModel = buildAnswerModel({
       answer: {
@@ -1737,7 +1784,10 @@ describe("answer generation", () => {
 function buildModelRegistry(summary: LanguageModelV4): EvaluationModelRegistry {
   const embedding = new MockEmbeddingModelV4();
   return {
-    answer: summary,
+    answer: wrapLanguageModel({
+      middleware: simulateStreamingMiddleware(),
+      model: summary,
+    }),
     answerBudget: { maximumOutputTokens: 16_384, minimumOutputTokens: 256, providerSafetyMarginTokens: 0 },
     readAnswerCapabilities: async () => buildTestModelCapabilities(),
     claimVerifier: new FakeHhemClient(),

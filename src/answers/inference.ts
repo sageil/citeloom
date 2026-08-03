@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 
 import {
-  generateText,
   jsonSchema,
   NoObjectGeneratedError,
   Output,
+  streamText,
   type TextPart,
   type UserContent,
 } from "ai";
@@ -19,6 +19,10 @@ import {
   type AnswerDraftValidationIssue,
   type EvidenceReference,
 } from "./draft.js";
+import {
+  decodePartialAnswerContentSnapshot,
+  type AnswerContentSnapshot,
+} from "./content-snapshot.js";
 import { createAskSystemPrompt } from "./system-prompt.js";
 import type { TaskScheduler } from "../shared/concurrency.js";
 import type {
@@ -89,6 +93,7 @@ type GeneratedAnswerFallbackReason = "model-uncited";
 
 const ANSWER_OUTPUT_DESCRIPTION = "A private CiteLoom response containing a direct answer, cited findings, and exact request-local evidence references.";
 const ANSWER_OUTPUT_NAME = "answer_draft";
+const ignoreAnswerContent = (_content: AnswerContentSnapshot): void => undefined;
 const ANSWER_CORRECTION_BUDGET_INSTRUCTION = [
   "CORRECTION REQUEST:",
   "Preserve supported answer content while fixing the response contract.",
@@ -234,6 +239,12 @@ export interface AnswerGenerationPrompt {
   systemPrompt: string;
 }
 
+export interface AnswerGenerationOptions {
+  conversationTurns?: readonly AnswerConversationTurn[];
+  prompt?: AnswerGenerationPrompt;
+  receiveAnswerContent?: (content: AnswerContentSnapshot) => void;
+}
+
 export interface AnswerResponseContract {
   createSchema(
     allowedEvidenceRefs: readonly EvidenceReference[],
@@ -306,6 +317,7 @@ export async function answerQuestion(
     runTelemetry,
     conversationTurns,
     prompt,
+    ignoreAnswerContent,
   );
 }
 
@@ -317,9 +329,11 @@ export async function streamAnswerQuestion(
   abortSignal: AbortSignal,
   generationSettings: AppliedGenerationSettings,
   runTelemetry: RunTelemetry = noopRunTelemetry,
-  conversationTurns: readonly AnswerConversationTurn[] = [],
-  prompt: AnswerGenerationPrompt = defaultAnswerGenerationPrompt,
+  options: AnswerGenerationOptions = {},
 ): Promise<GeneratedAnswerResult> {
+  const conversationTurns = options.conversationTurns ?? [];
+  const prompt = options.prompt ?? defaultAnswerGenerationPrompt;
+  const receiveAnswerContent = options.receiveAnswerContent ?? ignoreAnswerContent;
   return generateAnswer(
     models,
     question,
@@ -331,6 +345,7 @@ export async function streamAnswerQuestion(
     runTelemetry,
     conversationTurns,
     prompt,
+    receiveAnswerContent,
   );
 }
 
@@ -345,6 +360,7 @@ async function generateAnswer(
   runTelemetry: RunTelemetry,
   conversationTurns: readonly AnswerConversationTurn[],
   prompt: AnswerGenerationPrompt,
+  receiveAnswerContent: (content: AnswerContentSnapshot) => void,
 ): Promise<GeneratedAnswerResult> {
   if (retrieved.length === 0) {
     return createEmptyRetrievalAnswer();
@@ -453,12 +469,13 @@ async function generateAnswer(
           adaptiveContext,
           prompt.systemPrompt,
           prompt.responseContract,
+          receiveAnswerContent,
         );
         requestSignal.throwIfAborted();
         initialCompletion = {
           finishReason: result.finishReason,
-          inputTokens: result.totalUsage.inputTokens ?? null,
-          outputTokens: result.totalUsage.outputTokens ?? null,
+          inputTokens: result.usage.inputTokens ?? null,
+          outputTokens: result.usage.outputTokens ?? null,
         };
         if (!isExpectedAnswerFinishReason(initialCompletion.finishReason)) {
           throw new UnexpectedAnswerFinishReasonError(
@@ -530,6 +547,7 @@ async function generateAnswer(
           runTelemetry,
           conversationTurns,
           prompt,
+          receiveAnswerContent,
         );
       } catch (error: unknown) {
         recordAnswerResponseDiagnostic(
@@ -646,6 +664,7 @@ async function correctAnswerDraft(
   runTelemetry: RunTelemetry,
   conversationTurns: readonly AnswerConversationTurn[],
   prompt: AnswerGenerationPrompt,
+  receiveAnswerContent: (content: AnswerContentSnapshot) => void,
 ): Promise<DecodedAnswerResponse> {
   abortSignal.throwIfAborted();
   const correction = buildAnswerCorrectionInstruction(
@@ -674,6 +693,7 @@ async function correctAnswerDraft(
       adaptiveContext,
       prompt.systemPrompt,
       prompt.responseContract,
+      receiveAnswerContent,
     );
   };
   let result: Awaited<ReturnType<typeof requestAnswerDraft>>;
@@ -821,6 +841,7 @@ async function requestAnswerDraft(
   adaptiveContext: AdaptiveAnswerContext | null,
   systemPrompt: string,
   responseContract: AnswerResponseContract,
+  receiveAnswerContent: (content: AnswerContentSnapshot) => void,
 ) {
   const output = createAnswerModelOutput(
     allowedEvidenceRefs,
@@ -831,6 +852,7 @@ async function requestAnswerDraft(
   const signals = createInferenceRequestSignal(timeoutMs, abortSignal);
   try {
     const samplingSettings = buildAnswerSamplingSettings(generationSettings);
+    let streamFailure: unknown = null;
     const providerOptions = adaptiveContext !== null
       ? {
         citeloomAdaptiveContext: {
@@ -841,7 +863,7 @@ async function requestAnswerDraft(
         },
       }
       : null;
-    return await generateText({
+    const result = streamText({
       ...samplingSettings,
       ...(providerOptions === null ? {} : { providerOptions }),
       abortSignal: signals.requestSignal,
@@ -849,17 +871,34 @@ async function requestAnswerDraft(
       maxOutputTokens: budget.outputBudgetTokens,
       messages: [{ content, role: "user" }],
       model: models.answer,
+      onError: ({ error }) => {
+        streamFailure = error;
+      },
       onFinish: (event) => {
         recordCompletion({
           finishReason: event.finishReason,
-          inputTokens: event.totalUsage.inputTokens ?? null,
-          outputTokens: event.totalUsage.outputTokens ?? null,
+          inputTokens: event.usage.inputTokens ?? null,
+          outputTokens: event.usage.outputTokens ?? null,
         });
       },
       output,
       system: systemPrompt,
       telemetry,
     });
+    for await (const partialOutput of result.partialOutputStream) {
+      const preview = decodePartialAnswerContentSnapshot(partialOutput);
+      if (preview !== null) {
+        receiveAnswerContent(preview);
+      }
+    }
+    if (streamFailure !== null) {
+      throw streamFailure;
+    }
+    return {
+      finishReason: await result.finishReason,
+      output: await result.output,
+      usage: await result.usage,
+    };
   } catch (error: unknown) {
     throwInferenceRequestFailure(
       error,

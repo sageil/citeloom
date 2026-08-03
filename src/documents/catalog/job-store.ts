@@ -72,7 +72,7 @@ const ingestionControlDoclingTaskRowSchema = z.object({
   controlState: z.enum(["pause_requested", "cancel_requested"]),
   serviceInstanceId: z.string().trim().min(1).max(100),
   sourceFile: z.string().min(1),
-  taskId: z.string().uuid(),
+  taskId: z.uuid(),
 });
 
 export interface DoclingJobDemand {
@@ -1657,7 +1657,7 @@ function readDoclingServiceId(value: string): string {
 }
 
 function readDoclingTaskId(value: string): string {
-  const result = z.string().uuid().safeParse(value);
+  const result = z.uuid().safeParse(value);
   if (!result.success) {
     throw new Error("Invalid Docling task ID.");
   }

@@ -75,11 +75,11 @@ import {
 } from "../domain/validation.js";
 
 const fusionSchema = z.object({
-  denseWeight: z.number().finite().nonnegative(),
-  expansionDecay: z.number().finite().nonnegative(),
-  expansionQueryWeight: z.number().finite().nonnegative(),
-  lexicalWeight: z.number().finite().nonnegative(),
-  originalQueryWeight: z.number().finite().nonnegative(),
+  denseWeight: z.number().nonnegative(),
+  expansionDecay: z.number().nonnegative(),
+  expansionQueryWeight: z.number().nonnegative(),
+  lexicalWeight: z.number().nonnegative(),
+  originalQueryWeight: z.number().nonnegative(),
 }).strict();
 const RESEARCH_THREAD_TITLE_LOCK_ID = 1_384_921_704;
 const runConfigurationSchema = z.object({
@@ -92,7 +92,7 @@ const runConfigurationSchema = z.object({
   }).strict(),
   retrieval: z.object({
     answerTemperature: z.number().min(0).max(2).default(0.1),
-    answerMinimumRerankerScore: z.number().finite().nullable().default(null),
+    answerMinimumRerankerScore: z.number().nullable().default(null),
     candidateK: z.number().int().positive(),
     fusion: fusionSchema,
     mode: z.enum(["bm25", "dense", "hybrid", "hybrid-reranked"]),
@@ -280,6 +280,15 @@ const verificationEvidenceUnitSchema = z.object({
   rationale: z.string().min(1),
   supportProbability: z.number().min(0).max(1).nullable(),
   unitId: z.string().min(1),
+}).strict();
+const claimVerificationResultSchema: z.ZodType<ClaimVerificationResult> = z.object({
+  citationNumbers: z.array(z.number().int().positive()),
+  claim: z.string().trim().min(1),
+  claimIndex: z.number().int().nonnegative(),
+  evidenceUnits: z.array(verificationEvidenceUnitSchema),
+  rationale: z.string().trim().min(1),
+  status: z.enum(["supported", "partially-supported", "unsupported", "unverified"]),
+  verifierModel: z.string().trim().min(1),
 }).strict();
 const statementCitationRowSchema = z.object({
   citationId: z.uuid(),
@@ -1215,18 +1224,9 @@ export function buildResearchRunConfiguration(
 }
 
 function decodeSaveResearchTurnInput(input: SaveResearchTurnInput): SaveResearchTurnInput {
-  const claimSchema = z.object({
-    citationNumbers: z.array(z.number().int().positive()),
-    claim: z.string().trim().min(1),
-    claimIndex: z.number().int().nonnegative(),
-    evidenceUnits: z.array(verificationEvidenceUnitSchema),
-    rationale: z.string().trim().min(1),
-    status: z.enum(["supported", "partially-supported", "unsupported", "unverified"]),
-    verifierModel: z.string().trim().min(1),
-  }).strict();
   const schema = z.object({
     answerDocument: publishedAnswerDocumentSchema,
-    claims: z.array(claimSchema),
+    claims: z.array(claimVerificationResultSchema),
     completedAt: z.date(),
     question: z.string().trim().min(1),
     retrievedContext: z.array(z.object({

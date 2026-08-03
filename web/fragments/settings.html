@@ -782,9 +782,8 @@
             </nav>
           </aside>
 
-          <template x-if="activeRuntimePanel() !== null">
+          <template x-for="panel in activeRuntimePanelSelection()" :key="panel.id">
           <section class="settings-feature-editor settings-runtime-editor">
-            <template x-for="panel in [activeRuntimePanel()]" :key="panel.id">
             <div>
               <header class="settings-feature-editor-heading"><div><span><h2 x-text="panel.label"></h2><small x-text="panel.fields[0].group"></small></span><p x-text="panel.description"></p></div><span class="setting-source" :class="runtimePanelBadgeClass(panel)" x-text="runtimePanelBadgeLabel(panel)"></span></header>
               <section class="settings-feature-step">
@@ -820,7 +819,6 @@
               </section>
               <footer class="settings-feature-footer"><span :class="{ changed: changeCount > 0 }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><strong x-text="changeSummaryLabel()"></strong></span><div><button class="button secondary" type="button" :disabled="saving" @click="resetAll()">Reset</button><button class="button primary" type="button" :disabled="!canSave" @click="saveChanges()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="saveLabel()"></span></button></div></footer>
             </div>
-            </template>
           </section>
           </template>
         </div>

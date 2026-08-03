@@ -21,11 +21,11 @@ const referenceSchema = z.object({
   $ref: z.string().regex(/^#(?:\/[\w-]+(?:\/\d+)?)?$/),
 });
 const boundingBoxSchema = z.object({
-  b: z.number().finite(),
+  b: z.number(),
   coord_origin: z.enum(["BOTTOMLEFT", "TOPLEFT"]).default("TOPLEFT"),
-  l: z.number().finite(),
-  r: z.number().finite(),
-  t: z.number().finite(),
+  l: z.number(),
+  r: z.number(),
+  t: z.number(),
 });
 const characterSpanSchema = z
   .tuple([z.number().int().nonnegative(), z.number().int().nonnegative()])
@@ -58,8 +58,8 @@ const imageReferenceSchema = z.object({
   dpi: z.number().int().positive(),
   mimetype: doclingImageMediaTypeSchema,
   size: z.object({
-    height: z.number().finite().positive().max(MAXIMUM_IMAGE_DIMENSION),
-    width: z.number().finite().positive().max(MAXIMUM_IMAGE_DIMENSION),
+    height: z.number().positive().max(MAXIMUM_IMAGE_DIMENSION),
+    width: z.number().positive().max(MAXIMUM_IMAGE_DIMENSION),
   }),
   uri: z.string().min(1).max(MAXIMUM_IMAGE_DATA_URI_LENGTH),
 }).superRefine((image, context) => {
@@ -111,8 +111,8 @@ const pageItemSchema = z.object({
   image: imageReferenceSchema.nullable().default(null),
   page_no: z.number().int().positive(),
   size: z.object({
-    height: z.number().finite().positive(),
-    width: z.number().finite().positive(),
+    height: z.number().positive(),
+    width: z.number().positive(),
   }),
 }).loose();
 const doclingDocumentSchema = z.object({
@@ -151,7 +151,7 @@ const profilingItemSchema = z.object({
   count: z.number().int().nonnegative().default(0),
   scope: z.enum(["page", "document"]),
   start_timestamps: z.array(z.iso.datetime()).max(100_000).default([]),
-  times: z.array(z.number().finite().nonnegative()).max(100_000).default([]),
+  times: z.array(z.number().nonnegative()).max(100_000).default([]),
 }).superRefine((item, context) => {
   if (item.count !== item.times.length) {
     context.addIssue({
@@ -168,7 +168,7 @@ export const conversionResponseSchema = z.object({
     json_content: doclingDocumentSchema.nullable(),
   }).loose(),
   errors: z.array(conversionErrorSchema).default([]),
-  processing_time: z.number().finite().nonnegative(),
+  processing_time: z.number().nonnegative(),
   status: z.enum([
     "failure",
     "partial_success",

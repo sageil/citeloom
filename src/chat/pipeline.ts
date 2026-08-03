@@ -1,4 +1,15 @@
+import { hostname } from "node:os";
+
+import {
+  createUIMessageStream,
+  type InferUIMessageChunk,
+} from "ai";
+
 import type { AuthenticatedPrincipal } from "../auth/model.js";
+import {
+  createAnswerContentWriter,
+  type CiteLoomUIMessage,
+} from "../answers/stream.js";
 import { createPendingAnswerClaimChecks } from "../answers/claim-verification.js";
 import {
   createEmptyRetrievalAnswer,
@@ -10,6 +21,11 @@ import {
   renderPublishedAnswerMarkdown,
   type PublishedAnswerDocument,
 } from "../answers/published.js";
+import {
+  createPublishedAnswerContentSnapshot,
+  hasAnswerContent,
+  type AnswerContentSnapshot,
+} from "../answers/content-snapshot.js";
 import type { ApplicationRuntime } from "../app/runtime.js";
 import type { AppConfig } from "../config/index.js";
 import { createContextualizedQuestionInput } from "../domain/question.js";
@@ -21,8 +37,10 @@ import {
   startRunTelemetry,
 } from "../observability/run.js";
 import { DatabaseRunTelemetrySink } from "../observability/store.js";
+import { ApplicationErrorReporter } from "../observability/application-errors.js";
 import {
   prepareRetrievalWithRuntime,
+  readAnswerStreamError,
 } from "../retrieval/pipeline.js";
 import {
   buildResearchRunConfiguration,
@@ -36,15 +54,20 @@ import {
   ChatStore,
 } from "./store.js";
 import { CHAT_GENERATION_PROMPT } from "./prompt.js";
-import { contextualizeChatQuestion } from "./question-contextualization.js";
+import {
+  contextualizeChatQuestion,
+  type ContextualizedChatQuestion,
+} from "./question-contextualization.js";
 import type {
   ChatAssistantMessage,
-  ChatConversation,
+  ChatMessageResponse,
+  ChatRun,
   ChatRunConfiguration,
 } from "./types.js";
 
 const CHAT_LEASE_HEARTBEAT_MS = 30_000;
 const CHAT_QUERY_EXPANSIONS = 0;
+const ignoreAnswerContent = (_content: AnswerContentSnapshot): void => undefined;
 
 export interface ChatMessageRequest {
   content: string;
@@ -52,11 +75,38 @@ export interface ChatMessageRequest {
   requestId: string;
 }
 
-export interface ChatMessageResponse {
-  assistantMessage: ChatAssistantMessage;
-  conversationId: string;
-  runId: string;
-  sequence: number;
+export function streamChatMessageWithRuntime(
+  runtime: ApplicationRuntime,
+  principal: AuthenticatedPrincipal,
+  request: ChatMessageRequest,
+  abortSignal: AbortSignal,
+  reportProgress: (message: string) => void = () => undefined,
+): ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>> {
+  return createUIMessageStream<CiteLoomUIMessage>({
+    execute: async ({ writer }) => {
+      writer.write({ type: "start" });
+      const receiveAnswerContent = createAnswerContentWriter(writer);
+      const response = await answerChatMessageWithRuntime(
+        runtime,
+        principal,
+        request,
+        abortSignal,
+        reportProgress,
+        receiveAnswerContent,
+      );
+      const assistantMessage = requireAssistantMessage(response.run);
+      receiveAnswerContent(
+        createPublishedAnswerContentSnapshot(assistantMessage.answerDocument),
+      );
+      writer.write({
+        data: response,
+        id: "chat",
+        type: "data-chat",
+      });
+      writer.write({ finishReason: "stop", type: "finish" });
+    },
+    onError: readAnswerStreamError,
+  });
 }
 
 export async function answerChatMessageWithRuntime(
@@ -65,6 +115,7 @@ export async function answerChatMessageWithRuntime(
   request: ChatMessageRequest,
   abortSignal: AbortSignal,
   reportProgress: (message: string) => void = () => undefined,
+  receiveAnswerContent: (content: AnswerContentSnapshot) => void = ignoreAnswerContent,
 ): Promise<ChatMessageResponse> {
   const store = new ChatStore(runtime.database, runtime.config);
   const accepted = await store.acceptUserMessage(
@@ -79,7 +130,6 @@ export async function answerChatMessageWithRuntime(
       principal,
       accepted.conversation.id,
       accepted.run.id,
-      accepted.run.sequence,
     );
   }
   if (accepted.disposition === "in-progress") {
@@ -108,6 +158,15 @@ export async function answerChatMessageWithRuntime(
       telemetrySink,
     );
     telemetryStarted = true;
+    runTelemetry.markStreamStarted();
+    let firstAnswerContentReceived = false;
+    const publishAnswerContent = (content: AnswerContentSnapshot): void => {
+      if (hasAnswerContent(content) && !firstAnswerContentReceived) {
+        firstAnswerContentReceived = true;
+        runTelemetry.markFirstToken();
+      }
+      receiveAnswerContent(content);
+    };
     lease.signal.throwIfAborted();
     await store.transitionRun(
       principal,
@@ -136,19 +195,32 @@ export async function answerChatMessageWithRuntime(
       "retrieving",
     );
     const chatScheduler = runtime.scheduler("chat", "interactive-answer");
-    const questionResolution = await contextualizeChatQuestion(
-      runtime.models,
-      accepted.userMessage.content,
-      memory.questionContextTurns,
-      chatScheduler,
-      lease.signal,
-      {
-        seedMode: runtime.config.retrieval.generationSeedMode,
-        temperature: runtime.config.retrieval.chatTemperature,
-      },
-      reportProgress,
-      runTelemetry,
-    );
+    let questionResolution: ContextualizedChatQuestion = {
+      clarification: null,
+      question: accepted.userMessage.content,
+    };
+    if (memory.questionContextTurns.length > 0) {
+      questionResolution = await contextualizeChatQuestion(
+        runtime.models,
+        accepted.userMessage.content,
+        memory.questionContextTurns,
+        chatScheduler,
+        lease.signal,
+        {
+          seedMode: runtime.config.retrieval.generationSeedMode,
+          temperature: runtime.config.retrieval.chatTemperature,
+        },
+        reportProgress,
+        runTelemetry,
+        async (error) => reportChatContextualizationFailure(
+          runtime,
+          principal,
+          runTelemetry.runId,
+          accepted.run.id,
+          error,
+        ),
+      );
+    }
     const questionInput = createContextualizedQuestionInput(
       accepted.userMessage.content,
       questionResolution.question,
@@ -189,10 +261,16 @@ export async function answerChatMessageWithRuntime(
         lease.signal,
         prepared.generationSettings.answer,
         runTelemetry,
-        memory.conversationTurns,
-        CHAT_GENERATION_PROMPT,
+        {
+          conversationTurns: memory.conversationTurns,
+          prompt: CHAT_GENERATION_PROMPT,
+          receiveAnswerContent: publishAnswerContent,
+        },
       );
     }
+    publishAnswerContent(
+      createPublishedAnswerContentSnapshot(result.answerDocument),
+    );
 
     await store.transitionRun(
       principal,
@@ -235,12 +313,19 @@ export async function answerChatMessageWithRuntime(
       abortSignal,
     );
     telemetryFinished = true;
+    runTelemetry.markStreamCompleted();
     await runTelemetry.finish("success");
     return {
-      assistantMessage,
       conversationId: accepted.conversation.id,
-      runId: accepted.run.id,
-      sequence: accepted.run.sequence,
+      run: {
+        attemptCount: accepted.run.attemptCount,
+        completedAt: assistantMessage.createdAt,
+        errorMessage: null,
+        id: accepted.run.id,
+        messages: [accepted.userMessage, assistantMessage],
+        sequence: accepted.run.sequence,
+        state: "completed",
+      },
     };
   } catch (error: unknown) {
     await lease.stop();
@@ -248,6 +333,7 @@ export async function answerChatMessageWithRuntime(
     if (telemetryStarted && !telemetryFinished) {
       telemetryFinished = true;
       try {
+        runTelemetry.markStreamCompleted();
         await runTelemetry.finish(abortSignal.aborted ? "abort" : "error");
       } catch (telemetryError: unknown) {
         effectiveError = new AggregateError(
@@ -389,36 +475,59 @@ async function readCompletedResponse(
   principal: AuthenticatedPrincipal,
   conversationId: string,
   runId: string,
-  sequence: number,
 ): Promise<ChatMessageResponse> {
   const conversation = await store.readConversation(principal, conversationId);
   if (conversation === null) {
     throw new Error(`Completed chat was not found: ${conversationId}`);
   }
-  const assistantMessage = readAssistantMessage(conversation, runId);
-  if (assistantMessage === null) {
+  const run = conversation.runs.find((candidate) => candidate.id === runId);
+  if (run === undefined || readAssistantMessage(run) === null) {
     throw new Error(`Completed chat run has no assistant message: ${runId}`);
   }
   return {
-    assistantMessage,
     conversationId,
-    runId,
-    sequence,
+    run,
   };
 }
 
 function readAssistantMessage(
-  conversation: ChatConversation,
-  runId: string,
+  run: ChatRun,
 ): ChatAssistantMessage | null {
-  const run = conversation.runs.find((candidate) => candidate.id === runId);
-  if (run === undefined) {
-    return null;
-  }
   for (const message of run.messages) {
     if (message.role === "assistant") {
       return message;
     }
   }
   return null;
+}
+
+function requireAssistantMessage(run: ChatRun): ChatAssistantMessage {
+  const message = readAssistantMessage(run);
+  if (message === null) {
+    throw new Error(`Completed chat run has no assistant message: ${run.id}`);
+  }
+  return message;
+}
+
+async function reportChatContextualizationFailure(
+  runtime: ApplicationRuntime,
+  principal: AuthenticatedPrincipal,
+  telemetryRunId: string | null,
+  chatRunId: string,
+  error: unknown,
+): Promise<void> {
+  const reporter = new ApplicationErrorReporter(runtime.database);
+  await reporter.report(error, {
+    category: "inference-provider",
+    code: "chat_contextualization_failed",
+    instance: hostname(),
+    operation: "contextualize-chat-question",
+    origin: "inference-provider",
+    requestId: chatRunId,
+    retryable: true,
+    runId: telemetryRunId,
+    service: "web",
+    severity: "warning",
+    workspaceId: principal.workspaceId,
+  });
 }

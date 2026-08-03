@@ -33,7 +33,7 @@ const assessmentSchema = z.object({
   acceptedEvidenceRetrieved: z.boolean(),
   candidateCount: z.number().int().nonnegative(),
   documentIds: documentIdListSchema,
-  strongestScore: z.number().finite().nullable(),
+  strongestScore: z.number().nullable(),
   trace: telemetryRunSnapshotSchema,
 }).strict();
 const preparedCaseSchema = z.object({
@@ -133,11 +133,11 @@ const answerThresholdPreparationSchema = z.object({
 
 const rateSchema = z.object({
   count: z.number().int().nonnegative(),
-  rate: z.number().finite().min(0).max(1),
+  rate: z.number().min(0).max(1),
   total: z.number().int().positive(),
   wilson95: z.object({
-    lower: z.number().finite().min(0).max(1),
-    upper: z.number().finite().min(0).max(1),
+    lower: z.number().min(0).max(1),
+    upper: z.number().min(0).max(1),
   }).strict(),
 }).strict();
 const domainMetricsSchema = z.object({
@@ -164,7 +164,7 @@ const answerThresholdSelectionSchema = z.object({
     sha256: sha256Schema,
   }).strict()).min(1),
   fingerprintSha256: sha256Schema,
-  maximumFalseAcceptanceRate: z.number().finite().min(0).max(1),
+  maximumFalseAcceptanceRate: z.number().min(0).max(1),
   metrics: reportedMetricsSchema,
   regressionMetrics: reportedMetricsSchema.nullable(),
   regressionPreparations: z.array(z.object({
@@ -172,7 +172,7 @@ const answerThresholdSelectionSchema = z.object({
     sha256: sha256Schema,
   }).strict()),
   scoringConfiguration: scoringConfigurationSchema,
-  selectedThreshold: z.number().finite(),
+  selectedThreshold: z.number(),
   version: z.literal(4),
 }).strict().superRefine((value, context) => {
   const payload: Omit<typeof value, "fingerprintSha256"> & {

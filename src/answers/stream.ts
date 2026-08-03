@@ -1,8 +1,14 @@
-import type { UIMessage } from "ai";
+import type { UIMessage, UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 
 import { publishedAnswerDocumentSchema } from "./published-schema.js";
+import {
+  hasAnswerContent,
+  type AnswerContentSnapshot,
+  type AnswerContentStatement,
+} from "./content-snapshot.js";
 import { contentIdSchema } from "../domain/validation.js";
+import type { ChatMessageResponse } from "../chat/types.js";
 
 export const matchedDocumentSchema = z.object({
   documentId: contentIdSchema,
@@ -23,7 +29,7 @@ const claimVerificationResultSchema = z.object({
       "verifier-incompatible",
     ]),
     rationale: z.string().min(1),
-    supportProbability: z.number().finite().min(0).max(1).nullable(),
+    supportProbability: z.number().min(0).max(1).nullable(),
     unitId: z.string().min(1),
   }).strict()),
   rationale: z.string().min(1),
@@ -68,6 +74,8 @@ export type StreamedRunDetails = z.output<typeof streamedRunDetailsSchema>;
 
 export type CiteLoomAnswerDataParts = {
   answer: StreamedAnswer;
+  "answer-content": AnswerContentUpdate;
+  chat: ChatMessageResponse;
 };
 
 export type CiteLoomUIMessage = UIMessage<never, CiteLoomAnswerDataParts>;
@@ -76,6 +84,97 @@ export type AnswerDataPart = {
   data: StreamedAnswer;
   type: "data-answer";
 };
+
+export interface AnswerContentStatementUpdate extends AnswerContentStatement {
+  index: number;
+  mode: "append" | "replace";
+}
+
+export interface AnswerContentUpdate {
+  statementCount: number;
+  statements: AnswerContentStatementUpdate[];
+}
+
+export type AnswerContentDataPart = {
+  data: AnswerContentUpdate;
+  type: "data-answer-content";
+};
+
+export type ChatDataPart = {
+  data: ChatMessageResponse;
+  type: "data-chat";
+};
+
+export function createAnswerContentWriter(
+  writer: UIMessageStreamWriter<CiteLoomUIMessage>,
+  receiveFirstContent: () => void = () => undefined,
+): (content: AnswerContentSnapshot) => void {
+  let lastContent: AnswerContentSnapshot = { statements: [] };
+  return (content) => {
+    if (!hasAnswerContent(content)) {
+      return;
+    }
+    const update = createAnswerContentUpdate(lastContent, content);
+    if (
+      update.statements.length === 0
+      && update.statementCount === lastContent.statements.length
+    ) {
+      return;
+    }
+    if (lastContent.statements.length === 0) {
+      receiveFirstContent();
+    }
+    lastContent = content;
+    writer.write({
+      data: update,
+      id: "answer-content",
+      type: "data-answer-content",
+    });
+  };
+}
+
+function createAnswerContentUpdate(
+  previous: AnswerContentSnapshot,
+  current: AnswerContentSnapshot,
+): AnswerContentUpdate {
+  const statements: AnswerContentStatementUpdate[] = [];
+  for (let index = 0; index < current.statements.length; index += 1) {
+    const currentStatement = current.statements[index];
+    if (currentStatement === undefined) {
+      continue;
+    }
+    const previousStatement = previous.statements[index];
+    if (statementsMatch(previousStatement, currentStatement)) {
+      continue;
+    }
+    const append = previousStatement !== undefined
+      && previousStatement.presentation === currentStatement.presentation
+      && previousStatement.section === currentStatement.section
+      && currentStatement.content.startsWith(previousStatement.content);
+    statements.push({
+      content: append
+        ? currentStatement.content.slice(previousStatement.content.length)
+        : currentStatement.content,
+      index,
+      mode: append ? "append" : "replace",
+      presentation: currentStatement.presentation,
+      section: currentStatement.section,
+    });
+  }
+  return {
+    statementCount: current.statements.length,
+    statements,
+  };
+}
+
+function statementsMatch(
+  previous: AnswerContentStatement | undefined,
+  current: AnswerContentStatement,
+): boolean {
+  return previous?.content === current.content
+    && previous.presentation === current.presentation
+    && previous.section === current.section;
+}
 
 export function decodeAnswerDataPart(value: unknown): AnswerDataPart {
   const part = answerDataPartSchema.safeParse(value);

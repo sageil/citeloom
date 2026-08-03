@@ -66,6 +66,7 @@ from citeloom_docling.pdf_pipeline import (
     MissingRetainedPictureImageError,
     assemble_checkpointed_pdf_document,
     checkpoint_conversion_pages,
+    find_pages_with_corrupt_programmatic_text,
     read_checkpointed_picture_images,
 )
 from citeloom_docling.range_checkpoint import (
@@ -1065,15 +1066,100 @@ def _run_docling_page_range_process(
             raise RuntimeError(
                 "Resumable PDF range did not produce an exportable document."
             )
+        checkpointed_pages = checkpoint_conversion_pages(conversion_result)
+        picture_images = read_checkpointed_picture_images(conversion_result)
+        confidence = conversion_result.confidence
+        corrupt_page_numbers: list[int] = []
+        if range_options.do_ocr and not range_options.force_ocr:
+            corrupt_page_numbers = find_pages_with_corrupt_programmatic_text(
+                conversion_result
+            )
+        if corrupt_page_numbers:
+            _log.info(
+                "Replacing corrupt programmatic text with full-page OCR "
+                "for pages %s.",
+                ", ".join(str(page) for page in corrupt_page_numbers),
+            )
+            pages_by_number = {
+                page.page_no: page for page in checkpointed_pages
+            }
+            confidence_pages = dict(confidence.pages)
+            for page_no in corrupt_page_numbers:
+                forced_ocr_options = range_options.model_copy(
+                    update={
+                        "force_ocr": True,
+                        "page_range": (page_no, page_no),
+                    }
+                )
+                forced_ocr_results = list(
+                    manager.convert_documents(
+                        sources=convert_sources,
+                        options=forced_ocr_options,
+                        headers=headers,
+                    )
+                )
+                if len(forced_ocr_results) != 1:
+                    raise RuntimeError(
+                        "Full-page OCR produced an unexpected document count."
+                    )
+                forced_ocr_result = forced_ocr_results[0]
+                if forced_ocr_result.errors:
+                    failure = PageRangeExecutionFailure(
+                        end_page=page_no,
+                        errors=[
+                            CheckpointedConversionError.from_error_item(error)
+                            for error in forced_ocr_result.errors
+                        ],
+                        start_page=page_no,
+                        status=forced_ocr_result.status.value,
+                    )
+                    write_execution_failure(error_path, failure)
+                    raise RangeConversionFailure(failure)
+                if forced_ocr_result.status != ConversionStatus.SUCCESS:
+                    raise RuntimeError(
+                        "Full-page OCR did not complete successfully."
+                    )
+                forced_ocr_pages = checkpoint_conversion_pages(
+                    forced_ocr_result
+                )
+                if (
+                    len(forced_ocr_pages) != 1
+                    or forced_ocr_pages[0].page_no != page_no
+                ):
+                    raise RuntimeError(
+                        "Full-page OCR returned an unexpected page."
+                    )
+                pages_by_number[page_no] = forced_ocr_pages[0]
+                picture_images = [
+                    picture
+                    for picture in picture_images
+                    if picture.page_no != page_no
+                ]
+                picture_images.extend(
+                    read_checkpointed_picture_images(forced_ocr_result)
+                )
+                page_confidence = forced_ocr_result.confidence.pages.get(
+                    page_no
+                )
+                if page_confidence is None:
+                    raise RuntimeError(
+                        "Full-page OCR returned no confidence for its page."
+                    )
+                confidence_pages[page_no] = page_confidence
+            checkpointed_pages = [
+                pages_by_number[page_no]
+                for page_no in range(start_page, actual_end_page + 1)
+            ]
+            confidence = confidence.model_copy(
+                update={"pages": confidence_pages}
+            )
         artifact = PageRangeArtifact(
-            confidence=conversion_result.confidence,
+            confidence=confidence,
             metadata=exportable_document.model_copy(
                 update={"document": None}
             ),
-            pages=checkpoint_conversion_pages(conversion_result),
-            picture_images=read_checkpointed_picture_images(
-                conversion_result
-            ),
+            pages=checkpointed_pages,
+            picture_images=picture_images,
         )
         artifact_name = write_range_artifact(
             task_directory,

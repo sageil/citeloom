@@ -10,9 +10,10 @@ import {
   createRuntimeTaskScheduler,
   type ApplicationRuntime,
 } from "../app/runtime.js";
-import type {
-  CiteLoomUIMessage,
-  StreamedAnswer,
+import {
+  createAnswerContentWriter,
+  type CiteLoomUIMessage,
+  type StreamedAnswer,
 } from "../answers/stream.js";
 import {
   attachAdvisoryClaimChecks,
@@ -31,7 +32,11 @@ import {
   readInferenceErrorMessage,
   type InferenceApiFailure,
 } from "../inference/error.js";
-import { verifyPublishedAnswer } from "../answers/claim-verification.js";
+import {
+  createPendingAnswerClaimChecks,
+  verifyPublishedAnswer,
+} from "../answers/claim-verification.js";
+import { createPublishedAnswerContentSnapshot } from "../answers/content-snapshot.js";
 import { DocumentCatalog } from "../documents/catalog/index.js";
 import type { TaskScheduler } from "../shared/concurrency.js";
 import type {
@@ -834,6 +839,10 @@ export async function writeStreamedAnswer(
     throw new Error("Answer telemetry did not create a run ID.");
   }
   const researchStore = new ResearchStore(databaseSession.database, config);
+  const receiveAnswerContent = createAnswerContentWriter(
+    writer,
+    () => runTelemetry.markFirstToken(),
+  );
   let runFinished = false;
   try {
     abortSignal.throwIfAborted();
@@ -851,25 +860,28 @@ export async function writeStreamedAnswer(
         abortSignal,
         prepared.generationSettings.answer,
         runTelemetry,
+        { receiveAnswerContent },
       );
     }
-    let verifiedClaims: ClaimVerificationResult[] = [];
+    receiveAnswerContent(
+      createPublishedAnswerContentSnapshot(result.answerDocument),
+    );
+    let claimChecks: ClaimVerificationResult[] = [];
     if (result.outcome === "answered") {
       reportProgress("Scoring cited claims with advisory HHEM checks");
-      const verified = await verifyPublishedAnswer(
-        prepared.models,
-        result.answerDocument,
-        prepared.answerScheduler,
+      claimChecks = await verifyAdvisoryClaimChecks(
+        prepared,
+        result,
+        databaseSession.database,
+        researchRunId,
         abortSignal,
         runTelemetry,
       );
-      verifiedClaims = verified.claims;
-      result = attachAdvisoryClaimChecks(result, verified.claims);
     }
     abortSignal.throwIfAborted();
     const turn = await researchStore.saveTurn({
       answerDocument: result.answerDocument,
-      claims: verifiedClaims,
+      claims: claimChecks,
       completedAt: new Date(),
       question: questionInput.original,
       retrievedContext: result.matchedDocuments,
@@ -899,14 +911,14 @@ export async function writeStreamedAnswer(
         turnId: turn.id,
       },
     };
-    runTelemetry.markStreamCompleted();
-    await runTelemetry.finish("success");
-    runFinished = true;
     writer.write({
       data: streamedAnswer,
       id: "answer",
       type: "data-answer",
     });
+    runTelemetry.markStreamCompleted();
+    await runTelemetry.finish("success");
+    runFinished = true;
     writer.write({ finishReason: "stop", type: "finish" });
   } catch (error: unknown) {
     let runSnapshot: TelemetryRunSnapshot | null = null;
@@ -927,6 +939,57 @@ export async function writeStreamedAnswer(
   }
 }
 
+async function verifyAdvisoryClaimChecks(
+  prepared: PreparedRetrieval,
+  result: GeneratedAnswerResult,
+  database: CiteLoomDatabase,
+  researchRunId: string,
+  abortSignal: AbortSignal,
+  runTelemetry: RunTelemetry,
+): Promise<ClaimVerificationResult[]> {
+  try {
+    const verified = await verifyPublishedAnswer(
+      prepared.models,
+      result.answerDocument,
+      prepared.answerScheduler,
+      abortSignal,
+      runTelemetry,
+    );
+    return verified.claims;
+  } catch (error: unknown) {
+    abortSignal.throwIfAborted();
+    await reportAdvisoryAnswerFailure(
+      database,
+      error,
+      researchRunId,
+    );
+    return createPendingAnswerClaimChecks(
+      prepared.models,
+      result.claims,
+      result.answerDocument.citations,
+    );
+  }
+}
+
+async function reportAdvisoryAnswerFailure(
+  database: CiteLoomDatabase,
+  error: unknown,
+  runId: string,
+): Promise<void> {
+  const reporter = new ApplicationErrorReporter(database);
+  await reporter.report(error, {
+    category: "claim-verification",
+    code: "answer_claim_verification_failed",
+    instance: hostname(),
+    operation: "verify-answer-claims",
+    origin: "inference-provider",
+    retryable: null,
+    runId,
+    service: "web",
+    severity: "warning",
+  });
+}
+
 function readRetrievalModeLabel(mode: RetrievalMode): string {
   if (mode === "bm25") {
     return "BM25 search";
@@ -944,7 +1007,7 @@ function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function readAnswerStreamError(error: unknown): string {
+export function readAnswerStreamError(error: unknown): string {
   const failure = readAnswerStreamFailure(error);
   const message = formatAnswerStreamFailure(failure);
   const errorId = readApplicationErrorId(error);

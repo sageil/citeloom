@@ -85,7 +85,8 @@ import type {
   StoredChatCitation,
 } from "./types.js";
 
-const MINIMUM_CHAT_RUN_LEASE_MS = 5 * 60 * 1_000;
+const CHAT_RUN_LEASE_MS = 2 * 60 * 1_000;
+const MINIMUM_VERIFICATION_JOB_LEASE_MS = 5 * 60 * 1_000;
 const SEMANTIC_MEMORY_PART_OVERSAMPLING = 64;
 const passiveAbortSignal = new AbortController().signal;
 const activeChatRunStates: ChatRunState[] = [
@@ -1520,22 +1521,12 @@ export class ChatStore {
   }
 
   private nextLease(): Date {
-    const maximumOperationMs = Math.max(
-      this.config.inference.chat?.timeoutMs
-        ?? this.config.inference.answer.timeoutMs,
-      this.config.inference.embedding.timeoutMs,
-      this.config.claimVerifier.timeoutMs,
-    );
-    const leaseMs = Math.max(
-      MINIMUM_CHAT_RUN_LEASE_MS,
-      maximumOperationMs + 60_000,
-    );
-    return new Date(Date.now() + leaseMs);
+    return new Date(Date.now() + CHAT_RUN_LEASE_MS);
   }
 
   private nextVerificationLease(): Date {
     const leaseMs = Math.max(
-      MINIMUM_CHAT_RUN_LEASE_MS,
+      MINIMUM_VERIFICATION_JOB_LEASE_MS,
       this.config.claimVerifier.timeoutMs + 60_000,
     );
     return new Date(Date.now() + leaseMs);
@@ -1922,7 +1913,7 @@ function decodeSemanticHits(
   limit: number,
 ): ChatSemanticMemoryHit[] {
   const schema = z.object({
-    distance: z.number().finite(),
+    distance: z.number(),
     runId: z.uuid(),
     sequence: z.number().int().positive(),
   });

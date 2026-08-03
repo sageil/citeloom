@@ -84,17 +84,17 @@ interface OllamaAdaptiveContextEvent {
 const ollamaShowResponseSchema = z.object({
   details: z.object({
     format: z.string().trim().min(1),
-  }).passthrough(),
+  }).loose(),
   model_info: z.record(z.string(), z.unknown()),
-}).passthrough();
+}).loose();
 
 const ollamaTagsResponseSchema = z.object({
   models: z.array(z.object({
     digest: z.string().trim().min(1),
     model: z.string().trim().min(1),
     name: z.string().trim().min(1),
-  }).passthrough()),
-}).passthrough();
+  }).loose()),
+}).loose();
 
 const ollamaPsResponseSchema = z.object({
   models: z.array(z.object({
@@ -104,8 +104,8 @@ const ollamaPsResponseSchema = z.object({
     model: z.string().trim().min(1),
     name: z.string().trim().min(1),
     size_vram: z.number().nonnegative(),
-  }).passthrough()),
-}).passthrough();
+  }).loose()),
+}).loose();
 
 const adaptiveAnswerRequestSchema = z.object({
   contextCapacityTokens: z.number().int().positive(),

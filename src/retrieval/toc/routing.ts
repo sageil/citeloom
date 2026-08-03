@@ -217,8 +217,8 @@ async function requestTocSelections(
     });
     finishMetric({
       finishReason: result.finishReason,
-      inputTokens: result.totalUsage.inputTokens ?? null,
-      outputTokens: result.totalUsage.outputTokens ?? null,
+      inputTokens: result.usage.inputTokens ?? null,
+      outputTokens: result.usage.outputTokens ?? null,
     });
     if (result.finishReason !== "stop") {
       throw new Error(

@@ -223,7 +223,7 @@ const multipartFieldSchema = z.string().max(2_000);
 const booleanFieldSchema = z.enum(["false", "true"]);
 const runtimeSettingPrimitiveSchema = z.union([
   z.string(),
-  z.number().finite(),
+  z.number(),
   z.boolean(),
   z.null(),
 ]);

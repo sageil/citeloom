@@ -830,7 +830,7 @@ WITH canonical_settings AS (
       "answerMinimumOutputTokens": 256,
       "answerProviderSafetyMarginTokens": 2048,
       "answerTemperature": 0,
-      "answerTimeoutSeconds": 900,
+      "answerTimeoutSeconds": 600,
       "aiMetricsEnabled": true,
       "backgroundProgressIntervalMs": 5000,
       "claimVerifierBaseUrl": "http://host.docker.internal:8088",
@@ -858,7 +858,7 @@ WITH canonical_settings AS (
       "embeddingDimensions": 768,
       "embeddingInputFormatId": "00000000-0000-4000-8000-000000000003",
       "embeddingSpaceId": null,
-      "embeddingTimeoutSeconds": 21600,
+      "embeddingTimeoutSeconds": 600,
       "expansionDecay": 1,
       "expansionQueryWeight": 1,
       "findSourcesPassagesPerDocument": 3,
@@ -869,10 +869,10 @@ WITH canonical_settings AS (
       "maxDocumentMegabytes": 100,
       "originalQueryWeight": 1,
       "queryExpansionTemperature": 0,
-      "queryExpansionTimeoutSeconds": 900,
+      "queryExpansionTimeoutSeconds": 60,
       "queryExpansions": 0,
       "rerankDiscoveryMinimumScore": 0.9,
-      "rerankTimeoutSeconds": 300,
+      "rerankTimeoutSeconds": 120,
       "retrievalCandidates": 50,
       "retrievalChunkTargetTokens": 512,
       "retrievalWindowPolicy": "structured-token-v3",
@@ -1080,6 +1080,73 @@ WHERE
       IS DISTINCT FROM '10'::jsonb
     OR "settings"#>'{runtime,findSourcesPassagesPerDocument}' IS NULL
     OR "settings"#>'{runtime,findSourcesResults}' IS NULL
+  );
+
+UPDATE "application_settings"
+SET
+  "defaults" = jsonb_set(
+    "defaults",
+    '{runtime}',
+    "defaults"->'runtime' || jsonb_build_object(
+      'answerTimeoutSeconds', 600,
+      'embeddingTimeoutSeconds', 600,
+      'queryExpansionTimeoutSeconds', 60,
+      'rerankTimeoutSeconds', 120
+    ),
+    true
+  ),
+  "settings" = jsonb_set(
+    "settings",
+    '{runtime}',
+    "settings"->'runtime' || jsonb_build_object(
+      'answerTimeoutSeconds',
+      CASE
+        WHEN "settings"#>'{runtime,answerTimeoutSeconds}' IS NULL
+          OR "settings"#>'{runtime,answerTimeoutSeconds}'
+            = "defaults"#>'{runtime,answerTimeoutSeconds}'
+        THEN '600'::jsonb
+        ELSE "settings"#>'{runtime,answerTimeoutSeconds}'
+      END,
+      'embeddingTimeoutSeconds',
+      CASE
+        WHEN "settings"#>'{runtime,embeddingTimeoutSeconds}' IS NULL
+          OR "settings"#>'{runtime,embeddingTimeoutSeconds}'
+            = "defaults"#>'{runtime,embeddingTimeoutSeconds}'
+        THEN '600'::jsonb
+        ELSE "settings"#>'{runtime,embeddingTimeoutSeconds}'
+      END,
+      'queryExpansionTimeoutSeconds',
+      CASE
+        WHEN "settings"#>'{runtime,queryExpansionTimeoutSeconds}' IS NULL
+          OR "settings"#>'{runtime,queryExpansionTimeoutSeconds}'
+            = "defaults"#>'{runtime,queryExpansionTimeoutSeconds}'
+        THEN '60'::jsonb
+        ELSE "settings"#>'{runtime,queryExpansionTimeoutSeconds}'
+      END,
+      'rerankTimeoutSeconds',
+      CASE
+        WHEN "settings"#>'{runtime,rerankTimeoutSeconds}' IS NULL
+          OR "settings"#>'{runtime,rerankTimeoutSeconds}'
+            = "defaults"#>'{runtime,rerankTimeoutSeconds}'
+        THEN '120'::jsonb
+        ELSE "settings"#>'{runtime,rerankTimeoutSeconds}'
+      END
+    ),
+    true
+  ),
+  "updated_at" = now(),
+  "version" = "version" + 1
+WHERE
+  "id" = 'runtime'
+  AND (
+    "defaults"#>'{runtime,answerTimeoutSeconds}'
+      IS DISTINCT FROM '600'::jsonb
+    OR "defaults"#>'{runtime,embeddingTimeoutSeconds}'
+      IS DISTINCT FROM '600'::jsonb
+    OR "defaults"#>'{runtime,queryExpansionTimeoutSeconds}'
+      IS DISTINCT FROM '60'::jsonb
+    OR "defaults"#>'{runtime,rerankTimeoutSeconds}'
+      IS DISTINCT FROM '120'::jsonb
   );
 
 DO $bootstrap$

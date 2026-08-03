@@ -569,9 +569,6 @@
 
 .answer-copy {
   padding: 20px 0;
-  color: #e2e8f0;
-  font-size: 14px;
-  line-height: 1.72;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -51,7 +51,7 @@ const commandSchema = z.discriminatedUnion("name", [
     outputPath: z.string().min(1),
   }),
   z.object({
-    maximumFalseAcceptanceRate: z.number().finite().min(0).max(1),
+    maximumFalseAcceptanceRate: z.number().min(0).max(1),
     name: z.literal("select-answer-threshold"),
     outputPath: z.string().min(1),
     preparationPaths: z.array(z.string().min(1)).min(1),

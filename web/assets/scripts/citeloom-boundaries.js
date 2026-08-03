@@ -143,6 +143,55 @@ async function readJsonResponse(response, label, decoder = null) {
   return decoder === null ? value : decoder(value);
 }
 
+async function readUIMessageStream(response, label, receivePart) {
+  if (!response.ok) {
+    await readJsonResponse(response, label);
+    return;
+  }
+  if (response.body === null) {
+    throw new Error(`${label} did not contain a response stream.`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const chunk = await reader.read();
+    buffer += decoder.decode(chunk.value, { stream: !chunk.done });
+    const lines = buffer.split(/\r?\n/u);
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      receiveUIMessageStreamLine(line, label, receivePart);
+    }
+    if (chunk.done) {
+      break;
+    }
+  }
+  receiveUIMessageStreamLine(buffer, label, receivePart);
+}
+
+function receiveUIMessageStreamLine(line, label, receivePart) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("data:")) {
+    return;
+  }
+  const data = trimmed.slice(5).trim();
+  if (data === "" || data === "[DONE]") {
+    return;
+  }
+  let value;
+  try {
+    value = JSON.parse(data);
+  } catch {
+    throw new Error(`${label} contained invalid streamed JSON.`);
+  }
+  const part = readPlainObject(value, `${label} stream part`);
+  const type = readNonEmptyString(part.type, `${label} stream part type`);
+  if (type === "error") {
+    throw new Error(readNonEmptyString(part.errorText, `${label} stream error`));
+  }
+  receivePart(part, type);
+}
+
 export {
   readArray,
   readBoolean,
@@ -162,4 +211,5 @@ export {
   readPositiveInteger,
   readString,
   readTimestamp,
+  readUIMessageStream,
 };

@@ -113,7 +113,7 @@ export function decodeRuntimeSettingBoundaryValue(
   if (!isMillisecondRuntimeSettingKey(reference.storageKey)) {
     return decodeRuntimeSettingValue(reference.storageKey, value);
   }
-  const secondsResult = z.number().finite().safeParse(value);
+  const secondsResult = z.number().safeParse(value);
   if (!secondsResult.success) {
     throw new Error(
       `Invalid value for ${reference.definition.label}: expected a finite number of seconds.`,

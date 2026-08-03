@@ -1,10 +1,14 @@
 import math
+import re
 import threading
 from dataclasses import dataclass
 
 from docling.datamodel.base_models import (
+    ContainerElement,
     FigureElement,
     Page,
+    Table,
+    TextElement,
 )
 from docling.datamodel.document import ConversionResult, InputDocument
 from docling.datamodel.pipeline_options import PdfPipelineOptions
@@ -36,6 +40,12 @@ from citeloom_docling.range_checkpoint import (
     CheckpointedPage,
     CheckpointedPictureImage,
     encode_checkpointed_page,
+)
+
+
+_CORRUPT_PROGRAMMATIC_TEXT_PATTERN = re.compile(
+    r"([a-z])\1{5,}",
+    re.IGNORECASE,
 )
 
 
@@ -214,6 +224,36 @@ def checkpoint_conversion_pages(
     for page in conversion_result.pages:
         pages.append(encode_checkpointed_page(page))
     return pages
+
+
+def find_pages_with_corrupt_programmatic_text(
+    conversion_result: ConversionResult,
+) -> list[int]:
+    page_numbers: list[int] = []
+    for page in conversion_result.pages:
+        if page.assembled is None:
+            continue
+        if _page_contains_corrupt_programmatic_text(page):
+            page_numbers.append(page.page_no)
+    return page_numbers
+
+
+def _page_contains_corrupt_programmatic_text(page: Page) -> bool:
+    if page.assembled is None:
+        return False
+    for element in page.assembled.elements:
+        if isinstance(element, TextElement | ContainerElement):
+            if _CORRUPT_PROGRAMMATIC_TEXT_PATTERN.search(element.text or ""):
+                return True
+            continue
+        if not isinstance(element, Table):
+            continue
+        if _CORRUPT_PROGRAMMATIC_TEXT_PATTERN.search(element.text or ""):
+            return True
+        for cell in element.table_cells:
+            if _CORRUPT_PROGRAMMATIC_TEXT_PATTERN.search(cell.text):
+                return True
+    return False
 
 
 def read_checkpointed_picture_images(

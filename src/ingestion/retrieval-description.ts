@@ -271,7 +271,7 @@ async function requestDescription<Result>(
   request: (requestSignal: AbortSignal) => Promise<{
     finishReason: string;
     output: Result;
-    totalUsage: {
+    usage: {
       inputTokens: number | undefined;
       outputTokens: number | undefined;
     };
@@ -288,8 +288,8 @@ async function requestDescription<Result>(
     const result = await request(signals.requestSignal);
     finishMetric({
       finishReason: result.finishReason,
-      inputTokens: result.totalUsage.inputTokens ?? null,
-      outputTokens: result.totalUsage.outputTokens ?? null,
+      inputTokens: result.usage.inputTokens ?? null,
+      outputTokens: result.usage.outputTokens ?? null,
     });
     if (result.finishReason !== "stop") {
       throw new Error(

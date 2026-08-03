@@ -96,6 +96,11 @@ export interface ChatAssistantMessage {
   verificationState: ChatVerificationState;
 }
 
+export interface ChatMessageResponse {
+  conversationId: string;
+  run: ChatRun;
+}
+
 export type ChatMessage = ChatAssistantMessage | ChatUserMessage;
 
 export interface ChatRun {

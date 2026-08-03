@@ -27,7 +27,7 @@ const storedTocRowSchema = z.object({
 });
 
 const routedRetrievalRowSchema = z.object({
-  distance: z.number().finite().nonnegative(),
+  distance: z.number().nonnegative(),
   documentId: contentIdSchema,
   evidenceContent: z.string().min(1),
   id: contentIdSchema,

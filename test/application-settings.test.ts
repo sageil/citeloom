@@ -28,7 +28,7 @@ describe("runtime setting contract", () => {
       "Invalid value for Standard conversion time",
     );
     expect(() => decodeRuntimeSettingValue("topK", "10")).toThrow(
-      "Invalid value for Sections used in answers",
+      "Invalid value for Sections available for answers",
     );
   });
 

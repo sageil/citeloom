@@ -9,8 +9,17 @@ import {
   readPlainObject,
   readPositiveInteger,
   readString,
+  readUIMessageStream,
 } from "./citeloom-boundaries.js";
+import {
+  applyAnswerContentUpdate,
+  createAnswerContentFromDocument,
+  createEmptyAnswerContent,
+  readAnswerContentUpdate,
+} from "./citeloom-answer-content.js";
 import { readDocumentCatalog } from "./citeloom-documents.js";
+import { buildPdfViewerUrl } from "./citeloom-file-links.js";
+import { focusTextArea } from "./citeloom-focus.js";
 import { dispatchNotice } from "./citeloom-notices.js";
 
 const chatRunStates = Object.freeze([
@@ -46,8 +55,6 @@ const chatVerificationStates = Object.freeze([
   "failed",
 ]);
 const chatSwitcherRequestEvent = "citeloom:chat-switcher-request";
-const chatTitleChangeEvent = "citeloom:chat-title-change";
-const newChatRequestEvent = "citeloom:new-chat-request";
 
 function readChatSummaries(value) {
   return readArray(value, "chat list").map((item) => {
@@ -372,14 +379,104 @@ function readCreatedChat(value) {
 
 function readMessageResponse(value) {
   const response = readPlainObject(value, "chat response");
-  readNonEmptyString(response.conversationId, "chat response conversation ID");
-  readNonEmptyString(response.runId, "chat response run ID");
-  readPositiveInteger(response.sequence, "chat response sequence");
-  const assistantMessage = readChatMessage(response.assistantMessage);
-  if (assistantMessage.role !== "assistant") {
-    throw new Error("Chat response assistant message has an invalid role.");
+  const conversationId = readNonEmptyString(
+    response.conversationId,
+    "chat response conversation ID",
+  );
+  const run = readChatRun(response.run);
+  if (run.state !== "completed") {
+    throw new Error("Chat response run is not completed.");
   }
-  return response;
+  return { conversationId, run };
+}
+
+async function readChatMessageStream(response, receiveMessage, receivePreview) {
+  let messageReceived = false;
+  await readUIMessageStream(response, "Chat response", (part, type) => {
+    if (type === "data-answer-content") {
+      receivePreview(readAnswerContentUpdate(part.data));
+      return;
+    }
+    if (type === "data-chat") {
+      messageReceived = true;
+      receiveMessage(readMessageResponse(part.data));
+    }
+  });
+  if (!messageReceived) {
+    throw new Error("The chat stream ended without a completed response.");
+  }
+}
+
+function createPendingChatRun(conversation, requestId, content) {
+  let sequence = 1;
+  for (const run of conversation.runs) {
+    sequence = Math.max(sequence, run.sequence + 1);
+  }
+  const createdAt = new Date().toISOString();
+  return {
+    attemptCount: 1,
+    completedAt: null,
+    errorMessage: null,
+    id: requestId,
+    messages: [{
+      content,
+      createdAt,
+      id: `${requestId}:user`,
+      role: "user",
+      runId: requestId,
+    }, {
+      answerContent: createEmptyAnswerContent(),
+      citations: [],
+      claims: [],
+      content: "",
+      createdAt,
+      id: `${requestId}:assistant`,
+      role: "assistant",
+      runId: requestId,
+      streaming: true,
+      verificationState: "pending",
+    }],
+    sequence,
+    state: "generating",
+  };
+}
+
+function replaceChatRun(conversation, replacement) {
+  const runs = [];
+  let replaced = false;
+  for (const run of conversation.runs) {
+    if (run.id === replacement.id) {
+      runs.push(replacement);
+      replaced = true;
+      continue;
+    }
+    runs.push(run);
+  }
+  if (!replaced) {
+    runs.push(replacement);
+  }
+  runs.sort((left, right) => left.sequence - right.sequence);
+  return { ...conversation, runs };
+}
+
+function updatePendingChatAnswer(conversation, runId, answerContentUpdate) {
+  const run = conversation.runs.find((candidate) => candidate.id === runId);
+  if (run === undefined) {
+    return conversation;
+  }
+  const messages = [];
+  for (const message of run.messages) {
+    if (message.role === "assistant" && message.streaming === true) {
+      const answerContent = applyAnswerContentUpdate(
+        message.answerContent,
+        answerContentUpdate,
+      );
+      messages.push({ ...message, answerContent });
+      continue;
+    }
+    messages.push(message);
+  }
+  return replaceChatRun(conversation, { ...run, messages });
 }
 
 export function registerPage(alpine) {
@@ -391,7 +488,6 @@ export function registerPage(alpine) {
     chatSwitcherRequestListener: null,
     chatSwitcherReturnFocus: null,
     conversation: null,
-    conversationMenuOpen: false,
     conversations: [],
     draft: "",
     errorMessage: "",
@@ -410,7 +506,6 @@ export function registerPage(alpine) {
     newChatPreviewLoading: false,
     newChatPreviewPage: 1,
     newChatPreviewTotal: 0,
-    newChatRequestListener: null,
     newChatScopeMode: "all",
     newChatSelectedDocuments: [],
     newChatSelectedTags: [],
@@ -418,7 +513,6 @@ export function registerPage(alpine) {
     newChatTagSearch: "",
     newChatTitle: "",
     newChatTotalDocuments: 0,
-    pendingContent: "",
     selectedCitation: null,
     verificationRefreshTimer: null,
 
@@ -492,24 +586,16 @@ export function registerPage(alpine) {
       this.chatSwitcherRequestListener = () => {
         this.openChatSwitcher();
       };
-      this.newChatRequestListener = () => {
-        this.openNewChat();
-      };
       window.addEventListener(
         chatSwitcherRequestEvent,
         this.chatSwitcherRequestListener,
       );
-      window.addEventListener(
-        newChatRequestEvent,
-        this.newChatRequestListener,
-      );
       await this.refreshConversations();
       if (this.conversations.length > 0) {
         await this.selectConversation(this.conversations[0].id);
-      } else {
-        this.broadcastConversationTitle();
       }
       this.loading = false;
+      this.focusMessageComposer();
     },
 
     destroy() {
@@ -517,12 +603,6 @@ export function registerPage(alpine) {
         window.removeEventListener(
           chatSwitcherRequestEvent,
           this.chatSwitcherRequestListener,
-        );
-      }
-      if (this.newChatRequestListener !== null) {
-        window.removeEventListener(
-          newChatRequestEvent,
-          this.newChatRequestListener,
         );
       }
       this.newChatCatalogController?.abort();
@@ -546,7 +626,6 @@ export function registerPage(alpine) {
     async selectConversation(id) {
       this.clearVerificationRefresh();
       this.errorMessage = "";
-      this.conversationMenuOpen = false;
       this.selectedCitation = null;
       try {
         const response = await fetch(
@@ -557,9 +636,9 @@ export function registerPage(alpine) {
           "Chat",
           readChatConversation,
         );
-        this.broadcastConversationTitle();
         this.$nextTick(() => this.scrollToLatest());
         this.scheduleVerificationRefresh();
+        this.focusMessageComposer();
       } catch (error) {
         this.reportError(error, "The chat could not be loaded.");
       }
@@ -905,7 +984,6 @@ export function registerPage(alpine) {
     async selectConversationFromSwitcher(id) {
       await this.selectConversation(id);
       this.closeChatSwitcher({ restoreFocus: false });
-      this.$nextTick(() => this.$refs.messageComposer?.focus());
     },
 
     chatSwitcherOptionId(index) {
@@ -917,13 +995,6 @@ export function registerPage(alpine) {
         return null;
       }
       return this.chatSwitcherOptionId(this.chatSwitcherActiveIndex);
-    },
-
-    broadcastConversationTitle() {
-      const title = this.conversation?.title ?? "Chat";
-      window.dispatchEvent(new CustomEvent(chatTitleChangeEvent, {
-        detail: title,
-      }));
     },
 
     async createConversation() {
@@ -988,7 +1059,6 @@ export function registerPage(alpine) {
           await readJsonResponse(response, "Delete chat");
         }
         this.conversation = null;
-        this.broadcastConversationTitle();
         this.selectedCitation = null;
         this.clearVerificationRefresh();
         await this.refreshConversations();
@@ -1008,10 +1078,17 @@ export function registerPage(alpine) {
         return;
       }
       const conversationId = this.conversation.id;
+      const requestId = crypto.randomUUID();
       this.busy = true;
       this.errorMessage = "";
-      this.pendingContent = content;
       this.draft = "";
+      let completed = false;
+      const pendingRun = createPendingChatRun(
+        this.conversation,
+        requestId,
+        content,
+      );
+      this.conversation = replaceChatRun(this.conversation, pendingRun);
       this.$nextTick(() => this.scrollToLatest());
       try {
         const response = await fetch(
@@ -1019,25 +1096,74 @@ export function registerPage(alpine) {
           {
             body: JSON.stringify({
               content,
-              requestId: crypto.randomUUID(),
+              requestId,
             }),
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              Accept: "text/event-stream",
+              "Content-Type": "application/json",
+            },
             method: "POST",
           },
         );
-        await readJsonResponse(response, "Chat response", readMessageResponse);
+        await readChatMessageStream(
+          response,
+          (messageResponse) => {
+            if (
+              messageResponse.conversationId !== conversationId
+              || this.conversation?.id !== conversationId
+            ) {
+              throw new Error("The completed response belongs to another chat.");
+            }
+            const updated = replaceChatRun(
+              this.conversation,
+              messageResponse.run,
+            );
+            this.conversation = {
+              ...updated,
+              updatedAt: messageResponse.run.completedAt
+                ?? this.conversation.updatedAt,
+            };
+            completed = true;
+            this.$nextTick(() => this.scrollToLatest());
+            this.scheduleVerificationRefresh();
+          },
+          (answerContentUpdate) => {
+            if (this.conversation?.id !== conversationId) {
+              return;
+            }
+            this.conversation = updatePendingChatAnswer(
+              this.conversation,
+              requestId,
+              answerContentUpdate,
+            );
+            this.$nextTick(() => this.scrollToLatest());
+          },
+        );
       } catch (error) {
         this.reportError(error, "The response could not be generated.");
       } finally {
-        this.pendingContent = "";
         this.busy = false;
         await this.refreshConversations();
-        await this.selectConversation(conversationId);
+        if (!completed) {
+          await this.selectConversation(conversationId);
+        }
+        this.focusMessageComposer();
       }
+    },
+
+    focusMessageComposer() {
+      this.$nextTick(() => focusTextArea(this.$refs.messageComposer));
     },
 
     citationForId(message, id) {
       return message.citations.find((citation) => citation.id === id) ?? null;
+    },
+
+    messageAnswerStatements(message) {
+      if (message.streaming === true) {
+        return message.answerContent.statements;
+      }
+      return createAnswerContentFromDocument(message.answerDocument).statements;
     },
 
     findingCheckForStatement(message, statementIndex) {
@@ -1193,20 +1319,6 @@ export function registerPage(alpine) {
       this.selectedCitation = null;
     },
 
-    toggleConversationMenu() {
-      this.conversationMenuOpen = !this.conversationMenuOpen;
-    },
-
-    scrollToEvidence() {
-      const evidenceSections = this.$root.querySelectorAll(
-        ".chat-answer-evidence",
-      );
-      const latestEvidence = evidenceSections[evidenceSections.length - 1];
-      if (latestEvidence instanceof HTMLElement) {
-        latestEvidence.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    },
-
     statementSectionHeading(section) {
       if (section === "key-points") {
         return "Key findings";
@@ -1218,13 +1330,12 @@ export function registerPage(alpine) {
     },
 
     shouldShowStatementSectionHeading(message, statementIndex) {
-      const statement = message.answerDocument.statements[statementIndex];
+      const statements = this.messageAnswerStatements(message);
+      const statement = statements[statementIndex];
       if (statement === undefined || statement.section === "answer") {
         return false;
       }
-      const previousStatement = message.answerDocument.statements[
-        statementIndex - 1
-      ];
+      const previousStatement = statements[statementIndex - 1];
       return previousStatement?.section !== statement.section;
     },
 
@@ -1238,12 +1349,12 @@ export function registerPage(alpine) {
       return "Image evidence";
     },
 
-    sourceFileUrl(citation) {
-      return `/api/chat/citations/${encodeURIComponent(citation.id)}/file`;
-    },
-
     highlightedFileUrl(citation) {
-      return `/api/chat/citations/${encodeURIComponent(citation.id)}/highlighted-file`;
+      const citationId = encodeURIComponent(citation.id);
+      return buildPdfViewerUrl(
+        `/api/chat/citations/${citationId}/highlighted-file`,
+        citation.pageNumbers,
+      );
     },
 
     imageUrl(citation) {

@@ -33,7 +33,7 @@ const rerankResponseSchema = z.object({
   model: z.string().min(1).optional(),
   results: z.array(z.object({
     index: z.number().int().nonnegative(),
-    relevance_score: z.number().finite(),
+    relevance_score: z.number(),
   })),
 }).loose();
 
