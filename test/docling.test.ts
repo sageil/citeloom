@@ -1993,11 +1993,13 @@ function buildDoclingConfig(): DoclingConfig {
     pdfBackend: "docling_parse",
     performanceMetricsEnabled: false,
     performanceMetricsRetentionDays: 30,
+    pipeline: "standard",
     requestTimeoutMs: 300_000,
     secondaryImageScale: 2,
     tableMode: "accurate",
     tableStructureEnabled: true,
     tocEnabled: true,
+    vlm: null,
   };
 }
 

@@ -80,12 +80,20 @@ describe("CiteLoom settings resets", () => {
     });
   });
 
-  it("resets only the selected runtime area and preserves other drafts", async () => {
+  it("resets only the selected runtime panel and preserves other drafts", async () => {
     await withConfirmation(true, async ({ confirmations }) => {
       const page = createSettingsPage({ reactiveResetState: true });
       const searchFields = [
-        { group: "Search and answers", key: "retrievalCandidates" },
-        { group: "Search and answers", key: "topK" },
+        {
+          group: "Search and answers",
+          key: "retrievalCandidates",
+          panel: { id: "search-size", label: "Search size" },
+        },
+        {
+          group: "Search and answers",
+          key: "topK",
+          panel: { id: "search-size", label: "Search size" },
+        },
       ];
       const unrelatedField = {
         group: "Usage diagnostics",
@@ -109,8 +117,8 @@ describe("CiteLoom settings resets", () => {
 
       expect(confirmations).toEqual([
         expect.objectContaining({
-          confirmLabel: "Reset Search and answers",
-          title: "Reset Search and answers?",
+          confirmLabel: "Reset Search size",
+          title: "Reset Search size?",
         }),
       ]);
       expect(page.submitSettingsUpdate).toHaveBeenCalledWith([

@@ -537,11 +537,13 @@ function buildConfig(): DoclingConfig {
     pdfBackend: "docling_parse",
     performanceMetricsEnabled: false,
     performanceMetricsRetentionDays: 30,
+    pipeline: "standard",
     requestTimeoutMs: 300_000,
     secondaryImageScale: 2,
     tableMode: "accurate",
     tableStructureEnabled: true,
     tocEnabled: true,
+    vlm: null,
   };
 }
 
@@ -631,10 +633,11 @@ function buildOpenApi() {
                 "threaded_docling_parse",
               ],
             },
-            pipeline: {},
+            pipeline: { enum: ["standard", "vlm"] },
             table_cell_matching: {},
             table_mode: {},
             to_formats: {},
+            vlm_pipeline_custom_config: {},
           },
         },
       },
