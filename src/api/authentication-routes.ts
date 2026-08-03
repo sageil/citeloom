@@ -26,23 +26,7 @@ import { WebRequestError } from "./request-boundary.js";
 import type { WebServices } from "./services.js";
 
 const PUBLIC_LOGIN_WEB_PATHS = new Set([
-  "/assets/fonts/citeloom-space-grotesk-latin-ext.woff2",
-  "/assets/fonts/citeloom-space-grotesk-latin.woff2",
-  "/assets/fonts/citeloom-space-grotesk-vietnamese.woff2",
-  "/assets/images/citeloom-icons.svg",
-  "/assets/images/citeloom-mark.png",
-  "/assets/images/citeloom-particle-flow.svg",
-  "/assets/scripts/citeloom-app.js",
-  "/assets/scripts/citeloom-bootstrap.js",
-  "/assets/scripts/citeloom-boundaries.js",
-  "/assets/scripts/citeloom-dashboard-extensions.js",
-  "/assets/scripts/citeloom-document-notifications.js",
-  "/assets/scripts/citeloom-login.js",
-  "/assets/scripts/citeloom-notices.js",
-  "/assets/styles/citeloom-base.css",
-  "/assets/styles/citeloom-login.css",
-  "/assets/styles/citeloom-navigation.css",
-  "/assets/styles/citeloom-shell.css",
+  "/favicon.ico",
   "/fragments/login.html",
   "/login",
 ]);
@@ -88,7 +72,7 @@ export function registerAuthenticationRoutes(
     }
     const pathname = readRequestPathname(request.url);
     if (!pathname.startsWith("/api/")) {
-      if (PUBLIC_LOGIN_WEB_PATHS.has(pathname)) {
+      if (isPublicLoginWebPath(pathname)) {
         return;
       }
       const principal = await readRequestSession(
@@ -315,6 +299,10 @@ export function requireAdministratorPrincipal<T extends object>(
 
 function isPublicAuthenticationPath(pathname: string): boolean {
   return pathname === "/api/auth/login" || pathname === "/api/auth/setup";
+}
+
+function isPublicLoginWebPath(pathname: string): boolean {
+  return pathname.startsWith("/assets/") || PUBLIC_LOGIN_WEB_PATHS.has(pathname);
 }
 
 function readRequestPathname(url: string): string {
