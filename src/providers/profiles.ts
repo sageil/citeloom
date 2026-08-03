@@ -217,6 +217,8 @@ export type NormalizedProviderSettingsChange =
   | { action: "credential"; providerId: ProviderId; target: ProviderCredentialTarget; value: string | null }
   | { action: "feature"; configuration: ProviderFeatureConfiguration }
   | { action: "reset" }
+  | { action: "reset-feature"; capability: ProviderCapability }
+  | { action: "reset-provider"; providerId: ProviderId }
   | { action: "route"; capability: ProviderCapability; providerId: ProviderId | null };
 
 export interface ResolvedProviderCapability {

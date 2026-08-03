@@ -4,7 +4,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   readApplicationErrorPage,
+  readApplicationErrorPurgeResult,
+  registerPage,
 } from "../web/assets/scripts/citeloom-errors.js";
+import {
+  CONFIRMATION_REQUEST_EVENT,
+  dispatchConfirmationResponse,
+} from "../web/assets/scripts/citeloom-confirmation.js";
 
 describe("CiteLoom error reports", () => {
   it("decodes sanitized parent errors and every structured Docling detail", () => {
@@ -52,6 +58,76 @@ describe("CiteLoom error reports", () => {
     );
   });
 
+  it("decodes purge results at the browser boundary", () => {
+    expect(readApplicationErrorPurgeResult({ deleted: 3 })).toEqual({
+      deleted: 3,
+    });
+    expect(() => readApplicationErrorPurgeResult({ deleted: -1 })).toThrow(
+      "purged application error count",
+    );
+  });
+
+  it("confirms and purges visible error logs before refreshing", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalWindow = globalThis.window;
+    const browserWindow = new EventTarget();
+    const requests = [];
+    let confirmation = null;
+    globalThis.window = browserWindow;
+    globalThis.fetch = async (url, options = {}) => {
+      requests.push({ method: options.method ?? "GET", url: String(url) });
+      if (options.method === "DELETE") {
+        return Response.json({ deleted: 3 });
+      }
+      const page = buildErrorPage();
+      page.counts = { all: 0, application: 0, general: 0, ingestion: 0 };
+      page.errors = [];
+      page.pageCount = 0;
+      page.total = 0;
+      return Response.json(page);
+    };
+    browserWindow.addEventListener(CONFIRMATION_REQUEST_EVENT, (event) => {
+      confirmation = event.detail;
+      dispatchConfirmationResponse(event.detail.requestId, true);
+    });
+    let pageFactory = null;
+    registerPage({
+      data(name, factory) {
+        expect(name).toBe("citeloomErrorsPage");
+        pageFactory = factory;
+      },
+    });
+
+    try {
+      const page = pageFactory();
+      page.errorPage = readApplicationErrorPage(buildErrorPage());
+      page.hasLoaded = true;
+      await page.purgeErrors();
+
+      expect(confirmation).toMatchObject({
+        cancelLabel: "Keep logs",
+        confirmLabel: "Purge logs",
+        title: "Purge 3 error logs?",
+      });
+      expect(requests).toEqual([
+        { method: "DELETE", url: "/api/errors" },
+        {
+          method: "GET",
+          url: "/api/errors?area=all&page=1&pageSize=50",
+        },
+      ]);
+      expect(page.errorPage.counts.all).toBe(0);
+      expect(page.purging).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalWindow === undefined) {
+        delete globalThis.window;
+      } else {
+        globalThis.window = originalWindow;
+      }
+    }
+  });
+
   it("places the error report link in the administrator menu", async () => {
     const index = await readFile(
       new URL("../web/index.html", import.meta.url),
@@ -62,6 +138,18 @@ describe("CiteLoom error reports", () => {
     expect(index).toMatch(
       /data-view="errors"[\s\S]*?x-show="currentRole === 'admin'"/,
     );
+    const fragment = await readFile(
+      new URL("../web/fragments/errors.html", import.meta.url),
+      "utf8",
+    );
+    const script = await readFile(
+      new URL("../web/assets/scripts/citeloom-errors.js", import.meta.url),
+      "utf8",
+    );
+    expect(fragment).toContain('@click="purgeErrors()"');
+    expect(fragment).toContain("Purge logs");
+    expect(script).toContain("requestConfirmation({");
+    expect(script).toContain('method: "DELETE"');
   });
 });
 

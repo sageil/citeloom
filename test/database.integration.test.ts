@@ -39,6 +39,7 @@ import {
 import { DoclingMetricsStore } from "../src/docling/observability/metrics-store.js";
 import { ApplicationErrorReporter } from "../src/observability/application-errors.js";
 import {
+  purgeApplicationErrors,
   readApplicationErrorPage,
 } from "../src/observability/application-error-store.js";
 import {
@@ -3777,6 +3778,57 @@ describe("PostgreSQL document catalog", () => {
         pageRangeStart: 18,
       }),
     ]);
+  });
+
+  it("atomically purges visible application errors and their details", async () => {
+    const workspaceId = "00000000-0000-4000-8000-000000000411";
+    const otherWorkspaceId = "00000000-0000-4000-8000-000000000412";
+    const globalErrorId = "00000000-0000-4000-8000-000000000413";
+    const workspaceErrorId = "00000000-0000-4000-8000-000000000414";
+    const otherWorkspaceErrorId = "00000000-0000-4000-8000-000000000415";
+    await session.database.insert(applicationErrorEvents).values([
+      buildStoredApplicationError(
+        globalErrorId,
+        new Date("2026-07-27T10:00:00.000Z"),
+      ),
+      {
+        ...buildStoredApplicationError(
+          workspaceErrorId,
+          new Date("2026-07-27T11:00:00.000Z"),
+        ),
+        workspaceId,
+      },
+      {
+        ...buildStoredApplicationError(
+          otherWorkspaceErrorId,
+          new Date("2026-07-27T12:00:00.000Z"),
+        ),
+        workspaceId: otherWorkspaceId,
+      },
+    ]);
+    await session.database.insert(doclingErrorDetails).values([
+      buildStoredDoclingError(globalErrorId),
+      buildStoredDoclingError(workspaceErrorId),
+      buildStoredDoclingError(otherWorkspaceErrorId),
+    ]);
+
+    await expect(
+      purgeApplicationErrors(session.database, workspaceId),
+    ).resolves.toEqual({ deleted: 2 });
+
+    const remainingEvents = await session.database
+      .select({ id: applicationErrorEvents.id })
+      .from(applicationErrorEvents);
+    const remainingDetails = await session.database
+      .select({ applicationErrorId: doclingErrorDetails.applicationErrorId })
+      .from(doclingErrorDetails);
+    expect(remainingEvents).toEqual([{ id: otherWorkspaceErrorId }]);
+    expect(remainingDetails).toEqual([{
+      applicationErrorId: otherWorkspaceErrorId,
+    }]);
+    await expect(
+      purgeApplicationErrors(session.database, workspaceId),
+    ).resolves.toEqual({ deleted: 0 });
   });
 
   it("enforces application error age and row bounds in restartable batches", async () => {

@@ -98,6 +98,51 @@ describe("provider settings changes", () => {
     expect(updated).not.toBe(defaults);
   });
 
+  it("resets only the selected feature to its database-owned defaults", () => {
+    const defaults = createTestProviderSettings();
+    defaults.routing.answer = "deepseek";
+    defaults.featureOverrides.answer.modelOverride = "default-answer";
+    const current = structuredClone(defaults);
+    current.routing.answer = "lmstudio";
+    current.featureOverrides.answer.modelOverride = "custom-answer";
+    current.routing.embedding = "ollama";
+    current.featureOverrides.embedding.modelOverride = "custom-embedding";
+
+    const updated = applyProviderSettingsChanges(
+      current,
+      defaults,
+      [{ action: "reset-feature", capability: "answer" }],
+    );
+
+    expect(updated.routing.answer).toBe("deepseek");
+    expect(updated.featureOverrides.answer.modelOverride).toBe(
+      "default-answer",
+    );
+    expect(updated.routing.embedding).toBe("ollama");
+    expect(updated.featureOverrides.embedding.modelOverride).toBe(
+      "custom-embedding",
+    );
+  });
+
+  it("resets only the selected provider to its database-owned defaults", () => {
+    const defaults = createTestProviderSettings();
+    defaults.connections.groq.maximumParallelRequests = 2;
+    const current = structuredClone(defaults);
+    current.connections.groq.apiToken = "stored-groq-secret";
+    current.connections.groq.maximumParallelRequests = 7;
+    current.connections.openai.apiToken = "stored-openai-secret";
+
+    const updated = applyProviderSettingsChanges(
+      current,
+      defaults,
+      [{ action: "reset-provider", providerId: "groq" }],
+    );
+
+    expect(updated.connections.groq.apiToken).toBeNull();
+    expect(updated.connections.groq.maximumParallelRequests).toBe(2);
+    expect(updated.connections.openai.apiToken).toBe("stored-openai-secret");
+  });
+
   it("replaces capability credentials with one shared provider credential", () => {
     const defaults = createTestProviderSettings();
     const current = structuredClone(defaults);

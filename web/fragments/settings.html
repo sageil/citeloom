@@ -418,7 +418,7 @@
 
           <footer class="settings-feature-footer">
             <span :class="{ changed: changeCount > 0 }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><strong x-text="changeSummaryLabel()"></strong></span>
-            <div><button class="button secondary" type="button" :disabled="saving" @click="resetAll()">Reset</button><button class="button primary" type="button" :disabled="!canSave" @click="saveChanges()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="saveLabel()"></span></button></div>
+            <div><button class="button secondary" type="button" :disabled="saving" @click="resetSelectedFeature()">Reset</button><button class="button primary" type="button" :disabled="!canSave" @click="saveChanges()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="saveLabel()"></span></button></div>
           </footer>
         </section>
       </div>
@@ -707,7 +707,7 @@
 
           <footer class="settings-feature-footer">
             <span :class="{ changed: changeCount > 0 }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><strong x-text="changeSummaryLabel()"></strong></span>
-            <div><button class="button secondary" type="button" :disabled="saving" @click="resetAll()">Reset</button><button class="button primary" type="button" :disabled="!canSave" @click="saveChanges()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="saveLabel()"></span></button></div>
+            <div><button class="button secondary" type="button" :disabled="saving" @click="resetSelectedProvider()">Reset</button><button class="button primary" type="button" :disabled="!canSave" @click="saveChanges()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="saveLabel()"></span></button></div>
           </footer>
         </section>
         </template>
@@ -775,7 +775,7 @@
             <nav aria-label="Application settings">
               <template x-for="panel in filteredRuntimePanels" :key="panel.id">
                 <button type="button" :aria-current="panel.id === activeRuntimePanel()?.id ? 'page' : null" :class="{ active: panel.id === activeRuntimePanel()?.id }" @click="selectRuntimePanel(panel.id)">
-                  <span class="settings-feature-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg></span>
+                  <span class="settings-feature-icon"><svg aria-hidden="true" class="citeloom-icon"><use :href="runtimePanelIcon(panel)"></use></svg></span>
                   <span class="settings-feature-nav-copy"><span><strong x-text="panel.label"></strong><small x-text="runtimePanelBadgeLabel(panel)"></small></span><span x-text="panel.description"></span></span>
                 </button>
               </template>
@@ -783,27 +783,32 @@
           </aside>
 
           <template x-for="panel in activeRuntimePanelSelection()" :key="panel.id">
-          <section class="settings-feature-editor settings-runtime-editor">
+          <section class="settings-feature-editor settings-runtime-editor" :class="{ 'settings-runtime-editor-docling': isDoclingPanel(panel), 'settings-runtime-editor-docling-pdf': isDoclingPdfPanel(panel) }">
             <div>
               <header class="settings-feature-editor-heading"><div><span><h2 x-text="panel.label"></h2><small x-text="panel.fields[0].group"></small></span><p x-text="panel.description"></p></div><span class="setting-source" :class="runtimePanelBadgeClass(panel)" x-text="runtimePanelBadgeLabel(panel)"></span></header>
               <section class="settings-feature-step">
-                <header><span>1</span><h3 x-text="panel.fields.length === 1 ? 'Setting value' : 'Setting values'"></h3><p x-text="panel.fields.length === 1 ? 'Change the value used by new requests.' : 'Change the values used by new requests.'"></p></header>
+                <header><span>1</span><h3 x-text="isDoclingPdfPanel(panel) ? 'Mode and content extraction' : (runtimeVisiblePanelFields(panel).length === 1 ? 'Setting value' : 'Setting values')"></h3><p x-text="isDoclingPdfPanel(panel) ? 'Choose how Docling reads and processes new PDF documents.' : (runtimeVisiblePanelFields(panel).length === 1 ? 'Change the value used by new requests.' : 'Change the values used by new requests.')"></p></header>
                 <div class="application-feature-settings settings-runtime-panel-fields">
-                  <template x-for="field in panel.fields" :key="field.key">
+                  <template x-for="field in runtimeVisiblePanelFields(panel)" :key="field.key">
+                    <div class="settings-runtime-field-entry" :class="{ 'settings-runtime-field-entry-wide': runtimeFieldIsWide(field) }">
+                      <div class="settings-runtime-section-heading" x-show="runtimeFieldStartsSection(field)"><strong>Content extraction</strong><span>Control the content Docling extracts when Standard processing is selected.</span></div>
                     <div class="settings-field">
                       <div class="settings-field-heading"><label :for="`setting-${field.key}`" x-text="field.label"></label><span class="setting-source" :class="fieldSourceClass(field)" x-text="fieldSourceLabel(field)"></span></div>
                       <p x-show="panel.fields.length > 1" x-text="field.description"></p>
                       <div class="settings-control-row">
+                        <template x-if="field.key === 'doclingPipeline'"><div class="settings-docling-mode-control" :id="`setting-${field.key}`" role="group" aria-label="Docling processing mode"><button type="button" :aria-pressed="drafts[field.key] === 'standard'" :class="{ active: drafts[field.key] === 'standard' }" @click="writeFieldDraft(field, 'standard')"><span><strong>Standard</strong><small>Faster text-based processing</small></span><svg x-show="drafts[field.key] === 'standard'" aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use></svg></button><button type="button" :aria-pressed="drafts[field.key] === 'vlm'" :class="{ active: drafts[field.key] === 'vlm' }" @click="writeFieldDraft(field, 'vlm')"><span><strong>VLM</strong><small>Visual page understanding</small></span><svg x-show="drafts[field.key] === 'vlm'" aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use></svg></button></div></template>
                         <template x-if="field.input === 'boolean'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value === 'true')"><option value="true">Enabled</option><option value="false">Disabled</option></select></template>
-                        <template x-if="field.input === 'select'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template></select></template>
+                        <template x-if="field.input === 'select' &amp;&amp; field.key !== 'doclingPipeline'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template></select></template>
                         <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input class="form-control" :autocomplete="field.sensitive ? 'new-password' : 'off'" :data-1p-ignore="field.sensitive ? 'true' : null" :data-bwignore="field.sensitive ? 'true' : null" :data-lpignore="field.sensitive ? 'true' : null" :id="`setting-${field.key}`" :max="field.max" :min="field.min" :name="`setting-${field.key}`" :placeholder="field.sensitive &amp;&amp; field.configured ? 'Configured' : ''" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
                         <span class="setting-unit" x-show="field.unit !== null" x-text="field.unit"></span>
                         <button class="text-button" type="button" :disabled="fieldResetDisabled(field)" @click="resetField(field)">Reset to default</button>
                       </div>
                       <small class="settings-runtime-credential-note" x-show="fieldCredentialMessageVisible(field)">A credential is configured. Enter a new value to replace it.</small>
                     </div>
+                    </div>
                   </template>
                 </div>
+                <div class="settings-docling-advanced" x-show="isDoclingPdfPanel(panel)"><button type="button" :aria-expanded="doclingAdvancedExpanded" @click="toggleDoclingAdvanced()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use></svg><span><strong x-text="doclingAdvancedExpanded ? 'Hide advanced processing settings' : 'Show advanced processing settings'"></strong><small>VLM instructions, output limit, PDF reader, and document heading controls</small></span></button></div>
               </section>
               <section class="settings-feature-step">
                 <header>
@@ -812,12 +817,13 @@
                   <p>How this setting can affect results, speed, or computer use.</p>
                 </header>
                 <div class="settings-resolved-result settings-runtime-guidance">
-                  <template x-for="field in panel.fields" :key="field.key">
+                  <template x-if="isDoclingPdfPanel(panel)"><div class="settings-docling-guidance"><span>Selected processing mode</span><strong x-text="doclingPipelineGuidance()"></strong></div></template>
+                  <template x-for="field in isDoclingPdfPanel(panel) ? [] : runtimeVisiblePanelFields(panel)" :key="field.key">
                     <div><span x-text="field.label"></span><strong x-text="field.changeExample"></strong></div>
                   </template>
                 </div>
               </section>
-              <footer class="settings-feature-footer"><span :class="{ changed: changeCount > 0 }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><strong x-text="changeSummaryLabel()"></strong></span><div><button class="button secondary" type="button" :disabled="saving" @click="resetAll()">Reset</button><button class="button primary" type="button" :disabled="!canSave" @click="saveChanges()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="saveLabel()"></span></button></div></footer>
+              <footer class="settings-feature-footer"><span :class="{ changed: changeCount > 0 }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><strong x-text="changeSummaryLabel()"></strong></span><div><button class="button secondary" type="button" :disabled="saving" @click="resetRuntimeContext()">Reset</button><button class="button primary" type="button" :disabled="!canSave" @click="saveChanges()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="saveLabel()"></span></button></div></footer>
             </div>
           </section>
           </template>

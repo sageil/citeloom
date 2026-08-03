@@ -16,8 +16,8 @@ Migration saves its path in PostgreSQL, which becomes the shared location used b
 | Background worker | Resumable document processing with jobs shared through PostgreSQL |
 | Local source content store | Immutable raw source bytes addressed by SHA-256 |
 | PostgreSQL | Source records, processing results, jobs, settings, search indexes, and shared model-request limits |
-| Docling | Document conversion that preserves reading order, tables, page locations, and image regions |
-| Model providers | Summaries, embeddings, extra search queries, reranking, answers, chat, and optional speech |
+| Docling | Standard or VLM document conversion that preserves reading order, tables, page locations, and image regions |
+| Model providers | VLM page reading, summaries, embeddings, extra search queries, reranking, answers, chat, and optional speech |
 | HHEM service | Support scores for individual answer claims and their cited evidence |
 | Offline evaluation tools | Dataset generation, corpus management, scoring, tuning, and configuration freezes outside the production build |
 
@@ -68,6 +68,7 @@ flowchart TB
     Migrate --> Sources
     Docling -->|read-only| Sources
     Worker --> Docling
+    Docling -->|VLM page requests when enabled| Endpoints
 
     Web --> Router
     CLI --> Router
@@ -87,6 +88,7 @@ Cloud providers use the configured HTTPS endpoint.
 
 Provider connections, capability routes, model overrides, credentials, and concurrency limits are stored in PostgreSQL.
 The application builds one typed runtime configuration and then applies the selected adapter for each capability.
+Docling VLM processing is configured separately from the capability routes, but it reuses the selected provider connection's answer endpoint, credential, and model unless an administrator enters a VLM model override.
 
 ```mermaid
 flowchart LR
@@ -165,6 +167,16 @@ It saves the task ID so another worker can resume the same task after an interru
 Each Docling instance reads the source directly from the same read-only content store.
 If the original Docling instance no longer recognizes a saved task, the worker clears that task checkpoint and submits the same unchanged source again.
 Completed checkpoints remain available when the worker schedules a retry.
+
+Standard is the default conversion pipeline.
+For eligible Standard PDFs, the supplied Docling service converts bounded page ranges, saves each completed range, and assembles the final document only after all ranges succeed.
+This lets a replacement Docling process continue from the next incomplete range.
+
+VLM processing renders each PDF page as an in-memory PNG inside Docling and sends that page with the configured prompt to the selected provider's image-capable chat endpoint.
+The page image is not persisted as a separate source file.
+VLM conversion retains CiteLoom's remote task-ID recovery, but it does not use the Standard pipeline's page-range checkpoints or partial-document assembly.
+If Docling no longer recognizes a VLM task, the unchanged source is submitted as a new task.
+
 When document TOC routing is enabled, the indexing phase builds a bounded navigation map from Docling section paths and maps every retained entry to exact retrieval-window IDs.
 The map is staged under the same generation as the vectors and lexical rows, validated before atomic publication, and removed with obsolete retrieval generations.
 

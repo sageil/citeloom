@@ -35,6 +35,17 @@
           </a>
         </li>
         <li>
+          <a href="#manage-your-library">
+            <svg aria-hidden="true" class="citeloom-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-book"></use>
+            </svg>
+            <strong>Manage your library</strong>
+            <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+            </svg>
+          </a>
+        </li>
+        <li>
           <a href="#ask-a-question">
             <svg aria-hidden="true" class="citeloom-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-book"></use>
@@ -51,6 +62,17 @@
               <use href="./assets/images/citeloom-icons.svg#citeloom-book"></use>
             </svg>
             <strong>Chat with documents</strong>
+            <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+            </svg>
+          </a>
+        </li>
+        <li>
+          <a href="#saved-research">
+            <svg aria-hidden="true" class="citeloom-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-book"></use>
+            </svg>
+            <strong>Saved research</strong>
             <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
             </svg>
@@ -84,6 +106,17 @@
               <use href="./assets/images/citeloom-icons.svg#citeloom-book"></use>
             </svg>
             <strong>Use dictation</strong>
+            <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+            </svg>
+          </a>
+        </li>
+        <li>
+          <a href="#listen-to-answers">
+            <svg aria-hidden="true" class="citeloom-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-book"></use>
+            </svg>
+            <strong>Listen to answers</strong>
             <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
             </svg>
@@ -128,6 +161,17 @@
               <use href="./assets/images/citeloom-icons.svg#citeloom-book"></use>
             </svg>
             <strong>Troubleshooting</strong>
+            <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+            </svg>
+          </a>
+        </li>
+        <li>
+          <a href="#accounts-and-administration">
+            <svg aria-hidden="true" class="citeloom-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-book"></use>
+            </svg>
+            <strong>Accounts and administration</strong>
             <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
             </svg>
@@ -185,6 +229,23 @@
           </div>
         </section>
 
+        <section aria-labelledby="manage-your-library" class="help-section">
+          <h2 id="manage-your-library" tabindex="-1">Manage your library</h2>
+          <div>
+            <p>Use Documents to search, filter, sort, tag, inspect, reindex, and delete saved documents.</p>
+            <ul>
+              <li>Collections include all documents, uploads, untagged documents, and each saved tag.</li>
+              <li>Select documents and choose Add to question to carry a focused file scope into Ask or Chat.</li>
+              <li>Open a document to inspect its ingestion stages, indexed text, tables, images, source file, and processing errors.</li>
+              <li>The uploader or an administrator can pause and resume eligible PDF ingestion, cancel active ingestion, and retry failed work.</li>
+              <li>Reindexing builds a replacement while the current ready version remains searchable.</li>
+              <li>Version history lets you open the saved source and compare added, modified, and removed evidence.</li>
+              <li>Deleting a document requires confirmation and does not rewrite evidence already retained by saved Ask or Chat answers.</li>
+            </ul>
+            <p>Administrators choose Standard or VLM PDF processing under <strong>Settings → Docling → PDF processing</strong>. Standard uses Docling's layout, OCR, and table models. VLM sends each rendered PDF page to the selected visual model.</p>
+          </div>
+        </section>
+
         <section aria-labelledby="ask-a-question" class="help-section">
           <h2 id="ask-a-question" tabindex="-1">Ask a question</h2>
           <div>
@@ -219,6 +280,20 @@
               <li>Deleting the chat permanently removes its messages and saved citation records.</li>
             </ul>
             <p>Administrators can configure Chat separately from Ask and the Indexing model in Settings.</p>
+          </div>
+        </section>
+
+        <section aria-labelledby="saved-research" class="help-section">
+          <h2 id="saved-research" tabindex="-1">Saved research</h2>
+          <div>
+            <p>Ask saves each completed question and answer in a research thread.</p>
+            <ul>
+              <li>Create a new thread when you want a separate research history.</li>
+              <li>Opening an earlier turn reads the saved answer, citations, evidence, settings, and retrieval trace without running the question again.</li>
+              <li>Export a thread as Markdown for reading or JSON for structured analysis.</li>
+              <li>Use the answer controls to rate retrieval relevance, answer usefulness, and citation correctness.</li>
+              <li>Deleting a thread permanently removes its saved turns and citation records after confirmation.</li>
+            </ul>
           </div>
         </section>
 
@@ -282,6 +357,20 @@
           </div>
         </section>
 
+        <section aria-labelledby="listen-to-answers" class="help-section">
+          <h2 id="listen-to-answers" tabindex="-1">Listen to answers</h2>
+          <div>
+            <p>When spoken answers are enabled, Ask can read the displayed answer and Chat can read the latest completed assistant answer.</p>
+            <ul>
+              <li>Choose the speaker control to prepare and play the answer with the configured speech provider.</li>
+              <li>Use the audio controls to pause, resume, or replay prepared audio.</li>
+              <li>When Preload answer audio is enabled, CiteLoom prepares audio in the background after a completed answer is loaded or published.</li>
+              <li>Changing the answer, thread, or conversation discards the prepared browser audio for the previous answer.</li>
+            </ul>
+            <p>Administrators configure the speech provider, model, voice, speed, preloading, and timeout in Settings.</p>
+          </div>
+        </section>
+
         <section aria-labelledby="understand-citations-and-retrieved-context" class="help-section">
           <h2 id="understand-citations-and-retrieved-context" tabindex="-1">Understand sources and citations</h2>
           <div>
@@ -342,10 +431,22 @@
           </div>
         </section>
 
+        <section aria-labelledby="accounts-and-administration" class="help-section">
+          <h2 id="accounts-and-administration" tabindex="-1">Accounts and administration</h2>
+          <div>
+            <p>Every user can change their own password under Account and access.</p>
+            <p>Workspace administrators can add and remove users, assign member or administrator roles, create time-limited setup or password-reset links, and configure providers and features.</p>
+            <p>System health shows the active runtime, service capacity, and scheduling information. Run diagnostics sends small test requests to configured services and may use provider time or usage.</p>
+            <p>Error reports contains sanitized operational failures for administrators. Purge logs requires confirmation, removes the retained database error records visible to the workspace, and does not delete Docker or host logs.</p>
+            <p>Settings resets require confirmation and name whether they affect one value, one feature or panel, or all runtime settings.</p>
+          </div>
+        </section>
+
         <section aria-labelledby="privacy-and-configured-services" class="help-section">
           <h2 id="privacy-and-configured-services" tabindex="-1">Privacy and configured services</h2>
           <div>
             <p>CiteLoom sends document and question content to the model and document-conversion services configured for this deployment.</p>
+            <p>When Docling VLM processing is enabled, each PDF page and the configured instructions are sent from Docling to the selected VLM provider endpoint.</p>
             <p>Check Settings and System health to see which services are active and where they run.</p>
             <p>Processing stays within your local environment only when every configured service endpoint is also local and trusted.</p>
           </div>

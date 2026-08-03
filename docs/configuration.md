@@ -110,6 +110,10 @@ Each feature can use a different provider, so the service that writes answers do
 Assign models that support their selected capabilities.
 The Custom profile lets administrators choose the adapter used for each capability.
 
+Docling VLM processing does not add another capability route to this table.
+It selects an existing provider connection and reuses that connection's answer endpoint and credential while allowing a document-specific model override.
+See [Standard and VLM processing](#standard-and-vlm-processing).
+
 OpenAI Codex uses OpenAI device sign-in from the Settings page.
 Other profiles support a shared API token and capability-specific overrides.
 Local endpoints can leave the token blank when authentication is not required.
@@ -293,6 +297,27 @@ Older turns created before traces were added remain readable but may not have on
 Asking the same question again creates a new run that can reflect changed documents, settings, models, or provider behavior.
 Opening an existing turn reads the saved answer, citations, run settings, and retrieval trace without running the question again.
 
+## Speech input and spoken answers
+
+Speech input and spoken answers are independent optional routes.
+Enabling one does not require enabling the other.
+The provider matrix lists which built-in profiles expose each adapter, and the Custom profile can select a compatible speech adapter explicitly.
+
+Speech input currently appears in Ask.
+The Language hint and Vocabulary prompt are optional provider hints.
+Transcription timeout limits one provider request, and Maximum audio size rejects a browser recording before it is sent when the recording is too large.
+CiteLoom accepts supported WebM, Ogg, MP4, or WAV browser recordings and discards the temporary audio after transcription or cancellation.
+
+Spoken answers appear in Ask and Chat.
+The selected feature route can override the provider's default model and voice.
+Speech speed and Speech generation timeout apply to each generated answer audio request.
+
+When Preload answer audio is off, CiteLoom waits for the user to choose the speaker control before requesting audio.
+When it is on, Ask and Chat request audio asynchronously after a completed answer is published or loaded.
+Chat preloads only the latest completed assistant answer.
+Preloading does not persist an audio file in CiteLoom; the browser holds a temporary object URL and releases it when the answer, research thread, or conversation changes.
+Because preloading calls the selected provider even when the user never presses play, it can increase provider use.
+
 ## Time limits and cancellation
 
 Ask, the indexing model, query expansion, embedding models, search ranking, citation checks, and Docling each have their own time limit.
@@ -307,6 +332,64 @@ The remote Docling task may continue.
 
 CiteLoom saves the Docling settings used when a conversion attempt begins.
 If another worker resumes that attempt, it uses the saved settings even if the live settings have changed.
+
+The Docling settings area is organized into four panels:
+
+- Connection contains the Docling URL, optional API key, and default-service conversion capacity.
+- PDF processing contains the Standard or VLM processing choice and the controls used by each mode.
+- Performance and limits contains conversion and request time allowances.
+- Diagnostics contains conversion-metric collection and retention.
+
+### Standard and VLM processing
+
+Standard is the fresh-install default.
+It uses Docling's layout, OCR, and table models.
+The PDF reader, scanned-text OCR, table structure, and table reading priority settings apply to Standard processing.
+Extracted image quality controls the image scale supplied to the selected conversion pipeline.
+
+The supplied Docling service processes eligible Standard PDFs in page ranges and saves completed range checkpoints.
+After interruption, it can resume from the next incomplete range and assemble the completed ranges into one document.
+CiteLoom also saves the remote Docling task ID, so a worker restart can continue polling a task that the same service still knows.
+
+VLM processing visually reads each PDF page through a model reached from the Docling service.
+The PDF page is encoded as an in-memory PNG and sent with the configured prompt.
+This path does not save a persistent PNG copy of every page.
+The supplied range-checkpoint and partial-document assembly path does not apply to VLM processing.
+If the Docling service loses a VLM task, CiteLoom resubmits the unchanged source instead of continuing from a completed page range.
+
+VLM processing uses an existing provider connection rather than a separate provider capability.
+It reads that connection's answer URL, shared or answer-specific token, and answer model.
+An explicit VLM model override replaces the answer model for document conversion only.
+CiteLoom accepts any model identifier entered by the administrator and does not maintain a model allowlist.
+The selected endpoint and model must accept OpenAI-compatible image chat requests and return document text that Docling can consume.
+
+The supplied CiteLoom Docling image enables remote services and custom VLM configuration.
+It also sends the prompt before the image and normalizes the inline labels and bounding boxes returned by the saved Unlimited OCR model into Markdown.
+An independently managed Docling service must enable its equivalent remote-service and custom-VLM settings and must implement response handling compatible with the selected model.
+
+The Ollama VLM endpoint is derived by adding `/v1/chat/completions` to a native Ollama base URL.
+Other provider base URLs use their configured OpenAI-compatible `/chat/completions` route.
+If the selected connection has no usable URL or model, CiteLoom rejects the effective configuration instead of starting a conversion with missing values.
+
+Fresh installations save these VLM values while leaving Standard selected:
+
+| Setting | Fresh-install value | Effect |
+| --- | --- | --- |
+| Processing mode | `standard` | New conversions use the Standard pipeline until an administrator selects VLM. |
+| VLM provider | Ollama | Docling sends visual page requests to the saved Ollama connection when VLM is selected. |
+| VLM model override | `frob/unlimited-ocr:q8_0` | VLM conversion uses this model instead of the Ollama answer model. |
+| VLM instructions | `document parsing.` | The same task instruction is sent with each PDF page. |
+| VLM output limit | `32768` tokens | This is the requested maximum output for one page; the provider or model may enforce a smaller limit. |
+
+Saving a model identifier does not download its weights.
+Install or make the selected VLM model available at the provider endpoint before switching the processing mode.
+
+Changing the processing mode or its options affects new conversion attempts.
+Reindex an existing document when it must be converted with the new mode.
+Conversion time varies with page count, page complexity, model speed, endpoint load, and output length, so validate Standard and VLM performance with representative documents before choosing deployment limits.
+
+VLM page content and the configured provider credential pass from the Docling container to the selected endpoint.
+Document processing remains local only when that endpoint is local and trusted.
 
 The PDF backend applies only to PDF requests.
 Excel worksheets and PowerPoint slides retain their Docling location numbers, and worksheet names appear in section paths.

@@ -1,0 +1,48 @@
+--- api_image_request.py
++++ api_image_request.py
+@@ -18,2 +18,3 @@
+ )
+ from docling.models.utils.generation_utils import GenerationStopper
++from citeloom_docling.vlm_response import normalize_vlm_generated_text
+@@ -178,6 +178,10 @@
+                 {
+                     "role": "user",
+                     "content": [
++                        {
++                            "type": "text",
++                            "text": prompt,
++                        },
+                         {
+                             "type": "image_url",
+                             "image_url": {
+@@ -185,10 +189,6 @@
+                                 "url": f"data:image/png;base64,{image_base64}"
+                             },
+                         },
+-                        {
+-                            "type": "text",
+-                            "text": prompt,
+-                        },
+                     ],
+                 }
+             ]
+@@ -243,5 +243,6 @@
+             api_resp = OpenAiApiResponse.model_validate(response_payload)
+             generated_text = _extract_generated_text(api_resp.choices[0].message)
++            generated_text = normalize_vlm_generated_text(generated_text)
+             num_tokens = _extract_total_tokens(usage)
+             if num_tokens is None and api_resp.usage is not None:
+                 num_tokens = api_resp.usage.total_tokens
+@@ -265,11 +265,11 @@
+         {
+             "role": "user",
+             "content": [
++                {"type": "text", "text": prompt},
+                 {
+                     "type": "image_url",
+                     "image_url": {"url": f"data:image/png;base64,{image_b64}"},
+                 },
+-                {"type": "text", "text": prompt},
+             ],
+         }
+     ]

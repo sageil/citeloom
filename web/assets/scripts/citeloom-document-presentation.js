@@ -303,7 +303,7 @@ function readActivePhaseLabel(document) {
   return "Normalizing";
 }
 
-function readEmbeddingProgressDetail(progress) {
+export function readEmbeddingProgressDetail(progress) {
   if (progress.state === "not-started") {
     return null;
   }

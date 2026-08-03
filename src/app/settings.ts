@@ -30,6 +30,7 @@ import type {
   ProviderModelFeatureOverrides,
   ProviderSettings,
 } from "../providers/profiles.js";
+import { providerCatalog } from "../providers/profiles.js";
 import {
   parseStoredApplicationSettings,
   type StoredApplicationSettings,
@@ -92,6 +93,7 @@ const runtimeSettingKeySchema = z.enum([
   "doclingPdfBackend",
   "doclingPerformanceMetricsEnabled",
   "doclingPerformanceMetricsRetentionDays",
+  "doclingPipeline",
   "doclingSecondaryImageScale",
   "doclingTableMode",
   "doclingTableStructureEnabled",
@@ -99,6 +101,10 @@ const runtimeSettingKeySchema = z.enum([
   "doclingDefaultServiceCapacity",
   "doclingRequestTimeoutSeconds",
   "doclingTimeoutSeconds",
+  "doclingVlmMaxOutputTokens",
+  "doclingVlmModelOverride",
+  "doclingVlmPrompt",
+  "doclingVlmProviderId",
   "embeddingDimensions",
   "embeddingInputFormatId",
   "embeddingSpaceId",
@@ -184,6 +190,34 @@ const searchSizePanel: RuntimeSettingPanel = {
   label: "Search size",
 };
 
+const doclingConnectionPanel: RuntimeSettingPanel = {
+  description: "Configure the Docling service connection and document concurrency.",
+  id: "docling-connection",
+  label: "Connection",
+};
+
+const doclingPdfProcessingPanel: RuntimeSettingPanel = {
+  description: "Choose how Docling reads PDFs and extracts their content.",
+  id: "docling-pdf-processing",
+  label: "PDF processing",
+};
+
+const doclingPerformancePanel: RuntimeSettingPanel = {
+  description: "Control conversion time allowances and limits.",
+  id: "docling-performance",
+  label: "Performance and limits",
+};
+
+const doclingDiagnosticsPanel: RuntimeSettingPanel = {
+  description: "Control conversion diagnostics and retention.",
+  id: "docling-diagnostics",
+  label: "Diagnostics",
+};
+
+const doclingVlmProviderOptions = providerCatalog.map((provider) => {
+  return { label: provider.displayName, value: provider.id };
+});
+
 export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   setting("claimVerifierRuntimeName", "Answers and citation checks", "Citation checker name", "text", "The name shown for the service that checks whether citations support an answer."),
   setting("claimVerifierBaseUrl", "Answers and citation checks", "Citation checker address", "url", "The address of the service that checks whether citations support an answer."),
@@ -214,35 +248,43 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   featureSetting(selectSetting("retrievalWindowPolicy", "Embedding model", "Document section method", "How CiteLoom keeps nearby document content together for search.", [
     { label: "Keep document structure", value: "structured-token-v3" },
   ]), "embedding"),
-  setting("doclingBaseUrl", "Docling", "Docling base URL", "url", "Where CiteLoom sends documents for conversion."),
-  sensitiveSetting("doclingApiKey", "Docling", "Docling API key", "The secret CiteLoom uses to sign in to Docling."),
-  numberSetting("doclingDefaultServiceCapacity", "Docling", "Documents converted at once", "How many documents Docling can convert at the same time.", 1, 16, 1),
-  numberSetting("doclingTimeoutSeconds", "Docling", "Standard conversion time", "The time allowed for every document before page and file-size allowances are added.", 60, 604_800, 1, "seconds"),
-  numberSetting("doclingMaxTimeoutSeconds", "Docling", "Maximum conversion time", "The longest CiteLoom waits for one document conversion.", 60, 604_800, 1, "seconds"),
-  numberSetting("doclingPageTimeoutSeconds", "Docling", "Extra time per PDF page", "The conversion time added for each PDF page.", 0, 3_600, 1, "seconds"),
-  numberSetting("doclingMegabyteTimeoutSeconds", "Docling", "Extra time per megabyte", "The conversion time added for each megabyte in a document.", 0, 3_600, 1, "seconds"),
-  numberSetting("doclingRequestTimeoutSeconds", "Docling", "Docling connection timeout", "How long CiteLoom waits while sending a document to Docling, checking progress, or downloading the result.", 10, 3_600, 1, "seconds"),
-  setting("doclingPerformanceMetricsEnabled", "Docling", "Conversion diagnostics", "boolean", "Save conversion times and outcomes without saving document content."),
-  numberSetting("doclingPerformanceMetricsRetentionDays", "Docling", "Conversion history", "How long CiteLoom keeps completed conversion diagnostics.", 1, 3_650, 1, "days"),
-  selectSetting("doclingPdfBackend", "Docling", "PDF reader", "The PDF reader Docling uses.", [
+  panelSetting(setting("doclingBaseUrl", "Docling", "Docling base URL", "url", "Where CiteLoom sends documents for conversion."), doclingConnectionPanel),
+  panelSetting(sensitiveSetting("doclingApiKey", "Docling", "Docling API key", "The secret CiteLoom uses to sign in to Docling."), doclingConnectionPanel),
+  panelSetting(numberSetting("doclingDefaultServiceCapacity", "Docling", "Documents converted at once", "How many documents Docling can convert at the same time.", 1, 16, 1), doclingConnectionPanel),
+  panelSetting(selectSetting("doclingPipeline", "Docling", "Processing mode", "Choose Standard for Docling's layout, OCR, and table models, or VLM to read each page visually.", [
+    { label: "Standard", value: "standard" },
+    { label: "VLM", value: "vlm" },
+  ]), doclingPdfProcessingPanel),
+  panelSetting(selectSetting("doclingVlmProviderId", "Docling", "VLM provider", "Choose an existing provider connection for visual page processing.", doclingVlmProviderOptions), doclingPdfProcessingPanel),
+  panelSetting(nullableSetting("doclingVlmModelOverride", "Docling", "VLM model override", "text", "Use this model instead of the selected provider's default model."), doclingPdfProcessingPanel),
+  panelSetting(setting("doclingVlmPrompt", "Docling", "VLM instructions", "text", "The task instructions sent with every PDF page."), doclingPdfProcessingPanel),
+  panelSetting(numberSetting("doclingVlmMaxOutputTokens", "Docling", "VLM output limit", "The most output the VLM may return for one PDF page.", 1, 262_144, 1, "tokens"), doclingPdfProcessingPanel),
+  panelSetting(selectSetting("doclingPdfBackend", "Docling", "PDF reader", "The PDF reader used by Standard processing.", [
     { label: "Docling Parse", value: "docling_parse" },
     { label: "Threaded Docling Parse", value: "threaded_docling_parse" },
     { label: "PyPDFium2", value: "pypdfium2" },
-  ]),
-  setting("doclingOcrEnabled", "Docling", "Read scanned text", "boolean", "Read text from scanned pages and other images."),
-  setting("doclingTableStructureEnabled", "Docling", "Preserve table structure", "boolean", "Detect rows, columns, and merged cells in tables."),
-  setting(
+  ]), doclingPdfProcessingPanel),
+  panelSetting(setting("doclingOcrEnabled", "Docling", "Read scanned text", "boolean", "Use OCR for scanned pages and images in Standard processing."), doclingPdfProcessingPanel),
+  panelSetting(setting("doclingTableStructureEnabled", "Docling", "Preserve table structure", "boolean", "Detect rows, columns, and merged cells in tables during Standard processing."), doclingPdfProcessingPanel),
+  panelSetting(selectSetting("doclingTableMode", "Docling", "Table reading priority", "Choose whether Standard table reading favors accuracy or speed.", [
+    { label: "Accurate", value: "accurate" },
+    { label: "Fast", value: "fast" },
+  ]), doclingPdfProcessingPanel),
+  panelSetting(numberSetting("doclingSecondaryImageScale", "Docling", "Extracted image quality", "How sharp extracted page and picture images should be. Higher values use more memory.", 0.1, 8, 0.1), doclingPdfProcessingPanel),
+  panelSetting(setting(
     "doclingTocEnabled",
     "Docling",
     "Use document headings in search",
     "boolean",
     "Use a document's headings to help Ask and Chat find relevant sections in long documents. Run the documented update command so existing documents also benefit.",
-  ),
-  selectSetting("doclingTableMode", "Docling", "Table reading priority", "Choose whether reading tables favors accuracy or speed.", [
-    { label: "Accurate", value: "accurate" },
-    { label: "Fast", value: "fast" },
-  ]),
-  numberSetting("doclingSecondaryImageScale", "Docling", "Extracted image quality", "How sharp extracted images should be. Higher values use more memory.", 0.1, 8, 0.1),
+  ), doclingPdfProcessingPanel),
+  panelSetting(numberSetting("doclingTimeoutSeconds", "Docling", "Standard conversion time", "The time allowed for every document before page and file-size allowances are added.", 60, 604_800, 1, "seconds"), doclingPerformancePanel),
+  panelSetting(numberSetting("doclingMaxTimeoutSeconds", "Docling", "Maximum conversion time", "The longest CiteLoom waits for one document conversion.", 60, 604_800, 1, "seconds"), doclingPerformancePanel),
+  panelSetting(numberSetting("doclingPageTimeoutSeconds", "Docling", "Extra time per PDF page", "The conversion time added for each PDF page.", 0, 3_600, 1, "seconds"), doclingPerformancePanel),
+  panelSetting(numberSetting("doclingMegabyteTimeoutSeconds", "Docling", "Extra time per megabyte", "The conversion time added for each megabyte in a document.", 0, 3_600, 1, "seconds"), doclingPerformancePanel),
+  panelSetting(numberSetting("doclingRequestTimeoutSeconds", "Docling", "Docling connection timeout", "How long CiteLoom waits while sending a document to Docling, checking progress, or downloading the result.", 10, 3_600, 1, "seconds"), doclingPerformancePanel),
+  panelSetting(setting("doclingPerformanceMetricsEnabled", "Docling", "Conversion diagnostics", "boolean", "Save conversion times and outcomes without saving document content."), doclingDiagnosticsPanel),
+  panelSetting(numberSetting("doclingPerformanceMetricsRetentionDays", "Docling", "Conversion history", "How long CiteLoom keeps completed conversion diagnostics.", 1, 3_650, 1, "days"), doclingDiagnosticsPanel),
   featureSetting(numberSetting("rerankTimeoutSeconds", "Search ranking", "Search ranking timeout", "How long CiteLoom waits for semantic search results to be sorted.", 1, 3_600, 1, "seconds"), "reranking"),
   featureSetting(numberSetting("rerankDiscoveryMinimumScore", "Search ranking", "Minimum score for Find Sources", "The lowest semantic-match score Find Sources shows. Higher values show fewer matches. Each search ranking model uses its own score scale, so 0.9 does not mean 90 percent confidence. This setting does not affect Ask.", -1_000, 1_000, 0.01), "reranking"),
   panelSetting(positiveIntegerSetting("retrievalCandidates", "Search and answers", "Matching sections reviewed", "CiteLoom reviews up to this many matching sections before selecting the strongest source material.", "sections"), searchSizePanel),
@@ -352,12 +394,17 @@ export const runtimeSettingChangeExamples = {
   doclingRequestTimeoutSeconds: "Raise 300 to 600 if uploads, status checks, or result downloads time out.",
   doclingPerformanceMetricsEnabled: "Turn this on to record conversion times and outcomes without storing document content.",
   doclingPerformanceMetricsRetentionDays: "Change 30 to 7 to keep one week of conversion history instead of one month.",
+  doclingPipeline: "Choose VLM to have the selected vision model read each PDF page visually. New conversions use the selected mode.",
   doclingPdfBackend: "Try PyPDFium2 when a troublesome PDF does not parse correctly with Docling Parse.",
   doclingOcrEnabled: "Turn this off for text-only PDFs to skip OCR. Scanned pages may then be empty.",
   doclingTableStructureEnabled: "Turn this off for simple documents. Tables will keep less row and cell detail.",
   doclingTocEnabled: "Enable this for long documents with useful headings. Run `citeloom document-toc backfill` so existing documents can also use their headings during search.",
   doclingTableMode: "Choose Fast to reduce processing time when perfect cell structure matters less.",
   doclingSecondaryImageScale: "Raise 2 to 3 for sharper extracted pictures. Conversions will use more memory.",
+  doclingVlmModelOverride: "Enter any model name accepted by the selected provider, or leave this blank to use that provider's default answer model.",
+  doclingVlmPrompt: "Use the activation text required by the selected model. Unlimited OCR uses `document parsing.` for a single page.",
+  doclingVlmMaxOutputTokens: "Raise this when dense pages are cut off. The selected provider and model may enforce a lower limit.",
+  doclingVlmProviderId: "Choose the provider connection Docling should call when VLM processing is enabled.",
   rerankDiscoveryMinimumScore: "Start at 0.9. Raise it to hide more semantic matches or lower it to show more. Check actual Find Sources results because every search ranking model uses its own score scale.",
   rerankTimeoutSeconds: "Raise 120 to 300 if sorting a large set of search results times out.",
   retrievalCandidates: "Higher values search more broadly and may find additional relevant content, but take longer. Matching sections reviewed must be equal to or greater than Sections available for answers.",
@@ -1019,6 +1066,8 @@ export function applyProviderSettingsChanges(
   }
   const next = structuredClone(current);
   materializeChatSettings(next);
+  const normalizedDefaults = structuredClone(defaults);
+  materializeChatSettings(normalizedDefaults);
   for (const change of changes) {
     if (change.action === "configure") {
       next.connections[change.providerId] = configureProviderConnection(
@@ -1043,6 +1092,30 @@ export function applyProviderSettingsChanges(
     }
     if (change.action === "feature") {
       configureApplicationFeature(next, change.configuration);
+      continue;
+    }
+    if (change.action === "reset-feature") {
+      const defaultProviderId = normalizedDefaults.routing[change.capability];
+      if (defaultProviderId === undefined) {
+        throw new SettingsValidationError(
+          `No default provider route exists for ${change.capability}.`,
+        );
+      }
+      next.routing[change.capability] = defaultProviderId;
+      const defaultOverrides = readMutableFeatureOverrides(
+        normalizedDefaults,
+        change.capability,
+      );
+      Object.assign(
+        readMutableFeatureOverrides(next, change.capability),
+        structuredClone(defaultOverrides),
+      );
+      continue;
+    }
+    if (change.action === "reset-provider") {
+      next.connections[change.providerId] = structuredClone(
+        normalizedDefaults.connections[change.providerId],
+      );
       continue;
     }
     if (change.action === "route") {

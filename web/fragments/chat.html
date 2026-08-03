@@ -113,7 +113,7 @@
                               x-show="shouldShowStatementSectionHeading(message, statementIndex)"
                               x-text="statementSectionHeading(statement.section)"
                             ></h3>
-                            <p x-text="statement.content"></p>
+                            <div class="answer-markdown" x-html="statement.contentHtml"></div>
                             <div
                               class="chat-statement-citations"
                               x-show="findingCheckForStatement(message, statementIndex) !== null"

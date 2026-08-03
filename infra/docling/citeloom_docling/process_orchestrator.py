@@ -25,7 +25,10 @@ from docling.datamodel.document import ConfidenceReport, InputDocument
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.datamodel.service.callbacks import CallbackSpec
 from docling.datamodel.service.chunking import BaseChunkerOptions
-from docling.datamodel.service.options import ConvertDocumentsOptions
+from docling.datamodel.service.options import (
+    ConvertDocumentsOptions,
+    ProcessingPipeline,
+)
 from docling.datamodel.service.responses import (
     FailureCategory,
     FailurePhase,
@@ -781,6 +784,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
         return (
             task.task_type == TaskType.CONVERT
             and options is not None
+            and options.pipeline == ProcessingPipeline.STANDARD
             and len(task.sources) == 1
             and options.from_formats == [InputFormat.PDF]
             and not options.include_page_images

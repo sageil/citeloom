@@ -12,9 +12,70 @@ const answerSections = Object.freeze([
   "conflicting-evidence",
 ]);
 const statementPresentations = Object.freeze(["bullet", "paragraph"]);
+const answerMarkdownAllowedAttributes = Object.freeze([
+  "align",
+  "checked",
+  "class",
+  "disabled",
+  "href",
+  "start",
+  "title",
+  "type",
+]);
+const answerMarkdownAllowedTags = Object.freeze([
+  "a",
+  "blockquote",
+  "br",
+  "code",
+  "del",
+  "em",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "hr",
+  "input",
+  "li",
+  "ol",
+  "p",
+  "pre",
+  "span",
+  "strong",
+  "table",
+  "tbody",
+  "td",
+  "th",
+  "thead",
+  "tr",
+  "ul",
+]);
+
+let answerMarkdownRuntime = null;
 
 export function createEmptyAnswerContent() {
   return { statements: [] };
+}
+
+export function renderAnswerMarkdown(content) {
+  const fallbackHtml = renderAnswerPlainText(content);
+  try {
+    const runtime = readAnswerMarkdownRuntime();
+    if (runtime === null) {
+      return fallbackHtml;
+    }
+    const renderedHtml = readMarkdownHtml(
+      runtime.parse(content),
+      "rendered Markdown",
+    );
+    return readMarkdownHtml(
+      runtime.sanitize(renderedHtml),
+      "sanitized Markdown",
+    );
+  } catch {
+    return fallbackHtml;
+  }
 }
 
 export function readAnswerContentUpdate(value) {
@@ -70,6 +131,7 @@ export function applyAnswerContentUpdate(content, update) {
     statements[statementUpdate.index] = {
       citationIds: [],
       content: statementContent,
+      contentHtml: renderAnswerMarkdown(statementContent),
       presentation: statementUpdate.presentation,
       section: statementUpdate.section,
     };
@@ -88,12 +150,23 @@ export function createAnswerContentFromDocument(document) {
       statements: [{
         citationIds: [],
         content: document.content,
+        contentHtml: renderAnswerMarkdown(document.content),
         presentation: "paragraph",
         section: "answer",
       }],
     };
   }
-  return { statements: document.statements };
+  const statements = [];
+  for (const statement of document.statements) {
+    statements.push({
+      citationIds: statement.citationIds,
+      content: statement.content,
+      contentHtml: renderAnswerMarkdown(statement.content),
+      presentation: statement.presentation,
+      section: statement.section,
+    });
+  }
+  return { statements };
 }
 
 export function buildAnswerContentSections(content, citations) {
@@ -137,6 +210,7 @@ function buildSectionStatements(content, sectionKey, citationsById) {
     statements.push({
       citations,
       content: statement.content,
+      contentHtml: renderAnswerMarkdown(statement.content),
       key: `${sectionKey}-${index}`,
       presentation: statement.presentation,
     });
@@ -184,4 +258,94 @@ function answerSectionTitle(section) {
     return "Key points";
   }
   return null;
+}
+
+function readAnswerMarkdownRuntime() {
+  if (answerMarkdownRuntime !== null) {
+    return answerMarkdownRuntime;
+  }
+  const markedNamespace = globalThis.marked;
+  const sanitizer = globalThis.DOMPurify;
+  if (
+    !isObjectOrFunction(markedNamespace)
+    || !isObjectOrFunction(sanitizer)
+  ) {
+    return null;
+  }
+  const parse = Reflect.get(markedNamespace, "parse");
+  const Renderer = Reflect.get(markedNamespace, "Renderer");
+  const sanitize = Reflect.get(sanitizer, "sanitize");
+  if (
+    typeof parse !== "function"
+    || typeof Renderer !== "function"
+    || typeof sanitize !== "function"
+  ) {
+    return null;
+  }
+  const renderer = new Renderer();
+  renderer.html = (token) => {
+    return escapeAnswerHtml(readMarkdownTokenText(token));
+  };
+  renderer.image = (token) => {
+    const alternativeText = readMarkdownTokenText(token).trim();
+    const label = alternativeText === ""
+      ? "Image"
+      : `Image: ${alternativeText}`;
+    return `<span class="answer-markdown-image-reference">${escapeAnswerHtml(label)}</span>`;
+  };
+  answerMarkdownRuntime = {
+    parse(content) {
+      return parse.call(markedNamespace, content, {
+        async: false,
+        gfm: true,
+        renderer,
+      });
+    },
+    sanitize(html) {
+      return sanitize.call(sanitizer, html, {
+        ALLOWED_ATTR: answerMarkdownAllowedAttributes,
+        ALLOWED_TAGS: answerMarkdownAllowedTags,
+        ALLOW_DATA_ATTR: false,
+        ALLOW_UNKNOWN_PROTOCOLS: false,
+      });
+    },
+  };
+  return answerMarkdownRuntime;
+}
+
+function readMarkdownTokenText(value) {
+  if (typeof value !== "object" || value === null) {
+    return "";
+  }
+  const text = Reflect.get(value, "text");
+  return typeof text === "string" ? text : "";
+}
+
+function readMarkdownHtml(value, label) {
+  if (typeof value !== "string") {
+    throw new Error(`The ${label} is invalid.`);
+  }
+  return value;
+}
+
+function isObjectOrFunction(value) {
+  return (
+    (typeof value === "object" && value !== null)
+    || typeof value === "function"
+  );
+}
+
+function renderAnswerPlainText(content) {
+  const escapedContent = escapeAnswerHtml(content);
+  const contentWithBreaks = escapedContent.replace(/\r\n?|\n/gu, "<br>");
+  return `<p>${contentWithBreaks}</p>`;
+}
+
+function escapeAnswerHtml(value) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }

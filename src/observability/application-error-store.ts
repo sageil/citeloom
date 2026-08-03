@@ -6,8 +6,10 @@ import {
   inArray,
   isNull,
   or,
+  sql,
   type SQL,
 } from "drizzle-orm";
+import { z } from "zod";
 
 import type { CiteLoomDatabase } from "../database/client.js";
 import {
@@ -94,6 +96,14 @@ export interface ApplicationErrorPage {
   total: number;
 }
 
+export interface ApplicationErrorPurgeResult {
+  deleted: number;
+}
+
+const applicationErrorPurgeResultSchema = z.object({
+  deleted: z.coerce.number().int().nonnegative(),
+});
+
 const ingestionOrigins: ApplicationErrorOrigin[] = [
   "ingestion",
   "docling-transport",
@@ -122,9 +132,8 @@ export async function readApplicationErrorPage(
   workspaceId: string,
   request: ApplicationErrorPageRequest,
 ): Promise<ApplicationErrorPage> {
-  const workspaceCondition = or(
-    isNull(applicationErrorEvents.workspaceId),
-    eq(applicationErrorEvents.workspaceId, workspaceId),
+  const workspaceCondition = buildApplicationErrorVisibilityCondition(
+    workspaceId,
   );
   const areaCondition = buildApplicationErrorAreaCondition(request.area);
   const pageCondition = areaCondition === undefined
@@ -211,6 +220,26 @@ export async function readApplicationErrorPage(
   };
 }
 
+export async function purgeApplicationErrors(
+  database: CiteLoomDatabase,
+  workspaceId: string,
+): Promise<ApplicationErrorPurgeResult> {
+  return database.transaction(async (transaction) => {
+    const visibilityCondition = buildApplicationErrorVisibilityCondition(
+      workspaceId,
+    );
+    const result = await transaction.execute(sql`
+      with deleted as (
+        delete from ${applicationErrorEvents}
+        where ${visibilityCondition}
+        returning 1
+      )
+      select count(*)::integer as deleted from deleted
+    `);
+    return applicationErrorPurgeResultSchema.parse(result.rows[0]);
+  });
+}
+
 export function readApplicationErrorArea(
   origin: ApplicationErrorOrigin,
 ): ApplicationErrorArea {
@@ -236,6 +265,17 @@ function buildApplicationErrorAreaCondition(
     return inArray(applicationErrorEvents.origin, generalOrigins);
   }
   return undefined;
+}
+
+function buildApplicationErrorVisibilityCondition(workspaceId: string): SQL {
+  const condition = or(
+    isNull(applicationErrorEvents.workspaceId),
+    eq(applicationErrorEvents.workspaceId, workspaceId),
+  );
+  if (condition === undefined) {
+    throw new Error("Application error visibility requires a workspace.");
+  }
+  return condition;
 }
 
 function buildApplicationErrorAreaCounts(

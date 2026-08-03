@@ -291,6 +291,14 @@ const providerSettingsChangeSchema = z.discriminatedUnion("action", [
     action: z.literal("reset"),
   }).strict(),
   z.object({
+    action: z.literal("reset-feature"),
+    capability: providerCapabilitySchema,
+  }).strict(),
+  z.object({
+    action: z.literal("reset-provider"),
+    providerId: providerIdSchema,
+  }).strict(),
+  z.object({
     action: z.literal("route"),
     capability: providerCapabilitySchema,
     providerId: providerIdSchema.nullable(),
@@ -308,10 +316,10 @@ const updateApplicationSettingsSchema = z.object({
       path: ["changes"],
     });
   }
-  const resetCount = request.providerChanges.filter((change) => {
+  const resetsAllProviders = request.providerChanges.some((change) => {
     return change.action === "reset";
-  }).length;
-  if (resetCount > 0 && request.providerChanges.length !== 1) {
+  });
+  if (resetsAllProviders && request.providerChanges.length !== 1) {
     context.addIssue({
       code: "custom",
       message: "Provider reset cannot be combined with other provider changes.",

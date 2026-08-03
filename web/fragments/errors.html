@@ -11,22 +11,36 @@
       <h1 id="error-reports-title">Error reports</h1>
       <p>Review sanitized operational failures recorded by CiteLoom. Times are shown in your local time zone.</p>
     </div>
-    <button
-      class="button secondary error-reports-refresh"
-      type="button"
-      :aria-busy="loading"
-      :disabled="loading"
-      @click="refresh()"
-    >
-      <svg
-        aria-hidden="true"
-        class="citeloom-icon citeloom-small-icon"
-        :class="{ spin: loading }"
+    <div class="error-reports-actions">
+      <button
+        class="button secondary error-reports-purge"
+        type="button"
+        :aria-busy="purging"
+        :disabled="busy || errorPage.counts.all === 0"
+        @click="purgeErrors()"
       >
-        <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
-      </svg>
-      <span x-text="loading ? 'Refreshing' : 'Refresh'">Refresh</span>
-    </button>
+        <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use>
+        </svg>
+        <span x-text="purging ? 'Purging' : 'Purge logs'">Purge logs</span>
+      </button>
+      <button
+        class="button secondary error-reports-refresh"
+        type="button"
+        :aria-busy="loading"
+        :disabled="busy"
+        @click="refresh()"
+      >
+        <svg
+          aria-hidden="true"
+          class="citeloom-icon citeloom-small-icon"
+          :class="{ spin: loading }"
+        >
+          <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
+        </svg>
+        <span x-text="loading ? 'Refreshing' : 'Refresh'">Refresh</span>
+      </button>
+    </div>
   </header>
 
   <nav class="error-area-filters" aria-label="Error categories">
@@ -36,7 +50,7 @@
         type="button"
         :aria-current="activeArea === area.id ? 'page' : null"
         :class="{ active: activeArea === area.id }"
-        :disabled="loading"
+        :disabled="busy"
         @click="selectArea(area.id)"
       >
         <span x-text="area.label"></span>
@@ -193,13 +207,13 @@
       <button
         class="button secondary"
         type="button"
-        :disabled="!canLoadNewer || loading"
+        :disabled="!canLoadNewer || busy"
         @click="loadNewer()"
       >Newer</button>
       <button
         class="button secondary"
         type="button"
-        :disabled="!canLoadOlder || loading"
+        :disabled="!canLoadOlder || busy"
         @click="loadOlder()"
       >Older</button>
     </div>

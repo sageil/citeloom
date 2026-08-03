@@ -12,6 +12,8 @@ import {
   readPositiveInteger,
   readTimestamp,
 } from "./citeloom-boundaries.js";
+import { requestConfirmation } from "./citeloom-confirmation.js";
+import { dispatchNotice } from "./citeloom-notices.js";
 
 const errorAreas = Object.freeze([
   "all",
@@ -100,6 +102,16 @@ export function readApplicationErrorPage(value) {
     page: currentPage,
     pageCount,
     total: readNonNegativeInteger(page.total, "filtered error count"),
+  };
+}
+
+export function readApplicationErrorPurgeResult(value) {
+  const result = readPlainObject(value, "application error purge result");
+  return {
+    deleted: readNonNegativeInteger(
+      result.deleted,
+      "purged application error count",
+    ),
   };
 }
 
@@ -263,6 +275,8 @@ export function registerPage(alpine) {
     errorPage: buildEmptyErrorPage(),
     hasLoaded: false,
     loading: false,
+    purgeController: null,
+    purging: false,
     requestController: null,
 
     get areaOptions() {
@@ -298,11 +312,16 @@ export function registerPage(alpine) {
       return this.errorPage.page < this.errorPage.pageCount;
     },
 
+    get busy() {
+      return this.loading || this.purging;
+    },
+
     initialize() {
       void this.loadErrors(1);
     },
 
     destroy() {
+      this.purgeController?.abort();
       this.requestController?.abort();
     },
 
@@ -361,8 +380,58 @@ export function registerPage(alpine) {
     },
 
     refresh() {
-      if (!this.loading) {
+      if (!this.busy) {
         void this.loadErrors(this.errorPage.page);
+      }
+    },
+
+    async purgeErrors() {
+      if (this.busy || this.errorPage.counts.all === 0) {
+        return;
+      }
+      const count = this.errorPage.counts.all;
+      const confirmed = await requestConfirmation({
+        cancelLabel: "Keep logs",
+        confirmLabel: "Purge logs",
+        description: "This permanently removes every system-wide and current workspace error report visible here, including retained Docling details. New errors can still be recorded.",
+        title: `Purge ${count} ${count === 1 ? "error log" : "error logs"}?`,
+        tone: "danger",
+      });
+      if (!confirmed || this.busy) {
+        return;
+      }
+      const controller = new AbortController();
+      this.purgeController = controller;
+      this.purging = true;
+      this.errorMessage = "";
+      try {
+        const response = await fetch("/api/errors", {
+          headers: { accept: "application/json" },
+          method: "DELETE",
+          signal: controller.signal,
+        });
+        const result = await readJsonResponse(
+          response,
+          "Application error purge",
+          readApplicationErrorPurgeResult,
+        );
+        this.errorPage = buildEmptyErrorPage();
+        this.hasLoaded = true;
+        await this.loadErrors(1);
+        const noun = result.deleted === 1 ? "error log" : "error logs";
+        dispatchNotice("success", `Purged ${result.deleted} ${noun}.`);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        this.errorMessage = error instanceof Error
+          ? error.message
+          : "Application error logs could not be purged.";
+      } finally {
+        if (this.purgeController === controller) {
+          this.purgeController = null;
+          this.purging = false;
+        }
       }
     },
 

@@ -92,24 +92,7 @@ export function buildAppConfig(
     supportThreshold: settings.claimVerifierSupportThreshold,
     timeoutMs: secondsToMilliseconds(settings.claimVerifierTimeoutSeconds),
   };
-  const docling: AppConfig["docling"] = {
-    apiKey: settings.doclingApiKey,
-    baseTimeoutMs: secondsToMilliseconds(settings.doclingTimeoutSeconds),
-    baseUrl: removeTrailingSlash(settings.doclingBaseUrl),
-    maxTimeoutMs: secondsToMilliseconds(settings.doclingMaxTimeoutSeconds),
-    megabyteTimeoutMs: secondsToMilliseconds(settings.doclingMegabyteTimeoutSeconds),
-    ocrEnabled: settings.doclingOcrEnabled,
-    pageTimeoutMs: secondsToMilliseconds(settings.doclingPageTimeoutSeconds),
-    pdfBackend: settings.doclingPdfBackend,
-    performanceMetricsEnabled: settings.doclingPerformanceMetricsEnabled,
-    performanceMetricsRetentionDays:
-      settings.doclingPerformanceMetricsRetentionDays,
-    requestTimeoutMs: secondsToMilliseconds(settings.doclingRequestTimeoutSeconds),
-    secondaryImageScale: settings.doclingSecondaryImageScale,
-    tableMode: settings.doclingTableMode,
-    tableStructureEnabled: settings.doclingTableStructureEnabled,
-    tocEnabled: settings.doclingTocEnabled,
-  };
+  const docling = buildDoclingConfig(settings, providerSettings);
   const embeddingSpace: AppConfig["embeddingSpace"] = {
     dimensions: settings.embeddingDimensions,
     id: embeddingSpaceId,
@@ -173,6 +156,97 @@ export function buildAppConfig(
     textToSpeech: buildTextToSpeechConfig(settings, providerSettings),
     worker,
   };
+}
+
+function buildDoclingConfig(
+  settings: RuntimeSettings,
+  providerSettings: ProviderSettings,
+): AppConfig["docling"] {
+  return {
+    apiKey: settings.doclingApiKey,
+    baseTimeoutMs: secondsToMilliseconds(settings.doclingTimeoutSeconds),
+    baseUrl: removeTrailingSlash(settings.doclingBaseUrl),
+    maxTimeoutMs: secondsToMilliseconds(settings.doclingMaxTimeoutSeconds),
+    megabyteTimeoutMs: secondsToMilliseconds(settings.doclingMegabyteTimeoutSeconds),
+    ocrEnabled: settings.doclingOcrEnabled,
+    pageTimeoutMs: secondsToMilliseconds(settings.doclingPageTimeoutSeconds),
+    pdfBackend: settings.doclingPdfBackend,
+    performanceMetricsEnabled: settings.doclingPerformanceMetricsEnabled,
+    performanceMetricsRetentionDays:
+      settings.doclingPerformanceMetricsRetentionDays,
+    pipeline: settings.doclingPipeline,
+    requestTimeoutMs: secondsToMilliseconds(settings.doclingRequestTimeoutSeconds),
+    secondaryImageScale: settings.doclingSecondaryImageScale,
+    tableMode: settings.doclingTableMode,
+    tableStructureEnabled: settings.doclingTableStructureEnabled,
+    tocEnabled: settings.doclingTocEnabled,
+    vlm: resolveDoclingVlmConfig(settings, providerSettings),
+  };
+}
+
+function resolveDoclingVlmConfig(
+  settings: RuntimeSettings,
+  providerSettings: ProviderSettings,
+): AppConfig["docling"]["vlm"] {
+  if (settings.doclingPipeline === "standard") {
+    return null;
+  }
+  const providerId = settings.doclingVlmProviderId;
+  const connection = providerSettings.connections[providerId];
+  const baseUrl = connection.answer.baseUrl ?? connection.baseUrl;
+  const model = settings.doclingVlmModelOverride ?? connection.answer.model;
+  const profile = providerCatalog.find((candidate) => {
+    return candidate.id === providerId;
+  });
+  if (baseUrl === null) {
+    throw new Error(
+      `${profile?.displayName ?? providerId} has no URL configured for Docling VLM processing.`,
+    );
+  }
+  if (model === null) {
+    throw new Error(
+      `${profile?.displayName ?? providerId} has no model configured for Docling VLM processing.`,
+    );
+  }
+  return {
+    apiToken: connection.answer.apiToken ?? connection.apiToken,
+    endpointUrl: buildDoclingVlmEndpoint(providerId, baseUrl),
+    engineType: readDoclingVlmEngineType(providerId),
+    maxOutputTokens: settings.doclingVlmMaxOutputTokens,
+    model,
+    prompt: settings.doclingVlmPrompt,
+    providerId,
+    runtimeName: connection.name ?? profile?.displayName ?? providerId,
+  };
+}
+
+function buildDoclingVlmEndpoint(
+  providerId: string,
+  baseUrl: string,
+): string {
+  const normalized = removeTrailingSlash(baseUrl);
+  if (normalized.endsWith("/chat/completions")) {
+    return normalized;
+  }
+  if (providerId === "ollama" && !normalized.endsWith("/v1")) {
+    return `${normalized}/v1/chat/completions`;
+  }
+  return `${normalized}/chat/completions`;
+}
+
+function readDoclingVlmEngineType(
+  providerId: string,
+): NonNullable<AppConfig["docling"]["vlm"]>["engineType"] {
+  if (providerId === "ollama") {
+    return "api_ollama";
+  }
+  if (providerId === "lmstudio") {
+    return "api_lmstudio";
+  }
+  if (providerId === "openai") {
+    return "api_openai";
+  }
+  return "api";
 }
 
 export function readEmbeddingConfigurationWarnings(

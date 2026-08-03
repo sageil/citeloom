@@ -34,6 +34,7 @@ import {
   readCollectionLabel,
   readContentCountLabel,
   readDocumentStatusCopy,
+  readEmbeddingProgressDetail,
   readFileType,
   readMediaProgressDetail,
   readNextSelectedDocument,

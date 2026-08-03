@@ -1,5 +1,6 @@
 import type { RetrievalWindowPolicyContract } from "../retrieval/window-policy.js";
 import type { EmbeddingInputFormatContract } from "../embedding/input-format-model.js";
+import type { ProviderId } from "../providers/profiles.js";
 
 export interface AppConfig {
   claimVerifier: ClaimVerifierConfig;
@@ -156,11 +157,32 @@ export interface DoclingConfig {
   pdfBackend: DoclingPdfBackend;
   performanceMetricsEnabled: boolean;
   performanceMetricsRetentionDays: number;
+  pipeline: DoclingProcessingPipeline;
   requestTimeoutMs: number;
   secondaryImageScale: number;
   tableMode: DoclingTableMode;
   tableStructureEnabled: boolean;
   tocEnabled: boolean;
+  vlm: DoclingVlmConfig | null;
+}
+
+export type DoclingProcessingPipeline = "standard" | "vlm";
+
+export type DoclingVlmEngineType =
+  | "api"
+  | "api_lmstudio"
+  | "api_ollama"
+  | "api_openai";
+
+export interface DoclingVlmConfig {
+  apiToken: string | null;
+  endpointUrl: string;
+  engineType: DoclingVlmEngineType;
+  maxOutputTokens: number;
+  model: string;
+  prompt: string;
+  providerId: ProviderId;
+  runtimeName: string;
 }
 
 export interface DoclingProcessConfiguration {
@@ -296,6 +318,7 @@ export interface RuntimeSettings {
   doclingPdfBackend: DoclingPdfBackend;
   doclingPerformanceMetricsEnabled: boolean;
   doclingPerformanceMetricsRetentionDays: number;
+  doclingPipeline: DoclingProcessingPipeline;
   doclingSecondaryImageScale: number;
   doclingTableMode: DoclingTableMode;
   doclingTableStructureEnabled: boolean;
@@ -303,6 +326,10 @@ export interface RuntimeSettings {
   doclingDefaultServiceCapacity: number;
   doclingRequestTimeoutSeconds: number;
   doclingTimeoutSeconds: number;
+  doclingVlmMaxOutputTokens: number;
+  doclingVlmModelOverride: string | null;
+  doclingVlmPrompt: string;
+  doclingVlmProviderId: ProviderId;
   embeddingDimensions: EmbeddingDimensions;
   embeddingInputFormatId: string;
   embeddingSpaceId: string | null;

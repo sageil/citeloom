@@ -21,6 +21,17 @@ ADD --checksum=sha256:d1979e9f794c464c0d2e0b70a7fe14dd978e9dc644c0e71f14158cdf83
 
 COPY infra/docling/config.yml /opt/app-root/src/citeloom-docling-config.yml
 COPY infra/docling/citeloom_docling /opt/app-root/src/citeloom_docling
+COPY infra/docling/patches/api-image-text-first.patch /tmp/api-image-text-first.patch
+
+# Docling 2.113.0 puts the image before the prompt in OpenAI-compatible
+# multimodal requests. Some valid vision models, including Unlimited OCR,
+# require the prompt to precede the image. Guard the vendored source before
+# applying this narrow compatibility patch so an upstream change fails the
+# image build instead of silently patching unexpected code.
+RUN api_image_request=/opt/app-root/lib64/python3.12/site-packages/docling/utils/api_image_request.py \
+  && echo "751166781343bd16607469292c3039aee70dd71e587ab78306c0121862724ab5  ${api_image_request}" | sha256sum --check --status \
+  && patch --batch --forward --directory="$(dirname "${api_image_request}")" --strip=0 --input=/tmp/api-image-text-first.patch \
+  && rm /tmp/api-image-text-first.patch
 
 RUN chown -R 1001:0 \
     /opt/app-root/src/citeloom-docling-config.yml \

@@ -480,8 +480,8 @@
                   <template x-for="block in section.blocks" :key="block.key">
                     <div>
                       <template x-if="block.kind === 'paragraph'">
-                        <p>
-                          <span x-text="block.statements[0].content"></span>
+                        <div class="answer-statement-content">
+                          <div class="answer-markdown" x-html="block.statements[0].contentHtml"></div>
                           <span class="statement-citations">
                             <template x-for="citation in block.statements[0].citations" :key="citation.id">
                               <button
@@ -493,13 +493,13 @@
                               ></button>
                             </template>
                           </span>
-                        </p>
+                        </div>
                       </template>
                       <template x-if="block.kind === 'bullets'">
                         <ul>
                           <template x-for="statement in block.statements" :key="statement.key">
                             <li>
-                              <span x-text="statement.content"></span>
+                              <div class="answer-markdown" x-html="statement.contentHtml"></div>
                               <span class="statement-citations">
                                 <template x-for="citation in statement.citations" :key="citation.id">
                                   <button

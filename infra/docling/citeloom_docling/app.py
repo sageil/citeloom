@@ -3,11 +3,11 @@ import json
 import os
 import stat
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from docling.datamodel.service.options import ConvertDocumentsOptions
 from docling.datamodel.service.responses import TaskStatusResponse
@@ -43,6 +43,70 @@ CONTENT_ID_PATTERN = r"^[0-9a-f]{64}$"
 FILENAME_PATTERN = r"^[^/\\\x00]+$"
 
 
+class CiteLoomVlmParameters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = Field(min_length=1, max_length=300)
+
+
+class CiteLoomVlmEngineOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    concurrency: Literal[1]
+    engine_type: Literal[
+        "api",
+        "api_lmstudio",
+        "api_ollama",
+        "api_openai",
+    ]
+    headers: dict[str, str]
+    params: CiteLoomVlmParameters
+    timeout: float = Field(gt=0)
+    url: HttpUrl
+
+
+class CiteLoomVlmModelSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    default_repo_id: str = Field(min_length=1, max_length=300)
+    max_new_tokens: int = Field(ge=1, le=262_144)
+    name: str = Field(min_length=1, max_length=100)
+    prompt: str = Field(min_length=1, max_length=2_000)
+    response_format: Literal["markdown"]
+    supported_engines: list[
+        Literal[
+            "api",
+            "api_lmstudio",
+            "api_ollama",
+            "api_openai",
+        ]
+    ] = Field(min_length=1, max_length=1)
+    temperature: Literal[0]
+
+
+class CiteLoomVlmConvertOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    batch_size: Literal[1]
+    engine_options: CiteLoomVlmEngineOptions
+    force_backend_text: Literal[False]
+    model_spec: CiteLoomVlmModelSpec
+    scale: float = Field(gt=0, le=8)
+
+    @model_validator(mode="after")
+    def validate_engine(self) -> Self:
+        supported_engine = self.model_spec.supported_engines[0]
+        if supported_engine != self.engine_options.engine_type:
+            raise ValueError(
+                "VLM model and runtime engine types must match."
+            )
+        if self.model_spec.default_repo_id != self.engine_options.params.model:
+            raise ValueError(
+                "VLM model identifiers must match."
+            )
+        return self
+
+
 class CiteLoomConvertOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -64,10 +128,26 @@ class CiteLoomConvertOptions(BaseModel):
         "pypdfium2",
         "threaded_docling_parse",
     ]
-    pipeline: Literal["standard"]
+    pipeline: Literal["standard", "vlm"]
     table_cell_matching: Literal[True]
     table_mode: Literal["accurate", "fast"]
     to_formats: list[Literal["json"]] = Field(min_length=1, max_length=1)
+    vlm_pipeline_custom_config: CiteLoomVlmConvertOptions | None = None
+
+    @model_validator(mode="after")
+    def validate_pipeline(self) -> Self:
+        if self.pipeline == "vlm" and self.vlm_pipeline_custom_config is None:
+            raise ValueError(
+                "VLM processing requires a custom VLM configuration."
+            )
+        if (
+            self.pipeline == "standard"
+            and self.vlm_pipeline_custom_config is not None
+        ):
+            raise ValueError(
+                "Standard processing cannot include a VLM configuration."
+            )
+        return self
 
 
 class ConvertContentRequest(BaseModel):
@@ -156,7 +236,7 @@ def create_app():
         )
         assert_page_image_policy(request.options)
         raw_options = ConvertDocumentsOptions.model_validate(
-            request.options.model_dump()
+            request.options.model_dump(mode="json")
         )
         options = normalize_convert_options(raw_options, service_policy)
         validate_convert_options(options, service_policy)

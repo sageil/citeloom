@@ -44,6 +44,7 @@ import {
 import {
   createDoclingAttemptConfigSnapshot,
   restoreDoclingConfig,
+  type DoclingAttemptConfigSnapshot,
 } from "../docling/protocol/run-metadata.js";
 import {
   DoclingMetricsStore,
@@ -766,9 +767,14 @@ export class IngestionProcessor {
       job.ownerId,
       proposedAttemptConfig,
     );
+    const vlmApiToken = readDoclingVlmApiToken(
+      attemptConfig,
+      this.config.docling,
+    );
     const doclingConfig = restoreDoclingConfig(
       attemptConfig,
       this.config.docling.apiKey,
+      vlmApiToken,
     );
     if (doclingConfig.baseUrl !== assignment.baseUrl) {
       throw new Error(
@@ -1340,6 +1346,19 @@ export class IngestionProcessor {
     await this.sourceContentStore.reconcileDocumentDeletion(documentId);
   }
 
+}
+
+function readDoclingVlmApiToken(
+  snapshot: DoclingAttemptConfigSnapshot,
+  current: AppConfig["docling"],
+): string | null {
+  if (snapshot.vlm === null) {
+    return null;
+  }
+  if (current.vlm?.providerId !== snapshot.vlm.providerId) {
+    return null;
+  }
+  return current.vlm.apiToken;
 }
 
 function isCompatibleDescriptionCheckpoint(

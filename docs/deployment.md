@@ -40,6 +40,7 @@ The stack pulls the application, PostgreSQL, Docling, and HHEM images from the `
 Caddy uses the version pinned in the Compose file.
 Model providers run separately.
 A fresh database points the required routes to Ollama and leaves reranking and speech ready for the administrator to configure.
+It selects Standard Docling processing and saves an inactive Ollama Unlimited OCR model identifier for use after that model is installed and the administrator switches PDF processing to VLM.
 
 Open `https://localhost:3443`.
 If the browser warns about the local development certificate, use its trust or continue flow for this local site.
@@ -189,6 +190,9 @@ It leaves existing users and password hashes unchanged.
 The migration command still requires both environment variables, but it does not use them to authenticate or replace an existing administrator.
 
 Authentication stores session data in PostgreSQL and uses a host-only cookie with `Secure`, `HttpOnly`, and `SameSite=Strict`.
+Regular sessions expire after 2 hours of inactivity or 12 hours in total.
+Remembered sessions expire after 7 days of inactivity or 30 days in total.
+Administrator-created setup and password-reset links expire after 24 hours and are consumed when the user sets a password.
 `CITELOOM_PUBLIC_ORIGIN` is the required origin for state-changing browser requests.
 Keep `CITELOOM_SECURE_SESSION_COOKIE=true` outside isolated automated tests.
 Set `CITELOOM_TRUST_PROXY=true` only when a trusted proxy replaces forwarded client headers, as the included Caddy service does.

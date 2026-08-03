@@ -4,7 +4,10 @@ import type { DoclingConvertRequester } from "./index.js";
 import type {
   DoclingConfig,
   DoclingPdfBackend,
+  DoclingProcessingPipeline,
   DoclingTableMode,
+  DoclingVlmConfig,
+  DoclingVlmEngineType,
 } from "../../config/index.js";
 import { calculateDoclingConversionDeadline } from "./deadline.js";
 import {
@@ -41,8 +44,11 @@ export interface DoclingConversionRequestOptions {
   includeImages: true;
   includePageImages: boolean;
   kind: DoclingRequestKind;
+  pipeline: DoclingProcessingPipeline;
   pdfBackend: DoclingPdfBackend;
   tableMode: DoclingTableMode;
+  vlm: DoclingVlmConfig | null;
+  vlmRequestTimeoutMs: number;
 }
 
 export type DoclingRequestKind = "content";
@@ -64,7 +70,7 @@ export interface RequestDoclingConversionResult {
   requestObserver: DoclingRequestObserver;
 }
 
-interface DoclingConvertOptionsDto {
+interface DoclingConvertOptionsBaseDto {
   abort_on_error: true;
   do_ocr: boolean;
   do_table_structure: boolean;
@@ -77,10 +83,53 @@ interface DoclingConvertOptionsDto {
   include_page_images: boolean;
   ocr_preset: string;
   pdf_backend: DoclingPdfBackend;
-  pipeline: "standard";
   table_cell_matching: true;
   table_mode: DoclingTableMode;
   to_formats: ["json"];
+}
+
+interface DoclingStandardConvertOptionsDto extends DoclingConvertOptionsBaseDto {
+  pipeline: "standard";
+}
+
+interface DoclingVlmConvertOptionsDto extends DoclingConvertOptionsBaseDto {
+  pipeline: "vlm";
+  vlm_pipeline_custom_config: DoclingVlmCustomConfigDto;
+}
+
+type DoclingConvertOptionsDto =
+  | DoclingStandardConvertOptionsDto
+  | DoclingVlmConvertOptionsDto;
+
+interface DoclingVlmCustomConfigDto {
+  batch_size: 1;
+  engine_options: DoclingVlmEngineOptionsDto;
+  force_backend_text: false;
+  model_spec: DoclingVlmModelSpecDto;
+  scale: number;
+}
+
+interface DoclingVlmEngineOptionsDto {
+  concurrency: 1;
+  engine_type: DoclingVlmEngineType;
+  headers: { [key: string]: string };
+  params: DoclingVlmParametersDto;
+  timeout: number;
+  url: string;
+}
+
+interface DoclingVlmParametersDto {
+  model: string;
+}
+
+interface DoclingVlmModelSpecDto {
+  default_repo_id: string;
+  max_new_tokens: number;
+  name: string;
+  prompt: string;
+  response_format: "markdown";
+  supported_engines: [DoclingVlmEngineType];
+  temperature: 0;
 }
 
 interface DoclingContentRequestDto {
@@ -103,8 +152,11 @@ export function buildDoclingConversionOptions(
     includeImages: true,
     includePageImages: isStandaloneImageFormat(format),
     kind: "content",
+    pipeline: config.pipeline,
     pdfBackend: config.pdfBackend,
     tableMode: config.tableMode,
+    vlm: config.vlm,
+    vlmRequestTimeoutMs: config.requestTimeoutMs,
   };
 }
 
@@ -162,7 +214,7 @@ export function buildDoclingContentRequest(
   serverTimeoutMs: number,
   taskId: string,
 ): DoclingContentRequestDto {
-  const requestOptions: DoclingConvertOptionsDto = {
+  const baseOptions: DoclingConvertOptionsBaseDto = {
     abort_on_error: true,
     do_ocr: options.doOcr,
     do_table_structure: options.doTableStructure,
@@ -175,11 +227,14 @@ export function buildDoclingContentRequest(
     include_page_images: options.includePageImages,
     ocr_preset: DOCLING_OCR_PRESET,
     pdf_backend: options.pdfBackend,
-    pipeline: "standard",
     table_cell_matching: true,
     table_mode: options.tableMode,
     to_formats: ["json"],
   };
+  const requestOptions = buildDoclingConvertOptionsDto(
+    baseOptions,
+    options,
+  );
   return {
     byte_length: source.byteLength,
     document_id: source.documentId,
@@ -210,8 +265,86 @@ export function readDoclingRequestConfiguration(
     imagesScale: options.imagesScale,
     includeImages: options.includeImages,
     includePageImages: options.includePageImages,
+    pipeline: options.pipeline,
     pdfBackend: options.pdfBackend,
     tableMode: options.doTableStructure ? options.tableMode : null,
+    vlm: readDoclingVlmConfigSnapshot(options.vlm),
+  };
+}
+
+function buildDoclingConvertOptionsDto(
+  baseOptions: DoclingConvertOptionsBaseDto,
+  options: DoclingConversionRequestOptions,
+): DoclingConvertOptionsDto {
+  if (options.pipeline === "standard") {
+    return {
+      ...baseOptions,
+      pipeline: "standard",
+    };
+  }
+  if (options.vlm === null) {
+    throw new Error("Docling VLM processing requires a VLM configuration.");
+  }
+  return {
+    ...baseOptions,
+    pipeline: "vlm",
+    vlm_pipeline_custom_config: buildDoclingVlmCustomConfigDto(
+      options.vlm,
+      options.imagesScale,
+      options.vlmRequestTimeoutMs,
+    ),
+  };
+}
+
+function buildDoclingVlmCustomConfigDto(
+  config: DoclingVlmConfig,
+  scale: number,
+  requestTimeoutMs: number,
+): DoclingVlmCustomConfigDto {
+  const headers: { [key: string]: string } = {};
+  if (config.apiToken !== null) {
+    headers.Authorization = `Bearer ${config.apiToken}`;
+  }
+  return {
+    batch_size: 1,
+    engine_options: {
+      concurrency: 1,
+      engine_type: config.engineType,
+      headers,
+      params: {
+        model: config.model,
+      },
+      timeout: Math.max(1, Math.floor(requestTimeoutMs / 1_000)),
+      url: config.endpointUrl,
+    },
+    force_backend_text: false,
+    model_spec: {
+      default_repo_id: config.model,
+      max_new_tokens: config.maxOutputTokens,
+      name: config.runtimeName,
+      prompt: config.prompt,
+      response_format: "markdown",
+      supported_engines: [config.engineType],
+      temperature: 0,
+    },
+    scale,
+  };
+}
+
+function readDoclingVlmConfigSnapshot(
+  config: DoclingVlmConfig | null,
+): DoclingRequestConfiguration["vlm"] {
+  if (config === null) {
+    return null;
+  }
+  return {
+    endpointUrl: config.endpointUrl,
+    engineType: config.engineType,
+    maxOutputTokens: config.maxOutputTokens,
+    model: config.model,
+    prompt: config.prompt,
+    providerId: config.providerId,
+    runtimeName: config.runtimeName,
   };
 }
 

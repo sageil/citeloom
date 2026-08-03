@@ -20,6 +20,7 @@ import {
   readSettingsLocation,
   writeSettingsLocation,
 } from "./citeloom-settings-history.js";
+import { createSettingsResetActions } from "./citeloom-settings-resets.js";
 
 const providerCapabilities = Object.freeze([
   "answer",
@@ -121,6 +122,18 @@ const capabilityLabels = Object.freeze({
   textToSpeech: "Spoken answers",
 });
 const startupGroupName = "Startup and deployment";
+const doclingAdvancedFieldKeys = Object.freeze([
+  "doclingPdfBackend",
+  "doclingTocEnabled",
+  "doclingVlmMaxOutputTokens",
+  "doclingVlmPrompt",
+]);
+const doclingVlmFieldKeys = Object.freeze([
+  "doclingVlmMaxOutputTokens",
+  "doclingVlmModelOverride",
+  "doclingVlmPrompt",
+  "doclingVlmProviderId",
+]);
 
 function readApplicationSettings(value) {
   const response = readPlainObject(value, "application settings");
@@ -1048,6 +1061,7 @@ export function registerPage(alpine) {
     credentialClears: [],
     credentialDrafts: {},
     drafts: {},
+    doclingAdvancedExpanded: false,
     errorMessage: "",
     featureCapabilities: [...providerCapabilities],
     featureAdvancedOpen: false,
@@ -1084,6 +1098,7 @@ export function registerPage(alpine) {
     settingsRevisionListener: null,
     settingsHistoryListener: null,
     sourceFilter: "all",
+    ...createSettingsResetActions(alpine),
 
     get areaCount() {
       return this.groups.length + 3;
@@ -1672,11 +1687,100 @@ export function registerPage(alpine) {
     },
 
     runtimePanelBadgeLabel(panel) {
+      if (this.isDoclingPanel(panel)) {
+        if (panel.id === "docling-connection") {
+          return "Configured";
+        }
+        if (panel.id === "docling-pdf-processing") {
+          return String(this.drafts.doclingPipeline ?? "standard").toUpperCase();
+        }
+        if (panel.id === "docling-performance") {
+          return `${this.drafts.doclingMaxTimeoutSeconds ?? "-"}s max`;
+        }
+        if (panel.id === "docling-diagnostics") {
+          return this.drafts.doclingPerformanceMetricsEnabled === true
+            ? "Enabled"
+            : "Disabled";
+        }
+      }
       const field = panel.fields[0];
       if (panel.fields.length !== 1 || field === undefined) {
         return this.formatSettingCount(panel.fields.length);
       }
       return this.fieldSourceLabel(field);
+    },
+
+    runtimePanelIcon(panel) {
+      if (panel.id === "docling-connection") {
+        return "./assets/images/citeloom-icons.svg#citeloom-link";
+      }
+      if (panel.id === "docling-pdf-processing") {
+        return "./assets/images/citeloom-icons.svg#citeloom-documents";
+      }
+      if (panel.id === "docling-performance") {
+        return "./assets/images/citeloom-icons.svg#citeloom-clock";
+      }
+      if (panel.id === "docling-diagnostics") {
+        return "./assets/images/citeloom-icons.svg#citeloom-health";
+      }
+      return "./assets/images/citeloom-icons.svg#citeloom-stack";
+    },
+
+    isDoclingPanel(panel) {
+      return panel.fields[0]?.group === "Docling";
+    },
+
+    isDoclingPdfPanel(panel) {
+      return panel.id === "docling-pdf-processing";
+    },
+
+    runtimeVisiblePanelFields(panel) {
+      const fields = [];
+      for (const field of panel.fields) {
+        if (this.runtimeFieldVisible(field)) {
+          fields.push(field);
+        }
+      }
+      return fields;
+    },
+
+    runtimeFieldVisible(field) {
+      if (
+        doclingVlmFieldKeys.includes(field.key)
+        && this.drafts.doclingPipeline !== "vlm"
+      ) {
+        return false;
+      }
+      if (
+        doclingAdvancedFieldKeys.includes(field.key)
+        && !this.doclingAdvancedExpanded
+        && this.query.trim() === ""
+      ) {
+        return false;
+      }
+      return true;
+    },
+
+    runtimeFieldIsWide(field) {
+      return field.key === "doclingPipeline"
+        || field.key === "doclingOcrEnabled"
+        || field.key === "doclingVlmPrompt"
+        || field.key === "doclingSecondaryImageScale";
+    },
+
+    runtimeFieldStartsSection(field) {
+      return field.key === "doclingOcrEnabled";
+    },
+
+    toggleDoclingAdvanced() {
+      this.doclingAdvancedExpanded = !this.doclingAdvancedExpanded;
+    },
+
+    doclingPipelineGuidance() {
+      if (this.drafts.doclingPipeline === "vlm") {
+        return "VLM processing reads every PDF page visually with the selected provider and model. It is best suited to scanned documents and complex layouts, and usually takes longer than Standard processing.";
+      }
+      return "Standard processing uses Docling's layout, OCR, and table models. It is usually faster and remains the default for new PDF conversions.";
     },
 
     selectRuntimePanel(id) {
@@ -1977,12 +2081,6 @@ export function registerPage(alpine) {
       this.pending[field.key] = "set";
     },
 
-    resetField(field) {
-      this.saved = false;
-      this.drafts[field.key] = createDraftValue(field, field.defaultValue);
-      this.pending[field.key] = "reset";
-    },
-
     fieldSourceClass(field) {
       if (this.pending[field.key] === "reset") {
         return "pending";
@@ -2026,20 +2124,9 @@ export function registerPage(alpine) {
       await this.submitSettingsUpdate(changes, providerChanges);
     },
 
-    async resetAll() {
-      if (this.settings === null || this.saving) {
-        return;
-      }
-      const changes = [];
-      for (const field of this.settings.fields) {
-        changes.push({ action: "reset", key: field.key });
-      }
-      await this.submitSettingsUpdate(changes, [{ action: "reset" }]);
-    },
-
     async submitSettingsUpdate(changes, providerChanges) {
       if (this.settings === null) {
-        return;
+        return false;
       }
       this.saving = true;
       this.saved = false;
@@ -2061,11 +2148,13 @@ export function registerPage(alpine) {
         this.applySettings(settings);
         this.saved = true;
         this.$dispatch("citeloom:settings-saved");
+        return true;
       } catch (error) {
         dispatchNotice(
           "error",
           error instanceof Error ? error.message : "The settings update failed.",
         );
+        return false;
       } finally {
         this.saving = false;
         if (this.reloadAfterSave) {

@@ -5,9 +5,12 @@ import { z } from "zod";
 import type {
   DoclingConfig,
   DoclingPdfBackend,
+  DoclingProcessingPipeline,
   DoclingProcessConfiguration,
   DoclingTableMode,
+  DoclingVlmEngineType,
 } from "../../config/index.js";
+import { providerIdSchema, type ProviderId } from "../../providers/profiles.js";
 import type { DoclingVersionIdentity } from "./index.js";
 import {
   DOCLING_SERVE_VERSION,
@@ -37,11 +40,23 @@ export interface DoclingAttemptConfigSnapshot {
   pdfBackend: DoclingPdfBackend;
   performanceMetricsEnabled: boolean;
   performanceMetricsRetentionDays: number;
+  pipeline: DoclingProcessingPipeline;
   requestTimeoutMs: number;
   secondaryImageScale: number;
   settingsVersion: number;
   tableMode: DoclingTableMode;
   tableStructureEnabled: boolean;
+  vlm: DoclingVlmConfigSnapshot | null;
+}
+
+export interface DoclingVlmConfigSnapshot {
+  endpointUrl: string;
+  engineType: DoclingVlmEngineType;
+  maxOutputTokens: number;
+  model: string;
+  prompt: string;
+  providerId: ProviderId;
+  runtimeName: string;
 }
 
 export type { DoclingProcessConfiguration } from "../../config/index.js";
@@ -53,8 +68,10 @@ export interface DoclingEffectiveRequestOptions {
   imagesScale: number;
   includeImages: boolean;
   includePageImages: boolean;
+  pipeline: DoclingProcessingPipeline;
   pdfBackend: DoclingPdfBackend | null;
   tableMode: DoclingTableMode | null;
+  vlm: DoclingVlmConfigSnapshot | null;
 }
 
 export interface DoclingRequestConfiguration {
@@ -64,8 +81,10 @@ export interface DoclingRequestConfiguration {
   imagesScale: number;
   includeImages: boolean;
   includePageImages: boolean;
+  pipeline: DoclingProcessingPipeline;
   pdfBackend: DoclingPdfBackend;
   tableMode: DoclingTableMode | null;
+  vlm: DoclingVlmConfigSnapshot | null;
 }
 
 export interface DoclingProfilingSummary {
@@ -81,6 +100,21 @@ export interface DoclingProfilingSummary {
 
 export interface DoclingServiceIdentity extends DoclingVersionIdentity {}
 
+const doclingVlmConfigSnapshotSchema = z.object({
+  endpointUrl: z.url().refine(isHttpUrl, "must use http or https"),
+  engineType: z.enum([
+    "api",
+    "api_lmstudio",
+    "api_ollama",
+    "api_openai",
+  ]),
+  maxOutputTokens: z.number().int().min(1).max(262_144).default(32_768),
+  model: z.string().trim().min(1).max(300),
+  prompt: z.string().trim().min(1).max(2_000).default("document parsing."),
+  providerId: providerIdSchema,
+  runtimeName: z.string().trim().min(1).max(100),
+}).strict();
+
 const attemptConfigSchema = z.object({
   baseTimeoutMs: z.number().int().min(60_000).max(604_800_000),
   baseUrl: z.url().refine(isHttpUrl, "must use http or https"),
@@ -95,39 +129,45 @@ const attemptConfigSchema = z.object({
   ]),
   performanceMetricsEnabled: z.boolean(),
   performanceMetricsRetentionDays: z.number().int().min(1).max(3_650),
+  pipeline: z.enum(["standard", "vlm"]).default("standard"),
   requestTimeoutMs: z.number().int().min(10_000).max(3_600_000),
   secondaryImageScale: z.number().min(0.1).max(8),
   settingsVersion: z.number().int().nonnegative(),
   tableMode: z.enum(["accurate", "fast"]),
   tableStructureEnabled: z.boolean(),
-}).strict();
+  vlm: doclingVlmConfigSnapshotSchema.nullable().default(null),
+}).strict().superRefine(validatePipelineConfiguration);
 
 export const doclingProcessConfigurationSchema = z.object({
   numThreads: z.number().int().positive().max(1_024),
   pageBatchSize: z.number().int().positive().max(1_024),
   profilePipelineTimings: z.boolean(),
 }).strict();
-const effectiveRequestOptionsSchema = z.object({
+const effectiveRequestOptionsSchemaBase = z.object({
   doOcr: z.boolean(),
   doTableStructure: z.boolean(),
   imageExportMode: z.enum(["embedded", "placeholder"]),
   imagesScale: z.number().min(0.1).max(8),
   includeImages: z.boolean(),
   includePageImages: z.boolean(),
+  pipeline: z.enum(["standard", "vlm"]).default("standard"),
   pdfBackend: z.enum([
     "docling_parse",
     "threaded_docling_parse",
     "pypdfium2",
   ]).nullable(),
   tableMode: z.enum(["accurate", "fast"]).nullable(),
+  vlm: doclingVlmConfigSnapshotSchema.nullable().default(null),
 }).strict();
-export const doclingRequestConfigurationSchema = effectiveRequestOptionsSchema.extend({
+const effectiveRequestOptionsSchema = effectiveRequestOptionsSchemaBase
+  .superRefine(validatePipelineConfiguration);
+export const doclingRequestConfigurationSchema = effectiveRequestOptionsSchemaBase.extend({
   pdfBackend: z.enum([
     "docling_parse",
     "threaded_docling_parse",
     "pypdfium2",
   ]),
-}).strict();
+}).strict().superRefine(validatePipelineConfiguration);
 export const doclingServiceIdentitySchema = z.object({
   coreVersion: z.string().min(1),
   jobkitVersion: z.string().min(1),
@@ -151,11 +191,13 @@ export function createDoclingAttemptConfigSnapshot(
     pdfBackend: config.pdfBackend,
     performanceMetricsEnabled: config.performanceMetricsEnabled,
     performanceMetricsRetentionDays: config.performanceMetricsRetentionDays,
+    pipeline: config.pipeline,
     requestTimeoutMs: config.requestTimeoutMs,
     secondaryImageScale: config.secondaryImageScale,
     settingsVersion,
     tableMode: config.tableMode,
     tableStructureEnabled: config.tableStructureEnabled,
+    vlm: readDoclingVlmConfigSnapshot(config),
   });
 }
 
@@ -177,6 +219,7 @@ export function decodeDoclingAttemptConfigSnapshot(
 export function restoreDoclingConfig(
   snapshot: DoclingAttemptConfigSnapshot,
   apiKey: string | null,
+  vlmApiToken: string | null = null,
 ): DoclingConfig {
   const normalized = decodeDoclingAttemptConfigSnapshot(snapshot);
   return {
@@ -191,11 +234,15 @@ export function restoreDoclingConfig(
     performanceMetricsEnabled: normalized.performanceMetricsEnabled,
     performanceMetricsRetentionDays:
       normalized.performanceMetricsRetentionDays,
+    pipeline: normalized.pipeline,
     requestTimeoutMs: normalized.requestTimeoutMs,
     secondaryImageScale: normalized.secondaryImageScale,
     tableMode: normalized.tableMode,
     tableStructureEnabled: normalized.tableStructureEnabled,
     tocEnabled: false,
+    vlm: normalized.vlm === null
+      ? null
+      : { ...normalized.vlm, apiToken: vlmApiToken },
   };
 }
 
@@ -255,4 +302,44 @@ export function decodeDoclingRequestConfiguration(
 function isHttpUrl(value: string): boolean {
   const protocol = new URL(value).protocol;
   return protocol === "http:" || protocol === "https:";
+}
+
+function readDoclingVlmConfigSnapshot(
+  config: DoclingConfig,
+): DoclingVlmConfigSnapshot | null {
+  if (config.vlm === null) {
+    return null;
+  }
+  return {
+    endpointUrl: config.vlm.endpointUrl,
+    engineType: config.vlm.engineType,
+    maxOutputTokens: config.vlm.maxOutputTokens,
+    model: config.vlm.model,
+    prompt: config.vlm.prompt,
+    providerId: config.vlm.providerId,
+    runtimeName: config.vlm.runtimeName,
+  };
+}
+
+function validatePipelineConfiguration(
+  value: {
+    pipeline: DoclingProcessingPipeline;
+    vlm: DoclingVlmConfigSnapshot | null;
+  },
+  context: z.RefinementCtx,
+): void {
+  if (value.pipeline === "vlm" && value.vlm === null) {
+    context.addIssue({
+      code: "custom",
+      message: "VLM processing requires a VLM configuration.",
+      path: ["vlm"],
+    });
+  }
+  if (value.pipeline === "standard" && value.vlm !== null) {
+    context.addIssue({
+      code: "custom",
+      message: "Standard processing must not include a VLM configuration.",
+      path: ["vlm"],
+    });
+  }
 }

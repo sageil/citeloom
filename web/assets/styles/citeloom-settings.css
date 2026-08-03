@@ -258,6 +258,40 @@
   border-right: 0;
 }
 
+.settings-runtime-field-entry {
+  display: grid;
+  min-width: 0;
+}
+
+.settings-runtime-field-entry-wide {
+  grid-column: 1 / -1;
+}
+
+.settings-runtime-field-entry > .settings-field {
+  height: 100%;
+}
+
+.settings-runtime-panel-fields > .settings-runtime-field-entry:nth-child(even) > .settings-field,
+.settings-runtime-panel-fields > .settings-runtime-field-entry:only-child > .settings-field {
+  border-right: 0;
+}
+
+.settings-runtime-section-heading {
+  display: grid;
+  gap: 4px;
+  padding: 4px 0 1px;
+}
+
+.settings-runtime-section-heading strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.settings-runtime-section-heading span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .provider-no-probe-note {
   color: var(--muted);
   font-size: 12px;
@@ -1270,6 +1304,147 @@
   line-height: 1.5;
 }
 
+.settings-runtime-editor-docling-pdf > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.32fr);
+}
+
+.settings-runtime-editor-docling-pdf .settings-feature-editor-heading,
+.settings-runtime-editor-docling-pdf .settings-feature-footer {
+  grid-column: 1 / -1;
+}
+
+.settings-runtime-editor-docling-pdf > div > .settings-feature-step:nth-of-type(1) {
+  margin-right: 0;
+  padding-right: 22px;
+}
+
+.settings-runtime-editor-docling-pdf > div > .settings-feature-step:nth-of-type(2) {
+  align-content: start;
+  margin-left: 0;
+  padding-left: 22px;
+  border-left: 1px solid var(--border);
+}
+
+.settings-runtime-editor-docling-pdf .settings-runtime-panel-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+}
+
+.settings-runtime-editor-docling-pdf .settings-field {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(11, 16, 32, 0.46);
+}
+
+.settings-docling-mode-control {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+}
+
+.settings-docling-mode-control > button {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: rgba(11, 16, 32, 0.5);
+  color: var(--text);
+}
+
+.settings-docling-mode-control > button:last-child {
+  border-right: 0;
+}
+
+.settings-docling-mode-control > button:hover,
+.settings-docling-mode-control > button.active {
+  background: rgba(6, 182, 212, 0.075);
+}
+
+.settings-docling-mode-control > button.active {
+  box-shadow: inset 0 0 0 1px var(--cyan);
+  color: var(--cyan);
+}
+
+.settings-docling-mode-control > button > span {
+  display: grid;
+  gap: 3px;
+}
+
+.settings-docling-mode-control strong {
+  color: inherit;
+  font-size: 12px;
+}
+
+.settings-docling-mode-control small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 450;
+}
+
+.settings-docling-advanced {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(11, 16, 32, 0.35);
+}
+
+.settings-docling-advanced > button {
+  display: flex;
+  width: 100%;
+  min-height: 54px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.settings-docling-advanced > button[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
+}
+
+.settings-docling-advanced > button > span {
+  display: grid;
+  gap: 3px;
+}
+
+.settings-docling-advanced strong {
+  font-size: 11px;
+}
+
+.settings-docling-advanced small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.settings-runtime-editor-docling-pdf .settings-resolved-result {
+  grid-template-columns: 1fr;
+  margin-left: 0;
+}
+
+.settings-runtime-editor-docling-pdf .settings-resolved-result > div {
+  border-right: 0;
+}
+
+.settings-runtime-editor-docling-pdf .settings-docling-guidance strong {
+  color: var(--text);
+  font-weight: 500;
+  line-height: 1.65;
+}
+
 .settings-runtime-guidance > div:first-child strong {
   color: var(--cyan);
 }
@@ -1528,6 +1703,24 @@
   .settings-feature-workspace,
   .settings-provider-workspace {
     grid-template-columns: 1fr;
+  }
+
+  .settings-runtime-editor-docling-pdf > div {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-runtime-editor-docling-pdf .settings-feature-editor-heading,
+  .settings-runtime-editor-docling-pdf .settings-feature-footer,
+  .settings-runtime-editor-docling-pdf > div > .settings-feature-step {
+    grid-column: 1;
+  }
+
+  .settings-runtime-editor-docling-pdf > div > .settings-feature-step:nth-of-type(1),
+  .settings-runtime-editor-docling-pdf > div > .settings-feature-step:nth-of-type(2) {
+    margin: 0 22px;
+    padding-right: 0;
+    padding-left: 0;
+    border-left: 0;
   }
 
   .settings-provider-workspace > .settings-feature-sidebar {

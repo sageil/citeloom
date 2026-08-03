@@ -21,15 +21,23 @@ It generates structured answers using exact evidence references, converts them i
 ## Features
 
 - Ingest PDF, HTML, DOCX, XLSX, PPTX, JPEG, PNG, WebP, and readable UTF-8 text files.
-- Resume interrupted indexing jobs from durable checkpoints.
+- Organize a searchable document library with tags, catalog filters, ingestion controls, version history, evidence comparisons, reindexing, and guarded deletion.
+- Choose Standard Docling processing or opt-in VLM processing that visually reads each PDF page through a configured provider and model.
+- Resume interrupted indexing jobs from durable checkpoints, including completed page ranges for Standard PDFs.
 - Search original evidence with meaning-based and keyword retrieval.
 - Use generated text and table summaries to improve discovery without citing those summaries as source evidence.
-- Ask questions across all ready documents, selected files, or tags.
+- Ask questions across all ready documents, selected files, or tags, and rate retrieval, answer, and citation quality.
+- Find exact-word or semantic source matches without generating an answer.
 - Hold private document-grounded chats that retrieve relevant earlier turns while keeping every original message and citation snapshot.
 - Inspect text, table, image, and highlighted PDF evidence for validated citations.
 - Save and export research threads that keep their original answers, citations, and run settings.
+- Dictate Ask questions and listen to Ask or Chat answers through independently configured speech providers, with optional asynchronous audio preloading.
+- Route answers, Chat, query expansion, indexing, embeddings, reranking, transcription, and speech synthesis to different provider connections and models.
+- Manage workspace accounts and roles, run service diagnostics, inspect sanitized operational errors, and purge retained error reports with confirmation.
 - Reproduce retrieval runs with saved settings, stable seeds calculated from each request, consistent tie-breaking, and retrieval traces.
 - Keep unmodified source files in a local content store while PostgreSQL stores metadata and durable references.
+
+See the [complete feature guide](docs/features.md) for user workflows, administrator controls, availability, and recovery behavior.
 
 ## Requirements
 
@@ -114,11 +122,12 @@ See [Configuration](docs/configuration.md#provider-reference) for endpoint conve
 
 CiteLoom services run in Docker Compose while local model servers run on the host.
 Fresh settings use Ollama for answers, chat, extra search queries, summaries, and embeddings, and include oMLX model suggestions for optional reranking and speech.
+Standard Docling processing is selected by default, with an Ollama Unlimited OCR model override saved for administrators who opt into VLM processing.
 Adaptive inference is enabled by default for native Ollama GGUF language models.
 It uses a 65,536-token floor capped by the model maximum, grows bounded answer requests when their calculated requirement is larger, and reuses larger resident runners without shrinking them.
 Summaries, vision, tools, reasoning, and unbounded answers use the model maximum reported by Ollama.
 Embeddings, MLX runners, and other providers remain outside adaptive allocation.
-See [Ollama Adaptive inference](docs/configuration.md#ollama-adaptive-inference) for sizing examples, operational requirements, fallback behavior, and opt-out instructions.
+See [Ollama automatic context size](docs/configuration.md#ollama-automatic-context-size) for sizing examples, operational requirements, fallback behavior, and opt-out instructions.
 Users can route speech-to-text and text-to-speech independently to oMLX, OpenAI, Groq, or Custom.
 Users can optionally enable reranking with oMLX, Cohere, Jina, or Custom.
 
@@ -126,6 +135,7 @@ Users can optionally enable reranking with oMLX, Cohere, Jina, or Custom.
 | --- | --- | --- |
 | Ollama | `gemma4:e4b-mlx` | Answer generation, chat, summarization, and extra search queries |
 | Ollama | `snowflake-arctic-embed:137m` | Document and query embeddings |
+| Ollama | `frob/unlimited-ocr:q8_0` | Saved Docling VLM model override; inactive while Standard processing remains selected |
 | oMLX | `gte-reranker-modernbert-base` | Available for optional retrieval reranking when routed |
 | oMLX | `Qwen3-ASR-1.7B-8bit` | Available for speech-to-text transcription when routed |
 | oMLX | `Kokoro-82M-bf16` | Available for text-to-speech synthesis with the `af_heart` voice when routed |
@@ -153,6 +163,7 @@ flowchart LR
 
     Web -->|host.docker.internal| Ollama
     Worker -->|host.docker.internal| Ollama
+    Docling -->|optional VLM page requests| Ollama
     Web -->|host.docker.internal| OMLX
 ```
 
@@ -227,6 +238,7 @@ pnpm ask --tag research -- "What findings are supported across these documents?"
 ## Documentation
 
 - [Agent onboarding](LLM.MD) gives coding agents a guided repository tour, setup path, architectural boundaries, and verification workflow.
+- [Features](docs/features.md) describes the complete member and administrator feature set.
 - [Architecture](docs/architecture.md) explains ingestion, retrieval, answer publication, and service ownership.
 - [Configuration](docs/configuration.md) explains environment loading, providers, retrieval settings, and processing capacity.
 - [pnpm commands](docs/commands.md) explains every package script and when to use it.

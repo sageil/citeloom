@@ -1,6 +1,8 @@
 # Changing output-affecting OCR settings requires a DOCLING_PROTOCOL_VERSION bump.
 default_ocr_preset: rapidocr
 default_ocr_kind: rapidocr
+enable_remote_services: true
+allow_custom_vlm_config: true
 custom_ocr_presets:
   rapidocr:
     kind: rapidocr

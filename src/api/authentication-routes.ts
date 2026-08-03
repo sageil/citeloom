@@ -50,6 +50,8 @@ const ADMINISTRATOR_WEB_PATHS = new Set([
   "/errors",
   "/fragments/errors.html",
 ]);
+const LOGIN_REDIRECT_HEADER = "HX-Redirect";
+const LOGIN_REDIRECT_PATH = "/login";
 const disabledAuthenticationPrincipal: AuthenticatedPrincipal = {
   displayName: "Disabled authentication",
   role: "admin",
@@ -96,7 +98,13 @@ export function registerAuthenticationRoutes(
         webConfig,
       );
       if (principal === null) {
-        return reply.redirect("/login");
+        if (request.headers["hx-request"] === "true") {
+          return reply
+            .header(LOGIN_REDIRECT_HEADER, LOGIN_REDIRECT_PATH)
+            .status(401)
+            .send();
+        }
+        return reply.redirect(LOGIN_REDIRECT_PATH);
       }
       if (
         ADMINISTRATOR_WEB_PATHS.has(pathname)
@@ -125,9 +133,12 @@ export function registerAuthenticationRoutes(
       webConfig,
     );
     if (principal === null) {
-      return reply.status(401).send({
-        error: { message: "Authentication is required." },
-      });
+      return reply
+        .header(LOGIN_REDIRECT_HEADER, LOGIN_REDIRECT_PATH)
+        .status(401)
+        .send({
+          error: { message: "Authentication is required." },
+        });
     }
     requireSameOriginForMutation(
       request.method,

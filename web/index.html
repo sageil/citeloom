@@ -13,6 +13,18 @@
       content='{"historyCacheSize":0,"historyRestoreAsHxRequest":false,"refreshOnHistoryMiss":true}'
     />
     <title>CiteLoom</title>
+    <link rel="icon" href="./favicon.ico" sizes="any" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="./assets/images/citeloom-favicon-32.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="./assets/images/citeloom-apple-touch-icon.png"
+    />
     <link rel="stylesheet" href="./assets/styles/citeloom-base.css" />
     <link rel="stylesheet" href="./assets/styles/citeloom-navigation.css" />
     <link rel="stylesheet" href="./assets/styles/citeloom-shell.css" />
@@ -20,6 +32,18 @@
       defer
       src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"
       integrity="sha384-H5SrcfygHmAuTDZphMHqBJLc3FhssKjG7w/CeCpFReSfwBWDTKpkzPP8c+cLsK+V"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/marked@18.0.7/lib/marked.umd.js"
+      integrity="sha384-7njNzKcJUBdezPGfqUrIFizi2QkXJH0M6wF3o1h9GE/nce6X4YdecMwh31B19yTi"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/dompurify@3.4.13/dist/purify.min.js"
+      integrity="sha384-ZuC+DIACqSIZTsp+7YF57cR5Y+6qXa7YFbEKdA/EHA/R0T+41dtorqucYl71Zp+t"
       crossorigin="anonymous"
     ></script>
     <script type="module" src="./assets/scripts/citeloom-app.js"></script>
@@ -337,6 +361,7 @@
               hx-push-url="./index.html?view=chat"
               :class="{ active: activeView === 'chat' }"
               :aria-current="currentPage('chat')"
+              @click="handlePrimaryChatNavigation($event)"
             >
               <span class="task-button-icon">
                 <svg aria-hidden="true" class="citeloom-icon">

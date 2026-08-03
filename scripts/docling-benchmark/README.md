@@ -26,4 +26,13 @@ Include the exploratory quality settings only when the experiment is meant to co
 pnpm docling:benchmark --include-quality-tradeoffs
 ```
 
+Run only the processing measurements when downstream retrieval-quality scoring is not needed.
+
+```bash
+pnpm docling:benchmark --process-only
+```
+
+The current benchmark candidates use the Standard Docling pipeline.
+The harness does not compare VLM providers or include VLM provider request time as a separate benchmark mode.
+
 The benchmark does not change the configured production Docling backend or select a candidate for production.

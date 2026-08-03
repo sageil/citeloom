@@ -74,6 +74,7 @@ const routes = Object.freeze({
       source: "./citeloom-ask.js",
     },
     pageStyles: [
+      "./assets/styles/citeloom-answer-content.css",
       "./assets/styles/citeloom-evidence-table.css",
       "./assets/styles/citeloom-ask.css",
     ],
@@ -86,6 +87,7 @@ const routes = Object.freeze({
       source: "./citeloom-chat.js",
     },
     pageStyles: [
+      "./assets/styles/citeloom-answer-content.css",
       "./assets/styles/citeloom-evidence-table.css",
       "./assets/styles/citeloom-chat.css",
     ],

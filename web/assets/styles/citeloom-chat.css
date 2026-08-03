@@ -270,11 +270,6 @@
   letter-spacing: -0.01em;
 }
 
-.chat-statement p {
-  display: inline;
-  margin: 0;
-}
-
 .chat-statement-citations {
   display: inline-flex;
   flex-wrap: wrap;

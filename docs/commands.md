@@ -103,6 +103,9 @@ They use production application components but are not included in the productio
 | `test:backup-restore` | Test the complete backup and restore workflow. |
 | `test:integration` | Run the database and authentication integration tests. |
 | `test:live` | Run the test that uses the live HHEM service. |
+| `test:vision:qwen` | Run the opt-in live Qwen vision integration tests through Ollama. |
 | `test:watch` | Run Vitest continuously while files change. |
 
 `test:live` calls a live model service and is not repeatable unit-test coverage.
+`test:vision:qwen` requires `QWEN_VISION_LIVE_TEST=true` and a compatible Qwen model on Ollama.
+It defaults to `qwen3.5:9b-mlx` at `http://127.0.0.1:11434`; use `QWEN_VISION_MODEL`, `QWEN_VISION_OLLAMA_URL`, `QWEN_VISION_CONTEXT_TOKENS`, and `QWEN_VISION_TIMEOUT_SECONDS` to override the live-test connection and limits.

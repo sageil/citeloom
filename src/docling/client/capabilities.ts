@@ -33,6 +33,7 @@ const requiredFields = [
   "table_cell_matching",
   "table_mode",
   "to_formats",
+  "vlm_pipeline_custom_config",
 ] as const;
 const requiredContentFields = [
   "byte_length",
@@ -46,6 +47,7 @@ const requiredPdfBackends = [
   "pypdfium2",
   "threaded_docling_parse",
 ] as const;
+const requiredPipelines = ["standard", "vlm"] as const;
 const enumSchema = z.object({
   enum: z.array(z.string().min(1)).min(1),
 }).loose();
@@ -89,13 +91,24 @@ export function decodeDoclingCapabilities(
       throw new Error(`Docling async conversion is missing ${field}.`);
     }
   }
-  const advertisedBackends = readPdfBackendEnum(
+  const advertisedBackends = readSchemaEnum(
     properties.pdf_backend,
     result.data.components.schemas,
+    "Docling pdf_backend",
   );
   for (const backend of requiredPdfBackends) {
     if (!advertisedBackends.has(backend)) {
       throw new Error(`Docling OpenAPI does not advertise ${backend}.`);
+    }
+  }
+  const advertisedPipelines = readSchemaEnum(
+    properties.pipeline,
+    result.data.components.schemas,
+    "Docling pipeline",
+  );
+  for (const pipeline of requiredPipelines) {
+    if (!advertisedPipelines.has(pipeline)) {
+      throw new Error(`Docling OpenAPI does not advertise ${pipeline}.`);
     }
   }
   return {
@@ -105,26 +118,27 @@ export function decodeDoclingCapabilities(
   };
 }
 
-function readPdfBackendEnum(
+function readSchemaEnum(
   value: unknown,
   schemas: { [key: string]: unknown },
+  name: string,
 ): Set<string> {
-  let schema = readObject(value, "Docling pdf_backend schema");
+  let schema = readObject(value, `${name} schema`);
   if (typeof schema.$ref === "string") {
     const prefix = "#/components/schemas/";
     if (!schema.$ref.startsWith(prefix)) {
-      throw new Error("Docling pdf_backend uses an unsupported reference.");
+      throw new Error(`${name} uses an unsupported reference.`);
     }
     const componentName = schema.$ref.slice(prefix.length);
     schema = readObject(
       schemas[componentName],
-      "Docling pdf_backend component",
+      `${name} component`,
     );
   }
   const result = enumSchema.safeParse(schema);
   if (!result.success) {
     throw new Error(
-      `Docling pdf_backend enum is invalid: ${result.error.message}`,
+      `${name} enum is invalid: ${result.error.message}`,
     );
   }
   return new Set(result.data.enum);

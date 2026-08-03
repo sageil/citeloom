@@ -2,7 +2,28 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
+import { registerPage } from "../web/assets/scripts/citeloom-documents.js";
+
 describe("CiteLoom document ingestion controls", () => {
+  it("uses the shared embedding progress presenter in the document inspector", () => {
+    let pageFactory = null;
+    registerPage({
+      data(name, factory) {
+        expect(name).toBe("citeloomDocumentsPage");
+        pageFactory = factory;
+      },
+    });
+    const page = pageFactory();
+
+    expect(page.embeddingProgressDetail({
+      embeddingProgress: {
+        completedElements: 2,
+        state: "in-progress",
+        totalElements: 5,
+      },
+    })).toBe("2 of 5 elements embedded");
+  });
+
   it("shows controls to administrators and to the uploader", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/documents.html", import.meta.url),

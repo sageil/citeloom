@@ -129,7 +129,30 @@ function readApiErrorMessage(value) {
   }
 }
 
+let loginRedirectPending = false;
+
+function readLoginRedirect(response) {
+  if (response.status !== 401) {
+    return null;
+  }
+  const redirect = response.headers.get("HX-Redirect");
+  return redirect === "/login" ? redirect : null;
+}
+
+async function redirectToLoginIfRequired(response) {
+  const redirect = readLoginRedirect(response);
+  if (redirect === null || typeof window === "undefined") {
+    return;
+  }
+  if (!loginRedirectPending) {
+    loginRedirectPending = true;
+    window.location.replace(redirect);
+  }
+  await new Promise(() => {});
+}
+
 async function readJsonResponse(response, label, decoder = null) {
+  await redirectToLoginIfRequired(response);
   let value;
   try {
     value = await response.json();

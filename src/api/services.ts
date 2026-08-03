@@ -70,9 +70,11 @@ import {
   type ApplicationErrorContext,
 } from "../observability/application-errors.js";
 import {
+  purgeApplicationErrors,
   readApplicationErrorPage,
   type ApplicationErrorPage,
   type ApplicationErrorPageRequest,
+  type ApplicationErrorPurgeResult,
 } from "../observability/application-error-store.js";
 import {
   enforceApplicationErrorRetention,
@@ -356,6 +358,9 @@ export interface WebServices {
     readModels(signal: AbortSignal): Promise<OpenAICodexModel[]>;
     replaceCredentials(credentials: OpenAICodexOAuthCredentials): Promise<void>;
   };
+  purgeApplicationErrors: (
+    principal: AuthenticatedPrincipal,
+  ) => Promise<ApplicationErrorPurgeResult>;
   readApplicationErrors: (
     principal: AuthenticatedPrincipal,
     request: ApplicationErrorPageRequest,
@@ -707,6 +712,14 @@ export function createWebServices(
           await store.replace(credentials);
         });
       },
+    },
+    purgeApplicationErrors: async (principal) => {
+      return manager.withRuntime(async (runtime) => {
+        return purgeApplicationErrors(
+          runtime.database,
+          principal.workspaceId,
+        );
+      });
     },
     readApplicationErrors: async (principal, request) => {
       return manager.withRuntime(async (runtime) => {

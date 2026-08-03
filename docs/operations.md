@@ -152,6 +152,30 @@ pnpm dev embedding-spaces gc --resume <run-id> --apply
 The estimated size covers stored table rows.
 It excludes PostgreSQL index overhead because that space cannot be assigned exactly to one embedding space.
 
+## Health, diagnostics, and error reports
+
+Open System health to inspect the current application state, configured models, provider and worker capacity, scheduling telemetry, and recent AI request metrics when they are enabled.
+The page reads the saved runtime snapshot without contacting every provider.
+Choose Run diagnostics as an administrator to send small active checks to the configured database, document, model, claim-verification, reranking, and speech services.
+Active checks can consume provider time or usage.
+
+Open Error reports as an administrator to review sanitized failures recorded in PostgreSQL.
+The screen separates ingestion, application, and general failures and exposes request, run, job, document, task, release, retry, and Docling context when the event contains it.
+The stored messages are diagnostic records and are separate from Docker container output.
+
+Choose Purge logs to remove the operational error rows visible to the current workspace.
+CiteLoom shows a confirmation dialog before sending the deletion request.
+The purge includes global operational rows visible in that workspace and cannot be undone through the application.
+It does not truncate Docker, systemd, or other host process logs.
+
+CiteLoom also enforces age and row-count retention in the background.
+Configure those limits with `CITELOOM_APPLICATION_ERROR_RETENTION_DAYS` and `CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS` before starting the web process.
+The cleanup runs in bounded batches under a PostgreSQL advisory lock so multiple web processes do not perform the same retention work concurrently.
+
+AI request diagnostics and Docling conversion diagnostics are separate settings.
+AI diagnostics record request timing and usage without saving questions or answers.
+Docling conversion diagnostics record conversion timing and outcomes without saving document content and have their own retention period in Settings.
+
 ## Routine checks
 
 Check configured dependencies and database readiness.

@@ -311,6 +311,11 @@ export async function buildWebServer(
     return services.readApplicationErrors(principal, errorRequest);
   });
 
+  server.delete("/api/errors", async (request) => {
+    const principal = requireAdministratorPrincipal(requestPrincipals, request);
+    return services.purgeApplicationErrors(principal);
+  });
+
   server.get("/api/events", (_request, reply) => {
     reply.hijack();
     openApplicationStateRevisionEventStream(reply.raw, services);

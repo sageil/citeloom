@@ -443,9 +443,13 @@ describe("web server boundary", () => {
     const readApplicationErrors = vi.fn<WebServices["readApplicationErrors"]>(
       async () => buildApplicationErrorPage(),
     );
+    const purgeApplicationErrors = vi.fn<WebServices["purgeApplicationErrors"]>(
+      async () => ({ deleted: 3 }),
+    );
     const memberServer = await buildProductionWebServer(buildConfig(), {
       logger: false,
       services: buildServices({
+        purgeApplicationErrors,
         readApplicationErrors,
         readSession: async () => buildAuthenticatedPrincipal("member"),
       }),
@@ -461,7 +465,15 @@ describe("web server boundary", () => {
         });
         expect(response.statusCode).toBe(403);
       }
+      const purgeResponse = await memberServer.inject({
+        headers: { origin: "https://localhost:3443" },
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        method: "DELETE",
+        url: "/api/errors",
+      });
+      expect(purgeResponse.statusCode).toBe(403);
       expect(readApplicationErrors).not.toHaveBeenCalled();
+      expect(purgeApplicationErrors).not.toHaveBeenCalled();
     } finally {
       await memberServer.close();
     }
@@ -470,6 +482,7 @@ describe("web server boundary", () => {
     const administratorServer = await buildProductionWebServer(buildConfig(), {
       logger: false,
       services: buildServices({
+        purgeApplicationErrors,
         readApplicationErrors,
         readSession: async () => principal,
       }),
@@ -497,6 +510,12 @@ describe("web server boundary", () => {
         method: "GET",
         url: "/api/errors?area=private",
       });
+      const purgeResponse = await administratorServer.inject({
+        headers: { origin: "https://localhost:3443" },
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        method: "DELETE",
+        url: "/api/errors",
+      });
 
       expect(routeResponse.statusCode).toBe(200);
       expect(fragmentResponse.statusCode).toBe(200);
@@ -504,12 +523,16 @@ describe("web server boundary", () => {
       expect(apiResponse.statusCode).toBe(200);
       expect(apiResponse.json()).toEqual(buildApplicationErrorPage());
       expect(invalidResponse.statusCode).toBe(400);
+      expect(purgeResponse.statusCode).toBe(200);
+      expect(purgeResponse.json()).toEqual({ deleted: 3 });
       expect(readApplicationErrors).toHaveBeenCalledTimes(1);
       expect(readApplicationErrors).toHaveBeenCalledWith(principal, {
         area: "ingestion",
         page: 2,
         pageSize: 25,
       });
+      expect(purgeApplicationErrors).toHaveBeenCalledOnce();
+      expect(purgeApplicationErrors).toHaveBeenCalledWith(principal);
     } finally {
       await administratorServer.close();
     }
@@ -1162,6 +1185,44 @@ describe("web server boundary", () => {
             capability: "speechToText",
             providerId: "groq",
           },
+        ],
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("decodes feature-scoped and provider-scoped reset changes", async () => {
+    const updateSettings = vi.fn<WebServices["updateSettings"]>(async () => {
+      return buildEffectiveSettings();
+    });
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ updateSettings }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        method: "PUT",
+        payload: {
+          changes: [],
+          expectedVersion: 0,
+          providerChanges: [
+            { action: "reset-feature", capability: "chat" },
+            { action: "reset-provider", providerId: "ollama" },
+          ],
+        },
+        url: "/api/settings",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(updateSettings).toHaveBeenCalledWith({
+        changes: [],
+        expectedVersion: 0,
+        providerChanges: [
+          { action: "reset-feature", capability: "chat" },
+          { action: "reset-provider", providerId: "ollama" },
         ],
       });
     } finally {
@@ -2550,6 +2611,7 @@ type TestWebServiceOverrides = Partial<RuntimeWebServices>
     | "createWorkspaceMember"
     | "listWorkspaceMembers"
     | "openAICodex"
+    | "purgeApplicationErrors"
     | "readApplicationErrors"
     | "readSession"
     | "readSettings"
@@ -2644,6 +2706,8 @@ function buildServices(
       readModels: async () => [],
       replaceCredentials: async () => undefined,
     },
+    purgeApplicationErrors: overrides.purgeApplicationErrors
+      ?? (async () => ({ deleted: 0 })),
     readApplicationErrors: overrides.readApplicationErrors
       ?? (async () => buildApplicationErrorPage()),
     readRevisions: effectiveRuntimeServices.readRevisions,

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { providerIdSchema } from "../providers/profiles.js";
+
 import type {
   ApplicationErrorRetentionConfig,
   DatabaseConfig,
@@ -86,6 +88,7 @@ export const runtimeSettingsSchema = z.object({
   ]),
   doclingPerformanceMetricsEnabled: z.boolean(),
   doclingPerformanceMetricsRetentionDays: z.number().int().min(1).max(3_650),
+  doclingPipeline: z.enum(["standard", "vlm"]),
   doclingSecondaryImageScale: z.number().min(0.1).max(8),
   doclingTableMode: z.enum(["accurate", "fast"]),
   doclingTableStructureEnabled: z.boolean(),
@@ -93,6 +96,10 @@ export const runtimeSettingsSchema = z.object({
   doclingDefaultServiceCapacity: z.number().int().min(1).max(16),
   doclingRequestTimeoutSeconds: z.number().int().min(10).max(3_600),
   doclingTimeoutSeconds: z.number().int().min(60).max(604_800),
+  doclingVlmMaxOutputTokens: z.number().int().min(1).max(262_144),
+  doclingVlmModelOverride: z.string().trim().min(1).max(300).nullable(),
+  doclingVlmPrompt: z.string().trim().min(1).max(2_000),
+  doclingVlmProviderId: providerIdSchema,
   embeddingDimensions: z.union([z.literal(384), z.literal(768), z.literal(1024)]),
   embeddingInputFormatId: z.uuid(),
   embeddingSpaceId: z.string().trim().min(1).max(200).nullable(),
