@@ -11,6 +11,11 @@ import {
 } from "./citeloom-boundaries.js";
 import { readSystemHealthDashboard } from "./citeloom-dashboard-extensions.js";
 import {
+  CONFIRMATION_REQUEST_EVENT,
+  dispatchConfirmationResponse,
+  readConfirmationRequestEvent,
+} from "./citeloom-confirmation.js";
+import {
   DOCUMENT_NOTIFICATION_CHANGE_EVENT,
   DOCUMENT_NOTIFICATION_REQUEST_EVENT,
   DOCUMENT_NOTIFICATION_STATE_EVENT,
@@ -68,7 +73,10 @@ const routes = Object.freeze({
       id: "ask",
       source: "./citeloom-ask.js",
     },
-    pageStyles: ["./assets/styles/citeloom-ask.css"],
+    pageStyles: [
+      "./assets/styles/citeloom-evidence-table.css",
+      "./assets/styles/citeloom-ask.css",
+    ],
     title: "Ask | CiteLoom",
   },
   chat: {
@@ -77,7 +85,10 @@ const routes = Object.freeze({
       id: "chat",
       source: "./citeloom-chat.js",
     },
-    pageStyles: ["./assets/styles/citeloom-chat.css"],
+    pageStyles: [
+      "./assets/styles/citeloom-evidence-table.css",
+      "./assets/styles/citeloom-chat.css",
+    ],
     title: "Chat | CiteLoom",
   },
   documents: {
@@ -595,6 +606,15 @@ function registerShell(alpine) {
     accountMenuOpen: false,
     activeView: readLocationView(),
     chatSwitcherPending: false,
+    confirmationCancelLabel: "Cancel",
+    confirmationConfirmLabel: "Confirm",
+    confirmationDescription: "",
+    confirmationOpen: false,
+    confirmationRequestId: null,
+    confirmationRequestListener: null,
+    confirmationRestoreFocusElement: null,
+    confirmationTitle: "",
+    confirmationTone: "danger",
     currentDisplayName: "Account",
     currentRole: null,
     currentUserId: null,
@@ -670,6 +690,17 @@ function registerShell(alpine) {
     },
 
     initialize() {
+      this.confirmationRequestListener = (event) => {
+        const request = readConfirmationRequestEvent(event);
+        if (request === null) {
+          return;
+        }
+        this.openConfirmation(request);
+      };
+      window.addEventListener(
+        CONFIRMATION_REQUEST_EVENT,
+        this.confirmationRequestListener,
+      );
       this.dashboardRefreshRequestListener = () => {
         this.scheduleDashboardRefresh();
       };
@@ -749,6 +780,7 @@ function registerShell(alpine) {
         pendingPageResourceErrorMessage = "";
       }
       this.$root.addEventListener("htmx:beforeRequest", (event) => {
+        this.cancelConfirmationForNavigation();
         pendingPageResourceErrorMessage = "";
         const source = event.detail.elt;
         if (!(source instanceof HTMLElement)) {
@@ -836,6 +868,13 @@ function registerShell(alpine) {
     },
 
     destroy() {
+      this.cancelConfirmationForNavigation();
+      if (this.confirmationRequestListener !== null) {
+        window.removeEventListener(
+          CONFIRMATION_REQUEST_EVENT,
+          this.confirmationRequestListener,
+        );
+      }
       if (this.dashboardRefreshRequestListener !== null) {
         window.removeEventListener(
           "citeloom:dashboard-refresh-request",
@@ -887,6 +926,70 @@ function registerShell(alpine) {
 
     currentPage(view) {
       return this.activeView === view ? "page" : null;
+    },
+
+    openConfirmation(request) {
+      this.cancelConfirmationForNavigation();
+      this.confirmationCancelLabel = request.cancelLabel;
+      this.confirmationConfirmLabel = request.confirmLabel;
+      this.confirmationDescription = request.description;
+      this.confirmationRequestId = request.requestId;
+      this.confirmationRestoreFocusElement = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+      this.confirmationTitle = request.title;
+      this.confirmationTone = request.tone;
+      this.confirmationOpen = true;
+      this.$nextTick(() => this.$refs.confirmationCancel?.focus());
+    },
+
+    cancelConfirmation() {
+      this.finishConfirmation(false, true);
+    },
+
+    cancelConfirmationForNavigation() {
+      this.finishConfirmation(false, false);
+    },
+
+    confirmConfirmation() {
+      this.finishConfirmation(true, true);
+    },
+
+    cycleConfirmationFocus(event) {
+      const cancelButton = this.$refs.confirmationCancel;
+      const confirmButton = this.$refs.confirmationConfirm;
+      if (!(cancelButton instanceof HTMLButtonElement)
+        || !(confirmButton instanceof HTMLButtonElement)) {
+        return;
+      }
+      if (event.shiftKey) {
+        if (document.activeElement === cancelButton) {
+          confirmButton.focus();
+          return;
+        }
+        cancelButton.focus();
+        return;
+      }
+      if (document.activeElement === confirmButton) {
+        cancelButton.focus();
+        return;
+      }
+      confirmButton.focus();
+    },
+
+    finishConfirmation(confirmed, restoreFocus) {
+      if (this.confirmationRequestId === null) {
+        return;
+      }
+      const requestId = this.confirmationRequestId;
+      const restoreFocusElement = this.confirmationRestoreFocusElement;
+      this.confirmationOpen = false;
+      this.confirmationRequestId = null;
+      this.confirmationRestoreFocusElement = null;
+      dispatchConfirmationResponse(requestId, confirmed);
+      if (restoreFocus && restoreFocusElement?.isConnected === true) {
+        this.$nextTick(() => restoreFocusElement.focus());
+      }
     },
 
     requestChatSwitcher() {
@@ -1395,6 +1498,7 @@ function registerShell(alpine) {
     },
 
     synchronizeHistory() {
+      this.cancelConfirmationForNavigation();
       this.activeView = readLocationView();
       document.title = routes[this.activeView].title;
       this.focusLocationAnchor();

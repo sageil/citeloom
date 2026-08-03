@@ -2,7 +2,6 @@ import {
   readArray,
   readBoolean,
   readEnum,
-  readFiniteNumber,
   readJsonResponse,
   readNonEmptyString,
   readNonNegativeInteger,
@@ -10,7 +9,6 @@ import {
   readNullableNonNegativeInteger,
   readPlainObject as readObject,
   readPositiveInteger,
-  readString,
   readUIMessageStream,
 } from "./citeloom-boundaries.js";
 import {
@@ -21,16 +19,19 @@ import {
   readAnswerContentUpdate,
 } from "./citeloom-answer-content.js";
 import { requestAnswerSpeech } from "./citeloom-answer-speech.js";
+import {
+  buildCitationPresentation,
+  buildCitationPresentations,
+} from "./citeloom-citation-presentation.js";
 import { buildPdfViewerUrl } from "./citeloom-file-links.js";
 import { focusTextArea } from "./citeloom-focus.js";
 import { dispatchNotice } from "./citeloom-notices.js";
+import {
+  readAskAnswerDocument,
+  readPublishedAnswerEvidence,
+  readPublishedSourceRegions,
+} from "./citeloom-published-answer.js";
 
-const answerSections = Object.freeze([
-  "answer",
-  "key-points",
-  "conflicting-evidence",
-  "limitations",
-]);
 const claimStatuses = Object.freeze([
   "partially-supported",
   "supported",
@@ -56,7 +57,6 @@ const scopeKinds = Object.freeze([
   "sourceFiles",
   "tags",
 ]);
-const statementPresentations = Object.freeze(["bullet", "paragraph"]);
 const mediaRecorderOptions = Object.freeze([
   { extension: "webm", mimeType: "audio/webm;codecs=opus" },
   { extension: "mp4", mimeType: "audio/mp4" },
@@ -256,220 +256,6 @@ function readStringEnumArray(value, allowedValues, label) {
   return result;
 }
 
-function readSourceRegion(value, label) {
-  const region = readObject(value, label);
-  const boundingBox = readObject(
-    region.boundingBox,
-    `${label} bounding box`,
-  );
-  const characterSpan = readObject(
-    region.characterSpan,
-    `${label} character span`,
-  );
-  return {
-    boundingBox: {
-      bottom: readFiniteNumber(
-        boundingBox.bottom,
-        `${label} bounding box bottom`,
-      ),
-      left: readFiniteNumber(
-        boundingBox.left,
-        `${label} bounding box left`,
-      ),
-      right: readFiniteNumber(
-        boundingBox.right,
-        `${label} bounding box right`,
-      ),
-      top: readFiniteNumber(
-        boundingBox.top,
-        `${label} bounding box top`,
-      ),
-    },
-    characterSpan: {
-      end: readNonNegativeInteger(
-        characterSpan.end,
-        `${label} character span end`,
-      ),
-      start: readNonNegativeInteger(
-        characterSpan.start,
-        `${label} character span start`,
-      ),
-    },
-    pageNumber: readPositiveInteger(region.pageNumber, `${label} page number`),
-  };
-}
-
-function readSourceRegions(value, label) {
-  const values = readArray(value, label);
-  const regions = [];
-  for (let index = 0; index < values.length; index += 1) {
-    regions.push(readSourceRegion(values[index], `${label} item ${index + 1}`));
-  }
-  return regions;
-}
-
-function readTableCell(value, label) {
-  const cell = readObject(value, label);
-  return {
-    columnHeader: readBoolean(cell.columnHeader, `${label} column header`),
-    columnSpan: readPositiveInteger(cell.columnSpan, `${label} column span`),
-    endColumn: readPositiveInteger(cell.endColumn, `${label} end column`),
-    endRow: readPositiveInteger(cell.endRow, `${label} end row`),
-    rowHeader: readBoolean(cell.rowHeader, `${label} row header`),
-    rowSection: readBoolean(cell.rowSection, `${label} row section`),
-    rowSpan: readPositiveInteger(cell.rowSpan, `${label} row span`),
-    startColumn: readNonNegativeInteger(
-      cell.startColumn,
-      `${label} start column`,
-    ),
-    startRow: readNonNegativeInteger(cell.startRow, `${label} start row`),
-    text: readString(cell.text, `${label} text`),
-  };
-}
-
-function tryBuildCitationTableRows(cells, rowCount, columnCount) {
-  const rows = [];
-  const occupiedColumnsByRow = [];
-  let headerRowEnd = 0;
-  for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
-    rows.push({ cells: [], key: `row-${rowIndex}` });
-    occupiedColumnsByRow.push(
-      Array.from({ length: columnCount }, () => false),
-    );
-  }
-  for (let cellIndex = 0; cellIndex < cells.length; cellIndex += 1) {
-    const cell = cells[cellIndex];
-    if (
-      cell.endColumn > columnCount
-      || cell.endRow > rowCount
-      || cell.endColumn - cell.startColumn !== cell.columnSpan
-      || cell.endRow - cell.startRow !== cell.rowSpan
-    ) {
-      return null;
-    }
-    for (let rowIndex = cell.startRow; rowIndex < cell.endRow; rowIndex += 1) {
-      const occupiedColumns = occupiedColumnsByRow[rowIndex];
-      if (occupiedColumns === undefined) {
-        return null;
-      }
-      for (
-        let columnIndex = cell.startColumn;
-        columnIndex < cell.endColumn;
-        columnIndex += 1
-      ) {
-        if (occupiedColumns[columnIndex] !== false) {
-          return null;
-        }
-        occupiedColumns[columnIndex] = true;
-      }
-    }
-    const row = rows[cell.startRow];
-    if (row === undefined) {
-      return null;
-    }
-    row.cells.push({
-      columnSpan: cell.columnSpan,
-      key: `cell-${cell.startRow}-${cell.startColumn}`,
-      rowHeader: cell.rowHeader || cell.rowSection,
-      rowSpan: cell.rowSpan,
-      startColumn: cell.startColumn,
-      text: cell.text,
-    });
-    if (cell.columnHeader) {
-      headerRowEnd = Math.max(headerRowEnd, cell.endRow);
-    }
-  }
-  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
-    const row = rows[rowIndex];
-    const occupiedColumns = occupiedColumnsByRow[rowIndex];
-    if (row === undefined || occupiedColumns === undefined) {
-      return null;
-    }
-    for (
-      let columnIndex = 0;
-      columnIndex < occupiedColumns.length;
-      columnIndex += 1
-    ) {
-      if (occupiedColumns[columnIndex] === false) {
-        row.cells.push({
-          columnSpan: 1,
-          key: `placeholder-${rowIndex}-${columnIndex}`,
-          rowHeader: false,
-          rowSpan: 1,
-          startColumn: columnIndex,
-          text: "",
-        });
-      }
-    }
-    row.cells.sort((left, right) => left.startColumn - right.startColumn);
-  }
-  return {
-    bodyRows: rows.slice(headerRowEnd),
-    headerRows: rows.slice(0, headerRowEnd),
-  };
-}
-
-function readTableStructure(value, label) {
-  const table = readObject(value, label);
-  const cellValues = readArray(table.cells, `${label} cells`);
-  const cells = [];
-  for (let index = 0; index < cellValues.length; index += 1) {
-    cells.push(readTableCell(cellValues[index], `${label} cell ${index + 1}`));
-  }
-  const columnCount = readPositiveInteger(
-    table.columnCount,
-    `${label} column count`,
-  );
-  const rowCount = readPositiveInteger(table.rowCount, `${label} row count`);
-  return {
-    cells,
-    columnCount,
-    rowCount,
-    rowEnd: readPositiveInteger(table.rowEnd, `${label} row end`),
-    rowStart: readNonNegativeInteger(table.rowStart, `${label} row start`),
-  };
-}
-
-function buildCitationPresentation(citation) {
-  if (citation.evidence.kind !== "table") {
-    return citation;
-  }
-  const table = citation.evidence.table;
-  const rows = tryBuildCitationTableRows(
-    table.cells,
-    table.rowCount,
-    table.columnCount,
-  );
-  let bodyRows = [];
-  let headerRows = [];
-  let renderMode = "text";
-  if (rows !== null) {
-    bodyRows = rows.bodyRows;
-    headerRows = rows.headerRows;
-    renderMode = "grid";
-  }
-  return {
-    ...citation,
-    evidence: {
-      ...citation.evidence,
-      table: {
-        ...table,
-        bodyRows,
-        headerRows,
-        renderMode,
-      },
-    },
-  };
-}
-
-function buildCitationPresentations(citations) {
-  const presentations = [];
-  for (let index = 0; index < citations.length; index += 1) {
-    presentations.push(buildCitationPresentation(citations[index]));
-  }
-  return presentations;
-}
-
 function readAskDashboard(value) {
   const dashboard = readObject(value, "dashboard");
   const summary = readObject(dashboard.documentSummary, "document summary");
@@ -531,140 +317,8 @@ function readResearchThreadSummaries(value) {
   return summaries;
 }
 
-function readEvidence(value, label) {
-  const evidence = readObject(value, label);
-  const kind = readEnum(evidence.kind, evidenceKinds, `${label} kind`);
-  if (kind === "text") {
-    return {
-      excerpt: readNonEmptyString(evidence.excerpt, `${label} excerpt`),
-      kind,
-    };
-  }
-  if (kind === "table") {
-    return {
-      content: readNonEmptyString(evidence.content, `${label} content`),
-      kind,
-      table: readTableStructure(evidence.table, `${label} table structure`),
-    };
-  }
-  return {
-    kind,
-    mimeType: readNonEmptyString(evidence.mimeType, `${label} media type`),
-  };
-}
-
-function readAnswerCitation(value, label) {
-  const citation = readObject(value, label);
-  const kind = readEnum(citation.kind, evidenceKinds, `${label} kind`);
-  const evidence = readEvidence(citation.evidence, `${label} evidence`);
-  if (evidence.kind !== kind) {
-    throw new Error(`The ${label} evidence kind does not match.`);
-  }
-  const regions = readSourceRegions(citation.regions, `${label} regions`);
-  return {
-    citationNumber: readPositiveInteger(
-      citation.citationNumber,
-      `${label} number`,
-    ),
-    documentId: readNonEmptyString(citation.documentId, `${label} document id`),
-    documentVersionId: readNonEmptyString(
-      citation.documentVersionId,
-      `${label} document version id`,
-    ),
-    elementId: readNonEmptyString(citation.elementId, `${label} element id`),
-    evidence,
-    id: readNonEmptyString(citation.id, `${label} id`),
-    kind,
-    pageNumbers: readPositiveIntegerArray(
-      citation.pageNumbers,
-      `${label} page numbers`,
-    ),
-    regions,
-    sectionPath: readStringArray(citation.sectionPath, `${label} section path`),
-    sourceFile: readNonEmptyString(citation.sourceFile, `${label} source file`),
-  };
-}
-
-function readAnswerDocument(value) {
-  const document = readObject(value, "answer document");
-  const schemaVersion = readPositiveInteger(
-    document.schemaVersion,
-    "answer schema version",
-  );
-  if (schemaVersion !== 1) {
-    throw new Error("The answer schema version is unsupported.");
-  }
-  const citationValues = readArray(document.citations, "answer citations");
-  const citations = [];
-  const citationIds = new Set();
-  const citationNumbers = new Set();
-  for (let index = 0; index < citationValues.length; index += 1) {
-    const citation = readAnswerCitation(
-      citationValues[index],
-      `answer citation ${index + 1}`,
-    );
-    if (citationIds.has(citation.id)) {
-      throw new Error("The answer contains a duplicate citation.");
-    }
-    if (citationNumbers.has(citation.citationNumber)) {
-      throw new Error("The answer contains a duplicate citation number.");
-    }
-    citationIds.add(citation.id);
-    citationNumbers.add(citation.citationNumber);
-    citations.push(citation);
-  }
-  const statementValues = readArray(document.statements, "answer statements");
-  const statements = [];
-  for (let index = 0; index < statementValues.length; index += 1) {
-    const statement = readObject(
-      statementValues[index],
-      `answer statement ${index + 1}`,
-    );
-    const statementCitationIds = readStringArray(
-      statement.citationIds,
-      `answer statement ${index + 1} citations`,
-    );
-    for (const citationId of statementCitationIds) {
-      if (!citationIds.has(citationId)) {
-        throw new Error("The answer references an unavailable citation.");
-      }
-    }
-    statements.push({
-      citationIds: statementCitationIds,
-      content: readNonEmptyString(
-        statement.content,
-        `answer statement ${index + 1} content`,
-      ),
-      presentation: readEnum(
-        statement.presentation,
-        statementPresentations,
-        `answer statement ${index + 1} presentation`,
-      ),
-      section: readEnum(
-        statement.section,
-        answerSections,
-        `answer statement ${index + 1} section`,
-      ),
-    });
-  }
-  const hasCitations = citations.length > 0;
-  const hasStatements = statements.length > 0;
-  if (hasCitations !== hasStatements) {
-    throw new Error("The answer response is incomplete.");
-  }
-  if (!hasCitations) {
-    return {
-      citations,
-      content: readNonEmptyString(document.content, "uncited answer content"),
-      schemaVersion,
-      statements,
-    };
-  }
-  return { citations, schemaVersion, statements };
-}
-
 export function readAnswerPresentation(value) {
-  const answerDocument = readAnswerDocument(value);
+  const answerDocument = readAskAnswerDocument(value);
   return {
     answerDocument,
     sources: buildCitationPresentations(answerDocument.citations),
@@ -942,8 +596,14 @@ function readDiscoveryResponse(value) {
 
 function readStoredCitation(value) {
   const citation = readObject(value, "stored citation");
-  const evidence = readEvidence(citation.evidence, "stored citation evidence");
-  const regions = readSourceRegions(citation.regions, "stored citation regions");
+  const evidence = readPublishedAnswerEvidence(
+    citation.evidence,
+    "stored citation evidence",
+  );
+  const regions = readPublishedSourceRegions(
+    citation.regions,
+    "stored citation regions",
+  );
   const storedCitation = {
     citationNumber: readPositiveInteger(
       citation.citationNumber,

@@ -13,6 +13,13 @@ import {
   readString,
 } from "./citeloom-boundaries.js";
 import { dispatchNotice } from "./citeloom-notices.js";
+import { requestConfirmation } from "./citeloom-confirmation.js";
+import {
+  initializeSettingsHistory,
+  readSettingsHistoryOwner,
+  readSettingsLocation,
+  writeSettingsLocation,
+} from "./citeloom-settings-history.js";
 
 const providerCapabilities = Object.freeze([
   "answer",
@@ -71,13 +78,6 @@ const sourceFilters = Object.freeze([
   "modified",
 ]);
 const providerEditorSections = Object.freeze(["connection", "capabilities"]);
-const settingsLocationParameters = Object.freeze({
-  area: "settings-area",
-  capability: "settings-capability",
-  item: "settings-item",
-  section: "settings-section",
-});
-const settingsHistoryState = Object.freeze({ citeloomSettings: true });
 const providerAuthenticationMethods = Object.freeze([
   "api-token",
   "openai-device",
@@ -121,129 +121,6 @@ const capabilityLabels = Object.freeze({
   textToSpeech: "Spoken answers",
 });
 const startupGroupName = "Startup and deployment";
-
-function readOptionalLocationParameter(parameters, name) {
-  const value = parameters.get(name)?.trim() ?? "";
-  return value === "" ? null : value;
-}
-
-function readSettingsLocation() {
-  const url = new URL(window.location.href);
-  const view = url.searchParams.get("view");
-  if (view !== "settings" && url.pathname !== "/settings") {
-    return null;
-  }
-  return {
-    area: readOptionalLocationParameter(
-      url.searchParams,
-      settingsLocationParameters.area,
-    ),
-    capability: readOptionalLocationParameter(
-      url.searchParams,
-      settingsLocationParameters.capability,
-    ),
-    item: readOptionalLocationParameter(
-      url.searchParams,
-      settingsLocationParameters.item,
-    ),
-    section: readOptionalLocationParameter(
-      url.searchParams,
-      settingsLocationParameters.section,
-    ),
-  };
-}
-
-function createSettingsLocationUrl(location) {
-  const url = new URL(window.location.href);
-  for (const parameter of Object.values(settingsLocationParameters)) {
-    url.searchParams.delete(parameter);
-  }
-  if (location.area !== null) {
-    url.searchParams.set(settingsLocationParameters.area, location.area);
-  }
-  if (location.capability !== null) {
-    url.searchParams.set(
-      settingsLocationParameters.capability,
-      location.capability,
-    );
-  }
-  if (location.item !== null) {
-    url.searchParams.set(settingsLocationParameters.item, location.item);
-  }
-  if (location.section !== null) {
-    url.searchParams.set(settingsLocationParameters.section, location.section);
-  }
-  return url;
-}
-
-function isSettingsRootLocation(location) {
-  return location.area === null
-    && location.capability === null
-    && location.item === null
-    && location.section === null;
-}
-
-function readHistoryOwner(value) {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
-  if (value.citeloomSettings === true) {
-    return "settings";
-  }
-  if (value.htmx === true) {
-    return "htmx";
-  }
-  return null;
-}
-
-function initializeSettingsHistory() {
-  const location = readSettingsLocation();
-  if (location === null) {
-    return;
-  }
-  if (readHistoryOwner(window.history.state) !== null) {
-    return;
-  }
-  if (isSettingsRootLocation(location)) {
-    window.history.replaceState(settingsHistoryState, "", window.location.href);
-    return;
-  }
-  const sectionUrl = createSettingsLocationUrl(location);
-  const rootLocation = {
-    area: null,
-    capability: null,
-    item: null,
-    section: null,
-  };
-  window.history.replaceState(
-    settingsHistoryState,
-    "",
-    createSettingsLocationUrl(rootLocation),
-  );
-  window.history.pushState(settingsHistoryState, "", sectionUrl);
-}
-
-function writeSettingsLocation(location) {
-  const url = createSettingsLocationUrl(location);
-  if (url.href === window.location.href) {
-    return;
-  }
-  const currentLocation = readSettingsLocation();
-  if (currentLocation === null) {
-    return;
-  }
-  const targetIsRoot = isSettingsRootLocation(location);
-  const currentIsRoot = isSettingsRootLocation(currentLocation);
-  if (targetIsRoot && !currentIsRoot) {
-    window.history.back();
-    return;
-  }
-  if (currentIsRoot) {
-    window.history.pushState(settingsHistoryState, "", url);
-    return;
-  }
-  window.history.replaceState(settingsHistoryState, "", url);
-}
 
 function readApplicationSettings(value) {
   const response = readPlainObject(value, "application settings");
@@ -1287,7 +1164,7 @@ export function registerPage(alpine) {
     async initialize() {
       initializeSettingsHistory();
       this.settingsHistoryListener = (event) => {
-        if (readHistoryOwner(event.state) !== "settings") {
+        if (readSettingsHistoryOwner(event.state) !== "settings") {
           return;
         }
         this.restoreLocationState();
@@ -1988,9 +1865,13 @@ export function registerPage(alpine) {
       if (this.inputFormatBusy || !format.canRetire) {
         return;
       }
-      const confirmed = window.confirm(
-        `Retire ${format.name}? Retired formats remain in history and cannot be selected.`,
-      );
+      const confirmed = await requestConfirmation({
+        cancelLabel: "Keep format",
+        confirmLabel: "Retire format",
+        description: "Retired formats remain in history and cannot be selected again.",
+        title: `Retire “${format.name}”?`,
+        tone: "danger",
+      });
       if (!confirmed) {
         return;
       }

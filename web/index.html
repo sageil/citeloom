@@ -484,6 +484,62 @@
           </div>
         </div>
       </div>
+
+      <div
+        class="dialog-backdrop citeloom-confirmation-backdrop"
+        x-cloak
+        x-show="confirmationOpen"
+        x-transition.opacity.duration.120ms
+        @mousedown.self="cancelConfirmation()"
+        @keydown.escape.window="confirmationOpen &amp;&amp; cancelConfirmation()"
+      >
+        <section
+          aria-describedby="citeloom-confirmation-description"
+          aria-labelledby="citeloom-confirmation-title"
+          aria-modal="true"
+          class="dialog citeloom-confirmation-dialog"
+          :class="{ danger: confirmationTone === 'danger' }"
+          role="alertdialog"
+          @keydown.tab.prevent="cycleConfirmationFocus($event)"
+        >
+          <header>
+            <span class="citeloom-confirmation-icon" aria-hidden="true">
+              <svg class="citeloom-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
+              </svg>
+            </span>
+            <div>
+              <p class="section-kicker">CiteLoom safeguard</p>
+              <h2 id="citeloom-confirmation-title" x-text="confirmationTitle"></h2>
+            </div>
+          </header>
+          <p
+            class="citeloom-confirmation-description"
+            id="citeloom-confirmation-description"
+            x-text="confirmationDescription"
+          ></p>
+          <footer class="dialog-actions citeloom-confirmation-actions">
+            <button
+              class="button secondary"
+              type="button"
+              x-ref="confirmationCancel"
+              x-text="confirmationCancelLabel"
+              @click="cancelConfirmation()"
+            ></button>
+            <button
+              class="button citeloom-confirmation-danger"
+              type="button"
+              x-ref="confirmationConfirm"
+              @click="confirmConfirmation()"
+            >
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
+              </svg>
+              <span x-text="confirmationConfirmLabel"></span>
+            </button>
+          </footer>
+        </section>
+      </div>
     </main>
   </body>
 </html>

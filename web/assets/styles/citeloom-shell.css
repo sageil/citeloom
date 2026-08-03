@@ -158,6 +158,121 @@
   margin-top: 0;
 }
 
+.citeloom-confirmation-backdrop {
+  z-index: 110;
+}
+
+.citeloom-confirmation-dialog {
+  width: min(520px, 100%);
+  padding: 24px;
+  overflow: visible;
+  background:
+    radial-gradient(circle at top left, rgba(6, 182, 212, 0.08), transparent 42%),
+    rgba(10, 16, 31, 0.98);
+  font-family: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  animation: citeloom-confirmation-enter 140ms ease-out;
+}
+
+.citeloom-confirmation-dialog.danger {
+  border-color: rgba(248, 113, 113, 0.42);
+}
+
+.citeloom-confirmation-dialog > header {
+  justify-content: flex-start;
+}
+
+.citeloom-confirmation-dialog > header > div {
+  min-width: 0;
+}
+
+.citeloom-confirmation-dialog .section-kicker {
+  margin: 1px 0 5px;
+  color: var(--cyan);
+  font-size: 10px;
+}
+
+.citeloom-confirmation-dialog h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.citeloom-confirmation-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  border: 1px solid rgba(248, 113, 113, 0.58);
+  border-radius: 50%;
+  background: rgba(248, 113, 113, 0.07);
+  color: var(--danger);
+}
+
+.citeloom-confirmation-description {
+  margin: 20px 0 24px 60px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.citeloom-confirmation-actions {
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.citeloom-confirmation-danger {
+  border-color: rgba(248, 113, 113, 0.72);
+  background: rgba(248, 113, 113, 0.06);
+  color: #fca5a5;
+}
+
+.citeloom-confirmation-danger:hover:not(:disabled) {
+  border-color: #f87171;
+  background: rgba(248, 113, 113, 0.13);
+  color: #fee2e2;
+  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.08);
+}
+
+@keyframes citeloom-confirmation-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 560px) {
+  .citeloom-confirmation-dialog {
+    padding: 20px;
+  }
+
+  .citeloom-confirmation-description {
+    margin-left: 0;
+  }
+
+  .citeloom-confirmation-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .citeloom-confirmation-actions .button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .citeloom-confirmation-dialog {
+    animation: none;
+  }
+}
+
 .citeloom-diagnostics-error {
   margin-top: 0;
 }

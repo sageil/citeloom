@@ -310,8 +310,63 @@
         <template x-if="selectedCitation.evidence.kind === 'image'">
           <img :src="imageUrl(selectedCitation)" alt="Retained citation evidence" />
         </template>
-        <template x-if="selectedCitation.evidence.kind !== 'image'">
+        <template x-if="selectedCitation.evidence.kind === 'text'">
           <pre x-text="evidenceText(selectedCitation)"></pre>
+        </template>
+        <template x-if="selectedCitation.evidence.kind === 'table'">
+          <div>
+            <template x-if="selectedCitation.evidence.table.renderMode === 'text'">
+              <pre
+                :aria-label="`${citationLabel(selectedCitation)} extracted table text`"
+                x-text="evidenceText(selectedCitation)"
+              ></pre>
+            </template>
+            <template x-if="selectedCitation.evidence.table.renderMode === 'grid'">
+              <div
+                :aria-label="`${citationLabel(selectedCitation)} evidence table`"
+                class="exact-evidence-table-frame"
+                role="region"
+                tabindex="0"
+              >
+                <table class="exact-evidence-table">
+                  <caption
+                    class="visually-hidden"
+                    x-text="`${citationLabel(selectedCitation)} evidence table`"
+                  ></caption>
+                  <template x-if="selectedCitation.evidence.table.headerRows.length > 0">
+                    <thead>
+                      <template x-for="row in selectedCitation.evidence.table.headerRows" :key="row.key">
+                        <tr>
+                          <template x-for="cell in row.cells" :key="cell.key">
+                            <th
+                              :colspan="cell.columnSpan"
+                              :rowspan="cell.rowSpan"
+                              scope="col"
+                              x-text="cell.text"
+                            ></th>
+                          </template>
+                        </tr>
+                      </template>
+                    </thead>
+                  </template>
+                  <tbody>
+                    <template x-for="row in selectedCitation.evidence.table.bodyRows" :key="row.key">
+                      <tr>
+                        <template x-for="cell in row.cells" :key="cell.key">
+                          <td
+                            :colspan="cell.columnSpan"
+                            :role="cell.rowHeader ? 'rowheader' : null"
+                            :rowspan="cell.rowSpan"
+                            x-text="cell.text"
+                          ></td>
+                        </template>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </template>
+          </div>
         </template>
 
         <dl>

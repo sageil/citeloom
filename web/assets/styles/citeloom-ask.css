@@ -1089,61 +1089,6 @@
   white-space: pre-wrap;
 }
 
-.exact-evidence-table-frame {
-  max-height: 300px;
-  overflow: auto;
-  border-left: 3px solid var(--cyan);
-  border-radius: 6px;
-  background: var(--surface-raised);
-}
-
-.exact-evidence-table-frame:focus-visible {
-  outline: 2px solid var(--cyan);
-  outline-offset: 3px;
-}
-
-.exact-evidence-table {
-  width: max-content;
-  min-width: 100%;
-  border-collapse: collapse;
-  color: #dbe4f0;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.exact-evidence-table th,
-.exact-evidence-table td {
-  min-width: 72px;
-  max-width: 320px;
-  padding: 9px 11px;
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  overflow-wrap: anywhere;
-  text-align: left;
-  vertical-align: top;
-  white-space: normal;
-}
-
-.exact-evidence-table th {
-  background: rgba(148, 163, 184, 0.08);
-  color: var(--text);
-  font-weight: 650;
-}
-
-.exact-evidence-table td[role="rowheader"] {
-  background: rgba(148, 163, 184, 0.04);
-  color: var(--text);
-  font-weight: 650;
-}
-
-.exact-evidence-table tr:last-child > * {
-  border-bottom: 0;
-}
-
-.exact-evidence-table tr > :last-child {
-  border-right: 0;
-}
-
 .exact-evidence img {
   display: block;
   max-width: 100%;
