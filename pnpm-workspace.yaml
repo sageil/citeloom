@@ -7,5 +7,6 @@ minimumReleaseAge: 0
 
 overrides:
   'drizzle-kit@0.31.10>@esbuild-kit/esm-loader': '-'
+  'postcss@<=8.5.22': 8.5.25
 
 verifyDepsBeforeRun: false
