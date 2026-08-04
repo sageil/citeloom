@@ -1,0 +1,80 @@
+name: Question
+description: Ask for help understanding or using CiteLoom.
+title: "[Question]: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use the bug report form when CiteLoom is not behaving as expected and the feature request form for new capabilities.
+        Report security vulnerabilities through [private vulnerability reporting](https://github.com/sageil/citeloom/security/advisories/new), not through a public issue.
+
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Area
+      description: Select the area most closely related to your question.
+      options:
+        - Document ingestion and indexing
+        - Retrieval and search
+        - Ask, citations, and HHEM
+        - Chat and research
+        - Web interface, authentication, and settings
+        - CLI and worker
+        - Model providers
+        - Deployment, backup, and restore
+        - Contributing and development
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: State the question and the outcome you are trying to achieve.
+    validations:
+      required: true
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+      description: List the documentation, commands, settings, or approaches you already reviewed.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: CiteLoom version
+      description: Provide the release version or commit SHA when relevant.
+      placeholder: "Example: 0.2.1 or bf248d7"
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Relevant environment, providers, and models
+      description: Include only the configuration details needed to understand the question.
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add sanitized logs, screenshots, examples, or other relevant details.
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched the documentation and existing issues before asking this question.
+          required: true
+        - label: I removed credentials, private document content, and other sensitive information.
+          required: true
+        - label: This is not a security vulnerability. I will use private vulnerability reporting for security issues.
+          required: true
+        - label: I agree to follow the [Code of Conduct](https://github.com/sageil/citeloom/blob/main/CODE_OF_CONDUCT.md).
+          required: true

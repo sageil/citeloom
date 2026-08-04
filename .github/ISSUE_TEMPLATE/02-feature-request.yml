@@ -1,0 +1,90 @@
+name: Feature request
+description: Propose an outcome or capability that would improve CiteLoom.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues before submitting a new request.
+        Describe the problem and desired outcome before proposing implementation details.
+
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Affected area
+      description: Select the part of CiteLoom that would benefit from this change.
+      options:
+        - Document ingestion and indexing
+        - Retrieval and search
+        - Ask, citations, and HHEM
+        - Chat and research
+        - Web interface, authentication, and settings
+        - CLI and worker
+        - Model providers
+        - Deployment, backup, and restore
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Explain the limitation or unmet need without assuming a particular solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: desired-outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the observable result that would address the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: Describe who needs this capability and how they would use it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: Describe any existing approaches you tried and why they were insufficient.
+
+  - type: textarea
+    id: implications
+    attributes:
+      label: Privacy, security, compatibility, or migration implications
+      description: Note any relevant risks, compatibility requirements, persistent data changes, or operational effects.
+
+  - type: textarea
+    id: proposed-implementation
+    attributes:
+      label: Proposed implementation
+      description: Share implementation ideas if you have them. This field is optional.
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add examples, screenshots, references, or other relevant context.
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched existing issues for this request.
+          required: true
+        - label: I removed credentials, private document content, and other sensitive information.
+          required: true
+        - label: I agree to follow the [Code of Conduct](https://github.com/sageil/citeloom/blob/main/CODE_OF_CONDUCT.md).
+          required: true
