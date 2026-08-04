@@ -12,12 +12,12 @@ Migration saves its path in PostgreSQL, which becomes the shared location used b
 | --- | --- |
 | Web application | Document ingestion, catalog browsing, source discovery, questions, settings, and diagnostics |
 | Fastify server | Request validation, uploads, catalog operations, and streamed answers |
-| Application core | Document conversion, summarization, embeddings, search, reranking, and cited answer generation |
+| Application core | Document conversion, indexing preparation, embeddings, search, reranking, and cited answer generation |
 | Background worker | Resumable document processing with jobs shared through PostgreSQL |
 | Local source content store | Immutable raw source bytes addressed by SHA-256 |
 | PostgreSQL | Source records, processing results, jobs, settings, search indexes, and shared model-request limits |
 | Docling | Standard or VLM document conversion that preserves reading order, tables, page locations, and image regions |
-| Model providers | VLM page reading, summaries, embeddings, Query Expansion, reranking, answers, chat, and optional speech |
+| Model providers | VLM page reading, indexing descriptions, embeddings, Query Expansion, reranking, answers, Chat, and optional speech |
 | HHEM service | Support scores for individual answer claims and their cited evidence |
 | Offline evaluation tools | Dataset generation, corpus management, scoring, tuning, and configuration freezes outside the production build |
 
@@ -117,12 +117,12 @@ flowchart LR
 ```
 
 Routing is capability-specific, but concurrency is provider-specific.
-If answer generation, chat, summarization, and embeddings all use one provider, they share that provider's configured request limit.
+If answer generation, Chat, the Indexing model, and embeddings all use one provider, they share that provider's configured request limit.
 See [Provider reference](configuration.md#provider-reference) for the complete capability matrix and endpoint conventions.
 
 ## Document ingestion
 
-An ingestion job discovers document structure, divides content into searchable sections, creates summaries and embeddings, and publishes the finished index.
+An ingestion job discovers document structure, divides content into searchable sections, creates retrieval descriptions and embeddings, and publishes the finished index.
 Section paths remain part of each passage's embedding text.
 CiteLoom embeds the document filename once and blends that vector into each passage and media-description vector with a 0.1 filename weight and a 0.9 content weight.
 Document titles and section outlines are not independent retrieval candidates and cannot consume the candidate budget.
@@ -155,7 +155,7 @@ sequenceDiagram
             DB-->>Runner: Job and renewable lease
             Runner->>Parser: Submit content ID, byte length, filename, and options
             Parser->>Store: Read immutable source by content ID
-            Runner->>AI: Summarize or embed when required
+            Runner->>AI: Describe or embed when required
             Runner->>DB: Store output and advance checkpoint
         end
         Runner->>DB: Promote index atomically

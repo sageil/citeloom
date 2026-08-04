@@ -427,7 +427,7 @@ WITH canonical_settings AS (
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": 131072,
-            "model": "gemma4:e4b-mlx"
+            "model": "gemma4:e4b"
           },
           "textToSpeech": {
             "apiToken": null,

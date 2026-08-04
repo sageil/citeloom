@@ -153,7 +153,7 @@ The saved oMLX URL uses port 9000 and can be changed in Settings.
 | Ask | Ollama | `gemma4:e4b-mlx` |
 | Chat | Ollama | `gemma4:e4b-mlx` |
 | Query Expansion | Ollama | `gemma4:e4b-mlx` |
-| Indexing model | Ollama | `gemma4:e4b-mlx` |
+| Indexing model | Ollama | `gemma4:e4b` |
 | Embedding model | Ollama | `snowflake-arctic-embed:137m` |
 | Search ranking | Not selected | oMLX default `gte-reranker-modernbert-base` is available |
 | Speech input | Not selected | oMLX default `Qwen3-ASR-1.7B-8bit` is available |
@@ -222,7 +222,7 @@ Changing the selected format requires reindexing.
 
 ## Thinking mode
 
-Thinking mode is a CiteLoom runtime setting for answer generation, Query Expansion, and summarization.
+Thinking mode is a CiteLoom runtime setting for answer generation, Query Expansion, and the Indexing model.
 CiteLoom handles reasoning output through its provider adapters, so no runtime-specific delimiter setup is needed.
 
 | Setting | Behavior |

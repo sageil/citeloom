@@ -20,7 +20,7 @@ The `src` root contains only the executable `web-server.ts` entry point.
 | `domain/` | Stable domain types and the schemas that validate them at system boundaries |
 | `embedding/` | Embedding generation and embedding-space management |
 | `inference/` | Model registry, model-request coordination, and model metrics |
-| `ingestion/` | Ingestion workflows, artifacts, summarization, and worker execution |
+| `ingestion/` | Ingestion workflows, artifacts, retrieval descriptions, and worker execution |
 | `observability/` | Diagnostics, run telemetry, telemetry stages, and dashboard storage |
 | `providers/` | Configurable provider profiles, model and speech adapters, saved provider settings, and OpenAI Codex device authentication |
 | `research/` | Research threads, saved citations and claims, exports, and evidence rendering |

@@ -514,7 +514,7 @@ function readProviderConfiguration(value) {
     ),
     summarization: readProviderModelConfiguration(
       configuration.summarization,
-      "summarization configuration",
+      "indexing model configuration",
     ),
     textToSpeech: readTextToSpeechConfiguration(configuration.textToSpeech),
   };
@@ -603,7 +603,7 @@ function readCustomAdapters(value) {
     summarization: readEnum(
       adapters.summarization,
       customLanguageAdapters,
-      "summarization adapter",
+      "indexing model adapter",
     ),
     textToSpeech: readEnum(
       adapters.textToSpeech,

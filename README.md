@@ -43,7 +43,7 @@ See the [complete feature guide](docs/features.md) for user workflows, administr
 - Docker with Docker Compose.
 - Bash and curl for the local installer.
 - Node.js 26.5.0 for source-based development outside Docker.
-- Configured model providers for answers, chat, summarization, embeddings, and any enabled reranking or speech features.
+- Configured model providers for answers, Chat, the Indexing model, embeddings, and any enabled reranking or speech features.
 - Enough local memory and storage for the selected models, PostgreSQL data, document artifacts, and extracted images.
 
 The included Compose services provide PostgreSQL, Docling document conversion, and HHEM claim-support checks.
@@ -120,18 +120,18 @@ See [Configuration](docs/configuration.md#provider-reference) for endpoint conve
 ## Ollama configuration
 
 CiteLoom services run in Docker Compose while Ollama runs on the host at `http://host.docker.internal:11434`.
-The current local Ollama profile uses adaptive context sizing, allows one parallel request, and disables Thinking mode.
+The default Ollama profile uses adaptive context sizing, allows one parallel request, and disables Thinking mode.
 
 | Capability | Model | Context capacity | Current use |
 | --- | --- | --- | --- |
-| Answers | `qwen3.5:9b-mlx` | 131,072 tokens | Saved Ollama connection; requests currently route to OpenAI Codex |
-| Chat | `qwen3.5:9b-mlx` | 131,072 tokens | Saved Ollama connection; requests currently route to OpenAI Codex |
-| Query Expansion | `qwen3.5:9b-mlx` | 131,072 tokens | Saved Ollama connection; currently disabled and routed to OpenAI Codex |
-| Indexing model | `qwen3.5:9b` | 131,072 tokens | Active through Ollama |
-| Embeddings | `snowflake-arctic-embed:137m` | 2,048 tokens | Active through Ollama |
+| Answers | `gemma4:e4b-mlx` | 131,072 tokens | Default through Ollama |
+| Chat | `gemma4:e4b-mlx` | 131,072 tokens | Default through Ollama |
+| Query Expansion | `gemma4:e4b-mlx` | 131,072 tokens | Default through Ollama |
+| Indexing model | `gemma4:e4b` | 131,072 tokens | Default through Ollama |
+| Embeddings | `snowflake-arctic-embed:137m` | 2,048 tokens | Default through Ollama |
 | Docling VLM | `frob/unlimited-ocr:q8_0` | Model-defined | Saved Ollama override; used only when VLM PDF processing is selected |
 
-Fresh databases use `gemma4:e4b-mlx` for answers, Chat, Query Expansion, and the Indexing model until an administrator changes the provider settings.
+Fresh databases use `gemma4:e4b-mlx` for answers, Chat, and Query Expansion, and `gemma4:e4b` for the Indexing model until an administrator changes the provider settings.
 The `-mlx` models are intended for Macs.
 Linux users should select compatible non-MLX models available in their Ollama installation.
 Adaptive context sizing applies to native Ollama GGUF language models, while embeddings, MLX runners, and other providers remain outside adaptive allocation.

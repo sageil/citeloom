@@ -115,7 +115,7 @@ Monitor progress with `pnpm status` or the worker logs.
 Use the document controls in the web application to reindex after changing the embedding model, dimensions, input format, retrieval-window policy, or any setting that changes how searchable content is constructed.
 The source filename remains the document's catalog identity, while CiteLoom reads the file itself from the content store.
 Files supported by Docling are converted again.
-Plain-text files are split, summarized, embedded, and indexed without Docling.
+Plain-text files are split, prepared for search, embedded, and indexed without Docling.
 Each completed job replaces the previous search index in one database operation.
 After selecting a different embedding configuration, answers are unavailable until documents are reindexed.
 The previous configuration is not kept searchable.
