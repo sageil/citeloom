@@ -52,7 +52,7 @@ export type RankedCandidate = DenseCandidate | LexicalCandidate;
 
 export interface WeightedRanking {
   candidates: readonly RankedCandidate[];
-  channel: "dense" | "lexical";
+  channel: "dense" | "lexical" | "toc";
   queryIndex: number;
   weight: number;
 }

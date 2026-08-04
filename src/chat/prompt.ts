@@ -42,15 +42,6 @@ function buildChatUserPromptFrame(
       "<current_question>",
       question,
       "</current_question>",
-      "",
-      "<response_decision>",
-      "First decide from the current question and conversation context whether the user's intended subject and scope are clear.",
-      "Do not use the retrieved sources to resolve ambiguity about what the user meant.",
-      "If multiple materially different meanings remain plausible, ask one focused clarification question and offer the meaningful choices when useful.",
-      "Do not answer every plausible meaning as a substitute for clarification.",
-      "A clarification may offer more than two choices and must not answer the unresolved question.",
-      "Otherwise, answer the supported parts of the current question.",
-      "</response_decision>",
     ].join("\n"),
 
     beforeSources: [

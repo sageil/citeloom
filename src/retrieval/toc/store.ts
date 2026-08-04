@@ -1,4 +1,4 @@
-import { and, asc, cosineDistance, eq, inArray } from "drizzle-orm";
+import { and, asc, cosineDistance, eq, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 
 import type { CiteLoomDatabase } from "../../database/client.js";
@@ -35,6 +35,13 @@ const routedRetrievalRowSchema = z.object({
   sourceFile: z.string().min(1),
 });
 
+const activeDocumentTocRowSchema = z.object({
+  artifact: documentTocArtifactSchema,
+  documentId: contentIdSchema,
+  generationId: z.uuid(),
+  sourceFile: z.string().min(1),
+});
+
 export interface DocumentTocGenerationIdentity {
   documentId: string;
   elementSetId: string;
@@ -46,6 +53,11 @@ export interface ActiveDocumentToc {
   artifact: DocumentTocArtifact;
   documentId: string;
   generationId: string;
+  sourceFile: string;
+}
+
+export interface DocumentTocTarget {
+  documentId: string;
   sourceFile: string;
 }
 
@@ -244,12 +256,27 @@ async function validateDocumentTocRetrievalReferences(
   }
 }
 
-export async function readActiveDocumentToc(
+export async function readActiveDocumentTocs(
   database: CiteLoomDatabase,
   embeddingSpaceId: string,
-  documentId: string,
-  sourceFile: string,
-): Promise<ActiveDocumentToc | null> {
+  targets: readonly DocumentTocTarget[],
+): Promise<ActiveDocumentToc[]> {
+  const uniqueTargets = new Map<string, DocumentTocTarget>();
+  for (const target of targets) {
+    const key = `${target.documentId}\u0000${target.sourceFile}`;
+    uniqueTargets.set(key, target);
+  }
+  if (uniqueTargets.size === 0) {
+    return [];
+  }
+  const targetConditions = [...uniqueTargets.values()].map((target) => and(
+    eq(retrievalTocArtifacts.documentId, target.documentId),
+    eq(retrievalTocArtifacts.sourceFile, target.sourceFile),
+  ));
+  const targetCondition = or(...targetConditions);
+  if (targetCondition === undefined) {
+    return [];
+  }
   const rows = await database
     .select({
       artifact: retrievalTocArtifacts.artifact,
@@ -268,20 +295,26 @@ export async function readActiveDocumentToc(
     )
     .where(and(
       eq(indexedDocumentSpaces.embeddingSpaceId, embeddingSpaceId),
-      eq(retrievalTocArtifacts.documentId, documentId),
-      eq(retrievalTocArtifacts.sourceFile, sourceFile),
-    ))
-    .limit(1);
-  const row = rows[0];
-  if (row === undefined) {
-    return null;
+      targetCondition,
+    ));
+  const activeTocs: ActiveDocumentToc[] = [];
+  for (const row of rows) {
+    const decoded = activeDocumentTocRowSchema.parse(row);
+    activeTocs.push({
+      artifact: decoded.artifact,
+      documentId: decoded.documentId,
+      generationId: decoded.generationId,
+      sourceFile: decoded.sourceFile,
+    });
   }
-  return {
-    artifact: decodeDocumentTocArtifact(row.artifact),
-    documentId: row.documentId,
-    generationId: row.generationId,
-    sourceFile: row.sourceFile,
-  };
+  activeTocs.sort((left, right) => {
+    const documentDifference = left.documentId.localeCompare(right.documentId);
+    if (documentDifference !== 0) {
+      return documentDifference;
+    }
+    return left.sourceFile.localeCompare(right.sourceFile);
+  });
+  return activeTocs;
 }
 
 export function queryActiveTocRetrievalRows(

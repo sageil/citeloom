@@ -10,10 +10,11 @@ export const telemetryStageNameSchema = z.enum([
   "hydration",
   "lexical-retrieval",
   "query-embedding",
-  "query-contextualization",
   "query-expansion",
   "reranking",
   "scope-resolution",
+  "toc-expansion",
+  // Retained so stored runs from the removed model router remain readable.
   "toc-routing",
 ]);
 

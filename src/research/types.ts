@@ -137,7 +137,7 @@ interface PreviousResearchRetrievalTraceQueries {
 
 interface CurrentResearchRetrievalTraceQueries {
   queries: Array<{
-    kind: "contextualized" | "expansion" | "original";
+    kind: "conversation" | "expansion" | "original";
     text: string;
   }>;
 }

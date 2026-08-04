@@ -4,7 +4,6 @@ export type InferenceOperation =
   | "answer"
   | "answer-stream"
   | "claim-verification"
-  | "contextualize-query"
   | "describe-image"
   | "describe-table"
   | "embed-documents"
@@ -12,7 +11,6 @@ export type InferenceOperation =
   | "expand-query"
   | "offline-tool"
   | "generate-document-toc"
-  | "route-document-toc"
   | "rerank";
 
 export interface InferenceMetric {

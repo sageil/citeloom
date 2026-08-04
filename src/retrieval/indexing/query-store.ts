@@ -66,9 +66,8 @@ import type {
   RetrievalRepresentationType,
 } from "../representations.js";
 import {
-  addDocumentTocCandidates,
-  type TocRoutingResources,
-} from "../toc/routing.js";
+  createDocumentTocRanking,
+} from "../toc/expansion.js";
 import { buildCandidateBudgetTelemetry } from "./candidate-telemetry.js";
 import type {
   RetrievalCandidateRankings,
@@ -197,7 +196,7 @@ export async function retrieveRelevantElements(
   rerankerScheduler: TaskScheduler | null = null,
   abortSignal: AbortSignal = passiveAbortSignal,
   runTelemetry: RunTelemetry = noopRunTelemetry,
-  tocRoutingResources: TocRoutingResources | null = null,
+  useDocumentToc = false,
 ): Promise<RetrievedElement[]> {
   const result = await retrieveRelevantElementsWithScores(
     database,
@@ -212,7 +211,7 @@ export async function retrieveRelevantElements(
     rerankerScheduler,
     abortSignal,
     runTelemetry,
-    tocRoutingResources,
+    useDocumentToc,
   );
   return result.retrieved;
 }
@@ -230,7 +229,7 @@ export async function retrieveRelevantElementsWithScores(
   rerankerScheduler: TaskScheduler | null = null,
   abortSignal: AbortSignal = passiveAbortSignal,
   runTelemetry: RunTelemetry = noopRunTelemetry,
-  tocRoutingResources: TocRoutingResources | null = null,
+  useDocumentToc = false,
 ): Promise<RetrievedElementsResult> {
   if (scopeTargets.length === 0) {
     return {
@@ -267,21 +266,29 @@ export async function retrieveRelevantElementsWithScores(
     );
     if (
       config.mode === "hybrid-reranked"
-      && tocRoutingResources !== null
+      && useDocumentToc
       && queries[0]?.embedding !== null
       && queries[0]?.embedding !== undefined
     ) {
-      rankedCandidates = await addDocumentTocCandidates(
+      const tocRanking = await createDocumentTocRanking(
         database,
         space,
         queries[0].embedding,
-        originalQuestion,
         rankedCandidates,
         config.candidateK,
-        tocRoutingResources,
+        config.fusion,
         abortSignal,
         runTelemetry,
       );
+      if (tocRanking !== null) {
+        rankedCandidates = rankRetrievalCandidates(
+          config.mode,
+          rankings,
+          config.rrfK,
+          config.fusion,
+          [tocRanking],
+        );
+      }
     }
     await fusionStage.finish(createTelemetryStageResult("success", {
       inputCount: countRankedCandidates(rankings),
@@ -651,13 +658,15 @@ export function rankRetrievalCandidates(
   rankings: RetrievalCandidateRankings,
   rrfK: number,
   fusion: RankFusionConfig,
+  supplementalRankings: readonly WeightedRanking[] = [],
 ): FusedCandidate[] {
-  const activeRankings = readActiveRankings(
+  const baseRankings = readActiveRankings(
     mode,
     rankings.dense,
     rankings.lexical,
     fusion,
   );
+  const activeRankings = [...baseRankings, ...supplementalRankings];
   let maximumCandidateCount = 0;
   for (const ranking of activeRankings) {
     maximumCandidateCount += ranking.candidates.length;

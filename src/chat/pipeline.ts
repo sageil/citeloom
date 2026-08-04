@@ -1,5 +1,3 @@
-import { hostname } from "node:os";
-
 import {
   createUIMessageStream,
   type InferUIMessageChunk,
@@ -17,18 +15,12 @@ import {
   type GeneratedAnswerResult,
 } from "../answers/inference.js";
 import {
-  createUncitedAnswerDocument,
-  renderPublishedAnswerMarkdown,
-  type PublishedAnswerDocument,
-} from "../answers/published.js";
-import {
   createPublishedAnswerContentSnapshot,
   hasAnswerContent,
   type AnswerContentSnapshot,
 } from "../answers/content-snapshot.js";
 import type { ApplicationRuntime } from "../app/runtime.js";
 import type { AppConfig } from "../config/index.js";
-import { createContextualizedQuestionInput } from "../domain/question.js";
 import {
   selectChatInferenceModels,
 } from "../inference/registry.js";
@@ -37,7 +29,6 @@ import {
   startRunTelemetry,
 } from "../observability/run.js";
 import { DatabaseRunTelemetrySink } from "../observability/store.js";
-import { ApplicationErrorReporter } from "../observability/application-errors.js";
 import {
   prepareRetrievalWithRuntime,
   readAnswerStreamError,
@@ -49,15 +40,12 @@ import {
   embedChatMessageParts,
   prepareChatMemory,
 } from "./memory.js";
+import { createChatRetrievalQuestionInput } from "./retrieval-question.js";
 import {
   ChatConflictError,
   ChatStore,
 } from "./store.js";
 import { CHAT_GENERATION_PROMPT } from "./prompt.js";
-import {
-  contextualizeChatQuestion,
-  type ContextualizedChatQuestion,
-} from "./question-contextualization.js";
 import type {
   ChatAssistantMessage,
   ChatMessageResponse,
@@ -195,35 +183,14 @@ export async function answerChatMessageWithRuntime(
       "retrieving",
     );
     const chatScheduler = runtime.scheduler("chat", "interactive-answer");
-    let questionResolution: ContextualizedChatQuestion = {
-      clarification: null,
-      question: accepted.userMessage.content,
-    };
-    if (memory.questionContextTurns.length > 0) {
-      questionResolution = await contextualizeChatQuestion(
-        runtime.models,
-        accepted.userMessage.content,
-        memory.questionContextTurns,
-        chatScheduler,
-        lease.signal,
-        {
-          seedMode: runtime.config.retrieval.generationSeedMode,
-          temperature: runtime.config.retrieval.chatTemperature,
-        },
-        reportProgress,
-        runTelemetry,
-        async (error) => reportChatContextualizationFailure(
-          runtime,
-          principal,
-          runTelemetry.runId,
-          accepted.run.id,
-          error,
-        ),
-      );
-    }
-    const questionInput = createContextualizedQuestionInput(
+    const questionInput = createChatRetrievalQuestionInput(
       accepted.userMessage.content,
-      questionResolution.question,
+      memory.questionContextTurns,
+      {
+        inputFormat: runtime.config.inference.embedding.inputFormat,
+        maximumInputTokens:
+          runtime.config.inference.embedding.maximumInputTokens,
+      },
     );
     reportProgress("Retrieving evidence from indexed documents");
     const chatModels = selectChatInferenceModels(runtime.models);
@@ -236,7 +203,6 @@ export async function answerChatMessageWithRuntime(
       runTelemetry,
       createChatRetrievalConfig(runtime.config),
       "interactive-answer",
-      { models: chatModels, scheduler: chatScheduler },
     );
 
     await store.transitionRun(
@@ -247,15 +213,13 @@ export async function answerChatMessageWithRuntime(
       "generating",
     );
     let result: ChatGeneratedResponse;
-    if (questionResolution.clarification !== null) {
-      result = createChatClarification(questionResolution.clarification);
-    } else if (prepared.retrieved.length === 0) {
+    if (prepared.retrieved.length === 0) {
       result = createEmptyRetrievalAnswer();
     } else {
       reportProgress("Generating a grounded chat response");
       result = await streamAnswerQuestion(
         chatModels,
-        questionResolution.question,
+        accepted.userMessage.content,
         prepared.retrieved,
         chatScheduler,
         lease.signal,
@@ -366,17 +330,6 @@ type ChatGeneratedResponse = Pick<
   GeneratedAnswerResult,
   "answer" | "answerDocument" | "claims"
 >;
-
-function createChatClarification(content: string): ChatGeneratedResponse {
-  const answerDocument: PublishedAnswerDocument = createUncitedAnswerDocument(
-    content,
-  );
-  return {
-    answer: renderPublishedAnswerMarkdown(answerDocument),
-    answerDocument,
-    claims: [],
-  };
-}
 
 interface ChatRunLease {
   readonly failure: unknown;
@@ -507,27 +460,4 @@ function requireAssistantMessage(run: ChatRun): ChatAssistantMessage {
     throw new Error(`Completed chat run has no assistant message: ${run.id}`);
   }
   return message;
-}
-
-async function reportChatContextualizationFailure(
-  runtime: ApplicationRuntime,
-  principal: AuthenticatedPrincipal,
-  telemetryRunId: string | null,
-  chatRunId: string,
-  error: unknown,
-): Promise<void> {
-  const reporter = new ApplicationErrorReporter(runtime.database);
-  await reporter.report(error, {
-    category: "inference-provider",
-    code: "chat_contextualization_failed",
-    instance: hostname(),
-    operation: "contextualize-chat-question",
-    origin: "inference-provider",
-    requestId: chatRunId,
-    retryable: true,
-    runId: telemetryRunId,
-    service: "web",
-    severity: "warning",
-    workspaceId: principal.workspaceId,
-  });
 }

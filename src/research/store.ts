@@ -126,7 +126,7 @@ const previousRetrievalTraceQueriesSchema = z.object({
 });
 const currentRetrievalTraceQueriesSchema = z.object({
   queries: z.array(z.object({
-    kind: z.enum(["contextualized", "expansion", "original"]),
+    kind: z.enum(["conversation", "expansion", "original"]),
     text: z.string().min(1),
   }).strict()).min(1),
 });

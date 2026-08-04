@@ -10,6 +10,6 @@ export interface RetrievalCandidateRankings {
 
 export interface RetrievalQuery {
   embedding: number[] | null;
-  kind?: "contextualized" | "expansion" | "original";
+  kind?: "conversation" | "expansion" | "original";
   text: string;
 }

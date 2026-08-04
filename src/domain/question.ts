@@ -7,7 +7,7 @@ export type ProcessingQuestion = string & {
   readonly [processingQuestionBrand]: true;
 };
 
-export type QuestionRetrievalQueryKind = "contextualized" | "original";
+export type QuestionRetrievalQueryKind = "conversation" | "original";
 
 export interface QuestionRetrievalQuery {
   kind: QuestionRetrievalQueryKind;
@@ -31,21 +31,21 @@ export function createQuestionInput(question: string): QuestionInput {
   };
 }
 
-export function createContextualizedQuestionInput(
+export function createConversationQuestionInput(
   question: string,
-  contextualizedQuestion: string,
+  conversationQuestion: string,
 ): QuestionInput {
   const input = createQuestionInput(question);
-  const contextualized = createProcessingQuestion(contextualizedQuestion);
+  const conversation = createProcessingQuestion(conversationQuestion);
   if (
-    contextualized.trim() !== ""
-    && contextualized.localeCompare(input.processing, undefined, {
+    conversation.trim() !== ""
+    && conversation.localeCompare(input.processing, undefined, {
       sensitivity: "base",
     }) !== 0
   ) {
     input.retrievalQueries.push({
-      kind: "contextualized",
-      text: contextualized,
+      kind: "conversation",
+      text: conversation,
     });
   }
   return input;
