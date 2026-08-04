@@ -14,17 +14,17 @@ Create a complete local Compose installation with one command.
 ./infra/scripts/install-local.sh
 ```
 
-`0000_citeloom_schema.sql` creates the complete schema in one migration.
+`0000_citeloom_schema.sql` creates the complete schema, required extensions, database functions, and triggers in one migration.
 It does not replay earlier development changes.
-`bootstrap.sql` then creates the required settings.
+`bootstrap.sql` then creates the required reference data and settings.
 When the database has no users, it creates the first administrator from `CITELOOM_ADMIN_USERNAME` and `CITELOOM_ADMIN_PASSWORD`.
 When users already exist, it confirms that an active administrator has a password credential and leaves the stored authentication data unchanged.
 
 ## Migrations
 
-During greenfield development, regenerate and verify `0000_citeloom_schema.sql` from `src/database/schema.ts`.
+During greenfield development, regenerate `0000_citeloom_schema.sql` from `src/database/schema.ts`, then restore and verify the hand-authored extension, function, and trigger definitions that Drizzle does not generate.
 Do not keep historical development migrations.
-Keep `bootstrap.sql` as the single data migration for application defaults, database-owned configuration, and the initial administrator.
+Keep `bootstrap.sql` as the single rerunnable data bootstrap for application defaults, database-owned configuration, and the initial administrator.
 
 ```bash
 pnpm db:generate

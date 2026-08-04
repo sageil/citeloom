@@ -1,9 +1,13 @@
 CREATE EXTENSION IF NOT EXISTS vector;--> statement-breakpoint
 CREATE EXTENSION IF NOT EXISTS pg_textsearch;--> statement-breakpoint
+
 CREATE TYPE "public"."answer_presentation" AS ENUM('paragraph', 'bullet');--> statement-breakpoint
 CREATE TYPE "public"."answer_section" AS ENUM('answer', 'key-points', 'conflicting-evidence');--> statement-breakpoint
 CREATE TYPE "public"."application_error_origin" AS ENUM('http-request', 'streaming-answer', 'ingestion', 'inference-provider', 'worker', 'scheduler', 'background-task', 'settings-reload', 'database-operation', 'startup', 'cli', 'docling-transport', 'docling-task', 'docling-conversion', 'docling-normalization', 'docling-element');--> statement-breakpoint
 CREATE TYPE "public"."application_error_severity" AS ENUM('warning', 'error', 'critical');--> statement-breakpoint
+CREATE TYPE "public"."chat_message_role" AS ENUM('user', 'assistant');--> statement-breakpoint
+CREATE TYPE "public"."chat_run_state" AS ENUM('accepted', 'embedding', 'retrieving', 'generating', 'verifying', 'publishing', 'completed', 'failed', 'canceled');--> statement-breakpoint
+CREATE TYPE "public"."chat_verification_job_state" AS ENUM('pending', 'running', 'completed', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."claim_support_status" AS ENUM('partially-supported', 'supported', 'unsupported', 'unverified');--> statement-breakpoint
 CREATE TYPE "public"."docling_service_state" AS ENUM('active', 'unavailable', 'draining');--> statement-breakpoint
 CREATE TYPE "public"."element_kind" AS ENUM('text', 'table', 'image');--> statement-breakpoint
@@ -12,7 +16,7 @@ CREATE TYPE "public"."ingestion_control_state" AS ENUM('active', 'pause_requeste
 CREATE TYPE "public"."ingestion_phase" AS ENUM('discovered', 'normalized', 'indexed');--> statement-breakpoint
 CREATE TYPE "public"."ingestion_state" AS ENUM('pending', 'running', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."research_output_state" AS ENUM('building', 'published');--> statement-breakpoint
-CREATE TYPE "public"."telemetry_run_kind" AS ENUM('answer', 'benchmark', 'retrieval', 'search');--> statement-breakpoint
+CREATE TYPE "public"."telemetry_run_kind" AS ENUM('answer', 'benchmark', 'chat', 'retrieval', 'search');--> statement-breakpoint
 CREATE TYPE "public"."telemetry_run_outcome" AS ENUM('success', 'error', 'abort');--> statement-breakpoint
 CREATE TYPE "public"."telemetry_stage_outcome" AS ENUM('success', 'error', 'abort', 'fallback');--> statement-breakpoint
 CREATE TYPE "public"."user_account_state" AS ENUM('active', 'pending', 'suspended');--> statement-breakpoint
@@ -83,21 +87,170 @@ CREATE TABLE "application_settings" (
         AND "application_settings"."settings"->>'schemaVersion' = '1')
 );
 --> statement-breakpoint
-CREATE TABLE "provider_oauth_credentials" (
-	"access_token" text NOT NULL,
-	"account_id" text NOT NULL,
-	"expires_at" timestamp with time zone NOT NULL,
-	"provider_id" varchar(64) PRIMARY KEY NOT NULL,
-	"refresh_token" text NOT NULL,
-	"status" varchar(32) NOT NULL,
+CREATE TABLE "chat_citation_records" (
+	"assistant_message_id" uuid NOT NULL,
+	"citation_number" integer NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"document_version_id" uuid NOT NULL,
+	"element_id" varchar(64) NOT NULL,
+	"evidence" jsonb NOT NULL,
+	"id" uuid PRIMARY KEY NOT NULL,
+	"image_content" "bytea",
+	"page_numbers" integer[] NOT NULL,
+	"regions" jsonb NOT NULL,
+	"section_path" text[] NOT NULL,
+	"source_file" text NOT NULL,
+	CONSTRAINT "chat_citation_records_message_identity_unique" UNIQUE("assistant_message_id","id"),
+	CONSTRAINT "chat_citation_records_values_check" CHECK ("chat_citation_records"."citation_number" > 0
+        AND length(trim("chat_citation_records"."source_file")) > 0
+        AND (
+          ("chat_citation_records"."evidence"->>'kind' = 'image' AND "chat_citation_records"."image_content" IS NOT NULL)
+          OR (
+            "chat_citation_records"."evidence"->>'kind' IN ('table', 'text')
+            AND "chat_citation_records"."image_content" IS NULL
+          )
+        ))
+);
+--> statement-breakpoint
+CREATE TABLE "chat_conversations" (
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"id" uuid PRIMARY KEY NOT NULL,
+	"owner_user_id" uuid NOT NULL,
+	"scope" jsonb NOT NULL,
+	"title" text NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"version" integer DEFAULT 1 NOT NULL,
-	CONSTRAINT "provider_oauth_credentials_provider_valid" CHECK ("provider_oauth_credentials"."provider_id" = 'openai-codex'),
-	CONSTRAINT "provider_oauth_credentials_values_valid" CHECK (length(trim("provider_oauth_credentials"."access_token")) > 0
-        AND length(trim("provider_oauth_credentials"."refresh_token")) > 0
-        AND length(trim("provider_oauth_credentials"."account_id")) > 0
-        AND "provider_oauth_credentials"."status" IN ('connected', 'reauth-required')
-        AND "provider_oauth_credentials"."version" > 0)
+	"workspace_id" uuid NOT NULL,
+	CONSTRAINT "chat_conversations_title_check" CHECK (length(trim("chat_conversations"."title")) > 0)
+);
+--> statement-breakpoint
+CREATE TABLE "chat_evidence_documents" (
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"document_id" varchar(64) NOT NULL,
+	"document_version_id" uuid PRIMARY KEY NOT NULL,
+	"file_extension" varchar(33) NOT NULL,
+	"media_type" text NOT NULL,
+	"source_file" text NOT NULL,
+	"version" integer NOT NULL,
+	CONSTRAINT "chat_evidence_documents_values_check" CHECK (length(trim("chat_evidence_documents"."source_file")) > 0 AND "chat_evidence_documents"."version" > 0)
+);
+--> statement-breakpoint
+CREATE TABLE "chat_message_embeddings_1024" (
+	"content" text NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"input_tokens" integer NOT NULL,
+	"message_id" uuid NOT NULL,
+	"part_ordinal" integer NOT NULL,
+	"embedding" vector(1024) NOT NULL,
+	CONSTRAINT "chat_message_embeddings_1024_embedding_space_id_message_id_part_ordinal_pk" PRIMARY KEY("embedding_space_id","message_id","part_ordinal"),
+	CONSTRAINT "chat_message_embeddings_1024_values_check" CHECK ("chat_message_embeddings_1024"."input_tokens" > 0 AND "chat_message_embeddings_1024"."part_ordinal" >= 0)
+);
+--> statement-breakpoint
+CREATE TABLE "chat_message_embeddings_384" (
+	"content" text NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"input_tokens" integer NOT NULL,
+	"message_id" uuid NOT NULL,
+	"part_ordinal" integer NOT NULL,
+	"embedding" vector(384) NOT NULL,
+	CONSTRAINT "chat_message_embeddings_384_embedding_space_id_message_id_part_ordinal_pk" PRIMARY KEY("embedding_space_id","message_id","part_ordinal"),
+	CONSTRAINT "chat_message_embeddings_384_values_check" CHECK ("chat_message_embeddings_384"."input_tokens" > 0 AND "chat_message_embeddings_384"."part_ordinal" >= 0)
+);
+--> statement-breakpoint
+CREATE TABLE "chat_message_embeddings_768" (
+	"content" text NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"input_tokens" integer NOT NULL,
+	"message_id" uuid NOT NULL,
+	"part_ordinal" integer NOT NULL,
+	"embedding" vector(768) NOT NULL,
+	CONSTRAINT "chat_message_embeddings_768_embedding_space_id_message_id_part_ordinal_pk" PRIMARY KEY("embedding_space_id","message_id","part_ordinal"),
+	CONSTRAINT "chat_message_embeddings_768_values_check" CHECK ("chat_message_embeddings_768"."input_tokens" > 0 AND "chat_message_embeddings_768"."part_ordinal" >= 0)
+);
+--> statement-breakpoint
+CREATE TABLE "chat_messages" (
+	"answer_document" jsonb,
+	"claims" jsonb,
+	"content" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"id" uuid PRIMARY KEY NOT NULL,
+	"role" "chat_message_role" NOT NULL,
+	"run_id" uuid NOT NULL,
+	CONSTRAINT "chat_messages_content_check" CHECK (length(trim("chat_messages"."content")) > 0),
+	CONSTRAINT "chat_messages_output_check" CHECK ((
+          "chat_messages"."role" = 'user'
+          AND "chat_messages"."answer_document" IS NULL
+          AND "chat_messages"."claims" IS NULL
+        ) OR (
+          "chat_messages"."role" = 'assistant'
+          AND "chat_messages"."answer_document" IS NOT NULL
+          AND "chat_messages"."claims" IS NOT NULL
+        ))
+);
+--> statement-breakpoint
+CREATE TABLE "chat_runs" (
+	"attempt_count" integer DEFAULT 1 NOT NULL,
+	"completed_at" timestamp with time zone,
+	"conversation_id" uuid NOT NULL,
+	"error_message" text,
+	"id" uuid PRIMARY KEY NOT NULL,
+	"lease_expires_at" timestamp with time zone,
+	"memory_trace" jsonb,
+	"retrieval_trace" jsonb,
+	"run_configuration" jsonb,
+	"sequence" integer NOT NULL,
+	"state" "chat_run_state" DEFAULT 'accepted' NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "chat_runs_values_check" CHECK ("chat_runs"."attempt_count" > 0 AND "chat_runs"."sequence" > 0),
+	CONSTRAINT "chat_runs_completion_check" CHECK ((
+          "chat_runs"."state" IN ('completed', 'failed', 'canceled')
+          AND "chat_runs"."completed_at" IS NOT NULL
+          AND "chat_runs"."lease_expires_at" IS NULL
+        ) OR (
+          "chat_runs"."state" NOT IN ('completed', 'failed', 'canceled')
+          AND "chat_runs"."completed_at" IS NULL
+          AND "chat_runs"."lease_expires_at" IS NOT NULL
+        )),
+	CONSTRAINT "chat_runs_error_check" CHECK (("chat_runs"."state" = 'failed' AND "chat_runs"."error_message" IS NOT NULL)
+        OR ("chat_runs"."state" <> 'failed' AND "chat_runs"."error_message" IS NULL)),
+	CONSTRAINT "chat_runs_publication_check" CHECK ((
+          "chat_runs"."state" = 'completed'
+          AND "chat_runs"."memory_trace" IS NOT NULL
+          AND "chat_runs"."retrieval_trace" IS NOT NULL
+          AND "chat_runs"."run_configuration" IS NOT NULL
+        ) OR (
+          "chat_runs"."state" <> 'completed'
+          AND "chat_runs"."memory_trace" IS NULL
+          AND "chat_runs"."retrieval_trace" IS NULL
+          AND "chat_runs"."run_configuration" IS NULL
+        ))
+);
+--> statement-breakpoint
+CREATE TABLE "chat_verification_jobs" (
+	"assistant_message_id" uuid PRIMARY KEY NOT NULL,
+	"attempt_count" integer DEFAULT 0 NOT NULL,
+	"available_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"completed_at" timestamp with time zone,
+	"error_message" text,
+	"failure_count" integer DEFAULT 0 NOT NULL,
+	"lease_expires_at" timestamp with time zone,
+	"state" "chat_verification_job_state" DEFAULT 'pending' NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "chat_verification_jobs_counts_check" CHECK ("chat_verification_jobs"."attempt_count" >= 0 AND "chat_verification_jobs"."failure_count" >= 0),
+	CONSTRAINT "chat_verification_jobs_state_check" CHECK ((
+          "chat_verification_jobs"."state" = 'pending'
+          AND "chat_verification_jobs"."completed_at" IS NULL
+          AND "chat_verification_jobs"."lease_expires_at" IS NULL
+        ) OR (
+          "chat_verification_jobs"."state" = 'running'
+          AND "chat_verification_jobs"."completed_at" IS NULL
+          AND "chat_verification_jobs"."lease_expires_at" IS NOT NULL
+        ) OR (
+          "chat_verification_jobs"."state" IN ('completed', 'failed')
+          AND "chat_verification_jobs"."completed_at" IS NOT NULL
+          AND "chat_verification_jobs"."lease_expires_at" IS NULL
+        )),
+	CONSTRAINT "chat_verification_jobs_error_check" CHECK (("chat_verification_jobs"."state" = 'failed' AND "chat_verification_jobs"."error_message" IS NOT NULL)
+        OR "chat_verification_jobs"."state" <> 'failed')
 );
 --> statement-breakpoint
 CREATE TABLE "citation_records" (
@@ -293,6 +446,25 @@ CREATE TABLE "document_versions" (
 	CONSTRAINT "document_versions_identity_set_unique" UNIQUE("id","element_set_id")
 );
 --> statement-breakpoint
+CREATE TABLE "embedding_input_formats" (
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"document_template" text NOT NULL,
+	"id" uuid PRIMARY KEY NOT NULL,
+	"input_format_hash" varchar(64) NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"query_template" text NOT NULL,
+	"retired_at" timestamp with time zone,
+	"schema_version" integer NOT NULL,
+	CONSTRAINT "embedding_input_formats_values_valid" CHECK (length(trim("embedding_input_formats"."name")) > 0
+        AND "embedding_input_formats"."schema_version" > 0
+        AND length("embedding_input_formats"."document_template")
+          - length(replace("embedding_input_formats"."document_template", '{{text}}', '')) = 8
+        AND length("embedding_input_formats"."query_template")
+          - length(replace("embedding_input_formats"."query_template", '{{text}}', '')) = 8
+        AND "embedding_input_formats"."input_format_hash" ~ '^[a-f0-9]{64}$'
+        AND ("embedding_input_formats"."retired_at" IS NULL OR "embedding_input_formats"."retired_at" >= "embedding_input_formats"."created_at"))
+);
+--> statement-breakpoint
 CREATE TABLE "embedding_space_gc_runs" (
 	"active_space_id" text NOT NULL,
 	"completed_at" timestamp with time zone,
@@ -311,6 +483,8 @@ CREATE TABLE "embedding_space_gc_spaces" (
 	"disposition" varchar(16) NOT NULL,
 	"error_message" text,
 	"estimated_bytes" bigint NOT NULL,
+	"input_format_hash" varchar(64),
+	"input_format_name" varchar(100),
 	"model" text NOT NULL,
 	"profile" text NOT NULL,
 	"protection_detail" text,
@@ -332,11 +506,29 @@ CREATE TABLE "embedding_spaces" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"dimensions" integer NOT NULL,
 	"id" text PRIMARY KEY NOT NULL,
+	"input_format_document_template" text,
+	"input_format_hash" varchar(64),
+	"input_format_id" uuid,
+	"input_format_query_template" text,
+	"input_format_schema_version" integer,
 	"model" text NOT NULL,
 	"profile" text NOT NULL,
 	"retrieval_window_policy" jsonb NOT NULL,
 	"retrieval_window_policy_fingerprint" varchar(64) NOT NULL,
-	CONSTRAINT "embedding_spaces_retrieval_window_policy_fingerprint_valid" CHECK ("embedding_spaces"."retrieval_window_policy_fingerprint" ~ '^[a-f0-9]{64}$')
+	CONSTRAINT "embedding_spaces_retrieval_window_policy_fingerprint_valid" CHECK ("embedding_spaces"."retrieval_window_policy_fingerprint" ~ '^[a-f0-9]{64}$'),
+	CONSTRAINT "embedding_spaces_input_format_snapshot_valid" CHECK ((
+          "embedding_spaces"."input_format_document_template" IS NULL
+          AND "embedding_spaces"."input_format_hash" IS NULL
+          AND "embedding_spaces"."input_format_id" IS NULL
+          AND "embedding_spaces"."input_format_query_template" IS NULL
+          AND "embedding_spaces"."input_format_schema_version" IS NULL
+        ) OR (
+          "embedding_spaces"."input_format_document_template" IS NOT NULL
+          AND "embedding_spaces"."input_format_hash" ~ '^[a-f0-9]{64}$'
+          AND "embedding_spaces"."input_format_id" IS NOT NULL
+          AND "embedding_spaces"."input_format_query_template" IS NOT NULL
+          AND "embedding_spaces"."input_format_schema_version" > 0
+        ))
 );
 --> statement-breakpoint
 CREATE TABLE "indexed_document_spaces" (
@@ -454,6 +646,23 @@ CREATE TABLE "ingestion_jobs" (
 	CONSTRAINT "ingestion_jobs_page_count_check" CHECK ("ingestion_jobs"."page_count" IS NULL OR "ingestion_jobs"."page_count" > 0)
 );
 --> statement-breakpoint
+CREATE TABLE "provider_oauth_credentials" (
+	"access_token" text NOT NULL,
+	"account_id" text NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"provider_id" varchar(64) PRIMARY KEY NOT NULL,
+	"refresh_token" text NOT NULL,
+	"status" varchar(32) NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"version" integer DEFAULT 1 NOT NULL,
+	CONSTRAINT "provider_oauth_credentials_provider_valid" CHECK ("provider_oauth_credentials"."provider_id" = 'openai-codex'),
+	CONSTRAINT "provider_oauth_credentials_values_valid" CHECK (length(trim("provider_oauth_credentials"."access_token")) > 0
+        AND length(trim("provider_oauth_credentials"."refresh_token")) > 0
+        AND length(trim("provider_oauth_credentials"."account_id")) > 0
+        AND "provider_oauth_credentials"."status" IN ('connected', 'reauth-required')
+        AND "provider_oauth_credentials"."version" > 0)
+);
+--> statement-breakpoint
 CREATE TABLE "research_feedback" (
 	"citation_id" uuid,
 	"comment" text,
@@ -513,6 +722,7 @@ CREATE TABLE "research_turns" (
 	"answer_schema_version" integer NOT NULL,
 	"completed_at" timestamp with time zone NOT NULL,
 	"id" uuid PRIMARY KEY NOT NULL,
+	"no_answer_content" text,
 	"question" text NOT NULL,
 	"output_state" "research_output_state" NOT NULL,
 	"retrieved_context" jsonb NOT NULL,
@@ -522,7 +732,8 @@ CREATE TABLE "research_turns" (
 	"scope" jsonb NOT NULL,
 	"sequence" integer NOT NULL,
 	"thread_id" uuid NOT NULL,
-	CONSTRAINT "research_turns_answer_schema_version_check" CHECK ("research_turns"."answer_schema_version" = 1)
+	CONSTRAINT "research_turns_answer_schema_version_check" CHECK ("research_turns"."answer_schema_version" = 1),
+	CONSTRAINT "research_turns_no_answer_content_check" CHECK ("research_turns"."no_answer_content" IS NULL OR length(trim("research_turns"."no_answer_content")) > 0)
 );
 --> statement-breakpoint
 CREATE TABLE "retrieval_chunks" (
@@ -530,12 +741,13 @@ CREATE TABLE "retrieval_chunks" (
 	"embedding_space_id" text NOT NULL,
 	"evidence_content" text NOT NULL,
 	"generation_id" uuid NOT NULL,
-	"id" varchar(64) NOT NULL,
+	"id" varchar(76) NOT NULL,
 	"kind" "element_kind" NOT NULL,
 	"next_retrieval_id" varchar(64),
 	"page_number" integer,
 	"parent_id" varchar(64) NOT NULL,
 	"previous_retrieval_id" varchar(64),
+	"representation_type" varchar(32) NOT NULL,
 	"source_file" text NOT NULL,
 	"embedding" vector(768) NOT NULL,
 	CONSTRAINT "retrieval_chunks_embedding_space_id_generation_id_id_pk" PRIMARY KEY("embedding_space_id","generation_id","id")
@@ -546,12 +758,13 @@ CREATE TABLE "retrieval_chunks_1024" (
 	"embedding_space_id" text NOT NULL,
 	"evidence_content" text NOT NULL,
 	"generation_id" uuid NOT NULL,
-	"id" varchar(64) NOT NULL,
+	"id" varchar(76) NOT NULL,
 	"kind" "element_kind" NOT NULL,
 	"next_retrieval_id" varchar(64),
 	"page_number" integer,
 	"parent_id" varchar(64) NOT NULL,
 	"previous_retrieval_id" varchar(64),
+	"representation_type" varchar(32) NOT NULL,
 	"source_file" text NOT NULL,
 	"embedding" vector(1024) NOT NULL,
 	CONSTRAINT "retrieval_chunks_1024_embedding_space_id_generation_id_id_pk" PRIMARY KEY("embedding_space_id","generation_id","id")
@@ -562,12 +775,13 @@ CREATE TABLE "retrieval_chunks_384" (
 	"embedding_space_id" text NOT NULL,
 	"evidence_content" text NOT NULL,
 	"generation_id" uuid NOT NULL,
-	"id" varchar(64) NOT NULL,
+	"id" varchar(76) NOT NULL,
 	"kind" "element_kind" NOT NULL,
 	"next_retrieval_id" varchar(64),
 	"page_number" integer,
 	"parent_id" varchar(64) NOT NULL,
 	"previous_retrieval_id" varchar(64),
+	"representation_type" varchar(32) NOT NULL,
 	"source_file" text NOT NULL,
 	"embedding" vector(384) NOT NULL,
 	CONSTRAINT "retrieval_chunks_384_embedding_space_id_generation_id_id_pk" PRIMARY KEY("embedding_space_id","generation_id","id")
@@ -582,72 +796,30 @@ CREATE TABLE "retrieval_description_artifacts" (
 	CONSTRAINT "retrieval_description_artifacts_generation_id_id_pk" PRIMARY KEY("generation_id","id")
 );
 --> statement-breakpoint
-CREATE TABLE "retrieval_description_chunks_1024" (
-	"document_id" varchar(64) NOT NULL,
-	"embedding_space_id" text NOT NULL,
-	"generation_id" uuid NOT NULL,
-	"id" varchar(76) NOT NULL,
-	"kind" "element_kind" NOT NULL,
-	"parent_id" varchar(64) NOT NULL,
-	"source_file" text NOT NULL,
-	"description" text NOT NULL,
-	"embedding" vector(1024) NOT NULL,
-	CONSTRAINT "retrieval_description_chunks_1024_embedding_space_id_generation_id_id_pk" PRIMARY KEY("embedding_space_id","generation_id","id")
-);
---> statement-breakpoint
-CREATE TABLE "retrieval_description_chunks_384" (
-	"document_id" varchar(64) NOT NULL,
-	"embedding_space_id" text NOT NULL,
-	"generation_id" uuid NOT NULL,
-	"id" varchar(76) NOT NULL,
-	"kind" "element_kind" NOT NULL,
-	"parent_id" varchar(64) NOT NULL,
-	"source_file" text NOT NULL,
-	"description" text NOT NULL,
-	"embedding" vector(384) NOT NULL,
-	CONSTRAINT "retrieval_description_chunks_384_embedding_space_id_generation_id_id_pk" PRIMARY KEY("embedding_space_id","generation_id","id")
-);
---> statement-breakpoint
-CREATE TABLE "retrieval_description_chunks" (
-	"document_id" varchar(64) NOT NULL,
-	"embedding_space_id" text NOT NULL,
-	"generation_id" uuid NOT NULL,
-	"id" varchar(76) NOT NULL,
-	"kind" "element_kind" NOT NULL,
-	"parent_id" varchar(64) NOT NULL,
-	"source_file" text NOT NULL,
-	"description" text NOT NULL,
-	"embedding" vector(768) NOT NULL,
-	CONSTRAINT "retrieval_description_chunks_embedding_space_id_generation_id_id_pk" PRIMARY KEY("embedding_space_id","generation_id","id")
-);
---> statement-breakpoint
-CREATE TABLE "retrieval_description_lexical_chunks" (
-	"content" text NOT NULL,
-	"document_id" varchar(64) NOT NULL,
-	"embedding_space_id" text NOT NULL,
-	"generation_id" uuid NOT NULL,
-	"id" varchar(76) NOT NULL,
-	"kind" "element_kind" NOT NULL,
-	"parent_id" varchar(64) NOT NULL,
-	"source_file" text NOT NULL,
-	"description" text NOT NULL,
-	CONSTRAINT "retrieval_description_lexical_chunks_embedding_space_id_generation_id_id_pk" PRIMARY KEY("embedding_space_id","generation_id","id")
-);
---> statement-breakpoint
 CREATE TABLE "retrieval_lexical_chunks" (
 	"content" text NOT NULL,
 	"document_id" varchar(64) NOT NULL,
 	"embedding_space_id" text NOT NULL,
 	"evidence_content" text NOT NULL,
 	"generation_id" uuid NOT NULL,
-	"id" varchar(64) NOT NULL,
+	"id" varchar(76) NOT NULL,
 	"kind" "element_kind" NOT NULL,
 	"next_retrieval_id" varchar(64),
 	"page_number" integer,
 	"parent_id" varchar(64) NOT NULL,
 	"previous_retrieval_id" varchar(64),
+	"representation_type" varchar(32) NOT NULL,
 	"source_file" text NOT NULL,
 	CONSTRAINT "retrieval_lexical_chunks_embedding_space_id_generation_id_id_pk" PRIMARY KEY("embedding_space_id","generation_id","id")
+);
+--> statement-breakpoint
+CREATE TABLE "retrieval_toc_artifacts" (
+	"artifact" jsonb NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"document_id" varchar(64) NOT NULL,
+	"element_set_id" varchar(64) NOT NULL,
+	"generation_id" uuid PRIMARY KEY NOT NULL,
+	"source_file" text NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "source_content_deletions" (
@@ -799,6 +971,19 @@ CREATE TABLE "workspaces" (
 	CONSTRAINT "workspaces_slug_check" CHECK ("workspaces"."slug" ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')
 );
 --> statement-breakpoint
+ALTER TABLE "chat_citation_records" ADD CONSTRAINT "chat_citation_records_assistant_message_id_chat_messages_id_fk" FOREIGN KEY ("assistant_message_id") REFERENCES "public"."chat_messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_citation_records" ADD CONSTRAINT "chat_citation_records_document_version_id_chat_evidence_documents_document_version_id_fk" FOREIGN KEY ("document_version_id") REFERENCES "public"."chat_evidence_documents"("document_version_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_conversations" ADD CONSTRAINT "chat_conversations_owner_membership_fk" FOREIGN KEY ("workspace_id","owner_user_id") REFERENCES "public"."workspace_memberships"("workspace_id","user_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_evidence_documents" ADD CONSTRAINT "chat_evidence_documents_document_id_source_documents_document_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."source_documents"("document_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_message_embeddings_1024" ADD CONSTRAINT "chat_message_embeddings_1024_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_message_embeddings_1024" ADD CONSTRAINT "chat_message_embeddings_1024_message_id_chat_messages_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."chat_messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_message_embeddings_384" ADD CONSTRAINT "chat_message_embeddings_384_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_message_embeddings_384" ADD CONSTRAINT "chat_message_embeddings_384_message_id_chat_messages_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."chat_messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_message_embeddings_768" ADD CONSTRAINT "chat_message_embeddings_768_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_message_embeddings_768" ADD CONSTRAINT "chat_message_embeddings_768_message_id_chat_messages_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."chat_messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_run_id_chat_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."chat_runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_runs" ADD CONSTRAINT "chat_runs_conversation_id_chat_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."chat_conversations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_verification_jobs" ADD CONSTRAINT "chat_verification_jobs_assistant_message_id_chat_messages_id_fk" FOREIGN KEY ("assistant_message_id") REFERENCES "public"."chat_messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "citation_records" ADD CONSTRAINT "citation_records_turn_id_research_turns_id_fk" FOREIGN KEY ("turn_id") REFERENCES "public"."research_turns"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "citation_records" ADD CONSTRAINT "citation_records_version_element_set_fk" FOREIGN KEY ("document_version_id","element_set_id") REFERENCES "public"."document_versions"("id","element_set_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "citation_records" ADD CONSTRAINT "citation_records_element_set_member_fk" FOREIGN KEY ("element_set_id","element_id") REFERENCES "public"."document_element_set_members"("set_id","element_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -813,6 +998,7 @@ ALTER TABLE "document_versions" ADD CONSTRAINT "document_versions_document_id_so
 ALTER TABLE "document_versions" ADD CONSTRAINT "document_versions_element_set_id_document_element_sets_id_fk" FOREIGN KEY ("element_set_id") REFERENCES "public"."document_element_sets"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "embedding_space_gc_spaces" ADD CONSTRAINT "embedding_space_gc_spaces_run_id_embedding_space_gc_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."embedding_space_gc_runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "embedding_space_pins" ADD CONSTRAINT "embedding_space_pins_space_id_embedding_spaces_id_fk" FOREIGN KEY ("space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "embedding_spaces" ADD CONSTRAINT "embedding_spaces_input_format_id_embedding_input_formats_id_fk" FOREIGN KEY ("input_format_id") REFERENCES "public"."embedding_input_formats"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "indexed_document_spaces" ADD CONSTRAINT "indexed_document_spaces_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "indexed_documents" ADD CONSTRAINT "indexed_documents_document_id_source_documents_document_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."source_documents"("document_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "indexed_documents" ADD CONSTRAINT "indexed_documents_element_set_id_document_element_sets_id_fk" FOREIGN KEY ("element_set_id") REFERENCES "public"."document_element_sets"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -835,11 +1021,8 @@ ALTER TABLE "research_turns" ADD CONSTRAINT "research_turns_thread_id_research_t
 ALTER TABLE "retrieval_chunks" ADD CONSTRAINT "retrieval_chunks_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "retrieval_chunks_1024" ADD CONSTRAINT "retrieval_chunks_1024_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "retrieval_chunks_384" ADD CONSTRAINT "retrieval_chunks_384_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "retrieval_description_chunks_1024" ADD CONSTRAINT "retrieval_description_chunks_1024_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "retrieval_description_chunks_384" ADD CONSTRAINT "retrieval_description_chunks_384_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "retrieval_description_chunks" ADD CONSTRAINT "retrieval_description_chunks_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "retrieval_description_lexical_chunks" ADD CONSTRAINT "retrieval_description_lexical_chunks_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "retrieval_lexical_chunks" ADD CONSTRAINT "retrieval_lexical_chunks_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "retrieval_toc_artifacts" ADD CONSTRAINT "retrieval_toc_artifacts_element_set_id_document_element_sets_id_fk" FOREIGN KEY ("element_set_id") REFERENCES "public"."document_element_sets"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "telemetry_stages" ADD CONSTRAINT "telemetry_stages_run_id_telemetry_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."telemetry_runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_password_credentials" ADD CONSTRAINT "user_password_credentials_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_sessions" ADD CONSTRAINT "user_sessions_active_workspace_id_workspaces_id_fk" FOREIGN KEY ("active_workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -854,6 +1037,21 @@ CREATE INDEX "application_error_events_workspace_origin_occurred_idx" ON "applic
 CREATE INDEX "application_error_events_service_operation_idx" ON "application_error_events" USING btree ("service","operation","occurred_at");--> statement-breakpoint
 CREATE INDEX "application_error_events_job_idx" ON "application_error_events" USING btree ("job_id","occurred_at");--> statement-breakpoint
 CREATE INDEX "application_error_events_document_idx" ON "application_error_events" USING btree ("document_id","occurred_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "chat_citation_records_message_number_idx" ON "chat_citation_records" USING btree ("assistant_message_id","citation_number");--> statement-breakpoint
+CREATE INDEX "chat_citation_records_version_idx" ON "chat_citation_records" USING btree ("document_version_id");--> statement-breakpoint
+CREATE INDEX "chat_conversations_owner_updated_idx" ON "chat_conversations" USING btree ("workspace_id","owner_user_id","updated_at");--> statement-breakpoint
+CREATE INDEX "chat_evidence_documents_document_idx" ON "chat_evidence_documents" USING btree ("document_id");--> statement-breakpoint
+CREATE INDEX "chat_message_embeddings_1024_message_idx" ON "chat_message_embeddings_1024" USING btree ("message_id");--> statement-breakpoint
+CREATE INDEX "chat_message_embeddings_1024_hnsw_idx" ON "chat_message_embeddings_1024" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "chat_message_embeddings_384_message_idx" ON "chat_message_embeddings_384" USING btree ("message_id");--> statement-breakpoint
+CREATE INDEX "chat_message_embeddings_384_hnsw_idx" ON "chat_message_embeddings_384" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "chat_message_embeddings_768_message_idx" ON "chat_message_embeddings_768" USING btree ("message_id");--> statement-breakpoint
+CREATE INDEX "chat_message_embeddings_768_hnsw_idx" ON "chat_message_embeddings_768" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE UNIQUE INDEX "chat_messages_run_role_idx" ON "chat_messages" USING btree ("run_id","role");--> statement-breakpoint
+CREATE INDEX "chat_messages_run_created_idx" ON "chat_messages" USING btree ("run_id","created_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "chat_runs_conversation_sequence_idx" ON "chat_runs" USING btree ("conversation_id","sequence");--> statement-breakpoint
+CREATE INDEX "chat_runs_conversation_state_idx" ON "chat_runs" USING btree ("conversation_id","state");--> statement-breakpoint
+CREATE INDEX "chat_verification_jobs_dispatch_idx" ON "chat_verification_jobs" USING btree ("state","available_at","lease_expires_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "citation_records_turn_number_idx" ON "citation_records" USING btree ("turn_id","citation_number");--> statement-breakpoint
 CREATE INDEX "citation_records_version_idx" ON "citation_records" USING btree ("document_version_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "docling_conversion_requests_run_sequence_idx" ON "docling_conversion_requests" USING btree ("run_id","sequence");--> statement-breakpoint
@@ -867,6 +1065,7 @@ CREATE UNIQUE INDEX "docling_service_instances_base_url_idx" ON "docling_service
 CREATE INDEX "document_element_sets_document_idx" ON "document_element_sets" USING btree ("document_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "document_versions_source_version_idx" ON "document_versions" USING btree ("source_file","version");--> statement-breakpoint
 CREATE INDEX "document_versions_document_idx" ON "document_versions" USING btree ("document_id");--> statement-breakpoint
+CREATE INDEX "embedding_input_formats_retired_name_idx" ON "embedding_input_formats" USING btree ("retired_at","name");--> statement-breakpoint
 CREATE INDEX "indexed_document_spaces_document_id_idx" ON "indexed_document_spaces" USING btree ("document_id");--> statement-breakpoint
 CREATE INDEX "indexed_document_spaces_space_idx" ON "indexed_document_spaces" USING btree ("embedding_space_id");--> statement-breakpoint
 CREATE INDEX "indexed_documents_document_id_idx" ON "indexed_documents" USING btree ("document_id");--> statement-breakpoint
@@ -893,16 +1092,9 @@ CREATE INDEX "retrieval_chunks_384_document_idx" ON "retrieval_chunks_384" USING
 CREATE INDEX "retrieval_chunks_384_embedding_hnsw_idx" ON "retrieval_chunks_384" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
 CREATE UNIQUE INDEX "retrieval_description_generation_position_idx" ON "retrieval_description_artifacts" USING btree ("generation_id","position");--> statement-breakpoint
 CREATE INDEX "retrieval_description_document_id_idx" ON "retrieval_description_artifacts" USING btree ("document_id");--> statement-breakpoint
-CREATE INDEX "retrieval_description_chunks_1024_document_idx" ON "retrieval_description_chunks_1024" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
-CREATE INDEX "retrieval_description_chunks_1024_embedding_hnsw_idx" ON "retrieval_description_chunks_1024" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
-CREATE INDEX "retrieval_description_chunks_384_document_idx" ON "retrieval_description_chunks_384" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
-CREATE INDEX "retrieval_description_chunks_384_embedding_hnsw_idx" ON "retrieval_description_chunks_384" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
-CREATE INDEX "retrieval_description_chunks_document_id_idx" ON "retrieval_description_chunks" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
-CREATE INDEX "retrieval_description_chunks_embedding_hnsw_idx" ON "retrieval_description_chunks" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
-CREATE INDEX "retrieval_description_lexical_chunks_document_idx" ON "retrieval_description_lexical_chunks" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
-CREATE INDEX "retrieval_description_lexical_chunks_content_bm25_idx" ON "retrieval_description_lexical_chunks" USING bm25 ("content") WITH (text_config=english);--> statement-breakpoint
 CREATE INDEX "retrieval_lexical_chunks_document_idx" ON "retrieval_lexical_chunks" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
 CREATE INDEX "retrieval_lexical_chunks_content_bm25_idx" ON "retrieval_lexical_chunks" USING bm25 ("content") WITH (text_config=english);--> statement-breakpoint
+CREATE INDEX "retrieval_toc_document_idx" ON "retrieval_toc_artifacts" USING btree ("document_id");--> statement-breakpoint
 CREATE INDEX "source_content_deletions_requested_at_idx" ON "source_content_deletions" USING btree ("requested_at");--> statement-breakpoint
 CREATE INDEX "source_elements_document_id_idx" ON "source_elements" USING btree ("document_id");--> statement-breakpoint
 CREATE INDEX "telemetry_runs_started_at_idx" ON "telemetry_runs" USING btree ("started_at");--> statement-breakpoint
@@ -917,6 +1109,7 @@ CREATE INDEX "user_setup_tokens_expiry_idx" ON "user_setup_tokens" USING btree (
 CREATE UNIQUE INDEX "users_username_normalized_idx" ON "users" USING btree ("username_normalized");--> statement-breakpoint
 CREATE INDEX "workspace_memberships_user_idx" ON "workspace_memberships" USING btree ("user_id","workspace_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "workspaces_slug_idx" ON "workspaces" USING btree ("slug");--> statement-breakpoint
+
 CREATE OR REPLACE FUNCTION "publish_application_revision"() RETURNS trigger AS $$
 DECLARE
   revision_channel text;
@@ -1208,3 +1401,66 @@ CREATE TRIGGER "research_statement_citations_immutable_after_publication"
 BEFORE INSERT OR UPDATE OR DELETE ON "research_statement_citations"
 FOR EACH ROW
 EXECUTE FUNCTION "enforce_research_output_child_mutation"();
+
+CREATE OR REPLACE FUNCTION "protect_embedding_input_format_records"()
+RETURNS trigger AS $embedding_input_format_immutability$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'Embedding input-format records cannot be deleted.';
+  END IF;
+  IF OLD."retired_at" IS NULL
+    AND NEW."retired_at" IS NOT NULL
+    AND OLD."created_at" = NEW."created_at"
+    AND OLD."document_template" = NEW."document_template"
+    AND OLD."id" = NEW."id"
+    AND OLD."input_format_hash" = NEW."input_format_hash"
+    AND OLD."name" = NEW."name"
+    AND OLD."query_template" = NEW."query_template"
+    AND OLD."schema_version" = NEW."schema_version"
+  THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION
+    'Embedding input-format records are immutable except for first retirement.';
+END
+$embedding_input_format_immutability$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS "embedding_input_formats_immutable"
+ON "embedding_input_formats";
+CREATE TRIGGER "embedding_input_formats_immutable"
+BEFORE UPDATE OR DELETE ON "embedding_input_formats"
+FOR EACH ROW EXECUTE FUNCTION "protect_embedding_input_format_records"();
+
+DROP TRIGGER IF EXISTS "embedding_input_formats_publish_settings_revision"
+ON "embedding_input_formats";
+CREATE TRIGGER "embedding_input_formats_publish_settings_revision"
+AFTER INSERT OR UPDATE ON "embedding_input_formats"
+FOR EACH ROW EXECUTE FUNCTION "publish_application_revision"('settings');
+
+CREATE OR REPLACE FUNCTION "require_active_embedding_space_input_format"()
+RETURNS trigger AS $embedding_space_input_format_active$
+DECLARE
+  input_format_retired_at timestamp with time zone;
+BEGIN
+  SELECT "retired_at"
+  INTO input_format_retired_at
+  FROM "embedding_input_formats"
+  WHERE "id" = NEW."input_format_id"
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Embedding space input format does not exist.';
+  END IF;
+  IF input_format_retired_at IS NOT NULL THEN
+    RAISE EXCEPTION 'Embedding spaces cannot use a retired input format.';
+  END IF;
+  RETURN NEW;
+END
+$embedding_space_input_format_active$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS "embedding_spaces_require_active_input_format"
+ON "embedding_spaces";
+CREATE TRIGGER "embedding_spaces_require_active_input_format"
+BEFORE INSERT OR UPDATE OF "input_format_id" ON "embedding_spaces"
+FOR EACH ROW
+WHEN (NEW."input_format_id" IS NOT NULL)
+EXECUTE FUNCTION "require_active_embedding_space_input_format"();

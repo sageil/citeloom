@@ -157,7 +157,7 @@ CITELOOM_POSTGRES_DATA_DIRECTORY=./data/citeloomdb
 Compose stores unmodified source files under `CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY`, which defaults to `documents/blobs` under the same directory.
 The installer creates that host directory and mounts it at `/app/documents/blobs` in the migration, web, worker, and Docling containers.
 Docling mounts it read-only and accepts content IDs instead of uploaded document bytes.
-Migration bootstrap stores `/app/documents/blobs` in `application_settings`, and application processes read the path from there.
+Database bootstrap stores `/app/documents/blobs` in `application_settings`, and application processes read the path from there.
 
 To move the source store outside the supplied Compose setup:
 
@@ -183,7 +183,7 @@ CITELOOM_ADMIN_USERNAME=Mayhem
 CITELOOM_ADMIN_PASSWORD='replace-with-a-private-passphrase'
 ```
 
-For a new database, the first migration creates the active administrator and a `CiteLoom` workspace in the same transaction.
+For a new database, the data bootstrap creates the active administrator and a `CiteLoom` workspace in the same transaction.
 The password is stored as an Argon2id hash.
 For an existing database, the bootstrap confirms that an active administrator with a password credential exists.
 It leaves existing users and password hashes unchanged.
