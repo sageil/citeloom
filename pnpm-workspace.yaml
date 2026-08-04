@@ -3,16 +3,7 @@ allowBuilds:
   esbuild@0.25.12: true
   esbuild@0.28.1: true
 
-minimumReleaseAgeExclude:
-  - '@biomejs/biome@2.5.5'
-  - '@biomejs/cli-darwin-arm64@2.5.5'
-  - '@biomejs/cli-darwin-x64@2.5.5'
-  - '@biomejs/cli-linux-arm64-musl@2.5.5'
-  - '@biomejs/cli-linux-arm64@2.5.5'
-  - '@biomejs/cli-linux-x64-musl@2.5.5'
-  - '@biomejs/cli-linux-x64@2.5.5'
-  - '@biomejs/cli-win32-arm64@2.5.5'
-  - '@biomejs/cli-win32-x64@2.5.5'
+minimumReleaseAge: 0
 
 overrides:
   'drizzle-kit@0.31.10>@esbuild-kit/esm-loader': '-'
