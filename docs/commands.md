@@ -101,8 +101,10 @@ They use production application components but are not included in the productio
 | `test` | Run the regular unit-test subset. |
 | `test:all` | Run all isolated tests, including offline evaluation, corpus, and command-line tests. |
 | `test:backup-restore` | Test the complete backup and restore workflow. |
+| `test:coverage` | Run the GitHub-compatible unit and contract suite with production-source coverage thresholds. |
 | `test:integration` | Run the database and authentication integration tests. |
 | `test:live` | Run the test that uses the live HHEM service. |
 | `test:watch` | Run Vitest continuously while files change. |
 
 `test:live` calls a live model service and is not repeatable unit-test coverage.
+`test:coverage` does not run corpus, database integration, Docker, live-model, or browser-automation tests.

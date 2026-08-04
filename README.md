@@ -323,6 +323,12 @@ Run the basic test suite.
 pnpm test
 ```
 
+Run the same GitHub-compatible unit and contract suite with production-source coverage thresholds.
+
+```bash
+pnpm test:coverage
+```
+
 Run every unit suite, including evaluation, corpus, and CLI workflow coverage.
 
 ```bash

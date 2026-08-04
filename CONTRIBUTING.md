@@ -92,6 +92,18 @@ Run the production-focused unit suite during routine development.
 pnpm test
 ```
 
+Every production feature must expose its decisions through deterministic unit or contract tests in this suite.
+Use injected fakes for database, provider, filesystem, HTTP, clock, and identifier boundaries instead of requiring external services.
+
+Run the GitHub-compatible suite with production-source coverage thresholds before requesting review.
+
+```bash
+pnpm test:coverage
+```
+
+GitHub coverage does not run corpus, database integration, Docker, live-model, or browser-automation tests.
+Those workflows remain separate validation tools and do not replace deterministic feature coverage.
+
 Run the complete isolated test suite when changing evaluation, corpus, or command-line behavior.
 
 ```bash
