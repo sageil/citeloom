@@ -42,7 +42,7 @@ export async function expandRetrievalQuery(
   const model = models.queryExpansion;
   const timeoutMs = models.timeouts.queryExpansionMs;
   if (model === null || timeoutMs === null) {
-    throw new Error("Query expansion is enabled without a configured model.");
+    throw new Error("Query Expansion is enabled without a configured model.");
   }
   const stage = runTelemetry.startStage({
     model: {

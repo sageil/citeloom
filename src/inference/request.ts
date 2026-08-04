@@ -61,7 +61,7 @@ function formatInferenceFeature(feature: InferenceFeature): string {
     return "Chat question contextualization";
   }
   if (feature === "queryExpansion") {
-    return "Extra search query generation";
+    return "Query Expansion";
   }
   return "Indexing model";
 }

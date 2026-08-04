@@ -740,10 +740,10 @@ async function buildRetrievalQueries(
   }
   if (queryExpansionScheduler === null || models.queryExpansion === null) {
     throw new Error(
-      "Query expansion is enabled but its model or scheduler is unavailable.",
+      "Query Expansion is enabled but its model or scheduler is unavailable.",
     );
   }
-  reportProgress("Generating extra search queries");
+  reportProgress("Expanding the search query");
   try {
     const expansions = await expandRetrievalQuery(
       models,
@@ -760,7 +760,7 @@ async function buildRetrievalQueries(
   } catch (error: unknown) {
     abortSignal.throwIfAborted();
     reportProgress(
-      `Extra search queries were unavailable, so retrieval is using the original question: ${readErrorMessage(error)}`,
+      `Query Expansion was unavailable, so retrieval is using the original question: ${readErrorMessage(error)}`,
     );
   }
   return querySeeds;

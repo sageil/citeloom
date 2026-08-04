@@ -13,7 +13,7 @@ Each job and answer run keeps the settings it started with.
 After CiteLoom starts, open Settings.
 Configure a provider connection, then choose which features use it.
 Ask, Chat, Indexing model, and Embedding model require a provider.
-Query expansion requires a provider only when enabled.
+Query Expansion requires a provider only when enabled.
 Search ranking, Speech input, and Spoken answers are optional.
 Each feature can use its own provider, model, maximum input size, URL, and sign-in details.
 Existing installations initially copy their Answer route and model settings into Chat, after which later Chat changes are independent.
@@ -94,7 +94,7 @@ If validation fails, the previous setting remains active.
 [`providerCatalog`](../src/providers/profiles.ts) is the source of truth for built-in provider profiles and capabilities.
 Each feature can use a different provider, so the service that writes answers does not have to be the service used for search or speech.
 
-| Provider | Ask | Chat | Query expansion | Indexing model | Embedding model | Search ranking | Speech input | Spoken answers |
+| Provider | Ask | Chat | Query Expansion | Indexing model | Embedding model | Search ranking | Speech input | Spoken answers |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | oMLX | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Ollama | Yes | Yes | Yes | Yes | Yes | - | - | - |
@@ -143,7 +143,7 @@ Confirm current details in the official documentation for [oMLX](https://github.
 
 ### Fresh-install routes and models
 
-Fresh installs use Ollama for Ask, Chat, Query expansion, Indexing model, and Embedding model.
+Fresh installs use Ollama for Ask, Chat, Query Expansion, Indexing model, and Embedding model.
 Search ranking and both speech features start unassigned.
 The saved oMLX models are ready to use if an administrator selects oMLX for one of those capabilities.
 The saved oMLX URL uses port 9000 and can be changed in Settings.
@@ -152,7 +152,7 @@ The saved oMLX URL uses port 9000 and can be changed in Settings.
 | --- | --- | --- |
 | Ask | Ollama | `gemma4:e4b-mlx` |
 | Chat | Ollama | `gemma4:e4b-mlx` |
-| Query expansion | Ollama | `gemma4:e4b-mlx` |
+| Query Expansion | Ollama | `gemma4:e4b-mlx` |
 | Indexing model | Ollama | `gemma4:e4b-mlx` |
 | Embedding model | Ollama | `snowflake-arctic-embed:137m` |
 | Search ranking | Not selected | oMLX default `gte-reranker-modernbert-base` is available |
@@ -164,7 +164,7 @@ Work already in progress keeps its saved settings snapshot when a model, endpoin
 ### Ollama automatic context size
 
 Automatic context size is enabled by default for Ollama language models.
-It applies only to native Ollama GGUF language models used for Ask, Chat, Query expansion, and Indexing model.
+It applies only to native Ollama GGUF language models used for Ask, Chat, Query Expansion, and Indexing model.
 It does not change Embedding model requests, other providers, or MLX runners.
 
 For a bounded answer, CiteLoom calculates the requested context as:
@@ -183,7 +183,7 @@ These examples assume Ollama reports a model maximum of at least 131,072 tokens 
 | Answer with a 27,544-token conservative input bound | `27,544 + 20,000 + 2,048 = 49,592` | `65,536`, because the calculated requirement is below the floor |
 | Answer with a 50,000-token conservative input bound | `50,000 + 20,000 + 2,048 = 72,048` | `72,048` |
 | Small answer while a 131,072-token runner is resident | Requirement is below `65,536`, but the resident runner is larger | Reuse `131,072`; a resident runner is never shrunk |
-| Extra search query generation | CiteLoom assigns the adaptive floor directly rather than using answer-output variables | `65,536` |
+| Query Expansion | CiteLoom assigns the adaptive floor directly rather than using answer-output variables | `65,536` |
 | Summary, vision request, tool request, reasoning request, or answer without an output limit | CiteLoom cannot establish the same bounded answer requirement | The model maximum reported by Ollama |
 
 Automatic context size requires CiteLoom's Ollama provider limit and Ollama's `OLLAMA_NUM_PARALLEL` setting to both be `1`.
@@ -222,7 +222,7 @@ Changing the selected format requires reindexing.
 
 ## Thinking mode
 
-Thinking mode is a CiteLoom runtime setting for answer generation, extra search queries, and summarization.
+Thinking mode is a CiteLoom runtime setting for answer generation, Query Expansion, and summarization.
 CiteLoom handles reasoning output through its provider adapters, so no runtime-specific delimiter setup is needed.
 
 | Setting | Behavior |
@@ -278,13 +278,13 @@ Use the [evaluation workflow](evaluation.md) to calibrate discovery thresholds a
 
 ### Repeatable answers and searches
 
-Query expansion is disabled by default with `queryExpansions` set to `0`.
+Query Expansion is disabled by default with `queryExpansions` set to `0`.
 At `0`, CiteLoom searches only the original wording and does not ask a model to create more searches.
 Values from `1` through `4` allow additional search wording and should be enabled only after a controlled comparison shows better search and answer quality on the intended documents.
-Query expansion, Ask, and Chat each use their own temperature setting.
+Query Expansion, Ask, and Chat each use their own temperature setting.
 `queryExpansionTemperature`, `answerTemperature`, and `chatTemperature` default to `0` for the most repeatable provider behavior.
 `generationSeedMode` defaults to `stable`.
-In this mode, CiteLoom derives separate nonnegative seeds for extra search queries and answer generation from the normalized original question and the sorted IDs of the selected documents.
+In this mode, CiteLoom derives separate nonnegative seeds for Query Expansion and answer generation from the normalized original question and the sorted IDs of the selected documents.
 Set the mode to `random` to omit those seeds and let the provider choose the sampling randomness.
 
 Stable mode sends the same temperature and seed for the same question and document scope.
@@ -320,7 +320,7 @@ Because preloading calls the selected provider even when the user never presses 
 
 ## Time limits and cancellation
 
-Ask, the indexing model, query expansion, embedding models, search ranking, citation checks, and Docling each have their own time limit.
+Ask, the indexing model, Query Expansion, embedding models, search ranking, citation checks, and Docling each have their own time limit.
 For non-PDF files, the conversion time limit increases with file size up to the configured maximum.
 PDF conversion uses the configured maximum.
 
@@ -432,7 +432,7 @@ DOCLING_CONTAINER_ADDITIONAL_SERVICE_INSTANCES=[{"id":"replica-b","baseUrl":"htt
 ## Provider models and request limits
 
 Configure each provider's supported model defaults on the application Settings page.
-Ask, Query expansion, Indexing model, and Embedding model include a configured maximum input size.
+Ask, Query Expansion, Indexing model, and Embedding model include a configured maximum input size.
 Each feature can select a model and input size that differ from the provider defaults.
 Spoken answers can also select a different voice.
 

@@ -1061,7 +1061,7 @@ function formatCapability(capability: ProviderCapability): string {
     return "chat";
   }
   if (capability === "queryExpansion") {
-    return "Query expansion";
+    return "Query Expansion";
   }
   if (capability === "speechToText") {
     return "Speech input";

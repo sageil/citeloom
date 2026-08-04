@@ -17,7 +17,7 @@ Migration saves its path in PostgreSQL, which becomes the shared location used b
 | Local source content store | Immutable raw source bytes addressed by SHA-256 |
 | PostgreSQL | Source records, processing results, jobs, settings, search indexes, and shared model-request limits |
 | Docling | Standard or VLM document conversion that preserves reading order, tables, page locations, and image regions |
-| Model providers | VLM page reading, summaries, embeddings, extra search queries, reranking, answers, chat, and optional speech |
+| Model providers | VLM page reading, summaries, embeddings, Query Expansion, reranking, answers, chat, and optional speech |
 | HHEM service | Support scores for individual answer claims and their cited evidence |
 | Offline evaluation tools | Dataset generation, corpus management, scoring, tuning, and configuration freezes outside the production build |
 
@@ -95,7 +95,7 @@ flowchart LR
     Settings[(Provider settings<br/>in PostgreSQL)] --> Builder[Configuration builder]
     Builder --> Answer[Answer]
     Builder --> Chat[Chat]
-    Builder --> Expansion[Extra search queries]
+    Builder --> Expansion[Query Expansion]
     Builder --> Summary[Indexing model]
     Builder --> Embedding[Embedding]
     Builder --> Reranking[Reranking]
@@ -189,7 +189,7 @@ This prevents cleanup from removing a file while its job is being created and li
 
 Before searching, CiteLoom resolves the exact set of documents selected for the question.
 It always searches the original question with both meaning-based retrieval and BM25 keyword retrieval.
-When extra search queries are enabled, it also searches the generated query variations through those same retrieval paths.
+When Query Expansion is enabled, CiteLoom also searches the generated query variations through those same retrieval paths.
 At a configured count of 0, CiteLoom does not call the extra-search-query model.
 It then combines those rankings and can optionally rerank the best candidates.
 When a published TOC map is available, CiteLoom may select relevant branches from the strongest normally retrieved document and merge their mapped passages into the candidate ranking before reranking.
@@ -197,7 +197,7 @@ TOC entries remain unavailable to answer generation and citation publication.
 Reranking can improve answer and citation accuracy by using a specialized relevance model to reorder candidates before CiteLoom selects the answer context.
 
 Each answer run uses the configured sampling temperatures.
-In stable seed mode, CiteLoom derives separate seeds for extra search queries and answer generation from the normalized original question and the sorted IDs of the selected documents.
+In stable seed mode, CiteLoom derives separate seeds for Query Expansion and answer generation from the normalized original question and the sorted IDs of the selected documents.
 In random mode, the model provider chooses the sampling randomness.
 
 ```mermaid
@@ -216,8 +216,8 @@ sequenceDiagram
     Client->>Entry: Question and document scope
     Entry->>Query: Start answer request
     Query->>DB: Resolve active documents and scope
-    opt Extra search queries enabled
-        Query->>AI: Generate extra search queries
+    opt Query Expansion enabled
+        Query->>AI: Run Query Expansion
     end
     par Dense retrieval
         Query->>DB: pgvector cosine search

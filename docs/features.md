@@ -123,9 +123,9 @@ Generated browser audio URLs are released when the answer, thread, or conversati
 CiteLoom combines semantic similarity and exact-word retrieval through weighted Reciprocal Rank Fusion.
 Administrators can configure how many matching sections are reviewed, how many sections an answer may use, how many Find Sources results and excerpts are displayed, and how semantic, lexical, and repeated matches influence ordering.
 
-Optional query expansion creates up to four alternative searches for a question.
+Optional Query Expansion creates up to four alternative searches for a question.
 Optional search ranking reorders the strongest fused candidates with a dedicated relevance model.
-Stable seed mode asks compatible providers for repeatable query expansions and answer text, while random mode omits those deterministic seeds.
+Stable seed mode asks compatible providers for repeatable Query Expansion results and answer text, while random mode omits those deterministic seeds.
 
 Document table-of-contents routing can use stored headings as an additional way to reach relevant branches in long documents.
 Headings improve routing but are never answer evidence or citations.
@@ -138,7 +138,7 @@ See [Configuration](configuration.md#search-and-answers) for the exact controls 
 
 ## Providers and feature routing
 
-Administrators can route Ask, Chat, query expansion, indexing summaries, embeddings, search ranking, speech input, and spoken answers independently.
+Administrators can route Ask, Chat, Query Expansion, indexing summaries, embeddings, search ranking, speech input, and spoken answers independently.
 Feature routes can override the provider model and, where the capability exposes it, input capacity or speech voice.
 Provider connections contain their endpoint, credentials, default models, and one deployment-wide concurrency limit shared by all capabilities using that provider.
 

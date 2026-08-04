@@ -115,7 +115,7 @@ const capabilityLabels = Object.freeze({
   answer: "Ask",
   chat: "Chat",
   embedding: "Embedding model",
-  queryExpansion: "Query expansion",
+  queryExpansion: "Query Expansion",
   reranking: "Search ranking",
   speechToText: "Speech input",
   summarization: "Indexing model",
