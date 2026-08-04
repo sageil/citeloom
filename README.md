@@ -117,25 +117,56 @@ Choose a model and endpoint that implement the selected capability.
 OpenAI Codex uses device sign-in, while other profiles accept provider API tokens when their endpoints require authentication.
 See [Configuration](docs/configuration.md#provider-reference) for endpoint conventions, feature routing, default models, and Thinking mode.
 
-## Ollama configuration
+## Development Configuration
 
-CiteLoom services run in Docker Compose while Ollama runs on the host at `http://host.docker.internal:11434`.
-The default Ollama profile uses adaptive context sizing, allows one parallel request, and disables Thinking mode.
+CiteLoom services run in Docker Compose, Ollama runs on the host at `http://host.docker.internal:11434`, and the optional oMLX server runs at `http://host.docker.internal:9000/v1`.
+The tables below describe the configuration created for a fresh database.
+Enabled means the feature is routed and active by default, while Disabled means a model profile may be saved but the feature is not active.
+Availability does not confirm that a model has been downloaded or that its endpoint is running.
 
-| Capability | Model | Context capacity | Current use |
+### Models
+
+| Provider | Model | Features | Default Availability |
 | --- | --- | --- | --- |
-| Answers | `qwen3.5:9b-mlx` | 131,072 tokens | Default through Ollama |
-| Chat | `qwen3.5:9b-mlx` | 131,072 tokens | Default through Ollama |
-| Query Expansion | `qwen3.5:9b-mlx` | 131,072 tokens | Default through Ollama |
-| Indexing model | `qwen3.5:9b` | 131,072 tokens | Default through Ollama |
-| Embeddings | `snowflake-arctic-embed:137m` | 2,048 tokens | Default through Ollama |
-| Docling VLM | `frob/unlimited-ocr:q8_0` | Model-defined | Saved Ollama override; used only when VLM PDF processing is selected |
+| Ollama | `qwen3.5:9b-mlx` | Ask and Chat | **Enabled** |
+| Ollama | `qwen3.5:9b-mlx` | Query Expansion | **Disabled** - because expansion count is `0` in the default setting |
+| Ollama | `qwen3.5:9b` | Indexing model | **Enabled** |
+| Ollama | `snowflake-arctic-embed:137m` | Embeddings | **Enabled** |
+| Ollama | `frob/unlimited-ocr:q8_0` | Docling VLM PDF processing | **Disabled** |
+| HHEM | `HHEM-2.1-Open` | Claim support scoring | **Enabled** |
+| oMLX | `gte-reranker-modernbert-base` | Reranking | **Disabled** |
+| oMLX | `Qwen3-ASR-1.7B-8bit` | Speech-to-text | **Disabled** |
+| oMLX | `Kokoro-82M-bf16` with voice `af_heart` | Text-to-speech | **Disabled** |
 
-Fresh databases use `qwen3.5:9b-mlx` for answers, Chat, and Query Expansion, and `qwen3.5:9b` for the Indexing model until an administrator changes the provider settings.
+
+### Features
+
+| Feature | Availability | Development default |
+| --- | --- | --- |
+| Ask | **Enabled** | Routed to Ollama |
+| Chat | **Enabled** | Uses the Ollama answer model |
+| Indexing model | **Enabled** | Routed to Ollama |
+| Embeddings | **Enabled** | Routed to Ollama with 768 output dimensions |
+| Claim support scoring | **Enabled** | Uses HHEM at `http://host.docker.internal:8088` with a `0.7` support threshold |
+| Query Expansion | **Disabled** | The configured expansion count is `0` |
+| Reranking | **Disabled** | No provider is routed |
+| Speech-to-text | **Disabled** | No provider is routed |
+| Text-to-speech | **Disabled** | No provider is routed and model preloading is off |
+| Standard Docling processing | **Enabled** | Uses the `standard` pipeline |
+| Docling OCR | **Enabled** | OCR processing is on |
+| Docling table extraction | **Enabled** | Table structure extraction uses `accurate` mode |
+| Docling table-of-contents extraction | **Enabled** | TOC extraction is on |
+| Docling VLM PDF processing | **Disabled** | The VLM profile is saved but the VLM pipeline is not selected |
+| AI request metrics | **Enabled** | AI request diagnostics are recorded |
+| Docling performance metrics | **Disabled** | Conversion performance diagnostics are not recorded |
+| Ollama adaptive context sizing | **Enabled** | Applies to native Ollama GGUF language models |
+| Thinking mode | **Disabled** | Disabled for every saved provider profile |
+
+The default Ollama profile allows one parallel request.
 The `-mlx` models are intended for Macs.
 Linux users should select compatible non-MLX models available in their Ollama installation.
-Adaptive context sizing applies to native Ollama GGUF language models, while embeddings, MLX runners, and other providers remain outside adaptive allocation.
-See [Ollama automatic context size](docs/configuration.md#ollama-automatic-context-size) for sizing examples, operational requirements, fallback behavior, and opt-out instructions.
+Embeddings, MLX runners, and other providers remain outside Ollama adaptive context allocation.
+See [Configuration](docs/configuration.md) for all runtime settings and [Ollama automatic context size](docs/configuration.md#ollama-automatic-context-size) for sizing examples, operational requirements, fallback behavior, and opt-out instructions.
 
 ```mermaid
 flowchart LR
@@ -150,8 +181,8 @@ flowchart LR
     end
 
     subgraph Host[Host machine]
-        Ollama[Ollama :11434<br/>answers, Indexing model, Query Expansion, embeddings]
-        OMLX[oMLX :9000<br/>optional reranking and speech]
+        Ollama[Ollama :11434<br/>Ask, Chat, Indexing model, embeddings<br/>Query Expansion configured but disabled]
+        OMLX[oMLX :9000<br/>reranking and speech configured but disabled]
     end
 
     Web -->|host.docker.internal| Ollama
@@ -288,11 +319,11 @@ pnpm services:test:stop
 
 Pull requests should report the verification commands that were run and keep unrelated cleanup separate.
 
-## Current scope
+## Planned Features
 
-CiteLoom currently supports local deployments backed by one database.
-The automated test suite does not download model weights or call live models.
-Shared source storage with SeaweedFS is planned for multi-host deployments.
+- Shared source storage with SeaweedFS is planned for multi-host deployments.
+- Multi providers creation & configuration
+- Additional Providers
 
 ## License
 
