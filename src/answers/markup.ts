@@ -147,6 +147,54 @@ export function parseGeneratedAnswerMarkup(
   return parseAnswerMarkupBoundary(markdown, maximumCitationNumber);
 }
 
+export function renderAnswerMarkupSpeech(markdown: string): string {
+  const parsed = parseAnswerMarkup(markdown);
+  const lines: string[] = [];
+  for (const block of parsed.blocks) {
+    const text = renderAnswerMarkupBlockSpeech(block);
+    if (text !== "") {
+      lines.push(text);
+    }
+  }
+  return lines.join("\n");
+}
+
+function renderAnswerMarkupBlockSpeech(block: AnswerMarkdownBlock): string {
+  if (block.kind === "code") {
+    return normalizeAnswerSpeechWhitespace(block.text);
+  }
+  if (block.kind === "thematic-break") {
+    return "";
+  }
+  if (block.kind === "table-row") {
+    const cells: string[] = [];
+    for (const cell of block.cells) {
+      const text = renderAnswerMarkupSpansSpeech(cell);
+      if (text !== "") {
+        cells.push(text);
+      }
+    }
+    return cells.join(". ");
+  }
+  return renderAnswerMarkupSpansSpeech(block.spans);
+}
+
+function renderAnswerMarkupSpansSpeech(
+  spans: readonly AnswerInlineSpan[],
+): string {
+  let text = "";
+  for (const span of spans) {
+    if (span.kind === "text") {
+      text += span.text;
+    }
+  }
+  return normalizeAnswerSpeechWhitespace(text);
+}
+
+function normalizeAnswerSpeechWhitespace(value: string): string {
+  return value.replace(/\s+/gu, " ").trim();
+}
+
 function parseAnswerMarkupBoundary(
   value: string,
   maximumCitationNumber: number | null,

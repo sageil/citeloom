@@ -26,9 +26,9 @@
               <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
               <span x-text="scopeLabel()"></span>
             </div>
-            <div class="chat-grounding-note">
-              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-shield-check"></use></svg>
-              <span>Grounded</span>
+            <div class="chat-conversation-title" :title="conversation.title">
+              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
+              <span x-text="conversation.title"></span>
             </div>
             <div class="chat-context-actions">
               <button
@@ -172,22 +172,68 @@
 
         <form class="chat-composer" @submit.prevent="sendMessage()">
           <label class="visually-hidden" for="chat-message">Message</label>
-          <div>
+          <div class="chat-composer-shell" :class="{ 'dictation-active': chatDictationActive() }">
             <textarea
               id="chat-message"
               maxlength="8000"
-              placeholder="Ask a follow-up about your documents…"
-              rows="2"
+              placeholder="Let's chat"
+              rows="3"
               x-ref="messageComposer"
               x-model="draft"
-              :disabled="busy"
+              :disabled="busy || chatDictationActive()"
+              @input="resizeMessageComposer()"
               @keydown.meta.enter.prevent="sendMessage()"
               @keydown.ctrl.enter.prevent="sendMessage()"
             ></textarea>
-            <button class="chat-send-button" type="submit" :disabled="busy || draft.trim() === ''">
-              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use></svg>
-              <span x-text="busy ? 'Working…' : 'Send'"></span>
-            </button>
+            <div class="chat-composer-utility-rail">
+              <div
+                class="chat-dictation-controls"
+                aria-label="Voice input controls"
+                x-cloak
+                x-show="speechToTextEnabled"
+              >
+                <button
+                  class="chat-composer-action"
+                  type="button"
+                  :disabled="busy"
+                  x-show="dictationState === 'idle' || dictationState === 'error'"
+                  @click="startChatDictation()"
+                >
+                  <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-microphone"></use></svg>
+                  <span x-text="dictationState === 'error' ? 'Try dictation again' : 'Dictate'"></span>
+                </button>
+                <div class="chat-dictation-progress" x-show="dictationState === 'requesting'">
+                  <svg aria-hidden="true" class="citeloom-icon spin"><use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use></svg>
+                  <span>Waiting for microphone</span>
+                  <button class="text-action" type="button" @click="cancelChatDictation()">Cancel</button>
+                </div>
+                <div class="chat-dictation-progress recording" x-show="dictationState === 'recording'">
+                  <button class="chat-composer-action recording" type="button" @click="stopChatDictation()">
+                    <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stop"></use></svg>
+                    <span x-text="`Stop ${chatDictationElapsedLabel()}`"></span>
+                  </button>
+                  <button class="text-action" type="button" @click="cancelChatDictation()">Cancel</button>
+                </div>
+                <div class="chat-dictation-progress" x-show="dictationState === 'transcribing'">
+                  <svg aria-hidden="true" class="citeloom-icon spin"><use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use></svg>
+                  <span>Transcribing</span>
+                  <button class="text-action" type="button" @click="cancelChatDictation()">Cancel</button>
+                </div>
+                <span class="visually-hidden" role="status" x-text="dictationStatus"></span>
+              </div>
+              <div class="chat-submit-controls">
+                <button
+                  class="chat-send-button"
+                  type="submit"
+                  :aria-label="busy ? 'Generating response' : 'Send message'"
+                  :title="busy ? 'Generating response' : 'Send message'"
+                  :disabled="busy || chatDictationActive() || draft.trim() === ''"
+                >
+                  <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use></svg>
+                </button>
+                <span class="chat-composer-shortcut">⌘ / Ctrl + Enter</span>
+              </div>
+            </div>
           </div>
         </form>
       </div>

@@ -16,7 +16,7 @@
 }
 
 .chat-context-scope,
-.chat-grounding-note,
+.chat-conversation-title,
 .chat-context-actions,
 .chat-context-icon-button {
   display: inline-flex;
@@ -98,7 +98,7 @@
 }
 
 .chat-context-scope,
-.chat-grounding-note {
+.chat-conversation-title {
   gap: 8px;
 }
 
@@ -106,15 +106,22 @@
   color: #e2e8f0;
 }
 
-.chat-grounding-note {
-  color: var(--success);
+.chat-conversation-title {
+  min-width: 0;
+  color: var(--cyan);
 }
 
 .chat-context-scope .citeloom-icon,
-.chat-grounding-note .citeloom-icon,
+.chat-conversation-title .citeloom-icon,
 .chat-context-icon-button .citeloom-icon {
   width: 15px;
   height: 15px;
+}
+
+.chat-conversation-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-context-actions {
@@ -447,22 +454,29 @@
   background: rgba(6, 9, 20, 0.96);
 }
 
-.chat-composer > div {
-  display: flex;
+.chat-composer-shell {
+  display: grid;
   width: min(900px, 100%);
-  align-items: flex-end;
-  gap: 10px;
   margin: 0 auto;
-  padding: 8px;
   border: 1px solid var(--border-strong);
   border-radius: 12px;
   background: rgba(11, 16, 32, 0.88);
+  transition: border-color 160ms ease;
+}
+
+.chat-composer-shell:focus-within {
+  border-color: rgba(6, 182, 212, 0.48);
+}
+
+.chat-composer-shell.dictation-active {
+  border-color: rgba(6, 182, 212, 0.36);
 }
 
 .chat-composer textarea {
-  min-height: 38px;
-  max-height: 110px;
-  flex: 1;
+  width: 100%;
+  min-height: 74px;
+  max-height: 180px;
+  padding: 16px 16px 12px;
   resize: none;
   border: 0;
   outline: 0;
@@ -475,6 +489,93 @@
   color: #64748b;
 }
 
+.chat-composer-utility-rail,
+.chat-dictation-controls,
+.chat-dictation-progress,
+.chat-composer-action,
+.chat-submit-controls {
+  display: flex;
+  align-items: center;
+}
+
+.chat-composer-utility-rail {
+  min-height: 46px;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 10px 0 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.chat-dictation-controls {
+  min-width: 0;
+  color: var(--muted);
+}
+
+.chat-dictation-progress {
+  min-width: 0;
+  gap: 9px;
+  font-size: 11px;
+}
+
+.chat-dictation-progress > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-dictation-progress .citeloom-icon,
+.chat-composer-action .citeloom-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.chat-composer-action {
+  min-height: 36px;
+  gap: 8px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+}
+
+.chat-composer-action:hover,
+.chat-composer-action:focus-visible {
+  background: rgba(6, 182, 212, 0.08);
+  color: var(--cyan);
+}
+
+.chat-composer-action.recording,
+.chat-dictation-progress.recording {
+  color: #f87171;
+}
+
+.chat-composer-action.recording:hover,
+.chat-composer-action.recording:focus-visible {
+  background: rgba(248, 113, 113, 0.1);
+  color: #fca5a5;
+}
+
+.chat-dictation-progress .text-action {
+  min-height: 32px;
+  padding: 0 4px;
+  font-size: 10px;
+}
+
+.chat-submit-controls {
+  flex-shrink: 0;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.chat-composer-shortcut {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
 .chat-send-button,
 .chat-primary-button,
 .chat-icon-button {
@@ -482,22 +583,31 @@
 }
 
 .chat-send-button {
-  display: inline-flex;
-  min-height: 38px;
-  align-items: center;
-  gap: 7px;
-  padding: 0 13px;
-  border-radius: 9px;
-  background: linear-gradient(135deg, #0891b2, #2563eb);
-  color: white;
-  font-size: 11px;
-  font-weight: 750;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cyan);
+}
+
+.chat-send-button:hover,
+.chat-send-button:focus-visible {
+  background: rgba(6, 182, 212, 0.1);
+  color: #67e8f9;
+}
+
+.chat-send-button .citeloom-icon {
+  width: 17px;
+  height: 17px;
 }
 
 .chat-send-button:disabled,
 .chat-primary-button:disabled {
   cursor: not-allowed;
-  opacity: 0.48;
+  color: var(--muted);
+  opacity: 0.42;
 }
 
 .chat-switcher-backdrop {
@@ -1244,6 +1354,15 @@
 
   .chat-composer {
     padding: 10px 12px 14px;
+  }
+
+  .chat-composer-utility-rail {
+    gap: 8px;
+    padding-left: 8px;
+  }
+
+  .chat-composer-shortcut {
+    display: none;
   }
 
   .chat-switcher-backdrop {

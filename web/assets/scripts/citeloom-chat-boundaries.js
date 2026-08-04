@@ -71,6 +71,10 @@ export function readChatSpeechFeatures(value) {
   const dashboard = readPlainObject(value, "dashboard");
   const features = readPlainObject(dashboard.features, "dashboard features");
   return {
+    speechToTextEnabled: readBoolean(
+      features.speechToText,
+      "speech-to-text feature",
+    ),
     textToSpeechEnabled: readBoolean(
       features.textToSpeech,
       "text-to-speech feature",

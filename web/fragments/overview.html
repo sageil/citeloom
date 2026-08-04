@@ -35,6 +35,8 @@
         href="./index.html?view=system-health"
         hx-get="./fragments/system-health.html"
         hx-push-url="./index.html?view=system-health"
+        x-cloak
+        x-show="currentRole === 'admin'"
       >Open system health</a>
     </div>
     <button
@@ -196,55 +198,91 @@
       </button>
     </section>
 
-    <section class="panel pipeline-panel" aria-labelledby="pipeline-title">
+    <section class="panel recent-documents-panel" aria-labelledby="recent-documents-title">
       <div class="panel-title-row">
         <header class="panel-header">
           <span class="panel-icon" aria-hidden="true">
             <svg class="citeloom-icon">
-              <use href="./assets/images/citeloom-icons.svg#citeloom-health"></use>
+              <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
             </svg>
           </span>
           <div>
-            <p class="section-kicker">Local operations</p>
-            <h2 id="pipeline-title">Pipeline status</h2>
+            <p class="section-kicker">Knowledge library</p>
+            <h2 id="recent-documents-title">Recently added</h2>
           </div>
         </header>
-        <button
-          aria-label="Run pipeline diagnostics"
-          class="icon-button"
-          type="button"
-          :aria-busy="diagnosticsRunning"
-          :disabled="diagnosticsRunning"
-          @click="runDiagnostics()"
+        <a
+          class="recent-documents-view-all citeloom-navigation-link"
+          data-view="documents"
+          href="./index.html?view=documents"
+          hx-get="./fragments/documents.html"
+          hx-push-url="./index.html?view=documents"
         >
-          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon" :class="{ spin: diagnosticsRunning }">
-            <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
+          <span>View all</span>
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
           </svg>
-        </button>
+        </a>
       </div>
 
-      <p class="field-error" role="alert" x-cloak x-show="diagnosticsErrorMessage !== ''" x-text="diagnosticsErrorMessage"></p>
-      <div class="service-list">
-        <div class="status-row" x-show="diagnosticsChecks.length === 0">
-          <svg aria-hidden="true" class="citeloom-icon status-icon">
-            <use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use>
-          </svg>
-          <div>
-            <strong x-text="diagnosticsRunning ? 'Running diagnostics' : 'Diagnostics not run'"></strong>
-            <span x-text="diagnosticsRunning ? 'Checking configured services' : 'Run diagnostics to test configured services'"></span>
-          </div>
-        </div>
-        <template x-for="check in diagnosticsChecks" :key="check.id">
-          <div class="status-row">
-            <svg aria-hidden="true" class="citeloom-icon status-icon" :class="{ error: !check.ok }">
-              <use :href="check.ok ? './assets/images/citeloom-icons.svg#citeloom-status-check' : './assets/images/citeloom-icons.svg#citeloom-warning-circle'"></use>
-            </svg>
+      <ol
+        class="recent-documents-list"
+        x-cloak
+        x-show="overviewSummary.recentDocuments.length > 0"
+      >
+        <template
+          x-for="document in overviewSummary.recentDocuments"
+          :key="document.sourceFile"
+        >
+          <li class="recent-document-row">
+            <span class="recent-document-icon" aria-hidden="true">
+              <svg class="citeloom-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+              </svg>
+            </span>
             <div>
-              <strong x-text="check.name"></strong>
-              <span x-text="check.detail"></span>
+              <strong
+                class="recent-document-name"
+                :title="recentDocumentName(document.sourceFile)"
+                x-text="recentDocumentName(document.sourceFile)"
+              ></strong>
+              <time
+                class="recent-document-time"
+                :datetime="document.updatedAt"
+                x-text="recentDocumentTime(document.updatedAt)"
+              ></time>
             </div>
-          </div>
+            <span
+              class="recent-document-status"
+              :class="`is-${document.displayStatus}`"
+              x-text="recentDocumentStatus(document.displayStatus)"
+            ></span>
+          </li>
         </template>
+      </ol>
+
+      <div
+        class="recent-documents-empty"
+        x-cloak
+        x-show="dashboardHasData &amp;&amp; overviewSummary.recentDocuments.length === 0"
+      >
+        <svg aria-hidden="true" class="citeloom-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+        </svg>
+        <strong>No documents added yet</strong>
+        <span>Upload a document to start your knowledge library.</span>
+      </div>
+
+      <div
+        class="recent-documents-empty"
+        x-cloak
+        x-show="!dashboardHasData"
+      >
+        <svg aria-hidden="true" class="citeloom-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use>
+        </svg>
+        <strong x-text="dashboardStatus === 'error' ? 'Recent documents unavailable' : 'Loading recent documents'"></strong>
+        <span x-text="dashboardStatus === 'error' ? 'Retry the workspace status request above.' : 'Reading your knowledge library.'"></span>
       </div>
     </section>
   </section>

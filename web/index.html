@@ -197,7 +197,11 @@
                   <span>My account</span>
                 </a>
 
-                <div class="account-navigation-admin">
+                <div
+                  class="account-navigation-admin"
+                  x-cloak
+                  x-show="currentRole === 'admin'"
+                >
                   <p class="account-navigation-section-label">Administration</p>
                   <a
                     class="account-navigation-item citeloom-navigation-link"
@@ -258,6 +262,20 @@
                 </div>
               </div>
             </div>
+            <a
+              aria-label="Open the CiteLoom repository on GitHub in a new tab"
+              class="utility-navigation-button"
+              href="https://github.com/sageil/citeloom"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              <span class="utility-navigation-icon">
+                <svg aria-hidden="true" class="citeloom-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-github"></use>
+                </svg>
+              </span>
+              <span>GitHub</span>
+            </a>
             <a
               class="utility-navigation-button citeloom-navigation-link"
               data-view="help"

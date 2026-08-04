@@ -7,3 +7,146 @@
   padding: 34px 0 48px;
   scroll-margin-top: 20px;
 }
+
+.recent-documents-panel {
+  min-width: 0;
+}
+
+.recent-documents-view-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--cyan);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.recent-documents-view-all:hover,
+.recent-documents-view-all:focus-visible {
+  background: rgb(9 182 217 / 8%);
+}
+
+.recent-documents-list {
+  margin: 22px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+
+.recent-document-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 13px 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.recent-document-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgb(9 182 217 / 24%);
+  border-radius: 9px;
+  background: rgb(9 182 217 / 7%);
+  color: var(--cyan);
+}
+
+.recent-document-icon .citeloom-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.recent-document-row > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.recent-document-name {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-document-time {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.recent-document-status {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.recent-document-status.is-ready {
+  border-color: rgb(52 211 153 / 28%);
+  background: rgb(52 211 153 / 8%);
+  color: var(--success);
+}
+
+.recent-document-status.is-running,
+.recent-document-status.is-pending {
+  border-color: rgb(9 182 217 / 28%);
+  background: rgb(9 182 217 / 8%);
+  color: var(--cyan);
+}
+
+.recent-document-status.is-failed,
+.recent-document-status.is-reindex-required {
+  border-color: rgb(248 113 113 / 30%);
+  background: rgb(248 113 113 / 8%);
+  color: var(--danger);
+}
+
+.recent-documents-empty {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 28px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.recent-documents-empty .citeloom-icon {
+  width: 28px;
+  height: 28px;
+  margin-bottom: 4px;
+  color: var(--cyan);
+}
+
+.recent-documents-empty strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.recent-documents-empty span {
+  font-size: 11px;
+}
+
+@media (max-width: 680px) {
+  .recent-document-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .recent-document-status {
+    grid-column: 2;
+    justify-self: start;
+  }
+}

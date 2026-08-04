@@ -7,6 +7,10 @@ import {
   readNullablePositiveInteger,
   readPlainObject,
 } from "./citeloom-boundaries.js";
+import {
+  formatRelativeTime,
+  readBasename,
+} from "./citeloom-document-presentation.js";
 import { dispatchNotice } from "./citeloom-notices.js";
 
 const ingestionStatuses = Object.freeze([
@@ -17,6 +21,14 @@ const ingestionStatuses = Object.freeze([
   "skipped",
   "upload-blocked",
 ]);
+
+const recentDocumentStatusLabels = Object.freeze({
+  failed: "Failed",
+  pending: "Waiting",
+  ready: "Ready",
+  "reindex-required": "Re-index needed",
+  running: "Processing",
+});
 
 function readIngestionResponse(value) {
   const response = readPlainObject(value, "ingestion response");
@@ -278,6 +290,18 @@ export function registerPage(alpine) {
         }
       }
       this.tags = tags;
+    },
+
+    recentDocumentName(sourceFile) {
+      return readBasename(sourceFile);
+    },
+
+    recentDocumentStatus(displayStatus) {
+      return recentDocumentStatusLabels[displayStatus];
+    },
+
+    recentDocumentTime(updatedAt) {
+      return formatRelativeTime(updatedAt);
     },
 
     async submit() {

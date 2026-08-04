@@ -53,6 +53,7 @@ const answerMarkdownAllowedTags = Object.freeze([
 ]);
 
 let answerMarkdownRuntime = null;
+const inlineLabeledRowPattern = /(?:^|[\t ]+-[\t ]+)\*\*([^*\r\n]{2,120})\*\*/gu;
 
 export function createEmptyAnswerContent() {
   return { statements: [] };
@@ -65,17 +66,82 @@ export function renderAnswerMarkdown(content) {
     if (runtime === null) {
       return fallbackHtml;
     }
-    const renderedHtml = readMarkdownHtml(
-      runtime.parse(content),
-      "rendered Markdown",
+    const presentation = prepareAnswerMarkdownPresentation(content);
+    const presentedHtml = renderAnswerMarkdownPresentation(
+      runtime,
+      presentation,
     );
     return readMarkdownHtml(
-      runtime.sanitize(renderedHtml),
+      runtime.sanitize(presentedHtml),
       "sanitized Markdown",
     );
   } catch {
     return fallbackHtml;
   }
+}
+
+function renderAnswerMarkdownPresentation(runtime, presentation) {
+  if (presentation.labeledRows === null) {
+    return readMarkdownHtml(
+      runtime.parse(presentation.markdown),
+      "rendered Markdown",
+    );
+  }
+
+  let renderedIntroduction = "";
+  if (presentation.markdown !== "") {
+    renderedIntroduction = readMarkdownHtml(
+      runtime.parse(presentation.markdown),
+      "rendered Markdown introduction",
+    );
+  }
+  const renderedRows = readMarkdownHtml(
+    runtime.parse(presentation.labeledRows),
+    "rendered Markdown labeled rows",
+  );
+  return renderedIntroduction + decorateAnswerLabeledRows(renderedRows);
+}
+
+function prepareAnswerMarkdownPresentation(content) {
+  const matches = Array.from(content.matchAll(inlineLabeledRowPattern));
+  if (matches.length < 2) {
+    return { labeledRows: null, markdown: content };
+  }
+
+  const firstMatch = matches[0];
+  if (firstMatch?.index === undefined) {
+    return { labeledRows: null, markdown: content };
+  }
+
+  const rows = [];
+  for (let index = 0; index < matches.length; index += 1) {
+    const match = matches[index];
+    const nextMatch = matches[index + 1];
+    if (match?.index === undefined) {
+      return { labeledRows: null, markdown: content };
+    }
+    const label = match[1]?.trim();
+    const contentStart = match.index + match[0].length;
+    const contentEnd = nextMatch?.index ?? content.length;
+    const rowContent = content.slice(contentStart, contentEnd).trim();
+    if (label === undefined || label === "" || rowContent === "") {
+      return { labeledRows: null, markdown: content };
+    }
+    rows.push(`- **${label}** ${rowContent}`);
+  }
+
+  const introduction = content.slice(0, firstMatch.index).trim();
+  return {
+    labeledRows: rows.join("\n"),
+    markdown: introduction,
+  };
+}
+
+function decorateAnswerLabeledRows(renderedHtml) {
+  return renderedHtml.replace(
+    "<ul>",
+    '<ul class="answer-labeled-rows">',
+  );
 }
 
 export function readAnswerContentUpdate(value) {

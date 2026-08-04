@@ -18,6 +18,10 @@ import {
 import { readDocumentCatalog } from "./citeloom-documents.js";
 import { buildPdfViewerUrl } from "./citeloom-file-links.js";
 import { focusTextArea } from "./citeloom-focus.js";
+import {
+  createDictationController,
+  formatDictationElapsedTime,
+} from "./citeloom-dictation.js";
 import { dispatchNotice } from "./citeloom-notices.js";
 import { requestConfirmation } from "./citeloom-confirmation.js";
 const chatSwitcherRequestEvent = "citeloom:chat-switcher-request";
@@ -143,6 +147,10 @@ export function registerPage(alpine) {
     chatSwitcherReturnFocus: null,
     conversation: null,
     conversations: [],
+    dictationController: null,
+    dictationElapsedSeconds: 0,
+    dictationState: "idle",
+    dictationStatus: "",
     draft: "",
     errorMessage: "",
     loading: true,
@@ -175,6 +183,7 @@ export function registerPage(alpine) {
     speechAudioPlaying: false,
     speechAudioUrl: "",
     speechSettingsRefreshListener: null,
+    speechToTextEnabled: false,
     textToSpeechEnabled: false,
     textToSpeechPreloadEnabled: false,
     verificationRefreshTimer: null,
@@ -246,6 +255,7 @@ export function registerPage(alpine) {
     },
 
     async initialize() {
+      this.initializeDictationController();
       this.chatSwitcherRequestListener = () => {
         this.openChatSwitcher();
       };
@@ -287,6 +297,8 @@ export function registerPage(alpine) {
       this.newChatCatalogController?.abort();
       this.newChatPreviewController?.abort();
       this.clearVerificationRefresh();
+      this.dictationController?.destroy();
+      this.dictationController = null;
       this.resetChatSpeechAudio();
     },
 
@@ -300,11 +312,17 @@ export function registerPage(alpine) {
           "Dashboard request",
           readChatSpeechFeatures,
         );
+        this.speechToTextEnabled = features.speechToTextEnabled;
         this.textToSpeechEnabled = features.textToSpeechEnabled;
         this.textToSpeechPreloadEnabled =
           features.textToSpeechPreloadEnabled;
         if (!this.textToSpeechEnabled) {
           this.resetChatSpeechAudio();
+        }
+        if (!this.speechToTextEnabled) {
+          this.cancelChatDictation();
+        }
+        if (!this.textToSpeechEnabled) {
           return;
         }
         this.prepareSpeechForLatestAnswer();
@@ -316,6 +334,57 @@ export function registerPage(alpine) {
         this.speechAudioError = message;
         dispatchNotice("error", message);
       }
+    },
+
+    initializeDictationController() {
+      this.dictationController = createDictationController({
+        onStart: () => {
+          this.draft = "";
+          this.$nextTick(() => {
+            this.resizeMessageComposer();
+            focusTextArea(this.$refs.messageComposer);
+          });
+        },
+        onStateChange: (snapshot) => {
+          this.dictationElapsedSeconds = snapshot.elapsedSeconds;
+          this.dictationState = snapshot.state;
+          this.dictationStatus = snapshot.status;
+          if (snapshot.state === "error") {
+            dispatchNotice("error", snapshot.status);
+          }
+        },
+        onTranscript: (transcript) => {
+          this.draft = transcript;
+          this.$nextTick(() => {
+            this.resizeMessageComposer();
+            focusTextArea(this.$refs.messageComposer);
+          });
+        },
+      });
+    },
+
+    chatDictationActive() {
+      return this.dictationState !== "idle"
+        && this.dictationState !== "error";
+    },
+
+    chatDictationElapsedLabel() {
+      return formatDictationElapsedTime(this.dictationElapsedSeconds);
+    },
+
+    async startChatDictation() {
+      if (!this.speechToTextEnabled || this.busy) {
+        return;
+      }
+      await this.dictationController?.start();
+    },
+
+    stopChatDictation() {
+      this.dictationController?.stop();
+    },
+
+    cancelChatDictation() {
+      this.dictationController?.cancel();
     },
 
     async refreshConversations() {
@@ -333,6 +402,7 @@ export function registerPage(alpine) {
 
     async selectConversation(id) {
       this.clearVerificationRefresh();
+      this.cancelChatDictation();
       this.resetChatSpeechAudio();
       this.errorMessage = "";
       this.selectedCitation = null;
@@ -959,6 +1029,7 @@ export function registerPage(alpine) {
       this.busy = true;
       this.errorMessage = "";
       this.draft = "";
+      this.$nextTick(() => this.resizeMessageComposer());
       let completed = false;
       const pendingRun = createPendingChatRun(
         this.conversation,
@@ -1032,6 +1103,15 @@ export function registerPage(alpine) {
 
     focusMessageComposer() {
       this.$nextTick(() => focusTextArea(this.$refs.messageComposer));
+    },
+
+    resizeMessageComposer() {
+      const input = this.$refs.messageComposer;
+      if (!(input instanceof HTMLTextAreaElement)) {
+        return;
+      }
+      input.style.height = "auto";
+      input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
     },
 
     citationForId(message, id) {

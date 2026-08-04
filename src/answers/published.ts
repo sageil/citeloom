@@ -26,6 +26,7 @@ import type {
   CitationEvidence,
 } from "../research/types.js";
 import type { RetrievalSourceElement } from "../domain/source-elements.js";
+import { renderAnswerMarkupSpeech } from "./markup.js";
 
 export {
   createUncitedAnswerDocument,
@@ -478,7 +479,7 @@ export function renderPublishedAnswerSpeech(
   document: PublishedAnswerDocument,
 ): string {
   if (isPublishedUncitedAnswerDocument(document)) {
-    return document.content;
+    return normalizeTextForSpeech(document.content);
   }
   const citationNumberById = createCitationNumberById(document.citations);
   const lines: string[] = [];
@@ -611,10 +612,19 @@ function ensureTerminalPunctuation(value: string): string {
 }
 
 function normalizeTextForSpeech(value: string): string {
-  return value.replace(
+  const spokenText = readAnswerMarkupSpeech(value);
+  return spokenText.replace(
     /\b(Part|Chapter|Book|Volume|Title|Article|Section|Schedule|Appendix)\s+([IVXLCDM]+)\b/gi,
     replaceStructuralRomanNumeralForSpeech,
   );
+}
+
+function readAnswerMarkupSpeech(value: string): string {
+  try {
+    return renderAnswerMarkupSpeech(value);
+  } catch {
+    return value;
+  }
 }
 
 function replaceStructuralRomanNumeralForSpeech(

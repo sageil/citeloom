@@ -25,6 +25,7 @@ import {
 } from "./citeloom-citation-presentation.js";
 import { buildPdfViewerUrl } from "./citeloom-file-links.js";
 import { focusTextArea } from "./citeloom-focus.js";
+import { createDictationController } from "./citeloom-dictation.js";
 import { dispatchNotice } from "./citeloom-notices.js";
 import {
   readAskAnswerDocument,
@@ -57,16 +58,9 @@ const scopeKinds = Object.freeze([
   "sourceFiles",
   "tags",
 ]);
-const mediaRecorderOptions = Object.freeze([
-  { extension: "webm", mimeType: "audio/webm;codecs=opus" },
-  { extension: "mp4", mimeType: "audio/mp4" },
-  { extension: "ogg", mimeType: "audio/ogg;codecs=opus" },
-  { extension: "wav", mimeType: "audio/wav" },
-]);
 const evidenceInspectorResizeStep = 16;
 const minimumEvidenceInspectorHeight = 260;
 const minimumEvidenceInspectorWidth = 360;
-const maximumRecordingDurationMs = 120_000;
 
 export function aggregateCitationStatus(claims, citationNumber) {
   let matched = false;
@@ -659,13 +653,6 @@ function buildStoredCitationPreview(source) {
   };
 }
 
-function readTranscription(value) {
-  const response = readObject(value, "transcription");
-  return {
-    text: readNonEmptyString(response.text, "transcription text"),
-  };
-}
-
 function readFeedbackResponse(value) {
   const response = readObject(value, "research feedback");
   return {
@@ -731,21 +718,6 @@ async function readAnswerStream(response, receiveAnswer, receivePreview) {
   if (!answerReceived) {
     throw new Error("The answer stream ended without a completed answer.");
   }
-}
-
-function selectMediaRecorderOption() {
-  if (
-    typeof MediaRecorder !== "function"
-    || typeof MediaRecorder.isTypeSupported !== "function"
-  ) {
-    return null;
-  }
-  for (const option of mediaRecorderOptions) {
-    if (MediaRecorder.isTypeSupported(option.mimeType)) {
-      return option;
-    }
-  }
-  return null;
 }
 
 export function constrainEvidenceInspectorSize(
@@ -817,6 +789,7 @@ export function registerPage(alpine) {
     discoveryPageLoading: false,
     discoveryScope: null,
     discoveryStatus: "",
+    dictationController: null,
     feedback: { answer: 0, citation: 0, retrieval: 0 },
     feedbackCounts: {
       answer: { negative: 0, positive: 0 },
@@ -826,10 +799,6 @@ export function registerPage(alpine) {
     includeRelated: false,
     inferenceRuntimeName: "the configured inference runtime",
     inspectedCitation: null,
-    mediaRecorder: null,
-    mediaRecorderChunks: [],
-    mediaRecorderOption: null,
-    mediaStream: null,
     mode: "ask",
     newThreadTitle: "",
     operation: null,
@@ -841,8 +810,6 @@ export function registerPage(alpine) {
     pushToTalkKeyUpListener: null,
     question: "",
     queryableDocumentCount: 0,
-    recordingGeneration: 0,
-    recordingTimerId: null,
     requestAbortController: null,
     requestError: "",
     scopeKind: "all",
@@ -854,7 +821,7 @@ export function registerPage(alpine) {
     speechAudioLoading: false,
     speechAudioUrl: "",
     speechState: "idle",
-    speechStatus: "Voice input is ready. Audio is sent to the configured transcription provider.",
+    speechStatus: "",
     speechToTextEnabled: false,
     tagPickerOpen: false,
     tagSearchQuery: "",
@@ -865,10 +832,10 @@ export function registerPage(alpine) {
     threads: [],
     threadsError: "",
     threadsLoading: false,
-    transcriptionAbortController: null,
     turnId: "",
 
     async initialize() {
+      this.initializeDictationController();
       this.dashboardRefreshListener = () => {
         void this.loadDashboard();
       };
@@ -939,7 +906,8 @@ export function registerPage(alpine) {
       this.stopRequest();
       this.citationAbortController?.abort();
       this.resetCitationInspectorSize();
-      this.cancelDictation();
+      this.dictationController?.destroy();
+      this.dictationController = null;
       this.resetSpeechAudio();
     },
 
@@ -960,6 +928,9 @@ export function registerPage(alpine) {
         this.speechToTextEnabled = snapshot.speechToTextEnabled;
         this.textToSpeechEnabled = snapshot.textToSpeechEnabled;
         this.textToSpeechPreloadEnabled = snapshot.textToSpeechPreloadEnabled;
+        if (!this.speechToTextEnabled) {
+          this.cancelDictation();
+        }
         this.dashboardError = "";
         this.maybePreloadAnswerSpeech();
       } catch (error) {
@@ -1925,53 +1896,25 @@ export function registerPage(alpine) {
       }
     },
 
+    initializeDictationController() {
+      this.dictationController = createDictationController({
+        onStart: () => {
+          this.question = "";
+          this.$nextTick(() => this.$refs.questionInput?.focus());
+        },
+        onStateChange: (snapshot) => {
+          this.speechState = snapshot.state;
+          this.speechStatus = snapshot.status;
+        },
+        onTranscript: (transcript) => {
+          this.question = transcript;
+          this.$nextTick(() => this.$refs.questionInput?.focus());
+        },
+      });
+    },
+
     async startDictation() {
-      const option = selectMediaRecorderOption();
-      if (option === null || navigator.mediaDevices?.getUserMedia === undefined) {
-        this.speechState = "error";
-        this.speechStatus = "Voice input is not supported by this browser.";
-        return;
-      }
-      this.cancelDictation();
-      const generation = this.recordingGeneration + 1;
-      this.recordingGeneration = generation;
-      this.speechState = "requesting";
-      this.speechStatus = "Waiting for microphone permission.";
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (this.recordingGeneration !== generation) {
-          for (const track of stream.getTracks()) {
-            track.stop();
-          }
-          return;
-        }
-        const recorder = new MediaRecorder(stream, { mimeType: option.mimeType });
-        this.mediaRecorder = recorder;
-        this.mediaRecorderChunks = [];
-        this.mediaRecorderOption = option;
-        this.mediaStream = stream;
-        recorder.addEventListener("dataavailable", (event) => {
-          if (event.data.size > 0) {
-            this.mediaRecorderChunks.push(event.data);
-          }
-        });
-        recorder.addEventListener("stop", () => {
-          void this.transcribeRecording(generation);
-        }, { once: true });
-        recorder.start(250);
-        this.speechState = "recording";
-        this.speechStatus = "Recording. Select Stop when you finish speaking.";
-        this.recordingTimerId = window.setTimeout(() => {
-          this.stopDictation();
-        }, maximumRecordingDurationMs);
-      } catch (error) {
-        this.releaseMediaStream();
-        this.speechState = "error";
-        this.speechStatus = readErrorMessage(
-          error,
-          "Microphone access was not available.",
-        );
-      }
+      await this.dictationController?.start();
     },
 
     handlePushToTalkKeyDown(key) {
@@ -2038,108 +1981,11 @@ export function registerPage(alpine) {
     },
 
     stopDictation() {
-      if (this.mediaRecorder?.state === "recording") {
-        this.speechState = "transcribing";
-        this.speechStatus = "Transcribing the recording.";
-        this.mediaRecorder.stop();
-      }
+      this.dictationController?.stop();
     },
 
     cancelDictation() {
-      this.recordingGeneration += 1;
-      this.transcriptionAbortController?.abort();
-      this.transcriptionAbortController = null;
-      if (this.recordingTimerId !== null) {
-        window.clearTimeout(this.recordingTimerId);
-        this.recordingTimerId = null;
-      }
-      if (this.mediaRecorder?.state === "recording") {
-        this.mediaRecorder.onstop = null;
-        this.mediaRecorder.stop();
-      }
-      this.mediaRecorder = null;
-      this.mediaRecorderChunks = [];
-      this.mediaRecorderOption = null;
-      this.releaseMediaStream();
-      this.speechState = "idle";
-      this.speechStatus = "Voice input is ready. Audio is sent to the configured transcription provider.";
-    },
-
-    releaseMediaStream() {
-      if (this.mediaStream !== null) {
-        for (const track of this.mediaStream.getTracks()) {
-          track.stop();
-        }
-      }
-      this.mediaStream = null;
-    },
-
-    async transcribeRecording(generation) {
-      if (this.recordingTimerId !== null) {
-        window.clearTimeout(this.recordingTimerId);
-        this.recordingTimerId = null;
-      }
-      this.releaseMediaStream();
-      const option = this.mediaRecorderOption;
-      const chunks = this.mediaRecorderChunks;
-      this.mediaRecorder = null;
-      this.mediaRecorderChunks = [];
-      this.mediaRecorderOption = null;
-      if (this.recordingGeneration !== generation || option === null) {
-        return;
-      }
-      const controller = new AbortController();
-      this.transcriptionAbortController = controller;
-      try {
-        const audio = new Blob(chunks, { type: option.mimeType });
-        const body = new FormData();
-        body.append("file", audio, `recording.${option.extension}`);
-        const response = await fetch("/api/transcriptions", {
-          body,
-          method: "POST",
-          signal: controller.signal,
-        });
-        const transcription = await readJsonResponse(
-          response,
-          "Transcription request",
-          readTranscription,
-        );
-        if (controller.signal.aborted || this.recordingGeneration !== generation) {
-          return;
-        }
-        this.insertTranscript(transcription.text);
-        this.speechState = "idle";
-        this.speechStatus = "Transcript added to the draft. Review it before submitting.";
-      } catch (error) {
-        if (!controller.signal.aborted && this.recordingGeneration === generation) {
-          this.speechState = "error";
-          this.speechStatus = readErrorMessage(
-            error,
-            "The recording could not be transcribed.",
-          );
-        }
-      } finally {
-        if (this.transcriptionAbortController === controller) {
-          this.transcriptionAbortController = null;
-        }
-      }
-    },
-
-    insertTranscript(transcript) {
-      const input = this.$refs.questionInput;
-      const start = input?.selectionStart ?? this.question.length;
-      const end = input?.selectionEnd ?? this.question.length;
-      const prefix = this.question.slice(0, start);
-      const suffix = this.question.slice(end);
-      const needsLeadingSpace = prefix !== "" && !/\s$/u.test(prefix);
-      const needsTrailingSpace = suffix !== "" && !/^\s/u.test(suffix);
-      const insertion = `${needsLeadingSpace ? " " : ""}${transcript}${needsTrailingSpace ? " " : ""}`;
-      this.question = `${prefix}${insertion}${suffix}`;
-      const cursor = prefix.length + insertion.length;
-      this.$nextTick(() => {
-        input?.focus();
-        input?.setSelectionRange(cursor, cursor);
-      });
+      this.dictationController?.cancel();
     },
 
     answerSections() {

@@ -8,6 +8,7 @@ import {
   readPlainObject as readObject,
   readPositiveInteger,
   readString,
+  readTimestamp,
 } from "./citeloom-boundaries.js";
 import { readSystemHealthDashboard } from "./citeloom-dashboard-extensions.js";
 import {
@@ -56,6 +57,14 @@ const queuePhases = Object.freeze([
 
 const queueStates = Object.freeze(["failed", "pending", "running"]);
 const ingestionDestinations = Object.freeze(["documents"]);
+const documentDisplayStatuses = Object.freeze([
+  "failed",
+  "pending",
+  "ready",
+  "reindex-required",
+  "running",
+]);
+const recentDocumentLimit = 10;
 
 const routes = Object.freeze({
   account: {
@@ -385,6 +394,7 @@ function readDashboardSnapshot(value) {
   const dashboard = readObject(value, "dashboard");
   const overview = readOverviewSummary(
     dashboard.documentSummary,
+    dashboard.catalog,
     dashboard.maximumDocumentBytes,
     dashboard.maximumUploadRequestBytes,
     dashboard.supportedExtensions,
@@ -407,6 +417,7 @@ function readDashboardSnapshot(value) {
 
 function readOverviewSummary(
   summaryValue,
+  catalogValue,
   maximumDocumentBytesValue,
   maximumUploadRequestBytesValue,
   extensionValue,
@@ -440,8 +451,35 @@ function readOverviewSummary(
     needsAttention: failed + reindexRequired,
     processingDocuments: processing,
     readyDocuments: queryable,
+    recentDocuments: readRecentDocuments(catalogValue),
     supportedExtensions: readSupportedExtensions(extensionValue),
   };
+}
+
+function readRecentDocuments(value) {
+  const catalog = readObject(value, "dashboard document catalog");
+  const values = readArray(catalog.documents, "dashboard catalog documents");
+  const documents = [];
+  const limit = Math.min(values.length, recentDocumentLimit);
+  for (let index = 0; index < limit; index += 1) {
+    const document = readObject(values[index], "dashboard catalog document");
+    documents.push({
+      displayStatus: readEnum(
+        document.displayStatus,
+        documentDisplayStatuses,
+        "dashboard document display status",
+      ),
+      sourceFile: readNonEmptyString(
+        document.sourceFile,
+        "dashboard document source file",
+      ),
+      updatedAt: readTimestamp(
+        document.updatedAt,
+        "dashboard document update time",
+      ),
+    });
+  }
+  return documents;
 }
 
 function readSupportedExtensions(value) {
@@ -576,6 +614,7 @@ function buildEmptyOverviewSummary() {
     needsAttention: 0,
     processingDocuments: 0,
     readyDocuments: 0,
+    recentDocuments: [],
     supportedExtensions: [
       ".pdf",
       ".html",
@@ -1415,7 +1454,8 @@ function registerShell(alpine) {
       if (!Object.hasOwn(routes, view)) {
         return;
       }
-      const link = this.$root.querySelector(`a[data-view="${view}"]`);
+      const applicationShell = this.$root.closest(".app-shell");
+      const link = applicationShell?.querySelector(`a[data-view="${view}"]`);
       if (link instanceof HTMLAnchorElement) {
         link.click();
       }
