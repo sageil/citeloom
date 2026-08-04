@@ -676,7 +676,7 @@ function readDocumentRetryState(document, status, errorMessage) {
     };
   }
   return {
-    failureContext: `Attempt ${attemptCount} of ${maxAttempts} failed. Retry queued for ${exactDateFormatter.format(new Date(nextAttemptAt))}.`,
+    failureContext: `Attempt ${attemptCount} of ${maxAttempts} failed. Retry queued for ${formatExactDate(nextAttemptAt)}.`,
     failureHeading: "Last attempt failed",
   };
 }
