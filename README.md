@@ -2,11 +2,10 @@
 
 > Private documents, woven into cited answers.
 
-![Status](https://img.shields.io/badge/status-alpha-orange)
+![Version](https://img.shields.io/badge/version-0.2.0-0ea5e9)
 ![Node.js](https://img.shields.io/badge/node-26.5.0-339933)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
-![Docker Image Version](https://img.shields.io/docker/v/sageil/citeloom)
 ![Docker Pulls](https://img.shields.io/docker/pulls/sageil/citeloom.svg)
 ![GitHub Issues](https://img.shields.io/github/issues/sageil/citeloom)
 ![GitHub Stars](https://img.shields.io/github/stars/sageil/citeloom?style=flat-square)
@@ -14,7 +13,7 @@
 ![CiteLoom product artwork with the message Private by Design](assets/citeloom-readme-private-by-design-caps.png)
 
 CiteLoom is an open-source, self-hosted Retrieval-Augmented Generation (RAG) system for private documents.
-It combines structure-aware document processing, embedding search with pgvector cosine similarity, BM25 keyword search, optional extra search queries, weighted Reciprocal Rank Fusion, and optional relevance-model reranking to find evidence across text, tables, and images.
+It combines structure-aware document processing, embedding search with pgvector cosine similarity, BM25 keyword search, optional Query Expansion, weighted Reciprocal Rank Fusion, and optional relevance-model reranking to find evidence across text, tables, and images.
 Generated descriptions can improve discovery, but citations always point back to original evidence.
 It generates structured answers using exact evidence references, converts them into server-owned citations, and stores advisory Hughes Hallucination Evaluation Model (HHEM) support checks alongside each cited claim without allowing those scores to change the answer.
 
@@ -32,7 +31,7 @@ It generates structured answers using exact evidence references, converts them i
 - Inspect text, table, image, and highlighted PDF evidence for validated citations.
 - Save and export research threads that keep their original answers, citations, and run settings.
 - Dictate Ask questions and listen to Ask or Chat answers through independently configured speech providers, with optional asynchronous audio preloading.
-- Route answers, Chat, query expansion, indexing, embeddings, reranking, transcription, and speech synthesis to different provider connections and models.
+- Route answers, Chat, Query Expansion, indexing, embeddings, reranking, transcription, and speech synthesis to different provider connections and models.
 - Manage workspace accounts and roles, run service diagnostics, inspect sanitized operational errors, and purge retained error reports with confirmation.
 - Reproduce retrieval runs with saved settings, stable seeds calculated from each request, consistent tie-breaking, and retrieval traces.
 - Keep unmodified source files in a local content store while PostgreSQL stores metadata and durable references.
@@ -81,7 +80,7 @@ docker compose --env-file .env -f compose.dockerhub.yml up -d --wait
 Open `https://localhost:3443` and sign in with the administrator account.
 If the browser warns about the local development certificate, use its trust or continue flow for this local site.
 
-A fresh database routes answers, chat, summaries, extra search queries, and embeddings to Ollama.
+A fresh database routes answers, Chat, the Indexing model, Query Expansion, and embeddings to Ollama.
 Open Settings to use different providers or to enable reranking, speech-to-text, or text-to-speech.
 See [Deployment](docs/deployment.md) for storage paths, restart behavior, and building the images locally.
 
@@ -100,7 +99,7 @@ The installer creates `.env` when needed, asks for the initial administrator cre
 Provider routing is configured per capability in Settings.
 A provider can serve one capability while another provider serves the rest.
 
-| Provider | Answers | Chat | Extra search queries | Summaries | Embeddings | Reranking | Speech-to-text | Text-to-speech |
+| Provider | Answers | Chat | Query Expansion | Indexing model | Embeddings | Reranking | Speech-to-text | Text-to-speech |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | oMLX | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Ollama | Yes | Yes | Yes | Yes | Yes | - | - | - |
@@ -118,31 +117,25 @@ Choose a model and endpoint that implement the selected capability.
 OpenAI Codex uses device sign-in, while other profiles accept provider API tokens when their endpoints require authentication.
 See [Configuration](docs/configuration.md#provider-reference) for endpoint conventions, feature routing, default models, and Thinking mode.
 
-## Fresh-install provider defaults
+## Ollama configuration
 
-CiteLoom services run in Docker Compose while local model servers run on the host.
-Fresh settings use Ollama for answers, chat, extra search queries, summaries, and embeddings, and include oMLX model suggestions for optional reranking and speech.
-Standard Docling processing is selected by default, with an Ollama Unlimited OCR model override saved for administrators who opt into VLM processing.
-Adaptive inference is enabled by default for native Ollama GGUF language models.
-It uses a 65,536-token floor capped by the model maximum, grows bounded answer requests when their calculated requirement is larger, and reuses larger resident runners without shrinking them.
-Summaries, vision, tools, reasoning, and unbounded answers use the model maximum reported by Ollama.
-Embeddings, MLX runners, and other providers remain outside adaptive allocation.
+CiteLoom services run in Docker Compose while Ollama runs on the host at `http://host.docker.internal:11434`.
+The current local Ollama profile uses adaptive context sizing, allows one parallel request, and disables Thinking mode.
+
+| Capability | Model | Context capacity | Current use |
+| --- | --- | --- | --- |
+| Answers | `qwen3.5:9b-mlx` | 131,072 tokens | Saved Ollama connection; requests currently route to OpenAI Codex |
+| Chat | `qwen3.5:9b-mlx` | 131,072 tokens | Saved Ollama connection; requests currently route to OpenAI Codex |
+| Query Expansion | `qwen3.5:9b-mlx` | 131,072 tokens | Saved Ollama connection; currently disabled and routed to OpenAI Codex |
+| Indexing model | `qwen3.5:9b` | 131,072 tokens | Active through Ollama |
+| Embeddings | `snowflake-arctic-embed:137m` | 2,048 tokens | Active through Ollama |
+| Docling VLM | `frob/unlimited-ocr:q8_0` | Model-defined | Saved Ollama override; used only when VLM PDF processing is selected |
+
+Fresh databases use `gemma4:e4b-mlx` for answers, Chat, Query Expansion, and the Indexing model until an administrator changes the provider settings.
+The `-mlx` models are intended for Macs.
+Linux users should select compatible non-MLX models available in their Ollama installation.
+Adaptive context sizing applies to native Ollama GGUF language models, while embeddings, MLX runners, and other providers remain outside adaptive allocation.
 See [Ollama automatic context size](docs/configuration.md#ollama-automatic-context-size) for sizing examples, operational requirements, fallback behavior, and opt-out instructions.
-Users can route speech-to-text and text-to-speech independently to oMLX, OpenAI, Groq, or Custom.
-Users can optionally enable reranking with oMLX, Cohere, Jina, or Custom.
-
-| Runtime | Model | Status and use |
-| --- | --- | --- |
-| Ollama | `gemma4:e4b-mlx` | Answer generation, chat, summarization, and extra search queries |
-| Ollama | `snowflake-arctic-embed:137m` | Document and query embeddings |
-| Ollama | `frob/unlimited-ocr:q8_0` | Saved Docling VLM model override; inactive while Standard processing remains selected |
-| oMLX | `gte-reranker-modernbert-base` | Available for optional retrieval reranking when routed |
-| oMLX | `Qwen3-ASR-1.7B-8bit` | Available for speech-to-text transcription when routed |
-| oMLX | `Kokoro-82M-bf16` | Available for text-to-speech synthesis with the `af_heart` voice when routed |
-| Docker Compose | `vectara/hallucination_evaluation_model` | Independent claim-support verification through HHEM |
-
-The `gemma4:e4b-mlx` default is an MLX model for Macs.
-Linux users should remove the `-mlx` suffix and configure `gemma4:e4b` instead, or Ollama will fail because the configured Mac model is unavailable.
 
 ```mermaid
 flowchart LR
@@ -157,7 +150,7 @@ flowchart LR
     end
 
     subgraph Host[Host machine]
-        Ollama[Ollama :11434<br/>answers, summaries, extra search queries, embeddings]
+        Ollama[Ollama :11434<br/>answers, Indexing model, Query Expansion, embeddings]
         OMLX[oMLX :9000<br/>optional reranking and speech]
     end
 
