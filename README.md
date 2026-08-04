@@ -12,10 +12,13 @@
 
 ![CiteLoom product artwork with the message Private by Design](assets/citeloom-readme-private-by-design-caps.png)
 
-CiteLoom is domain agnostic Retrieval-Augmented Generation (RAG) system for private documents that can run using locally and remote llm providers.
-It combines structure-aware document processing, embedding search with pgvector cosine similarity, BM25 keyword search, optional Query Expansion, weighted Reciprocal Rank Fusion, and optional relevance-model reranking to find evidence across text, tables, and images.
-Generated descriptions can improve discovery, but citations always point back to original evidence.
-It generates structured answers using exact evidence references, converts them into server-owned citations, and stores advisory Hughes Hallucination Evaluation Model (HHEM) support checks alongside each cited claim without allowing those scores to change the answer.
+CiteLoom is a domain-agnostic Retrieval-Augmented Generation (RAG) system for your documents.
+It supports PDF, HTML, DOCX, XLSX, PPTX, JPEG, PNG, WebP, and readable UTF-8 text files.
+
+Use local or remote LLM providers while keeping generated answers connected to original evidence through validated citations.
+CiteLoom also records advisory Hughes Hallucination Evaluation Model (HHEM) support scores for cited claims without allowing those scores to alter the answer.
+
+See [Features](#features) for supported capabilities and [How it works](#how-it-works) for the ingestion, retrieval, citation, and claim-support flow.
 
 ## Features
 
@@ -223,13 +226,36 @@ flowchart TB
     Providers --> Endpoints[Configured local or cloud endpoints]
 ```
 
-During ingestion, CiteLoom discovers document structure, splits content into searchable sections, creates summaries and embeddings, and then publishes the completed index.
+### Ingestion
+
+Structure-aware processing discovers the organization of each document, extracts its content, and divides it into searchable sections.
+CiteLoom creates summaries and embeddings before publishing the completed index.
 Completed checkpoints let interrupted jobs resume from their last finished step.
 The current document remains searchable while a replacement index is being built.
 
+### Retrieval
+
 For each question, CiteLoom first decides which documents are in scope.
-It then combines meaning-based and keyword results, optionally reranks them, and loads the original evidence used to generate the cited answer.
-Reranking can improve answer and citation accuracy by moving more relevant evidence into the answer context.
+
+It then uses several retrieval methods:
+
+- Semantic search uses pgvector cosine similarity to find related content.
+- BM25 keyword search finds exact terms and phrases.
+- Weighted Reciprocal Rank Fusion combines semantic and keyword results.
+- Optional Query Expansion can search for additional interpretations of the question.
+- Optional relevance-model reranking can move stronger evidence into the answer context.
+
+After ranking the results, CiteLoom loads the original evidence used to generate the cited answer.
+
+### Citations and claim support
+
+CiteLoom keeps generated answers connected to their sources:
+
+- Generated descriptions can improve discovery, but citations always point to original evidence.
+- Evidence references are validated before they become citations.
+- The Hughes Hallucination Evaluation Model (HHEM) records an advisory support score for each cited claim.
+- HHEM scores help reviewers identify potentially unsupported claims, but never remove, rewrite, or add answer content.
+
 See [Architecture](docs/architecture.md) for the detailed execution paths and system boundaries.
 
 ## Command-line usage
@@ -279,25 +305,25 @@ pnpm ask --tag research -- "What findings are supported across these documents?"
 
 Follow [Contributing](CONTRIBUTING.md) for the complete source setup, development workflow, and pull request requirements.
 
-Run Biome against maintained TypeScript and browser JavaScript.
+Run the Biome linter without applying fixes.
 
 ```bash
 pnpm lint
 ```
 
-Apply Biome's safe lint fixes when reviewing the resulting source changes.
+Apply Biome's safe lint fixes after code changes.
 
 ```bash
 pnpm lint:fix
 ```
 
-Run the production-focused unit suite during routine development.
+Run the basic test suite.
 
 ```bash
 pnpm test
 ```
 
-Run every isolated unit suite, including evaluation, corpus, and CLI workflow coverage.
+Run every unit suite, including evaluation, corpus, and CLI workflow coverage.
 
 ```bash
 pnpm test:all
@@ -324,6 +350,7 @@ Pull requests should report the verification commands that were run and keep unr
 - Shared source storage with SeaweedFS is planned for multi-host deployments.
 - Multi providers creation & configuration
 - Additional Providers
+- French language support.
 
 ## License
 
