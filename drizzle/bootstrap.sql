@@ -386,7 +386,7 @@ WITH canonical_settings AS (
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": 131072,
-            "model": "gemma4:e4b-mlx"
+            "model": "qwen3.5:9b-mlx"
           },
           "baseUrl": "http://host.docker.internal:11434",
           "customAdapters": {
@@ -408,7 +408,7 @@ WITH canonical_settings AS (
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": 131072,
-            "model": "gemma4:e4b-mlx"
+            "model": "qwen3.5:9b-mlx"
           },
           "maximumParallelRequests": 1,
           "name": null,
@@ -427,7 +427,7 @@ WITH canonical_settings AS (
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": 131072,
-            "model": "gemma4:e4b"
+            "model": "qwen3.5:9b"
           },
           "textToSpeech": {
             "apiToken": null,

@@ -150,10 +150,10 @@ The saved oMLX URL uses port 9000 and can be changed in Settings.
 
 | Feature | Bootstrap provider | Bootstrap model |
 | --- | --- | --- |
-| Ask | Ollama | `gemma4:e4b-mlx` |
-| Chat | Ollama | `gemma4:e4b-mlx` |
-| Query Expansion | Ollama | `gemma4:e4b-mlx` |
-| Indexing model | Ollama | `gemma4:e4b` |
+| Ask | Ollama | `qwen3.5:9b-mlx` |
+| Chat | Ollama | `qwen3.5:9b-mlx` |
+| Query Expansion | Ollama | `qwen3.5:9b-mlx` |
+| Indexing model | Ollama | `qwen3.5:9b` |
 | Embedding model | Ollama | `snowflake-arctic-embed:137m` |
 | Search ranking | Not selected | oMLX default `gte-reranker-modernbert-base` is available |
 | Speech input | Not selected | oMLX default `Qwen3-ASR-1.7B-8bit` is available |

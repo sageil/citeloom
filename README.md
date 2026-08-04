@@ -12,7 +12,7 @@
 
 ![CiteLoom product artwork with the message Private by Design](assets/citeloom-readme-private-by-design-caps.png)
 
-CiteLoom is an open-source, self-hosted Retrieval-Augmented Generation (RAG) system for private documents.
+CiteLoom is domain agnostic Retrieval-Augmented Generation (RAG) system for private documents that can run using locally and remote llm providers.
 It combines structure-aware document processing, embedding search with pgvector cosine similarity, BM25 keyword search, optional Query Expansion, weighted Reciprocal Rank Fusion, and optional relevance-model reranking to find evidence across text, tables, and images.
 Generated descriptions can improve discovery, but citations always point back to original evidence.
 It generates structured answers using exact evidence references, converts them into server-owned citations, and stores advisory Hughes Hallucination Evaluation Model (HHEM) support checks alongside each cited claim without allowing those scores to change the answer.
@@ -124,14 +124,14 @@ The default Ollama profile uses adaptive context sizing, allows one parallel req
 
 | Capability | Model | Context capacity | Current use |
 | --- | --- | --- | --- |
-| Answers | `gemma4:e4b-mlx` | 131,072 tokens | Default through Ollama |
-| Chat | `gemma4:e4b-mlx` | 131,072 tokens | Default through Ollama |
-| Query Expansion | `gemma4:e4b-mlx` | 131,072 tokens | Default through Ollama |
-| Indexing model | `gemma4:e4b` | 131,072 tokens | Default through Ollama |
+| Answers | `qwen3.5:9b-mlx` | 131,072 tokens | Default through Ollama |
+| Chat | `qwen3.5:9b-mlx` | 131,072 tokens | Default through Ollama |
+| Query Expansion | `qwen3.5:9b-mlx` | 131,072 tokens | Default through Ollama |
+| Indexing model | `qwen3.5:9b` | 131,072 tokens | Default through Ollama |
 | Embeddings | `snowflake-arctic-embed:137m` | 2,048 tokens | Default through Ollama |
 | Docling VLM | `frob/unlimited-ocr:q8_0` | Model-defined | Saved Ollama override; used only when VLM PDF processing is selected |
 
-Fresh databases use `gemma4:e4b-mlx` for answers, Chat, and Query Expansion, and `gemma4:e4b` for the Indexing model until an administrator changes the provider settings.
+Fresh databases use `qwen3.5:9b-mlx` for answers, Chat, and Query Expansion, and `qwen3.5:9b` for the Indexing model until an administrator changes the provider settings.
 The `-mlx` models are intended for Macs.
 Linux users should select compatible non-MLX models available in their Ollama installation.
 Adaptive context sizing applies to native Ollama GGUF language models, while embeddings, MLX runners, and other providers remain outside adaptive allocation.
