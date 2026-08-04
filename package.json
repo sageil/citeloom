@@ -1,6 +1,6 @@
 {
   "name": "citeloom",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "license": "AGPL-3.0-only",
   "description": "Private documents, woven into cited answers.",

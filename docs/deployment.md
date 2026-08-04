@@ -25,8 +25,8 @@ Use the same semantic version for the images and application release.
 ```dotenv
 CITELOOM_ADMIN_USERNAME=Mayhem
 CITELOOM_ADMIN_PASSWORD='replace-with-a-private-passphrase'
-CITELOOM_IMAGE_TAG=0.2.0
-CITELOOM_RELEASE=0.2.0
+CITELOOM_IMAGE_TAG=0.2.1
+CITELOOM_RELEASE=0.2.1
 ```
 
 Pull and start the CiteLoom stack.
