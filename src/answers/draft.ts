@@ -15,6 +15,7 @@ export const ANSWER_PRESENTATIONS = ["paragraph", "bullet"] as const;
 
 const numericCitationDecorationPattern = /(?:[\[【]\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\s*[\]】]|\(\s*(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\s*\)|\b(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\b)/gi;
 const evidenceReferenceDecorationPattern = /(?:[\[【]\s*EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\s*[\]】]|\(\s*(?:evidence\s+)?references?\s*EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\s*\)|\b(?:evidence\s+)?references?\s*EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\b)/gi;
+const sourceReferenceDecorationPattern = /(?:[\[【]\s*SOURCE_\d+(?:\s*(?:,|-|\u2013|to)\s*SOURCE_\d+)*\s*[\]】]|\(\s*(?:source\s+)?references?\s*SOURCE_\d+(?:\s*(?:,|-|\u2013|to)\s*SOURCE_\d+)*\s*\)|\b(?:source\s+)?references?\s*SOURCE_\d+(?:\s*(?:,|-|\u2013|to)\s*SOURCE_\d+)*\b|\bSOURCE_\d+\b)/gi;
 export const answerSectionSchema = z.enum(ANSWER_SECTIONS);
 export const answerDraftSectionSchema = z.enum(ANSWER_DRAFT_SECTIONS);
 export const answerPresentationSchema = z.enum(ANSWER_PRESENTATIONS);
@@ -427,7 +428,11 @@ export function normalizeAnswerModelText(value: string): string {
     evidenceReferenceDecorationPattern,
     " ",
   );
-  return withoutCitationDecorations
+  const withoutSourceReferences = withoutCitationDecorations.replace(
+    sourceReferenceDecorationPattern,
+    " ",
+  );
+  return withoutSourceReferences
     .replace(/\r\n?/g, "\n")
     .replace(/[^\S\r\n]+/g, " ")
     .replace(/ +$/gmu, "")
