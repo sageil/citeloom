@@ -428,8 +428,11 @@ export function normalizeAnswerModelText(value: string): string {
     " ",
   );
   return withoutCitationDecorations
-    .replace(/\s+/g, " ")
-    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[^\S\r\n]+/g, " ")
+    .replace(/ +$/gmu, "")
+    .replace(/^ *\((\d+)\) +/gmu, "$1. ")
+    .replace(/ +([,.;:!?])/g, "$1")
     .replace(/[,;:]+([.!?])/g, "$1")
     .trim();
 }

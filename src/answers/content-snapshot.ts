@@ -2,9 +2,10 @@ import {
   isPublishedUncitedAnswerDocument,
   type PublishedAnswerDocument,
 } from "./published-schema.js";
-import type {
-  AnswerPresentation,
-  AnswerSection,
+import {
+  normalizeAnswerModelText,
+  type AnswerPresentation,
+  type AnswerSection,
 } from "./draft.js";
 
 export interface AnswerContentStatement {
@@ -31,8 +32,12 @@ export function decodePartialAnswerContentSnapshot(
   if (typeof answerContent !== "string" || answerContent === "") {
     return null;
   }
+  const normalizedAnswerContent = normalizeAnswerModelText(answerContent);
+  if (normalizedAnswerContent === "") {
+    return null;
+  }
   const statements: AnswerContentStatement[] = [{
-    content: answerContent,
+    content: normalizedAnswerContent,
     presentation: "paragraph",
     section: "answer",
   }];
@@ -89,8 +94,13 @@ function readPartialFindingContent(value: unknown): string | null {
   }
   const content = Reflect.get(value, "content");
   if (typeof content === "string" && content !== "") {
-    return content;
+    const normalizedContent = normalizeAnswerModelText(content);
+    return normalizedContent === "" ? null : normalizedContent;
   }
   const claim = Reflect.get(value, "claim");
-  return typeof claim === "string" && claim !== "" ? claim : null;
+  if (typeof claim !== "string" || claim === "") {
+    return null;
+  }
+  const normalizedClaim = normalizeAnswerModelText(claim);
+  return normalizedClaim === "" ? null : normalizedClaim;
 }
