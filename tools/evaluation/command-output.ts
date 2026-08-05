@@ -1,5 +1,5 @@
-import type { RetrievalMode } from "../../src/config/index.js";
 import type { EvaluationResult } from "./index.js";
+import type { EvaluationRetrievalMode } from "./retrieval-mode.js";
 import type { EvaluationTuningSelection } from "./tuning.js";
 
 export function printEvaluationResult(result: EvaluationResult): void {
@@ -118,7 +118,7 @@ export function printHelp(): void {
   pnpm evaluate:generate --domain <name> --language <bcp47> --question-type <type> --split <development|holdout> --minimum-detectable-ndcg-delta <0..1> --assumed-paired-ndcg-stddev <0..1> --output <dataset.json> [options]`);
 }
 
-function readRetrievalModeDisplayName(mode: RetrievalMode): string {
+function readRetrievalModeDisplayName(mode: EvaluationRetrievalMode): string {
   if (mode === "bm25") {
     return "BM25";
   }

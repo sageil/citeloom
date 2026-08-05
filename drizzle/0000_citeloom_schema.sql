@@ -145,6 +145,28 @@ CREATE TABLE "chat_message_embeddings_1024" (
 	CONSTRAINT "chat_message_embeddings_1024_values_check" CHECK ("chat_message_embeddings_1024"."input_tokens" > 0 AND "chat_message_embeddings_1024"."part_ordinal" >= 0)
 );
 --> statement-breakpoint
+CREATE TABLE "chat_message_embeddings_1536" (
+	"content" text NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"input_tokens" integer NOT NULL,
+	"message_id" uuid NOT NULL,
+	"part_ordinal" integer NOT NULL,
+	"embedding" vector(1536) NOT NULL,
+	CONSTRAINT "chat_message_embeddings_1536_embedding_space_id_message_id_part_ordinal_pk" PRIMARY KEY("embedding_space_id","message_id","part_ordinal"),
+	CONSTRAINT "chat_message_embeddings_1536_values_check" CHECK ("chat_message_embeddings_1536"."input_tokens" > 0 AND "chat_message_embeddings_1536"."part_ordinal" >= 0)
+);
+--> statement-breakpoint
+CREATE TABLE "chat_message_embeddings_2048" (
+	"content" text NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"input_tokens" integer NOT NULL,
+	"message_id" uuid NOT NULL,
+	"part_ordinal" integer NOT NULL,
+	"embedding" halfvec(2048) NOT NULL,
+	CONSTRAINT "chat_message_embeddings_2048_embedding_space_id_message_id_part_ordinal_pk" PRIMARY KEY("embedding_space_id","message_id","part_ordinal"),
+	CONSTRAINT "chat_message_embeddings_2048_values_check" CHECK ("chat_message_embeddings_2048"."input_tokens" > 0 AND "chat_message_embeddings_2048"."part_ordinal" >= 0)
+);
+--> statement-breakpoint
 CREATE TABLE "chat_message_embeddings_384" (
 	"content" text NOT NULL,
 	"embedding_space_id" text NOT NULL,
@@ -770,6 +792,40 @@ CREATE TABLE "retrieval_chunks_1024" (
 	CONSTRAINT "retrieval_chunks_1024_embedding_space_id_generation_id_id_pk" PRIMARY KEY("embedding_space_id","generation_id","id")
 );
 --> statement-breakpoint
+CREATE TABLE "retrieval_chunks_1536" (
+	"document_id" varchar(64) NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"evidence_content" text NOT NULL,
+	"generation_id" uuid NOT NULL,
+	"id" varchar(76) NOT NULL,
+	"kind" "element_kind" NOT NULL,
+	"next_retrieval_id" varchar(64),
+	"page_number" integer,
+	"parent_id" varchar(64) NOT NULL,
+	"previous_retrieval_id" varchar(64),
+	"representation_type" varchar(32) NOT NULL,
+	"source_file" text NOT NULL,
+	"embedding" vector(1536) NOT NULL,
+	CONSTRAINT "retrieval_chunks_1536_embedding_space_id_generation_id_id_pk" PRIMARY KEY("embedding_space_id","generation_id","id")
+);
+--> statement-breakpoint
+CREATE TABLE "retrieval_chunks_2048" (
+	"document_id" varchar(64) NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"evidence_content" text NOT NULL,
+	"generation_id" uuid NOT NULL,
+	"id" varchar(76) NOT NULL,
+	"kind" "element_kind" NOT NULL,
+	"next_retrieval_id" varchar(64),
+	"page_number" integer,
+	"parent_id" varchar(64) NOT NULL,
+	"previous_retrieval_id" varchar(64),
+	"representation_type" varchar(32) NOT NULL,
+	"source_file" text NOT NULL,
+	"embedding" halfvec(2048) NOT NULL,
+	CONSTRAINT "retrieval_chunks_2048_embedding_space_id_generation_id_id_pk" PRIMARY KEY("embedding_space_id","generation_id","id")
+);
+--> statement-breakpoint
 CREATE TABLE "retrieval_chunks_384" (
 	"document_id" varchar(64) NOT NULL,
 	"embedding_space_id" text NOT NULL,
@@ -977,6 +1033,10 @@ ALTER TABLE "chat_conversations" ADD CONSTRAINT "chat_conversations_owner_member
 ALTER TABLE "chat_evidence_documents" ADD CONSTRAINT "chat_evidence_documents_document_id_source_documents_document_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."source_documents"("document_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "chat_message_embeddings_1024" ADD CONSTRAINT "chat_message_embeddings_1024_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "chat_message_embeddings_1024" ADD CONSTRAINT "chat_message_embeddings_1024_message_id_chat_messages_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."chat_messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_message_embeddings_1536" ADD CONSTRAINT "chat_message_embeddings_1536_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_message_embeddings_1536" ADD CONSTRAINT "chat_message_embeddings_1536_message_id_chat_messages_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."chat_messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_message_embeddings_2048" ADD CONSTRAINT "chat_message_embeddings_2048_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_message_embeddings_2048" ADD CONSTRAINT "chat_message_embeddings_2048_message_id_chat_messages_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."chat_messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "chat_message_embeddings_384" ADD CONSTRAINT "chat_message_embeddings_384_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "chat_message_embeddings_384" ADD CONSTRAINT "chat_message_embeddings_384_message_id_chat_messages_id_fk" FOREIGN KEY ("message_id") REFERENCES "public"."chat_messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "chat_message_embeddings_768" ADD CONSTRAINT "chat_message_embeddings_768_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1020,6 +1080,8 @@ ALTER TABLE "research_statements" ADD CONSTRAINT "research_statements_turn_id_re
 ALTER TABLE "research_turns" ADD CONSTRAINT "research_turns_thread_id_research_threads_id_fk" FOREIGN KEY ("thread_id") REFERENCES "public"."research_threads"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "retrieval_chunks" ADD CONSTRAINT "retrieval_chunks_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "retrieval_chunks_1024" ADD CONSTRAINT "retrieval_chunks_1024_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "retrieval_chunks_1536" ADD CONSTRAINT "retrieval_chunks_1536_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "retrieval_chunks_2048" ADD CONSTRAINT "retrieval_chunks_2048_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "retrieval_chunks_384" ADD CONSTRAINT "retrieval_chunks_384_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "retrieval_lexical_chunks" ADD CONSTRAINT "retrieval_lexical_chunks_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "retrieval_toc_artifacts" ADD CONSTRAINT "retrieval_toc_artifacts_element_set_id_document_element_sets_id_fk" FOREIGN KEY ("element_set_id") REFERENCES "public"."document_element_sets"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -1043,6 +1105,10 @@ CREATE INDEX "chat_conversations_owner_updated_idx" ON "chat_conversations" USIN
 CREATE INDEX "chat_evidence_documents_document_idx" ON "chat_evidence_documents" USING btree ("document_id");--> statement-breakpoint
 CREATE INDEX "chat_message_embeddings_1024_message_idx" ON "chat_message_embeddings_1024" USING btree ("message_id");--> statement-breakpoint
 CREATE INDEX "chat_message_embeddings_1024_hnsw_idx" ON "chat_message_embeddings_1024" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "chat_message_embeddings_1536_message_idx" ON "chat_message_embeddings_1536" USING btree ("message_id");--> statement-breakpoint
+CREATE INDEX "chat_message_embeddings_1536_hnsw_idx" ON "chat_message_embeddings_1536" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "chat_message_embeddings_2048_message_idx" ON "chat_message_embeddings_2048" USING btree ("message_id");--> statement-breakpoint
+CREATE INDEX "chat_message_embeddings_2048_hnsw_idx" ON "chat_message_embeddings_2048" USING hnsw ("embedding" halfvec_cosine_ops);--> statement-breakpoint
 CREATE INDEX "chat_message_embeddings_384_message_idx" ON "chat_message_embeddings_384" USING btree ("message_id");--> statement-breakpoint
 CREATE INDEX "chat_message_embeddings_384_hnsw_idx" ON "chat_message_embeddings_384" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
 CREATE INDEX "chat_message_embeddings_768_message_idx" ON "chat_message_embeddings_768" USING btree ("message_id");--> statement-breakpoint
@@ -1088,6 +1154,10 @@ CREATE INDEX "retrieval_chunks_document_id_idx" ON "retrieval_chunks" USING btre
 CREATE INDEX "retrieval_chunks_embedding_hnsw_idx" ON "retrieval_chunks" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
 CREATE INDEX "retrieval_chunks_1024_document_idx" ON "retrieval_chunks_1024" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
 CREATE INDEX "retrieval_chunks_1024_embedding_hnsw_idx" ON "retrieval_chunks_1024" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "retrieval_chunks_1536_document_idx" ON "retrieval_chunks_1536" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
+CREATE INDEX "retrieval_chunks_1536_embedding_hnsw_idx" ON "retrieval_chunks_1536" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "retrieval_chunks_2048_document_idx" ON "retrieval_chunks_2048" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
+CREATE INDEX "retrieval_chunks_2048_embedding_hnsw_idx" ON "retrieval_chunks_2048" USING hnsw ("embedding" halfvec_cosine_ops);--> statement-breakpoint
 CREATE INDEX "retrieval_chunks_384_document_idx" ON "retrieval_chunks_384" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
 CREATE INDEX "retrieval_chunks_384_embedding_hnsw_idx" ON "retrieval_chunks_384" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
 CREATE UNIQUE INDEX "retrieval_description_generation_position_idx" ON "retrieval_description_artifacts" USING btree ("generation_id","position");--> statement-breakpoint

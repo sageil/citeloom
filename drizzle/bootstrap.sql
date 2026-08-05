@@ -548,6 +548,62 @@ WITH canonical_settings AS (
             "voice": null
           }
         },
+        "openrouter": {
+          "apiToken": null,
+          "answer": {
+            "apiToken": null,
+            "baseUrl": null,
+            "contextCapacityTokens": 200000,
+            "model": "openrouter/free"
+          },
+          "baseUrl": "https://openrouter.ai/api/v1",
+          "customAdapters": {
+            "answer": "openai-compatible-language",
+            "embedding": "openai-compatible-embedding",
+            "queryExpansion": "openai-compatible-language",
+            "reranking": "top-n-rerank",
+            "speechToText": "openrouter-transcription",
+            "summarization": "openai-compatible-language",
+            "textToSpeech": "openrouter-speech"
+          },
+          "embedding": {
+            "apiToken": null,
+            "baseUrl": null,
+            "contextCapacityTokens": 32768,
+            "model": "nvidia/nemotron-3-embed-1b:free"
+          },
+          "queryExpansion": {
+            "apiToken": null,
+            "baseUrl": null,
+            "contextCapacityTokens": 200000,
+            "model": "openrouter/free"
+          },
+          "maximumParallelRequests": 1,
+          "name": null,
+          "thinkingMode": "disabled",
+          "reranking": {
+            "apiToken": null,
+            "baseUrl": null,
+            "model": "nvidia/llama-nemotron-rerank-vl-1b-v2:free"
+          },
+          "speechToText": {
+            "apiToken": null,
+            "baseUrl": null,
+            "model": "openai/gpt-4o-mini-transcribe"
+          },
+          "summarization": {
+            "apiToken": null,
+            "baseUrl": null,
+            "contextCapacityTokens": 200000,
+            "model": "openrouter/free"
+          },
+          "textToSpeech": {
+            "apiToken": null,
+            "baseUrl": null,
+            "model": "fish-audio/s2.1-pro-free:free",
+            "voice": "alloy"
+          }
+        },
         "openai-codex": {
           "apiToken": null,
           "answer": {
@@ -704,6 +760,7 @@ WITH canonical_settings AS (
       "retrievalWindowPolicy": "structured-token-v3",
       "retryBaseMs": 5000,
       "rrfK": 60,
+      "searchMethod": "hybrid",
       "sttLanguage": "English",
       "sttMaxAudioMegabytes": 10,
       "sttPrompt": null,
@@ -741,103 +798,121 @@ ON CONFLICT ("id") DO UPDATE
 SET
   "defaults" = jsonb_set(
     jsonb_set(
-    jsonb_set(
       jsonb_set(
         jsonb_set(
           jsonb_set(
             jsonb_set(
               jsonb_set(
-                "application_settings"."defaults",
-                '{providers,routing}',
-                EXCLUDED."defaults"#>'{providers,routing}',
+                jsonb_set(
+                  jsonb_set(
+                    "application_settings"."defaults",
+                    '{providers,routing}',
+                    EXCLUDED."defaults"#>'{providers,routing}',
+                    true
+                  ),
+                  '{providers,connections,omlx}',
+                  EXCLUDED."defaults"#>'{providers,connections,omlx}',
+                  true
+                ),
+                '{providers,connections,ollama}',
+                EXCLUDED."defaults"#>'{providers,connections,ollama}',
                 true
               ),
-              '{providers,connections,omlx}',
-              EXCLUDED."defaults"#>'{providers,connections,omlx}',
+              '{runtime,answerMaximumOutputTokens}',
+              EXCLUDED."defaults"#>'{runtime,answerMaximumOutputTokens}',
               true
             ),
-            '{providers,connections,ollama}',
-            EXCLUDED."defaults"#>'{providers,connections,ollama}',
+            '{runtime,embeddingInputFormatId}',
+            EXCLUDED."defaults"#>'{runtime,embeddingInputFormatId}',
             true
           ),
-          '{runtime,answerMaximumOutputTokens}',
-          EXCLUDED."defaults"#>'{runtime,answerMaximumOutputTokens}',
+          '{runtime,queryExpansions}',
+          EXCLUDED."defaults"#>'{runtime,queryExpansions}',
           true
         ),
-        '{runtime,embeddingInputFormatId}',
-        EXCLUDED."defaults"#>'{runtime,embeddingInputFormatId}',
+        '{sourceContent}',
+        EXCLUDED."defaults"->'sourceContent',
         true
       ),
-      '{runtime,queryExpansions}',
-      EXCLUDED."defaults"#>'{runtime,queryExpansions}',
+      '{runtime,doclingTocEnabled}',
+      EXCLUDED."defaults"#>'{runtime,doclingTocEnabled}',
       true
     ),
-      '{sourceContent}',
-      EXCLUDED."defaults"->'sourceContent',
-      true
-    ),
-    '{runtime,doclingTocEnabled}',
-    EXCLUDED."defaults"#>'{runtime,doclingTocEnabled}',
+    '{runtime,searchMethod}',
+    EXCLUDED."defaults"#>'{runtime,searchMethod}',
     true
   ),
   "settings" = jsonb_set(
     jsonb_set(
-    jsonb_set(
       jsonb_set(
         jsonb_set(
-          "application_settings"."settings",
-          '{runtime,answerMaximumOutputTokens}',
+          jsonb_set(
+            jsonb_set(
+              "application_settings"."settings",
+              '{runtime,answerMaximumOutputTokens}',
+              CASE
+                WHEN
+                  "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+                    IS NULL
+                  OR "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+                    = "application_settings"."defaults"#>'{runtime,answerMaximumOutputTokens}'
+                THEN EXCLUDED."settings"#>'{runtime,answerMaximumOutputTokens}'
+                ELSE "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+              END,
+              true
+            ),
+            '{runtime,queryExpansions}',
+            CASE
+              WHEN
+                "application_settings"."settings"#>'{runtime,queryExpansions}'
+                  IS NULL
+                OR "application_settings"."settings"#>'{runtime,queryExpansions}'
+                  = "application_settings"."defaults"#>'{runtime,queryExpansions}'
+              THEN EXCLUDED."settings"#>'{runtime,queryExpansions}'
+              ELSE "application_settings"."settings"#>'{runtime,queryExpansions}'
+            END,
+            true
+          ),
+          '{providers,connections,ollama,adaptiveContextEnabled}',
           CASE
             WHEN
-              "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
-                IS NULL
-              OR "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
-                = "application_settings"."defaults"#>'{runtime,answerMaximumOutputTokens}'
-            THEN EXCLUDED."settings"#>'{runtime,answerMaximumOutputTokens}'
-            ELSE "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+              "application_settings"."settings"#>'{providers,connections,ollama,adaptiveContextEnabled}'
+                IS NOT NULL
+            THEN
+              "application_settings"."settings"#>'{providers,connections,ollama,adaptiveContextEnabled}'
+            WHEN
+              "application_settings"."settings"#>>'{providers,connections,ollama,maximumParallelRequests}'
+                = '1'
+            THEN 'true'::jsonb
+            ELSE 'false'::jsonb
           END,
           true
         ),
-        '{runtime,queryExpansions}',
-        CASE
-          WHEN
-            "application_settings"."settings"#>'{runtime,queryExpansions}'
-              IS NULL
-            OR "application_settings"."settings"#>'{runtime,queryExpansions}'
-              = "application_settings"."defaults"#>'{runtime,queryExpansions}'
-          THEN EXCLUDED."settings"#>'{runtime,queryExpansions}'
-          ELSE "application_settings"."settings"#>'{runtime,queryExpansions}'
-        END,
+        '{sourceContent}',
+        EXCLUDED."settings"->'sourceContent',
         true
       ),
-      '{providers,connections,ollama,adaptiveContextEnabled}',
+      '{runtime,doclingTocEnabled}',
       CASE
         WHEN
-          "application_settings"."settings"#>'{providers,connections,ollama,adaptiveContextEnabled}'
-            IS NOT NULL
-        THEN
-          "application_settings"."settings"#>'{providers,connections,ollama,adaptiveContextEnabled}'
-        WHEN
-          "application_settings"."settings"#>>'{providers,connections,ollama,maximumParallelRequests}'
-            = '1'
-        THEN 'true'::jsonb
-        ELSE 'false'::jsonb
+          "application_settings"."settings"#>'{runtime,doclingTocEnabled}'
+            IS NULL
+          OR "application_settings"."settings"#>'{runtime,doclingTocEnabled}'
+            = "application_settings"."defaults"#>'{runtime,doclingTocEnabled}'
+        THEN EXCLUDED."settings"#>'{runtime,doclingTocEnabled}'
+        ELSE "application_settings"."settings"#>'{runtime,doclingTocEnabled}'
       END,
       true
     ),
-      '{sourceContent}',
-      EXCLUDED."settings"->'sourceContent',
-      true
-    ),
-    '{runtime,doclingTocEnabled}',
+    '{runtime,searchMethod}',
     CASE
       WHEN
-        "application_settings"."settings"#>'{runtime,doclingTocEnabled}'
+        "application_settings"."settings"#>'{runtime,searchMethod}'
           IS NULL
-        OR "application_settings"."settings"#>'{runtime,doclingTocEnabled}'
-          = "application_settings"."defaults"#>'{runtime,doclingTocEnabled}'
-      THEN EXCLUDED."settings"#>'{runtime,doclingTocEnabled}'
-      ELSE "application_settings"."settings"#>'{runtime,doclingTocEnabled}'
+        OR "application_settings"."settings"#>'{runtime,searchMethod}'
+          = "application_settings"."defaults"#>'{runtime,searchMethod}'
+      THEN EXCLUDED."settings"#>'{runtime,searchMethod}'
+      ELSE "application_settings"."settings"#>'{runtime,searchMethod}'
     END,
     true
   ),
@@ -858,6 +933,8 @@ WHERE
     IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,queryExpansions}'
   OR "application_settings"."defaults"#>'{runtime,doclingTocEnabled}'
     IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,doclingTocEnabled}'
+  OR "application_settings"."defaults"#>'{runtime,searchMethod}'
+    IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,searchMethod}'
   OR "application_settings"."defaults"->'sourceContent'
     IS DISTINCT FROM EXCLUDED."defaults"->'sourceContent'
   OR "application_settings"."settings"#>'{providers,connections,ollama,adaptiveContextEnabled}'

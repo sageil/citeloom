@@ -17,10 +17,10 @@ const MAX_PROVIDER_ERROR_BYTES = 16 * 1_024;
 const MAX_PROVIDER_ERROR_CHARACTERS = 2_000;
 const MINIMUM_WAV_HEADER_BYTES = 12;
 
-interface OpenAICompatibleSpeechRequest {
+interface SpeechProviderRequest {
   input: string;
   model: string;
-  response_format: "wav";
+  response_format: "mp3" | "wav";
   speed: number;
   voice: string;
 }
@@ -37,6 +37,7 @@ export interface GeneratedSpeech {
 
 interface ProviderGeneratedSpeech {
   audio: Readable;
+  audioFormat: "mp3" | "wav";
   contentType: string;
   timeoutSignal: AbortSignal;
 }
@@ -90,9 +91,10 @@ export async function probeTextToSpeechProvider(
   );
   try {
     const header = await readSpeechProbeHeader(result.audio);
-    if (!isWavHeader(header)) {
+    if (!isSpeechHeader(header, result.audioFormat)) {
+      const format = result.audioFormat.toUpperCase();
       throw new TextToSpeechProviderError(
-        "The text-to-speech provider returned invalid WAV audio.",
+        `The text-to-speech provider returned invalid ${format} audio.`,
       );
     }
   } catch (error: unknown) {
@@ -118,10 +120,10 @@ async function requestSpeech(
       `${speedRange.displayName} speech speed must be from ${speedRange.minimum} to ${speedRange.maximum}.`,
     );
   }
-  const requestBody: OpenAICompatibleSpeechRequest = {
+  const requestBody: SpeechProviderRequest = {
     input: renderPublishedAnswerSpeech(request.answerDocument),
     model: config.model,
-    response_format: "wav",
+    response_format: adapter.responseFormat,
     speed: config.speed,
     voice: config.voice,
   };
@@ -130,7 +132,7 @@ async function requestSpeech(
   try {
     const response = await fetch(`${config.baseUrl}${adapter.path}`, {
       body: JSON.stringify(requestBody),
-      headers: buildHeaders(config),
+      headers: buildHeaders(config, adapter),
       method: "POST",
       signal: requestSignal,
     });
@@ -149,6 +151,7 @@ async function requestSpeech(
     }
     return {
       audio: Readable.fromWeb(response.body, { signal: requestSignal }),
+      audioFormat: adapter.responseFormat,
       contentType,
       timeoutSignal,
     };
@@ -172,6 +175,7 @@ interface SpeechAdapterContract {
   acceptsAudioFamily: boolean;
   acceptedContentTypes: readonly string[];
   path: "/audio/speech";
+  responseFormat: "mp3" | "wav";
 }
 
 function readSpeechAdapter(config: TextToSpeechConfig): SpeechAdapterContract {
@@ -181,12 +185,21 @@ function readSpeechAdapter(config: TextToSpeechConfig): SpeechAdapterContract {
         acceptsAudioFamily: false,
         acceptedContentTypes: ["audio/wav", "audio/x-wav"],
         path: "/audio/speech",
+        responseFormat: "wav",
       };
     case "omlx-speech":
       return {
         acceptsAudioFamily: false,
         acceptedContentTypes: ["audio/wav", "audio/x-wav"],
         path: "/audio/speech",
+        responseFormat: "wav",
+      };
+    case "openrouter-speech":
+      return {
+        acceptsAudioFamily: false,
+        acceptedContentTypes: ["audio/mpeg"],
+        path: "/audio/speech",
+        responseFormat: "mp3",
       };
     case "openai-speech":
       return {
@@ -197,13 +210,17 @@ function readSpeechAdapter(config: TextToSpeechConfig): SpeechAdapterContract {
           "audio/x-wav",
         ],
         path: "/audio/speech",
+        responseFormat: "wav",
       };
   }
 }
 
-function buildHeaders(config: TextToSpeechConfig): Headers {
+function buildHeaders(
+  config: TextToSpeechConfig,
+  adapter: SpeechAdapterContract,
+): Headers {
   const headers = new Headers({
-    accept: "audio/wav",
+    accept: adapter.responseFormat === "mp3" ? "audio/mpeg" : "audio/wav",
     "content-type": "application/json",
   });
   if (config.apiToken !== null) {
@@ -270,6 +287,26 @@ function isWavHeader(header: Uint8Array): boolean {
   const decoder = new TextDecoder("ascii");
   return decoder.decode(header.subarray(0, 4)) === "RIFF"
     && decoder.decode(header.subarray(8, 12)) === "WAVE";
+}
+
+function isSpeechHeader(
+  header: Uint8Array,
+  format: "mp3" | "wav",
+): boolean {
+  if (format === "wav") {
+    return isWavHeader(header);
+  }
+  return isMp3Header(header);
+}
+
+function isMp3Header(header: Uint8Array): boolean {
+  const decoder = new TextDecoder("ascii");
+  if (decoder.decode(header.subarray(0, 3)) === "ID3") {
+    return true;
+  }
+  const first = header[0];
+  const second = header[1];
+  return first === 0xff && second !== undefined && (second & 0xe0) === 0xe0;
 }
 
 function throwTextToSpeechFailure(

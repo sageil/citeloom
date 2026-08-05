@@ -43,6 +43,7 @@ import {
   type PublishedAnswerStatement,
 } from "../answers/published.js";
 import { queryScopeSchema, type QueryScope } from "../domain/query-scope.js";
+import { RETRIEVAL_MODES } from "../retrieval/mode.js";
 import { QUESTION_PROCESSING_POLICY_ID } from "../domain/question.js";
 import type {
   CitationEvidence,
@@ -95,7 +96,9 @@ const runConfigurationSchema = z.object({
     answerMinimumRerankerScore: z.number().nullable().default(null),
     candidateK: z.number().int().positive(),
     fusion: fusionSchema,
-    mode: z.enum(["bm25", "dense", "hybrid", "hybrid-reranked"]),
+    mode: z.enum([...RETRIEVAL_MODES, "hybrid-reranked"]).transform((mode) => {
+      return mode === "hybrid-reranked" ? "hybrid" : mode;
+    }),
     generationSeedMode: z.enum(["random", "stable"]).default("random"),
     queryExpansions: z.number().int().nonnegative(),
     queryExpansionTemperature: z.number().min(0).max(2).default(0.1),

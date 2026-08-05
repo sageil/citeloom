@@ -281,6 +281,8 @@ async function retrieveRelatedDiscoveryElements(
       request.scope,
       abortSignal,
       runTelemetry,
+      "interactive-search",
+      { applyReranking: false },
     );
   } else {
     prepared = await prepareRetrievalWithRuntime(
@@ -291,15 +293,12 @@ async function retrieveRelatedDiscoveryElements(
       abortSignal,
       runTelemetry,
       discoveryConfig,
+      "interactive-search",
+      { applyReranking: false },
     );
   }
   if (prepared.retrieved.length === 0) {
     return [];
-  }
-  if (config.retrieval.mode !== "hybrid-reranked") {
-    throw new Error(
-      "Semantic discovery requires a configured reranker with a calibrated relevance threshold.",
-    );
   }
   if (prepared.models.reranker === null) {
     throw new Error("The configured reranker model was not resolved.");
@@ -319,7 +318,7 @@ async function retrieveRelatedDiscoveryElements(
       provider: reranker.model.provider,
     },
     name: "reranking",
-    retrievalMode: "hybrid-reranked",
+    retrievalMode: "dense",
   });
   try {
     const reranked = await rerankingScheduler.run(

@@ -260,7 +260,7 @@ describe("development retrieval tuning", () => {
       run.freeze,
     );
     expect(selectedConfig.retrieval.candidateK).toBe(2);
-    expect(selectedConfig.retrieval.mode).toBe("hybrid-reranked");
+    expect(selectedConfig.retrieval.mode).toBe("hybrid");
 
     const changed = structuredClone(run.selection);
     const selectedIndex = changed.candidateAssessments.findIndex((entry) => (
@@ -318,7 +318,7 @@ function buildConfig(): AppConfig {
     retrieval: {
       ...config.retrieval,
       candidateK: 2,
-      mode: "hybrid-reranked",
+      mode: "hybrid",
       queryExpansions: 2,
       topK: 1,
     },

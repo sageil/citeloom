@@ -158,6 +158,35 @@ describe("generateTextToSpeech", () => {
     expect(result.contentType).toBe("audio/wav");
   });
 
+  it("requests and accepts MP3 audio through OpenRouter", async () => {
+    const audioBytes = Buffer.from([0xff, 0xfb, 0x90, 0xc4]);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(audioBytes, {
+      headers: { "content-type": "audio/mpeg" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const config = buildEnabledConfig();
+    if (config.textToSpeech === null) {
+      throw new Error("Expected enabled text-to-speech configuration.");
+    }
+    config.textToSpeech.adapter = "openrouter-speech";
+
+    const result = await generateTextToSpeech(
+      config,
+      buildSpeechRequest("An answer."),
+      new AbortController().signal,
+    );
+
+    await expect(readAudio(result.audio)).resolves.toEqual(audioBytes);
+    await expect(result.completion).resolves.toBeUndefined();
+    expect(result.contentType).toBe("audio/mpeg");
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const headers = new Headers(request?.headers);
+    expect(headers.get("accept")).toBe("audio/mpeg");
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      response_format: "mp3",
+    });
+  });
+
   it("keeps completion pending until the provider audio body ends", async () => {
     const providerBody = new TransformStream<Uint8Array, Uint8Array>();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
@@ -252,6 +281,38 @@ describe("probeTextToSpeechProvider", () => {
       config,
       new AbortController().signal,
     )).rejects.toThrow("returned invalid WAV audio");
+  });
+
+  it("accepts an MP3 frame header from OpenRouter", async () => {
+    const audioBytes = Buffer.from([
+      0xff,
+      0xfb,
+      0x90,
+      0xc4,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ]);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(audioBytes, {
+        headers: { "content-type": "audio/mpeg" },
+      }),
+    ));
+    const config = buildEnabledConfig().textToSpeech;
+    if (config === null) {
+      throw new Error("Expected enabled text-to-speech configuration.");
+    }
+    config.adapter = "openrouter-speech";
+
+    await expect(probeTextToSpeechProvider(
+      config,
+      new AbortController().signal,
+    )).resolves.toBeUndefined();
   });
 });
 

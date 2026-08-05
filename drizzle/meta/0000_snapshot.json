@@ -1,5 +1,5 @@
 {
-  "id": "d20c7510-2fad-480d-b527-5355ac973030",
+  "id": "90e2ae7b-0992-453e-a69c-e1d662906626",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -900,6 +900,250 @@
         "chat_message_embeddings_1024_values_check": {
           "name": "chat_message_embeddings_1024_values_check",
           "value": "\"chat_message_embeddings_1024\".\"input_tokens\" > 0 AND \"chat_message_embeddings_1024\".\"part_ordinal\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.chat_message_embeddings_1536": {
+      "name": "chat_message_embeddings_1536",
+      "schema": "",
+      "columns": {
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_space_id": {
+          "name": "embedding_space_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "input_tokens": {
+          "name": "input_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "part_ordinal": {
+          "name": "part_ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(1536)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "chat_message_embeddings_1536_message_idx": {
+          "name": "chat_message_embeddings_1536_message_idx",
+          "columns": [
+            {
+              "expression": "message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "chat_message_embeddings_1536_hnsw_idx": {
+          "name": "chat_message_embeddings_1536_hnsw_idx",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "chat_message_embeddings_1536_embedding_space_id_embedding_spaces_id_fk": {
+          "name": "chat_message_embeddings_1536_embedding_space_id_embedding_spaces_id_fk",
+          "tableFrom": "chat_message_embeddings_1536",
+          "tableTo": "embedding_spaces",
+          "columnsFrom": [
+            "embedding_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "chat_message_embeddings_1536_message_id_chat_messages_id_fk": {
+          "name": "chat_message_embeddings_1536_message_id_chat_messages_id_fk",
+          "tableFrom": "chat_message_embeddings_1536",
+          "tableTo": "chat_messages",
+          "columnsFrom": [
+            "message_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "chat_message_embeddings_1536_embedding_space_id_message_id_part_ordinal_pk": {
+          "name": "chat_message_embeddings_1536_embedding_space_id_message_id_part_ordinal_pk",
+          "columns": [
+            "embedding_space_id",
+            "message_id",
+            "part_ordinal"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chat_message_embeddings_1536_values_check": {
+          "name": "chat_message_embeddings_1536_values_check",
+          "value": "\"chat_message_embeddings_1536\".\"input_tokens\" > 0 AND \"chat_message_embeddings_1536\".\"part_ordinal\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.chat_message_embeddings_2048": {
+      "name": "chat_message_embeddings_2048",
+      "schema": "",
+      "columns": {
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_space_id": {
+          "name": "embedding_space_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "input_tokens": {
+          "name": "input_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "part_ordinal": {
+          "name": "part_ordinal",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "halfvec(2048)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "chat_message_embeddings_2048_message_idx": {
+          "name": "chat_message_embeddings_2048_message_idx",
+          "columns": [
+            {
+              "expression": "message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "chat_message_embeddings_2048_hnsw_idx": {
+          "name": "chat_message_embeddings_2048_hnsw_idx",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "halfvec_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "chat_message_embeddings_2048_embedding_space_id_embedding_spaces_id_fk": {
+          "name": "chat_message_embeddings_2048_embedding_space_id_embedding_spaces_id_fk",
+          "tableFrom": "chat_message_embeddings_2048",
+          "tableTo": "embedding_spaces",
+          "columnsFrom": [
+            "embedding_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "chat_message_embeddings_2048_message_id_chat_messages_id_fk": {
+          "name": "chat_message_embeddings_2048_message_id_chat_messages_id_fk",
+          "tableFrom": "chat_message_embeddings_2048",
+          "tableTo": "chat_messages",
+          "columnsFrom": [
+            "message_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "chat_message_embeddings_2048_embedding_space_id_message_id_part_ordinal_pk": {
+          "name": "chat_message_embeddings_2048_embedding_space_id_message_id_part_ordinal_pk",
+          "columns": [
+            "embedding_space_id",
+            "message_id",
+            "part_ordinal"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chat_message_embeddings_2048_values_check": {
+          "name": "chat_message_embeddings_2048_values_check",
+          "value": "\"chat_message_embeddings_2048\".\"input_tokens\" > 0 AND \"chat_message_embeddings_2048\".\"part_ordinal\" >= 0"
         }
       },
       "isRLSEnabled": false
@@ -5558,6 +5802,324 @@
       "compositePrimaryKeys": {
         "retrieval_chunks_1024_embedding_space_id_generation_id_id_pk": {
           "name": "retrieval_chunks_1024_embedding_space_id_generation_id_id_pk",
+          "columns": [
+            "embedding_space_id",
+            "generation_id",
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.retrieval_chunks_1536": {
+      "name": "retrieval_chunks_1536",
+      "schema": "",
+      "columns": {
+        "document_id": {
+          "name": "document_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_space_id": {
+          "name": "embedding_space_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evidence_content": {
+          "name": "evidence_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation_id": {
+          "name": "generation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "varchar(76)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "element_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "next_retrieval_id": {
+          "name": "next_retrieval_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "page_number": {
+          "name": "page_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "previous_retrieval_id": {
+          "name": "previous_retrieval_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "representation_type": {
+          "name": "representation_type",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_file": {
+          "name": "source_file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(1536)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "retrieval_chunks_1536_document_idx": {
+          "name": "retrieval_chunks_1536_document_idx",
+          "columns": [
+            {
+              "expression": "embedding_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "document_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "retrieval_chunks_1536_embedding_hnsw_idx": {
+          "name": "retrieval_chunks_1536_embedding_hnsw_idx",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "retrieval_chunks_1536_embedding_space_id_embedding_spaces_id_fk": {
+          "name": "retrieval_chunks_1536_embedding_space_id_embedding_spaces_id_fk",
+          "tableFrom": "retrieval_chunks_1536",
+          "tableTo": "embedding_spaces",
+          "columnsFrom": [
+            "embedding_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "retrieval_chunks_1536_embedding_space_id_generation_id_id_pk": {
+          "name": "retrieval_chunks_1536_embedding_space_id_generation_id_id_pk",
+          "columns": [
+            "embedding_space_id",
+            "generation_id",
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.retrieval_chunks_2048": {
+      "name": "retrieval_chunks_2048",
+      "schema": "",
+      "columns": {
+        "document_id": {
+          "name": "document_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_space_id": {
+          "name": "embedding_space_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evidence_content": {
+          "name": "evidence_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation_id": {
+          "name": "generation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "id": {
+          "name": "id",
+          "type": "varchar(76)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "element_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "next_retrieval_id": {
+          "name": "next_retrieval_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "page_number": {
+          "name": "page_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "previous_retrieval_id": {
+          "name": "previous_retrieval_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "representation_type": {
+          "name": "representation_type",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_file": {
+          "name": "source_file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "halfvec(2048)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "retrieval_chunks_2048_document_idx": {
+          "name": "retrieval_chunks_2048_document_idx",
+          "columns": [
+            {
+              "expression": "embedding_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "document_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "retrieval_chunks_2048_embedding_hnsw_idx": {
+          "name": "retrieval_chunks_2048_embedding_hnsw_idx",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "halfvec_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "retrieval_chunks_2048_embedding_space_id_embedding_spaces_id_fk": {
+          "name": "retrieval_chunks_2048_embedding_space_id_embedding_spaces_id_fk",
+          "tableFrom": "retrieval_chunks_2048",
+          "tableTo": "embedding_spaces",
+          "columnsFrom": [
+            "embedding_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "retrieval_chunks_2048_embedding_space_id_generation_id_id_pk": {
+          "name": "retrieval_chunks_2048_embedding_space_id_generation_id_id_pk",
           "columns": [
             "embedding_space_id",
             "generation_id",

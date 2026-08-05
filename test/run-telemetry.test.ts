@@ -231,7 +231,7 @@ describe("run telemetry", () => {
     const stage = telemetry.startStage({
       model: { modelId: "answer-model", provider: "local-runtime" },
       name: "answer",
-      retrievalMode: "hybrid-reranked",
+      retrievalMode: "hybrid",
     });
 
     stage.timingObserver.started();

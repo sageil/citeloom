@@ -36,14 +36,15 @@ import {
   embeddingSpaces,
   doclingArtifacts,
   inferenceLimits,
-  retrievalChunks384,
-  retrievalChunks768,
-  retrievalChunks1024,
   retrievalLexicalChunks,
   sourceContentDeletions,
   sourceDocuments,
   workerHeartbeats,
 } from "../database/schema.js";
+import {
+  CHAT_MESSAGE_EMBEDDING_TABLES,
+  RETRIEVAL_VECTOR_TABLES,
+} from "../embedding/storage-tables.js";
 import { readDatabaseReadiness } from "../database/readiness.js";
 import { verifyDoclingService } from "../docling/index.js";
 import { HttpHhemClient } from "../verification/hhem-client.js";
@@ -699,19 +700,19 @@ async function checkDatabaseSchema(
 ): Promise<DoctorCheck> {
   try {
     const readiness = await readDatabaseReadiness(database);
+    for (const table of RETRIEVAL_VECTOR_TABLES) {
+      await database
+        .select({ id: table.id })
+        .from(table)
+        .limit(1);
+    }
+    for (const table of CHAT_MESSAGE_EMBEDDING_TABLES) {
+      await database
+        .select({ messageId: table.messageId })
+        .from(table)
+        .limit(1);
+    }
     await Promise.all([
-      database
-        .select({ id: retrievalChunks384.id })
-        .from(retrievalChunks384)
-        .limit(1),
-      database
-        .select({ id: retrievalChunks768.id })
-        .from(retrievalChunks768)
-        .limit(1),
-      database
-        .select({ id: retrievalChunks1024.id })
-        .from(retrievalChunks1024)
-        .limit(1),
       database
         .select({ id: retrievalLexicalChunks.id })
         .from(retrievalLexicalChunks)

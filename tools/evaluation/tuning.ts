@@ -5,7 +5,6 @@ import { z } from "zod";
 
 import type {
   AppConfig,
-  RetrievalMode,
 } from "../../src/config/index.js";
 import {
   calculateJsonSha256,
@@ -24,6 +23,10 @@ import {
   type EvaluationDomainResult,
 } from "./index.js";
 import type { TelemetryStageSnapshot } from "../../src/observability/run.js";
+import {
+  EVALUATION_RETRIEVAL_MODES,
+  type EvaluationRetrievalMode,
+} from "./retrieval-mode.js";
 
 const MAXIMUM_SEARCH_CANDIDATES = 25_000;
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -138,7 +141,7 @@ const candidateAssessmentSchema = z.object({
 });
 const ablationSchema = z.object({
   metrics: tuningQualitySummarySchema,
-  mode: z.enum(["bm25", "dense", "hybrid", "hybrid-reranked"]),
+  mode: z.enum(EVALUATION_RETRIEVAL_MODES),
 }).strict();
 const evaluationTuningSelectionSchema = z.object({
   ablations: z.array(ablationSchema).length(4),
@@ -205,7 +208,7 @@ const evaluationTuningSelectionSchema = z.object({
     });
   }
   const ablationModes = value.ablations.map((entry) => entry.mode);
-  const expectedModes = ["bm25", "dense", "hybrid", "hybrid-reranked"];
+  const expectedModes = [...EVALUATION_RETRIEVAL_MODES];
   if (JSON.stringify(ablationModes) !== JSON.stringify(expectedModes)) {
     context.addIssue({
       code: "custom",
@@ -425,7 +428,7 @@ export function applyTunedRetrievalConfiguration(
       ...config.retrieval,
       candidateK: selected.rerankerCandidateDepth,
       fusion: { ...selected.fusion },
-      mode: "hybrid-reranked",
+      mode: "hybrid",
       queryExpansions: selected.queryExpansions,
       rrfK: selected.rrfK,
     },
@@ -604,7 +607,7 @@ function scoreTuningConfiguration(
 function scoreTuningMode(
   preparations: EvaluationPreparationArtifact[],
   configuration: TunedRetrievalConfiguration,
-  mode: RetrievalMode,
+  mode: EvaluationRetrievalMode,
 ): ScoredTuningMode {
   const cases: EvaluationCaseResult[] = [];
   for (const preparation of preparations) {
@@ -859,7 +862,7 @@ function buildAblations(
   preparations: EvaluationPreparationArtifact[],
   configuration: TunedRetrievalConfiguration,
 ): Array<z.output<typeof ablationSchema>> {
-  const modes: RetrievalMode[] = [
+  const modes: EvaluationRetrievalMode[] = [
     "bm25",
     "dense",
     "hybrid",

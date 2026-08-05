@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { AppConfig } from "../../src/config/index.js";
 import { HNSW_QUERY_SETTINGS } from "../../src/database/client.js";
 import { embeddingInputFormatContractSchema } from "../../src/embedding/input-format-model.js";
+import { embeddingDimensionsSchema } from "../../src/embedding/dimensions.js";
 import { createInferenceModelRegistry } from "../../src/inference/registry.js";
 import { CHANNEL_ORDERING_POLICY } from "../../src/retrieval/ranking/channel-ordering.js";
 import { retrievalWindowPolicyContractSchema } from "../../src/retrieval/window-policy.js";
@@ -26,7 +27,7 @@ const rankFusionSchema = z.object({
 const freezePayloadSchema = z.object({
   codeRevision: z.string().min(1),
   embeddingSpace: z.object({
-    dimensions: z.union([z.literal(384), z.literal(768), z.literal(1024)]),
+    dimensions: embeddingDimensionsSchema,
     id: z.string().min(1),
     inputFormat: embeddingInputFormatContractSchema,
     model: z.string().min(1),

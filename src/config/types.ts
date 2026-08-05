@@ -1,6 +1,10 @@
 import type { RetrievalWindowPolicyContract } from "../retrieval/window-policy.js";
+import type { RetrievalMode } from "../retrieval/mode.js";
 import type { EmbeddingInputFormatContract } from "../embedding/input-format-model.js";
+import type { EmbeddingDimensions } from "../embedding/dimensions.js";
 import type { ProviderId } from "../providers/profiles.js";
+
+export type { EmbeddingDimensions };
 
 export interface AppConfig {
   claimVerifier: ClaimVerifierConfig;
@@ -85,8 +89,6 @@ export interface DatabaseConfig {
 export interface SourceContentConfig {
   directory: string;
 }
-
-export type EmbeddingDimensions = 384 | 768 | 1024;
 
 export interface EmbeddingSpaceConfig {
   dimensions: EmbeddingDimensions;
@@ -232,11 +234,13 @@ export type RerankerAdapter = "top-n-rerank";
 
 export type SpeechToTextAdapter =
   | "omlx-transcription"
+  | "openrouter-transcription"
   | "openai-transcription";
 
 export type TextToSpeechAdapter =
   | "groq-speech"
   | "omlx-speech"
+  | "openrouter-speech"
   | "openai-speech";
 
 export interface TextToSpeechConfig extends ProviderRuntimeConfig {
@@ -257,11 +261,7 @@ export interface SpeechToTextConfig extends ProviderRuntimeConfig {
   timeoutMs: number;
 }
 
-export type RetrievalMode =
-  | "bm25"
-  | "dense"
-  | "hybrid"
-  | "hybrid-reranked";
+export type { RetrievalMode } from "../retrieval/mode.js";
 
 export interface RankFusionConfig {
   denseWeight: number;
@@ -352,6 +352,7 @@ export interface RuntimeSettings {
   retrievalWindowPolicy: "structured-token-v3";
   retryBaseMs: number;
   rrfK: number;
+  searchMethod: RetrievalMode;
   summaryTimeoutSeconds: number;
   queryExpansionTimeoutSeconds: number;
   sttLanguage: string | null;

@@ -847,6 +847,8 @@ describe("web server boundary", () => {
     settings.providerSettings.connections.openai.textToSpeech.apiToken =
       "openai-speech-secret";
     settings.runtimeSettings.retrievalChunkTargetTokens = 4_096;
+    settings.indexedDocumentCount = 7;
+    settings.selectedEmbeddingSpaceDocumentCount = 2;
     settings.updatedAt = "2026-07-14T20:00:00.000Z";
     settings.version = 3;
     const server = await buildWebServer(config, {
@@ -861,13 +863,42 @@ describe("web server boundary", () => {
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body).toMatchObject({ updatedAt: settings.updatedAt, version: 3 });
+      expect(body.embeddingSpace).toEqual({
+        activeDocumentCount: 2,
+        dimensions: settings.config.embeddingSpace.dimensions,
+        id: settings.config.embeddingSpace.id,
+        totalDocumentCount: 7,
+      });
       expect(body.warnings).toEqual([
         "Document section size 4096 exceeds the embedding model's maximum input of "
         + "2048 tokens. CiteLoom will use 2048 tokens instead.",
-        "No indexed documents use the selected search setup. "
-        + "Index a document before asking questions.",
+        "5 indexed documents do not use the selected search setup. "
+        + "Reindex before asking questions about them.",
       ]);
       expect(body.fields).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          group: "Search and answers",
+          key: "searchMethod",
+          label: "Search method",
+          options: [
+            { label: "Hybrid - Recommended", value: "hybrid" },
+            { label: "Keyword", value: "bm25" },
+            { label: "Semantic", value: "dense" },
+          ],
+          value: "hybrid",
+        }),
+        expect.objectContaining({
+          group: "Embedding space",
+          key: "embeddingDimensions",
+          label: "Vector dimensions",
+          options: [
+            { label: "384", value: 384 },
+            { label: "768", value: 768 },
+            { label: "1024", value: 1024 },
+            { label: "1536", value: 1536 },
+            { label: "2048", value: 2048 },
+          ],
+        }),
         expect.objectContaining({
           key: "retrievalChunkTargetTokens",
           min: 1,

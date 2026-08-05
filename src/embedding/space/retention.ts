@@ -11,12 +11,14 @@ import {
   embeddingSpaces,
   indexedDocumentSpaces,
   ingestionJobs,
-  retrievalChunks1024,
-  retrievalChunks384,
-  retrievalChunks768,
   retrievalLexicalChunks,
   retrievalTocArtifacts,
 } from "../../database/schema.js";
+import {
+  embeddingDimensionsSchema,
+  type EmbeddingDimensions,
+} from "../dimensions.js";
+import { RETRIEVAL_VECTOR_TABLES } from "../storage-tables.js";
 import type {
   EmbeddingSpaceGcReport,
   EmbeddingSpaceGcSpaceRecord,
@@ -24,11 +26,6 @@ import type {
   EmbeddingSpaceRowCounts,
 } from "./types.js";
 
-const embeddingDimensionsSchema = z.union([
-  z.literal(384),
-  z.literal(768),
-  z.literal(1024),
-]);
 const protectionKindSchema = z.enum([
   "active",
   "job-reference",
@@ -47,6 +44,8 @@ const rowCountsSchema = z.object({
   indexedDocuments: z.number().int().nonnegative(),
   lexicalChunks: z.number().int().nonnegative(),
   vectorChunks1024: z.number().int().nonnegative(),
+  vectorChunks1536: z.number().int().nonnegative(),
+  vectorChunks2048: z.number().int().nonnegative(),
   vectorChunks384: z.number().int().nonnegative(),
   vectorChunks768: z.number().int().nonnegative(),
 });
@@ -78,6 +77,8 @@ const spaceStatisticsRowSchema = z.object({
   pinReason: z.string().min(1).nullable(),
   spaceId: z.string().min(1),
   vectorChunks1024: bigintBoundarySchema,
+  vectorChunks1536: bigintBoundarySchema,
+  vectorChunks2048: bigintBoundarySchema,
   vectorChunks384: bigintBoundarySchema,
   vectorChunks768: bigintBoundarySchema,
 });
@@ -121,7 +122,7 @@ export type EmbeddingSpaceGcRequest =
 
 interface SpaceStatistics {
   createdAt: Date;
-  dimensions: 384 | 768 | 1024;
+  dimensions: EmbeddingDimensions;
   estimatedBytes: bigint;
   hasJobReference: boolean;
   inputFormatHash: string;
@@ -438,15 +439,11 @@ async function collectEmbeddingSpace(
           return;
         }
       }
-      await transaction
-        .delete(retrievalChunks384)
-        .where(eq(retrievalChunks384.embeddingSpaceId, spaceId));
-      await transaction
-        .delete(retrievalChunks768)
-        .where(eq(retrievalChunks768.embeddingSpaceId, spaceId));
-      await transaction
-        .delete(retrievalChunks1024)
-        .where(eq(retrievalChunks1024.embeddingSpaceId, spaceId));
+      for (const table of RETRIEVAL_VECTOR_TABLES) {
+        await transaction
+          .delete(table)
+          .where(eq(table.embeddingSpaceId, spaceId));
+      }
       await transaction
         .delete(retrievalLexicalChunks)
         .where(eq(retrievalLexicalChunks.embeddingSpaceId, spaceId));
@@ -544,6 +541,8 @@ async function readSpaceStatistics(
       (SELECT count(*) FROM "retrieval_chunks_384" chunk WHERE chunk."embedding_space_id" = space."id") AS "vectorChunks384",
       (SELECT count(*) FROM "retrieval_chunks" chunk WHERE chunk."embedding_space_id" = space."id") AS "vectorChunks768",
       (SELECT count(*) FROM "retrieval_chunks_1024" chunk WHERE chunk."embedding_space_id" = space."id") AS "vectorChunks1024",
+      (SELECT count(*) FROM "retrieval_chunks_1536" chunk WHERE chunk."embedding_space_id" = space."id") AS "vectorChunks1536",
+      (SELECT count(*) FROM "retrieval_chunks_2048" chunk WHERE chunk."embedding_space_id" = space."id") AS "vectorChunks2048",
       (SELECT count(*) FROM "retrieval_lexical_chunks" chunk WHERE chunk."embedding_space_id" = space."id") AS "lexicalChunks",
       (SELECT count(*) FROM "indexed_document_spaces" document_space WHERE document_space."embedding_space_id" = space."id") AS "indexedDocuments",
       (
@@ -551,6 +550,8 @@ async function readSpaceStatistics(
         + COALESCE((SELECT sum(pg_column_size(chunk)) FROM "retrieval_chunks_384" chunk WHERE chunk."embedding_space_id" = space."id"), 0)
         + COALESCE((SELECT sum(pg_column_size(chunk)) FROM "retrieval_chunks" chunk WHERE chunk."embedding_space_id" = space."id"), 0)
         + COALESCE((SELECT sum(pg_column_size(chunk)) FROM "retrieval_chunks_1024" chunk WHERE chunk."embedding_space_id" = space."id"), 0)
+        + COALESCE((SELECT sum(pg_column_size(chunk)) FROM "retrieval_chunks_1536" chunk WHERE chunk."embedding_space_id" = space."id"), 0)
+        + COALESCE((SELECT sum(pg_column_size(chunk)) FROM "retrieval_chunks_2048" chunk WHERE chunk."embedding_space_id" = space."id"), 0)
         + COALESCE((SELECT sum(pg_column_size(chunk)) FROM "retrieval_lexical_chunks" chunk WHERE chunk."embedding_space_id" = space."id"), 0)
         + COALESCE((SELECT sum(pg_column_size(document_space)) FROM "indexed_document_spaces" document_space WHERE document_space."embedding_space_id" = space."id"), 0)
       )::bigint AS "estimatedBytes"
@@ -586,6 +587,8 @@ function decodeSpaceStatisticsRow(row: unknown): SpaceStatistics {
       indexedDocuments: readSafeCount(result.data.indexedDocuments),
       lexicalChunks: readSafeCount(result.data.lexicalChunks),
       vectorChunks1024: readSafeCount(result.data.vectorChunks1024),
+      vectorChunks1536: readSafeCount(result.data.vectorChunks1536),
+      vectorChunks2048: readSafeCount(result.data.vectorChunks2048),
       vectorChunks384: readSafeCount(result.data.vectorChunks384),
       vectorChunks768: readSafeCount(result.data.vectorChunks768),
     },

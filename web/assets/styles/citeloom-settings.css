@@ -576,8 +576,12 @@
   padding-left: 30px;
 }
 
-.settings-feature-primary-field {
+.settings-feature-primary-fields {
+  display: grid;
   min-width: 0;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .settings-feature-url {
@@ -668,6 +672,56 @@
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
+}
+
+.settings-embedding-space-status > div:nth-child(2n) {
+  border-right: 0;
+}
+
+.settings-embedding-space-status > div:nth-child(n + 3) {
+  border-top: 1px solid var(--border);
+}
+
+.settings-embedding-space-status > div:last-child {
+  grid-column: 1 / -1;
+  border-right: 0;
+}
+
+.settings-embedding-space-impact,
+.settings-embedding-space-reindex {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 30px;
+  padding: 11px 12px;
+  border: 1px solid rgba(251, 191, 36, 0.38);
+  border-radius: 8px;
+  background: rgba(120, 53, 15, 0.14);
+  color: var(--warning);
+}
+
+.settings-embedding-space-impact > div,
+.settings-embedding-space-reindex > span {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+}
+
+.settings-embedding-space-impact strong,
+.settings-embedding-space-reindex strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.settings-embedding-space-impact span,
+.settings-embedding-space-reindex small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.settings-embedding-space-reindex .button {
+  flex: 0 0 auto;
 }
 
 .settings-feature-advanced {
@@ -1698,6 +1752,7 @@
 
   .application-feature-settings,
   .settings-feature-form-grid,
+  .settings-feature-primary-fields,
   .settings-feature-health,
   .provider-form-grid,
   .settings-feature-workspace,
@@ -1832,6 +1887,8 @@
 
   .settings-feature-form-grid,
   .settings-credential-warning,
+  .settings-embedding-space-impact,
+  .settings-embedding-space-reindex,
   .settings-resolved-result,
   .settings-feature-voice {
     max-width: none;
@@ -1867,5 +1924,14 @@
 
   .settings-resolved-result > div:last-child {
     border-bottom: 0;
+  }
+
+  .settings-embedding-space-status > div:last-child {
+    grid-column: 1;
+  }
+
+  .settings-embedding-space-reindex {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

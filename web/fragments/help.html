@@ -264,6 +264,12 @@
             <p>Matching sections reviewed controls how broadly CiteLoom searches, while Sections available for answers controls how much of the strongest matching content Ask and Chat can use.</p>
             <p>Matching sections reviewed must be equal to or greater than Sections available for answers.</p>
             <p>CiteLoom may use fewer sections when fewer useful matches exist or the selected model cannot accept all of them.</p>
+            <h3>How CiteLoom finds matching sections</h3>
+            <p>Administrators can select Keyword, Semantic, or Hybrid under <strong>Settings → Search and answers → Search matching</strong>.</p>
+            <p>Keyword finds exact words and phrases through BM25 and does not call the embedding model for the document query.</p>
+            <p>Semantic searches by meaning and embeds the document query.</p>
+            <p>Hybrid is the default and combines Keyword and Semantic results.</p>
+            <p>An enabled search-ranking model can reorder candidates from any of the three methods.</p>
           </div>
         </section>
 
@@ -397,6 +403,8 @@
         <section aria-labelledby="embedding-input-formats" class="help-section">
           <h2 id="embedding-input-formats" tabindex="-1">Search text formats</h2>
           <div>
+            <p>Vector dimensions and search text format are application-wide properties of the active embedding space.</p>
+            <p>Changing either property creates a different space, and documents must be reindexed before they are searchable there.</p>
             <p>A search text format controls how CiteLoom prepares document sections and searches for the selected embedding model.</p>
             <p>The document template prepares each searchable document section, and the query template prepares each question or semantic search.</p>
             <p>Use the format specified by the embedding model or provider. An incorrect format can reduce search quality even when documents finish processing.</p>
@@ -413,7 +421,7 @@
               <li>Enter a recognizable name that identifies the model or purpose.</li>
               <li>Use format version 1 for a new format. Increase it only when saving a changed version of an existing format.</li>
               <li>Enter one document template and one query template. Each must contain exactly one <code>{{text}}</code> placeholder.</li>
-              <li>Save the format, then save the Embedding model settings to select it.</li>
+              <li>Save the format, then save the Embedding space settings to select it.</li>
               <li>Reindex documents before using semantic search or answers with the new format.</li>
             </ol>
             <p>Use Create revision when changing a format that has already been used. CiteLoom keeps the original format so existing indexed documents remain searchable.</p>

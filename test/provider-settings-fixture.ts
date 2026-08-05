@@ -45,6 +45,7 @@ export function createTestProviderSettings(
     ollama: createProviderConnection("http://host.docker.internal:11434"),
     omlx: createProviderConnection(omlxBaseUrl),
     openai: createProviderConnection("https://api.openai.com/v1"),
+    openrouter: createProviderConnection("https://openrouter.ai/api/v1"),
     "openai-codex": createProviderConnection(
       "https://chatgpt.com/backend-api/codex",
     ),
@@ -113,6 +114,32 @@ export function createTestProviderSettings(
   connections["openai-codex"].summarization = createModelConnection(
     "gpt-5.6-terra",
     272_000,
+  );
+  connections.openrouter.answer = createModelConnection(
+    "openrouter/free",
+    200_000,
+  );
+  connections.openrouter.embedding = createModelConnection(
+    "nvidia/nemotron-3-embed-1b:free",
+    32_768,
+  );
+  connections.openrouter.queryExpansion = createModelConnection(
+    "openrouter/free",
+    200_000,
+  );
+  connections.openrouter.reranking = createCapabilityConnection(
+    "nvidia/llama-nemotron-rerank-vl-1b-v2:free",
+  );
+  connections.openrouter.speechToText = createCapabilityConnection(
+    "openai/gpt-4o-mini-transcribe",
+  );
+  connections.openrouter.summarization = createModelConnection(
+    "openrouter/free",
+    200_000,
+  );
+  connections.openrouter.textToSpeech = createTextToSpeechConnection(
+    "fish-audio/s2.1-pro-free:free",
+    "alloy",
   );
   connections.omlx.reranking = createCapabilityConnection(
     options.rerankModel ?? "reranker-model",

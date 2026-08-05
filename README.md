@@ -26,7 +26,7 @@ See [Features](#features) for supported capabilities and [How it works](#how-it-
 - Organize a searchable document library with tags, catalog filters, ingestion controls, version history, evidence comparisons, reindexing, and guarded deletion.
 - Choose Standard Docling processing or opt-in VLM processing that visually reads each PDF page through a configured provider and model.
 - Resume interrupted indexing jobs from durable checkpoints, including completed page ranges for Standard PDFs.
-- Search original evidence with meaning-based and keyword retrieval.
+- Search original evidence with configurable Keyword, Semantic, or Hybrid retrieval.
 - Use generated text and table summaries to improve discovery without citing those summaries as source evidence.
 - Ask questions across all ready documents, selected files, or tags, and rate retrieval, answer, and citation quality.
 - Find exact-word or semantic source matches without generating an answer.
@@ -107,6 +107,7 @@ A provider can serve one capability while another provider serves the rest.
 | Ollama | Yes | Yes | Yes | Yes | Yes | - | - | - |
 | LM Studio | Yes | Yes | Yes | Yes | Yes | - | - | - |
 | OpenAI | Yes | Yes | Yes | Yes | Yes | - | Yes | Yes |
+| OpenRouter | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | OpenAI Codex | Yes | Yes | Yes | Yes | - | - | - | - |
 | DeepSeek | Yes | Yes | Yes | Yes | - | - | - | - |
 | Groq | Yes | Yes | Yes | Yes | - | - | Yes | Yes |
@@ -134,6 +135,11 @@ Availability does not confirm that a model has been downloaded or that its endpo
 | Ollama | `qwen3.5:9b-mlx` | Query Expansion | **Disabled** - because expansion count is `0` in the default setting |
 | Ollama | `qwen3.5:9b` | Indexing model | **Enabled** |
 | Ollama | `snowflake-arctic-embed:137m` | Embeddings | **Enabled** |
+| OpenRouter | `openrouter/free` | Ask, Chat, Query Expansion, and Indexing model | **Disabled** - saved but not routed |
+| OpenRouter | `nvidia/nemotron-3-embed-1b:free` | Embeddings | **Disabled** - saved but not routed |
+| OpenRouter | `nvidia/llama-nemotron-rerank-vl-1b-v2:free` | Reranking | **Disabled** - saved but not routed |
+| OpenRouter | `openai/gpt-4o-mini-transcribe` | Speech-to-text | **Disabled** - saved but not routed |
+| OpenRouter | `fish-audio/s2.1-pro-free:free` with voice `alloy` | Text-to-speech | **Disabled** - saved but not routed |
 | Ollama | `frob/unlimited-ocr:q8_0` | Docling VLM PDF processing | **Disabled** |
 | HHEM | `HHEM-2.1-Open` | Claim support scoring | **Enabled** |
 | oMLX | `gte-reranker-modernbert-base` | Reranking | **Disabled** |
@@ -237,13 +243,13 @@ The current document remains searchable while a replacement index is being built
 
 For each question, CiteLoom first decides which documents are in scope.
 
-It then uses several retrieval methods:
+It then uses the search method selected by an administrator:
 
-- Semantic search uses pgvector cosine similarity to find related content.
-- BM25 keyword search finds exact terms and phrases.
-- Weighted Reciprocal Rank Fusion combines semantic and keyword results.
+- Keyword search uses BM25 to find exact terms and phrases without embedding the document query.
+- Semantic search embeds the document query and uses pgvector cosine similarity to find related content.
+- Hybrid search runs BM25 and semantic retrieval together, then combines their rankings with weighted Reciprocal Rank Fusion.
 - Optional Query Expansion can search for additional interpretations of the question.
-- Optional relevance-model reranking can move stronger evidence into the answer context.
+- Optional relevance-model reranking can reorder candidates from any search method before CiteLoom selects the answer context.
 
 After ranking the results, CiteLoom loads the original evidence used to generate the cited answer.
 
@@ -355,6 +361,7 @@ Pull requests should report the verification commands that were run and keep unr
 
 - Shared source storage with SeaweedFS is planned for multi-host deployments.
 - Multi providers creation & configuration
+- User specific configurations to allow users to override application and providers configuration without impacting others.
 - Additional Providers
 - French language support.
 

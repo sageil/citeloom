@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildTestModelCapabilities } from "./model-capabilities-fixture.js";
 import type { LanguageModelV4, LanguageModelV4GenerateResult } from "@ai-sdk/provider";
 import {
+  APICallError,
   simulateStreamingMiddleware,
   type UIMessageStreamWriter,
   wrapLanguageModel,
@@ -31,6 +32,7 @@ import { InferenceMetricsReporter } from "../src/inference/metrics.js";
 import type { InferenceModelRegistry } from "../src/inference/registry.js";
 import {
   type PreparedRetrieval,
+  readAnswerStreamError,
   writeStreamedAnswer,
 } from "../src/retrieval/pipeline.js";
 import type {
@@ -65,6 +67,37 @@ afterEach(() => {
 });
 
 describe("atomic structured answer publication", () => {
+  it("reports provider parameter incompatibility as a model-selection error", () => {
+    const unsupportedParameters = new APICallError({
+      message: "No endpoints found",
+      requestBodyValues: {},
+      responseBody: JSON.stringify({
+        error: {
+          message:
+            "No endpoints found that support all requested parameters.",
+        },
+      }),
+      statusCode: 404,
+      url: "https://openrouter.ai/api/v1/chat/completions",
+    });
+    const unknownModel = new APICallError({
+      message: "Model not found",
+      requestBodyValues: {},
+      responseBody: JSON.stringify({
+        error: { message: "The requested model was not found." },
+      }),
+      statusCode: 404,
+      url: "https://openrouter.ai/api/v1/chat/completions",
+    });
+
+    expect(readAnswerStreamError(unsupportedParameters)).toBe(
+      "The selected model does not support the response format CiteLoom requires. Select a different model in Settings, then try again.",
+    );
+    expect(readAnswerStreamError(unknownModel)).toBe(
+      "The AI provider could not find the configured model or endpoint. Check the provider URL and model ID in Settings.",
+    );
+  });
+
   it("verifies, persists, and then publishes one completed answer entity", async () => {
     const events: string[] = [];
     const answerModel = buildAnswerModel(buildAnsweredDraft(["EVID_A"]));
@@ -81,7 +114,9 @@ describe("atomic structured answer publication", () => {
       return buildSavedTurn(input);
     });
     const stream = buildWriter((chunk) => {
-      if (chunk.type === "data-answer") {
+      if (chunk.type === "data-answer-content") {
+        events.push("content");
+      } else if (chunk.type === "data-answer") {
         events.push("publish");
       }
     });
@@ -91,7 +126,7 @@ describe("atomic structured answer publication", () => {
       stream.writer,
     );
 
-    expect(events).toEqual(["verify", "persist", "publish"]);
+    expect(events).toEqual(["content", "verify", "persist", "publish"]);
     const answers = readChunks(stream.chunks, "data-answer");
     expect(answers).toHaveLength(1);
     expect(answers[0]?.data).toMatchObject({

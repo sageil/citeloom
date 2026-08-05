@@ -4,7 +4,7 @@ import { relative, sep } from "node:path";
 import { createRuntimeTaskScheduler } from "../../src/app/runtime.js";
 import { DocumentCatalog, type IndexedDocument } from "../../src/documents/catalog/index.js";
 import { mapWithConcurrency, type TaskScheduler } from "../../src/shared/concurrency.js";
-import type { AppConfig, RetrievalMode } from "../../src/config/index.js";
+import type { AppConfig } from "../../src/config/index.js";
 import { openDatabase } from "../../src/database/client.js";
 import type { RetrievedElement } from "../../src/retrieval/document-retrieval.js";
 import type { QueryScope } from "../../src/domain/query-scope.js";
@@ -36,6 +36,10 @@ import {
   isStandaloneImageFormat,
   readDocumentFormat,
 } from "../../src/documents/format.js";
+import {
+  readCandidateRetrievalMode,
+  type EvaluationRetrievalMode,
+} from "./retrieval-mode.js";
 
 const HOLDOUT_PERCENT = 20;
 const ENRICHMENT_RESULT_COUNT = 20;
@@ -44,7 +48,7 @@ const sourceKindOrder: readonly SourceElement["kind"][] = [
   "table",
   "image",
 ];
-const poolingModeOrder: readonly RetrievalMode[] = [
+const poolingModeOrder: readonly EvaluationRetrievalMode[] = [
   "bm25",
   "dense",
   "hybrid",
@@ -52,12 +56,12 @@ const poolingModeOrder: readonly RetrievalMode[] = [
 ];
 
 export interface EvaluationCandidatePoolInput {
-  mode: RetrievalMode;
+  mode: EvaluationRetrievalMode;
   retrieved: RetrievedElement[];
 }
 
 export interface PooledEvaluationCandidate {
-  methods: RetrievalMode[];
+  methods: EvaluationRetrievalMode[];
   retrieved: RetrievedElement;
 }
 
@@ -537,8 +541,11 @@ export function mergePooledEvaluationCandidates(
 
 function buildEnrichmentConfig(
   config: AppConfig,
-  mode: RetrievalMode,
+  mode: EvaluationRetrievalMode,
 ): AppConfig {
+  const reranker = mode === "hybrid-reranked"
+    ? config.retrieval.reranker
+    : null;
   return {
     ...config,
     retrieval: {
@@ -547,7 +554,8 @@ function buildEnrichmentConfig(
         config.retrieval.candidateK,
         ENRICHMENT_RESULT_COUNT,
       ),
-      mode,
+      mode: readCandidateRetrievalMode(mode),
+      reranker,
       topK: ENRICHMENT_RESULT_COUNT,
     },
   };

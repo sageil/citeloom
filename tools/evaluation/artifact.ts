@@ -25,17 +25,20 @@ import {
 } from "../../src/retrieval/indexing/query-store.js";
 import { contentIdSchema } from "../../src/domain/validation.js";
 import { embeddingInputFormatContractSchema } from "../../src/embedding/input-format-model.js";
+import { embeddingDimensionsSchema } from "../../src/embedding/dimensions.js";
 import { partitionCandidateWindowsByParentOccurrence } from "../../src/retrieval/document-retrieval.js";
 import { CHANNEL_ORDERING_POLICY } from "../../src/retrieval/ranking/channel-ordering.js";
 import { retrievalWindowPolicyContractSchema } from "../../src/retrieval/window-policy.js";
+import {
+  EVALUATION_RETRIEVAL_MODES,
+  readCandidateRetrievalMode,
+} from "./retrieval-mode.js";
 
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
-const retrievalModeSchema = z.enum([
-  "bm25",
-  "dense",
-  "hybrid",
-  "hybrid-reranked",
-]);
+const retrievalModeSchema = z.enum(EVALUATION_RETRIEVAL_MODES);
+const storedTelemetryRetrievalModeSchema = retrievalModeSchema.transform(
+  readCandidateRetrievalMode,
+);
 const modelIdentitySchema = z.object({
   modelId: z.string().min(1),
   provider: z.string().min(1),
@@ -156,7 +159,7 @@ export const evaluationProvenanceSchema = z.object({
     statisticalDesign: evaluationStatisticalDesignSchema,
   }).strict(),
   embeddingSpace: z.object({
-    dimensions: z.union([z.literal(384), z.literal(768), z.literal(1024)]),
+    dimensions: embeddingDimensionsSchema,
     id: z.string().min(1),
     inputFormat: embeddingInputFormatContractSchema,
     model: z.string().min(1),
@@ -204,7 +207,7 @@ const telemetryStageSnapshotSchema = z.object({
   outputTokens: z.number().int().nonnegative().nullable(),
   provider: z.string().min(1).nullable(),
   providerDurationMs: z.number().int().nonnegative().nullable(),
-  retrievalMode: retrievalModeSchema.nullable(),
+  retrievalMode: storedTelemetryRetrievalModeSchema.nullable(),
   schedulerWaitMs: z.number().int().nonnegative().nullable(),
   sequence: z.number().int().nonnegative(),
 }).strict();
@@ -540,7 +543,7 @@ function validateRerankerScores(
   }
   const rankings = readPreparedCandidateRankings(preparedCase);
   const fusedCandidates = rankRetrievalCandidates(
-    "hybrid-reranked",
+    "hybrid",
     rankings,
     artifact.provenance.retrieval.rrfK,
     artifact.provenance.retrieval.fusion,

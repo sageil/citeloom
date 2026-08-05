@@ -9,12 +9,19 @@ import type { CiteLoomDatabase } from "../../database/client.js";
 import {
   embeddingSpaces,
   ingestionEmbeddingManifests,
-  retrievalChunks384,
-  retrievalChunks768,
-  retrievalChunks1024,
   retrievalLexicalChunks,
   retrievalTocArtifacts,
 } from "../../database/schema.js";
+import {
+  embeddingDimensionsSchema,
+  readEmbeddingDimensions,
+  readEmbeddingVector,
+} from "../../embedding/dimensions.js";
+import {
+  readRetrievalVectorTable,
+  RETRIEVAL_VECTOR_TABLES,
+  type RetrievalVectorTable,
+} from "../../embedding/storage-tables.js";
 import type {
   RetrievalRepresentation,
 } from "../representations.js";
@@ -30,7 +37,7 @@ import {
 export const RETRIEVAL_WRITE_BATCH_SIZE = 500;
 
 const embeddingSpaceRowSchema = z.object({
-  dimensions: z.union([z.literal(384), z.literal(768), z.literal(1024)]),
+  dimensions: embeddingDimensionsSchema,
   id: z.string().min(1),
   inputFormatDocumentTemplate: z.string(),
   inputFormatHash: z.string().regex(/^[a-f0-9]{64}$/u),
@@ -310,7 +317,7 @@ export async function stageRetrievalRepresentationBatch(
       );
     }
 
-    const vectorTable = readVectorTable(space.dimensions);
+    const vectorTable = readRetrievalVectorTable(space.dimensions);
     await insertVectorRows(transaction, vectorTable, rows.rows);
     await insertLexicalRows(transaction, rows.rows);
 
@@ -374,7 +381,7 @@ function buildRetrievalRows(
       );
     }
     assertRepresentationKind(representation);
-    const normalizedEmbedding = readEmbedding(
+    const normalizedEmbedding = readEmbeddingVector(
       embedding,
       space.dimensions,
       `embedding ${index + 1}`,
@@ -485,27 +492,12 @@ export function readEmbedding(
   dimensions: EmbeddingDimensions,
   label: string,
 ): number[] {
-  const schema = z
-    .array(z.number())
-    .length(dimensions)
-    .refine((values) => values.some((entry) => entry !== 0));
-  const result = schema.safeParse(value);
-  if (!result.success) {
-    throw new Error(
-      `Invalid ${label}: expected ${dimensions} finite numbers with at least one nonzero value.`,
-    );
-  }
-  return result.data;
+  return readEmbeddingVector(value, dimensions, label);
 }
 
 export type RetrievalTransaction = Parameters<
   Parameters<CiteLoomDatabase["transaction"]>[0]
 >[0];
-type RetrievalVectorTable =
-  | typeof retrievalChunks384
-  | typeof retrievalChunks768
-  | typeof retrievalChunks1024;
-
 export async function validateEmbeddingGenerationForPublication(
   transaction: RetrievalTransaction,
   input: PublishableEmbeddingGeneration,
@@ -536,8 +528,11 @@ export async function validateEmbeddingGenerationForPublication(
     .from(embeddingSpaces)
     .where(eq(embeddingSpaces.id, input.embeddingSpaceId))
     .limit(1);
-  const dimensions = readEmbeddingDimensions(spaceRows[0]?.dimensions);
-  const vectorTable = readVectorTable(dimensions);
+  const dimensions = readEmbeddingDimensions(
+    spaceRows[0]?.dimensions,
+    "Embedding generation has an invalid embedding space.",
+  );
+  const vectorTable = readRetrievalVectorTable(dimensions);
   const vectorCount = await countGenerationRows(
     transaction,
     vectorTable,
@@ -565,21 +560,9 @@ export async function deleteRetrievalGenerationRows(
   transaction: RetrievalTransaction,
   generationId: string,
 ): Promise<void> {
-  await deleteGenerationRows(
-    transaction,
-    retrievalChunks384,
-    generationId,
-  );
-  await deleteGenerationRows(
-    transaction,
-    retrievalChunks768,
-    generationId,
-  );
-  await deleteGenerationRows(
-    transaction,
-    retrievalChunks1024,
-    generationId,
-  );
+  for (const table of RETRIEVAL_VECTOR_TABLES) {
+    await deleteGenerationRows(transaction, table, generationId);
+  }
   await deleteGenerationRows(
     transaction,
     retrievalLexicalChunks,
@@ -611,9 +594,7 @@ async function readDocumentRetrievalGeneration(
   documentId: string,
 ): Promise<string | null> {
   const tables: RetrievalTable[] = [
-    retrievalChunks384,
-    retrievalChunks768,
-    retrievalChunks1024,
+    ...RETRIEVAL_VECTOR_TABLES,
     retrievalLexicalChunks,
   ];
   for (const table of tables) {
@@ -675,28 +656,6 @@ async function deleteGenerationRows(
         inArray(table.id, ids),
       ));
   }
-}
-
-function readEmbeddingDimensions(value: unknown): EmbeddingDimensions {
-  const result = z.union([
-    z.literal(384),
-    z.literal(768),
-    z.literal(1024),
-  ]).safeParse(value);
-  if (!result.success) {
-    throw new Error("Embedding generation has an invalid embedding space.");
-  }
-  return result.data;
-}
-
-function readVectorTable(dimensions: EmbeddingDimensions): RetrievalVectorTable {
-  if (dimensions === 384) {
-    return retrievalChunks384;
-  }
-  if (dimensions === 768) {
-    return retrievalChunks768;
-  }
-  return retrievalChunks1024;
 }
 
 async function insertVectorRows(

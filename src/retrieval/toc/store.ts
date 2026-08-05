@@ -5,12 +5,14 @@ import type { CiteLoomDatabase } from "../../database/client.js";
 import {
   documentVersions,
   indexedDocumentSpaces,
-  retrievalChunks384,
-  retrievalChunks768,
-  retrievalChunks1024,
   retrievalLexicalChunks,
   retrievalTocArtifacts,
 } from "../../database/schema.js";
+import type { EmbeddingDimensions } from "../../embedding/dimensions.js";
+import {
+  readRetrievalVectorTable,
+  type RetrievalVectorTable,
+} from "../../embedding/storage-tables.js";
 import {
   decodeDocumentTocArtifact,
   documentTocArtifactSchema,
@@ -319,7 +321,7 @@ export async function readActiveDocumentTocs(
 
 export function queryActiveTocRetrievalRows(
   database: CiteLoomDatabase,
-  space: { dimensions: 384 | 768 | 1024; id: string },
+  space: { dimensions: EmbeddingDimensions; id: string },
   embedding: number[],
   documentId: string,
   sourceFile: string,
@@ -329,30 +331,10 @@ export function queryActiveTocRetrievalRows(
   if (retrievalIds.length === 0) {
     return Promise.resolve([]);
   }
-  if (space.dimensions === 384) {
-    return queryTocRows384(
-      database,
-      space.id,
-      embedding,
-      documentId,
-      sourceFile,
-      retrievalIds,
-      limit,
-    );
-  }
-  if (space.dimensions === 768) {
-    return queryTocRows768(
-      database,
-      space.id,
-      embedding,
-      documentId,
-      sourceFile,
-      retrievalIds,
-      limit,
-    );
-  }
-  return queryTocRows1024(
+  const table = readRetrievalVectorTable(space.dimensions);
+  return queryTocRows(
     database,
+    table,
     space.id,
     embedding,
     documentId,
@@ -362,8 +344,9 @@ export function queryActiveTocRetrievalRows(
   );
 }
 
-async function queryTocRows384(
+async function queryTocRows(
   database: CiteLoomDatabase,
+  table: RetrievalVectorTable,
   embeddingSpaceId: string,
   embedding: number[],
   documentId: string,
@@ -371,125 +354,34 @@ async function queryTocRows384(
   retrievalIds: string[],
   limit: number,
 ): Promise<RoutedRetrievalRow[]> {
-  const distance = cosineDistance(retrievalChunks384.embedding, embedding);
+  const distance = cosineDistance(table.embedding, embedding);
   const rows = await database
     .select({
       distance,
-      documentId: retrievalChunks384.documentId,
-      evidenceContent: retrievalChunks384.evidenceContent,
-      id: retrievalChunks384.id,
-      parentId: retrievalChunks384.parentId,
-      sourceFile: retrievalChunks384.sourceFile,
+      documentId: table.documentId,
+      evidenceContent: table.evidenceContent,
+      id: table.id,
+      parentId: table.parentId,
+      sourceFile: table.sourceFile,
     })
-    .from(retrievalChunks384)
+    .from(table)
     .innerJoin(
       indexedDocumentSpaces,
       and(
-        eq(indexedDocumentSpaces.documentId, retrievalChunks384.documentId),
-        eq(indexedDocumentSpaces.sourceFile, retrievalChunks384.sourceFile),
-        eq(
-          indexedDocumentSpaces.embeddingSpaceId,
-          retrievalChunks384.embeddingSpaceId,
-        ),
-        eq(indexedDocumentSpaces.generationId, retrievalChunks384.generationId),
+        eq(indexedDocumentSpaces.documentId, table.documentId),
+        eq(indexedDocumentSpaces.sourceFile, table.sourceFile),
+        eq(indexedDocumentSpaces.embeddingSpaceId, table.embeddingSpaceId),
+        eq(indexedDocumentSpaces.generationId, table.generationId),
       ),
     )
     .where(and(
-      eq(retrievalChunks384.embeddingSpaceId, embeddingSpaceId),
-      eq(retrievalChunks384.documentId, documentId),
-      eq(retrievalChunks384.sourceFile, sourceFile),
-      eq(retrievalChunks384.representationType, "exact-window"),
-      inArray(retrievalChunks384.id, retrievalIds),
+      eq(table.embeddingSpaceId, embeddingSpaceId),
+      eq(table.documentId, documentId),
+      eq(table.sourceFile, sourceFile),
+      eq(table.representationType, "exact-window"),
+      inArray(table.id, retrievalIds),
     ))
-    .orderBy(distance, asc(retrievalChunks384.id))
-    .limit(limit);
-  return decodeRoutedRows(rows);
-}
-
-async function queryTocRows768(
-  database: CiteLoomDatabase,
-  embeddingSpaceId: string,
-  embedding: number[],
-  documentId: string,
-  sourceFile: string,
-  retrievalIds: string[],
-  limit: number,
-): Promise<RoutedRetrievalRow[]> {
-  const distance = cosineDistance(retrievalChunks768.embedding, embedding);
-  const rows = await database
-    .select({
-      distance,
-      documentId: retrievalChunks768.documentId,
-      evidenceContent: retrievalChunks768.evidenceContent,
-      id: retrievalChunks768.id,
-      parentId: retrievalChunks768.parentId,
-      sourceFile: retrievalChunks768.sourceFile,
-    })
-    .from(retrievalChunks768)
-    .innerJoin(
-      indexedDocumentSpaces,
-      and(
-        eq(indexedDocumentSpaces.documentId, retrievalChunks768.documentId),
-        eq(indexedDocumentSpaces.sourceFile, retrievalChunks768.sourceFile),
-        eq(
-          indexedDocumentSpaces.embeddingSpaceId,
-          retrievalChunks768.embeddingSpaceId,
-        ),
-        eq(indexedDocumentSpaces.generationId, retrievalChunks768.generationId),
-      ),
-    )
-    .where(and(
-      eq(retrievalChunks768.embeddingSpaceId, embeddingSpaceId),
-      eq(retrievalChunks768.documentId, documentId),
-      eq(retrievalChunks768.sourceFile, sourceFile),
-      eq(retrievalChunks768.representationType, "exact-window"),
-      inArray(retrievalChunks768.id, retrievalIds),
-    ))
-    .orderBy(distance, asc(retrievalChunks768.id))
-    .limit(limit);
-  return decodeRoutedRows(rows);
-}
-
-async function queryTocRows1024(
-  database: CiteLoomDatabase,
-  embeddingSpaceId: string,
-  embedding: number[],
-  documentId: string,
-  sourceFile: string,
-  retrievalIds: string[],
-  limit: number,
-): Promise<RoutedRetrievalRow[]> {
-  const distance = cosineDistance(retrievalChunks1024.embedding, embedding);
-  const rows = await database
-    .select({
-      distance,
-      documentId: retrievalChunks1024.documentId,
-      evidenceContent: retrievalChunks1024.evidenceContent,
-      id: retrievalChunks1024.id,
-      parentId: retrievalChunks1024.parentId,
-      sourceFile: retrievalChunks1024.sourceFile,
-    })
-    .from(retrievalChunks1024)
-    .innerJoin(
-      indexedDocumentSpaces,
-      and(
-        eq(indexedDocumentSpaces.documentId, retrievalChunks1024.documentId),
-        eq(indexedDocumentSpaces.sourceFile, retrievalChunks1024.sourceFile),
-        eq(
-          indexedDocumentSpaces.embeddingSpaceId,
-          retrievalChunks1024.embeddingSpaceId,
-        ),
-        eq(indexedDocumentSpaces.generationId, retrievalChunks1024.generationId),
-      ),
-    )
-    .where(and(
-      eq(retrievalChunks1024.embeddingSpaceId, embeddingSpaceId),
-      eq(retrievalChunks1024.documentId, documentId),
-      eq(retrievalChunks1024.sourceFile, sourceFile),
-      eq(retrievalChunks1024.representationType, "exact-window"),
-      inArray(retrievalChunks1024.id, retrievalIds),
-    ))
-    .orderBy(distance, asc(retrievalChunks1024.id))
+    .orderBy(distance, asc(table.id))
     .limit(limit);
   return decodeRoutedRows(rows);
 }

@@ -19,6 +19,7 @@ import {
 import {
   readEmbeddingConfigurationWarnings,
   type AppConfig,
+  type EmbeddingDimensions,
   type RuntimeSettingValue,
 } from "../config/index.js";
 import type { WebConfig } from "./config.js";
@@ -74,6 +75,7 @@ export interface EmbeddingInputFormatResponse {
 }
 
 export interface ApplicationSettingsResponse {
+  embeddingSpace: EmbeddingSpaceStatusResponse;
   embeddingInputFormats: EmbeddingInputFormatResponse[];
   fields: RuntimeSettingFieldResponse[];
   providers: ProviderSettingsResponse;
@@ -81,6 +83,13 @@ export interface ApplicationSettingsResponse {
   updatedAt: string | null;
   version: number;
   warnings: string[];
+}
+
+export interface EmbeddingSpaceStatusResponse {
+  activeDocumentCount: number;
+  dimensions: EmbeddingDimensions;
+  id: string;
+  totalDocumentCount: number;
 }
 
 export interface ProviderConnectionResponse {
@@ -168,6 +177,12 @@ export function buildApplicationSettingsResponse(
     });
   }
   return {
+    embeddingSpace: {
+      activeDocumentCount: settings.selectedEmbeddingSpaceDocumentCount,
+      dimensions: settings.config.embeddingSpace.dimensions,
+      id: settings.config.embeddingSpace.id,
+      totalDocumentCount: settings.indexedDocumentCount,
+    },
     embeddingInputFormats: buildEmbeddingInputFormatResponses(settings),
     fields,
     providers: buildProviderSettingsResponse(settings),
@@ -187,12 +202,19 @@ function buildApplicationSettingsWarnings(
     retrievalChunkTargetTokens:
       settings.runtimeSettings.retrievalChunkTargetTokens,
   });
-  if (settings.selectedEmbeddingSpaceDocumentCount > 0) {
+  if (
+    settings.selectedEmbeddingSpaceDocumentCount
+      === settings.indexedDocumentCount
+    && settings.indexedDocumentCount > 0
+  ) {
     return warnings;
   }
   if (settings.indexedDocumentCount > 0) {
+    const missingDocumentCount = settings.indexedDocumentCount
+      - settings.selectedEmbeddingSpaceDocumentCount;
+    const noun = missingDocumentCount === 1 ? "document does" : "documents do";
     warnings.push(
-      "No indexed documents use the selected search setup. Reindex documents before asking questions.",
+      `${missingDocumentCount} indexed ${noun} not use the selected search setup. Reindex before asking questions about them.`,
     );
     return warnings;
   }

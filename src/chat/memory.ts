@@ -28,6 +28,19 @@ interface EmbeddingSource {
   messageId: string;
 }
 
+export type ChatMemoryRuntime = Pick<
+  ApplicationRuntime,
+  "config" | "models" | "scheduler"
+>;
+
+export type ChatMemoryStore = Pick<
+  ChatStore,
+  | "readCompletedMemoryTurns"
+  | "readMessagesMissingEmbeddings"
+  | "saveMessageEmbeddings"
+  | "searchSemanticMemory"
+>;
+
 export interface SelectedChatMemory {
   conversationTurns: AnswerConversationTurn[];
   questionContextTurns: AnswerConversationTurn[];
@@ -35,8 +48,8 @@ export interface SelectedChatMemory {
 }
 
 export async function prepareChatMemory(
-  runtime: ApplicationRuntime,
-  store: ChatStore,
+  runtime: ChatMemoryRuntime,
+  store: ChatMemoryStore,
   principal: AuthenticatedPrincipal,
   conversationId: string,
   runId: string,
@@ -48,25 +61,6 @@ export async function prepareChatMemory(
     "embedding",
     "interactive-answer",
   );
-  const missing = await store.readMessagesMissingEmbeddings(
-    principal,
-    conversationId,
-    runtime.config.embeddingSpace.id,
-    runtime.config.embeddingSpace.dimensions,
-  );
-  const missingParts = await embedMissingMessages(
-    runtime,
-    missing,
-    embeddingScheduler,
-    abortSignal,
-  );
-  await store.saveMessageEmbeddings(
-    runtime.config.embeddingSpace.id,
-    runtime.config.embeddingSpace.dimensions,
-    missingParts,
-  );
-  abortSignal.throwIfAborted();
-
   const turns = await store.readCompletedMemoryTurns(
     principal,
     conversationId,
@@ -97,6 +91,29 @@ export async function prepareChatMemory(
       maximumTokens,
     );
   }
+
+  const completedMessageIds = readCompletedMessageIds(turns);
+  const missing = await store.readMessagesMissingEmbeddings(
+    principal,
+    conversationId,
+    runtime.config.embeddingSpace.id,
+    runtime.config.embeddingSpace.dimensions,
+  );
+  const missingCompleted = missing.filter((message) => {
+    return completedMessageIds.has(message.id);
+  });
+  const missingParts = await embedMissingMessages(
+    runtime,
+    missingCompleted,
+    embeddingScheduler,
+    abortSignal,
+  );
+  await store.saveMessageEmbeddings(
+    runtime.config.embeddingSpace.id,
+    runtime.config.embeddingSpace.dimensions,
+    missingParts,
+  );
+  abortSignal.throwIfAborted();
 
   const queryEmbeddings = await embedQuestions(
     runtime.models,
@@ -159,10 +176,21 @@ export async function prepareChatMemory(
   );
 }
 
+function readCompletedMessageIds(
+  turns: readonly ChatMemoryTurnRecord[],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const turn of turns) {
+    ids.add(turn.userMessageId);
+    ids.add(turn.assistantMessageId);
+  }
+  return ids;
+}
+
 async function embedMissingMessages(
-  runtime: ApplicationRuntime,
+  runtime: ChatMemoryRuntime,
   messages: readonly ChatMessageEmbeddingRecord[],
-  scheduler: ReturnType<ApplicationRuntime["scheduler"]>,
+  scheduler: ReturnType<ChatMemoryRuntime["scheduler"]>,
   abortSignal: AbortSignal,
 ): Promise<ChatMessageEmbeddingPart[]> {
   const inputs: Array<DocumentEmbeddingInput<EmbeddingSource>> = [];
@@ -201,46 +229,8 @@ async function embedMissingMessages(
   return parts;
 }
 
-export async function embedChatMessageParts(
-  runtime: ApplicationRuntime,
-  messageId: string,
-  role: "assistant" | "user",
-  content: string,
-  abortSignal: AbortSignal,
-): Promise<ChatMessageEmbeddingPart[]> {
-  const embeddingContent = formatChatEmbeddingContent(role, content);
-  const input = createEmbeddingInput(runtime, messageId, embeddingContent);
-  const embedded = await embedDocumentInputs(
-    runtime.models,
-    [input],
-    runtime.scheduler("embedding", "interactive-answer"),
-    abortSignal,
-    (rejected, maximumInputTokens) => {
-      return splitEmbeddingInput(runtime, rejected, maximumInputTokens);
-    },
-  );
-  const parts: ChatMessageEmbeddingPart[] = [];
-  for (let index = 0; index < embedded.length; index += 1) {
-    const result = embedded[index];
-    if (result === undefined) {
-      continue;
-    }
-    parts.push({
-      content: result.source.content,
-      embedding: result.embedding,
-      inputTokens: countProviderInputTokens(runtime, result.source.content),
-      messageId,
-      partOrdinal: index,
-    });
-  }
-  if (parts.length === 0) {
-    throw new Error(`Chat ${role} message did not produce an embedding.`);
-  }
-  return parts;
-}
-
 function createEmbeddingInput(
-  runtime: ApplicationRuntime,
+  runtime: ChatMemoryRuntime,
   messageId: string,
   content: string,
 ): DocumentEmbeddingInput<EmbeddingSource> {
@@ -252,7 +242,7 @@ function createEmbeddingInput(
 }
 
 function splitEmbeddingInput(
-  runtime: ApplicationRuntime,
+  runtime: ChatMemoryRuntime,
   input: DocumentEmbeddingInput<EmbeddingSource>,
   maximumInputTokens: number,
 ): Array<DocumentEmbeddingInput<EmbeddingSource>> {
@@ -329,7 +319,7 @@ function findSplitIndex(
 }
 
 function countProviderInputTokens(
-  runtime: ApplicationRuntime,
+  runtime: ChatMemoryRuntime,
   content: string,
 ): number {
   const providerInput = formatDocumentEmbeddingText(

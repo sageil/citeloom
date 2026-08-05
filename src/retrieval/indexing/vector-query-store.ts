@@ -8,13 +8,12 @@ import {
 
 import type { EmbeddingSpaceConfig } from "../../config/index.js";
 import type { CiteLoomDatabase } from "../../database/client.js";
+import { indexedDocumentSpaces } from "../../database/schema.js";
 import type { ResolvedQueryScopeTarget } from "../../domain/query-scope.js";
 import {
-  retrievalChunks384,
-  retrievalChunks768,
-  retrievalChunks1024,
-  indexedDocumentSpaces,
-} from "../../database/schema.js";
+  readRetrievalVectorTable,
+  type RetrievalVectorTable,
+} from "../../embedding/storage-tables.js";
 import { matchesResolvedQueryScope } from "./query-scope-filter.js";
 
 export interface ActiveRetrievalWindowRow {
@@ -32,13 +31,13 @@ export function readActiveRetrievalWindows(
   if (retrievalIds.length === 0) {
     return Promise.resolve([]);
   }
-  if (space.dimensions === 384) {
-    return readActiveRetrievalWindows384(database, space.id, retrievalIds);
-  }
-  if (space.dimensions === 768) {
-    return readActiveRetrievalWindows768(database, space.id, retrievalIds);
-  }
-  return readActiveRetrievalWindows1024(database, space.id, retrievalIds);
+  const table = readRetrievalVectorTable(space.dimensions);
+  return readActiveRetrievalWindowsFromTable(
+    database,
+    table,
+    space.id,
+    retrievalIds,
+  );
 }
 
 export function queryDenseCandidates(
@@ -48,13 +47,15 @@ export function queryDenseCandidates(
   candidateK: number,
   scopeTargets: ResolvedQueryScopeTarget[],
 ): Promise<unknown[]> {
-  if (space.dimensions === 384) {
-    return query384(database, space.id, embedding, candidateK, scopeTargets);
-  }
-  if (space.dimensions === 768) {
-    return query768(database, space.id, embedding, candidateK, scopeTargets);
-  }
-  return query1024(database, space.id, embedding, candidateK, scopeTargets);
+  const table = readRetrievalVectorTable(space.dimensions);
+  return queryDenseCandidatesFromTable(
+    database,
+    table,
+    space.id,
+    embedding,
+    candidateK,
+    scopeTargets,
+  );
 }
 
 export function queryDenseEvidenceCandidates(
@@ -67,26 +68,10 @@ export function queryDenseEvidenceCandidates(
   if (parentIds.length === 0) {
     return Promise.resolve([]);
   }
-  if (space.dimensions === 384) {
-    return queryEvidence384(
-      database,
-      space.id,
-      embedding,
-      scopeTargets,
-      parentIds,
-    );
-  }
-  if (space.dimensions === 768) {
-    return queryEvidence768(
-      database,
-      space.id,
-      embedding,
-      scopeTargets,
-      parentIds,
-    );
-  }
-  return queryEvidence1024(
+  const table = readRetrievalVectorTable(space.dimensions);
+  return queryDenseEvidenceCandidatesFromTable(
     database,
+    table,
     space.id,
     embedding,
     scopeTargets,
@@ -94,386 +79,121 @@ export function queryDenseEvidenceCandidates(
   );
 }
 
-async function query384(
+async function queryDenseCandidatesFromTable(
   database: CiteLoomDatabase,
+  table: RetrievalVectorTable,
   embeddingSpaceId: string,
   embedding: number[],
   topK: number,
   scopeTargets: ResolvedQueryScopeTarget[],
-) {
-  const distance = cosineDistance(retrievalChunks384.embedding, embedding);
+): Promise<unknown[]> {
+  const distance = cosineDistance(table.embedding, embedding);
   return database
     .select({
       distance,
-      documentId: retrievalChunks384.documentId,
-      evidenceContent: retrievalChunks384.evidenceContent,
-      evidenceRetrievalId: retrievalChunks384.id,
-      kind: retrievalChunks384.kind,
-      parentId: retrievalChunks384.parentId,
-      representationContent: retrievalChunks384.evidenceContent,
-      representationId: retrievalChunks384.id,
-      representationType: retrievalChunks384.representationType,
-      sourceFile: retrievalChunks384.sourceFile,
+      documentId: table.documentId,
+      evidenceContent: table.evidenceContent,
+      evidenceRetrievalId: table.id,
+      kind: table.kind,
+      parentId: table.parentId,
+      representationContent: table.evidenceContent,
+      representationId: table.id,
+      representationType: table.representationType,
+      sourceFile: table.sourceFile,
     })
-    .from(retrievalChunks384)
+    .from(table)
     .innerJoin(
       indexedDocumentSpaces,
       and(
-        eq(indexedDocumentSpaces.documentId, retrievalChunks384.documentId),
-        eq(indexedDocumentSpaces.sourceFile, retrievalChunks384.sourceFile),
-        eq(
-          indexedDocumentSpaces.embeddingSpaceId,
-          retrievalChunks384.embeddingSpaceId,
-        ),
-        eq(indexedDocumentSpaces.generationId, retrievalChunks384.generationId),
+        eq(indexedDocumentSpaces.documentId, table.documentId),
+        eq(indexedDocumentSpaces.sourceFile, table.sourceFile),
+        eq(indexedDocumentSpaces.embeddingSpaceId, table.embeddingSpaceId),
+        eq(indexedDocumentSpaces.generationId, table.generationId),
       ),
     )
     .where(
       and(
-        eq(retrievalChunks384.embeddingSpaceId, embeddingSpaceId),
+        eq(table.embeddingSpaceId, embeddingSpaceId),
         matchesResolvedQueryScope(
-          retrievalChunks384.documentId,
-          retrievalChunks384.sourceFile,
+          table.documentId,
+          table.sourceFile,
           scopeTargets,
         ),
       ),
     )
-    .orderBy(distance, asc(retrievalChunks384.id))
+    .orderBy(distance, asc(table.id))
     .limit(topK);
 }
 
-async function query768(
+async function queryDenseEvidenceCandidatesFromTable(
   database: CiteLoomDatabase,
-  embeddingSpaceId: string,
-  embedding: number[],
-  topK: number,
-  scopeTargets: ResolvedQueryScopeTarget[],
-) {
-  const distance = cosineDistance(retrievalChunks768.embedding, embedding);
-  return database
-    .select({
-      distance,
-      documentId: retrievalChunks768.documentId,
-      evidenceContent: retrievalChunks768.evidenceContent,
-      evidenceRetrievalId: retrievalChunks768.id,
-      kind: retrievalChunks768.kind,
-      parentId: retrievalChunks768.parentId,
-      representationContent: retrievalChunks768.evidenceContent,
-      representationId: retrievalChunks768.id,
-      representationType: retrievalChunks768.representationType,
-      sourceFile: retrievalChunks768.sourceFile,
-    })
-    .from(retrievalChunks768)
-    .innerJoin(
-      indexedDocumentSpaces,
-      and(
-        eq(indexedDocumentSpaces.documentId, retrievalChunks768.documentId),
-        eq(indexedDocumentSpaces.sourceFile, retrievalChunks768.sourceFile),
-        eq(
-          indexedDocumentSpaces.embeddingSpaceId,
-          retrievalChunks768.embeddingSpaceId,
-        ),
-        eq(indexedDocumentSpaces.generationId, retrievalChunks768.generationId),
-      ),
-    )
-    .where(
-      and(
-        eq(retrievalChunks768.embeddingSpaceId, embeddingSpaceId),
-        matchesResolvedQueryScope(
-          retrievalChunks768.documentId,
-          retrievalChunks768.sourceFile,
-          scopeTargets,
-        ),
-      ),
-    )
-    .orderBy(distance, asc(retrievalChunks768.id))
-    .limit(topK);
-}
-
-async function query1024(
-  database: CiteLoomDatabase,
-  embeddingSpaceId: string,
-  embedding: number[],
-  topK: number,
-  scopeTargets: ResolvedQueryScopeTarget[],
-) {
-  const distance = cosineDistance(retrievalChunks1024.embedding, embedding);
-  return database
-    .select({
-      distance,
-      documentId: retrievalChunks1024.documentId,
-      evidenceContent: retrievalChunks1024.evidenceContent,
-      evidenceRetrievalId: retrievalChunks1024.id,
-      kind: retrievalChunks1024.kind,
-      parentId: retrievalChunks1024.parentId,
-      representationContent: retrievalChunks1024.evidenceContent,
-      representationId: retrievalChunks1024.id,
-      representationType: retrievalChunks1024.representationType,
-      sourceFile: retrievalChunks1024.sourceFile,
-    })
-    .from(retrievalChunks1024)
-    .innerJoin(
-      indexedDocumentSpaces,
-      and(
-        eq(indexedDocumentSpaces.documentId, retrievalChunks1024.documentId),
-        eq(indexedDocumentSpaces.sourceFile, retrievalChunks1024.sourceFile),
-        eq(
-          indexedDocumentSpaces.embeddingSpaceId,
-          retrievalChunks1024.embeddingSpaceId,
-        ),
-        eq(
-          indexedDocumentSpaces.generationId,
-          retrievalChunks1024.generationId,
-        ),
-      ),
-    )
-    .where(
-      and(
-        eq(retrievalChunks1024.embeddingSpaceId, embeddingSpaceId),
-        matchesResolvedQueryScope(
-          retrievalChunks1024.documentId,
-          retrievalChunks1024.sourceFile,
-          scopeTargets,
-        ),
-      ),
-    )
-    .orderBy(distance, asc(retrievalChunks1024.id))
-    .limit(topK);
-}
-
-async function queryEvidence384(
-  database: CiteLoomDatabase,
+  table: RetrievalVectorTable,
   embeddingSpaceId: string,
   embedding: number[],
   scopeTargets: ResolvedQueryScopeTarget[],
   parentIds: string[],
-) {
-  const distance = cosineDistance(retrievalChunks384.embedding, embedding);
-  const rows = await database
+): Promise<unknown[]> {
+  const distance = cosineDistance(table.embedding, embedding);
+  return database
     .select({
       distance,
-      documentId: retrievalChunks384.documentId,
-      evidenceContent: retrievalChunks384.evidenceContent,
-      evidenceRetrievalId: retrievalChunks384.id,
-      parentId: retrievalChunks384.parentId,
-      sourceFile: retrievalChunks384.sourceFile,
+      documentId: table.documentId,
+      evidenceContent: table.evidenceContent,
+      evidenceRetrievalId: table.id,
+      parentId: table.parentId,
+      sourceFile: table.sourceFile,
     })
-    .from(retrievalChunks384)
+    .from(table)
     .innerJoin(
       indexedDocumentSpaces,
       and(
-        eq(indexedDocumentSpaces.documentId, retrievalChunks384.documentId),
-        eq(indexedDocumentSpaces.sourceFile, retrievalChunks384.sourceFile),
-        eq(
-          indexedDocumentSpaces.embeddingSpaceId,
-          retrievalChunks384.embeddingSpaceId,
-        ),
-        eq(indexedDocumentSpaces.generationId, retrievalChunks384.generationId),
+        eq(indexedDocumentSpaces.documentId, table.documentId),
+        eq(indexedDocumentSpaces.sourceFile, table.sourceFile),
+        eq(indexedDocumentSpaces.embeddingSpaceId, table.embeddingSpaceId),
+        eq(indexedDocumentSpaces.generationId, table.generationId),
       ),
     )
     .where(
       and(
-        eq(retrievalChunks384.embeddingSpaceId, embeddingSpaceId),
+        eq(table.embeddingSpaceId, embeddingSpaceId),
         matchesResolvedQueryScope(
-          retrievalChunks384.documentId,
-          retrievalChunks384.sourceFile,
+          table.documentId,
+          table.sourceFile,
           scopeTargets,
         ),
-        inArray(retrievalChunks384.parentId, parentIds),
-        eq(retrievalChunks384.representationType, "exact-window"),
+        inArray(table.parentId, parentIds),
+        eq(table.representationType, "exact-window"),
       ),
     )
-    .orderBy(distance, asc(retrievalChunks384.id));
-  return rows;
+    .orderBy(distance, asc(table.id));
 }
 
-async function queryEvidence768(
+async function readActiveRetrievalWindowsFromTable(
   database: CiteLoomDatabase,
-  embeddingSpaceId: string,
-  embedding: number[],
-  scopeTargets: ResolvedQueryScopeTarget[],
-  parentIds: string[],
-) {
-  const distance = cosineDistance(retrievalChunks768.embedding, embedding);
-  const rows = await database
-    .select({
-      distance,
-      documentId: retrievalChunks768.documentId,
-      evidenceContent: retrievalChunks768.evidenceContent,
-      evidenceRetrievalId: retrievalChunks768.id,
-      parentId: retrievalChunks768.parentId,
-      sourceFile: retrievalChunks768.sourceFile,
-    })
-    .from(retrievalChunks768)
-    .innerJoin(
-      indexedDocumentSpaces,
-      and(
-        eq(indexedDocumentSpaces.documentId, retrievalChunks768.documentId),
-        eq(indexedDocumentSpaces.sourceFile, retrievalChunks768.sourceFile),
-        eq(
-          indexedDocumentSpaces.embeddingSpaceId,
-          retrievalChunks768.embeddingSpaceId,
-        ),
-        eq(indexedDocumentSpaces.generationId, retrievalChunks768.generationId),
-      ),
-    )
-    .where(
-      and(
-        eq(retrievalChunks768.embeddingSpaceId, embeddingSpaceId),
-        matchesResolvedQueryScope(
-          retrievalChunks768.documentId,
-          retrievalChunks768.sourceFile,
-          scopeTargets,
-        ),
-        inArray(retrievalChunks768.parentId, parentIds),
-        eq(retrievalChunks768.representationType, "exact-window"),
-      ),
-    )
-    .orderBy(distance, asc(retrievalChunks768.id));
-  return rows;
-}
-
-async function queryEvidence1024(
-  database: CiteLoomDatabase,
-  embeddingSpaceId: string,
-  embedding: number[],
-  scopeTargets: ResolvedQueryScopeTarget[],
-  parentIds: string[],
-) {
-  const distance = cosineDistance(retrievalChunks1024.embedding, embedding);
-  const rows = await database
-    .select({
-      distance,
-      documentId: retrievalChunks1024.documentId,
-      evidenceContent: retrievalChunks1024.evidenceContent,
-      evidenceRetrievalId: retrievalChunks1024.id,
-      parentId: retrievalChunks1024.parentId,
-      sourceFile: retrievalChunks1024.sourceFile,
-    })
-    .from(retrievalChunks1024)
-    .innerJoin(
-      indexedDocumentSpaces,
-      and(
-        eq(indexedDocumentSpaces.documentId, retrievalChunks1024.documentId),
-        eq(indexedDocumentSpaces.sourceFile, retrievalChunks1024.sourceFile),
-        eq(
-          indexedDocumentSpaces.embeddingSpaceId,
-          retrievalChunks1024.embeddingSpaceId,
-        ),
-        eq(
-          indexedDocumentSpaces.generationId,
-          retrievalChunks1024.generationId,
-        ),
-      ),
-    )
-    .where(
-      and(
-        eq(retrievalChunks1024.embeddingSpaceId, embeddingSpaceId),
-        matchesResolvedQueryScope(
-          retrievalChunks1024.documentId,
-          retrievalChunks1024.sourceFile,
-          scopeTargets,
-        ),
-        inArray(retrievalChunks1024.parentId, parentIds),
-        eq(retrievalChunks1024.representationType, "exact-window"),
-      ),
-    )
-    .orderBy(distance, asc(retrievalChunks1024.id));
-  return rows;
-}
-
-async function readActiveRetrievalWindows384(
-  database: CiteLoomDatabase,
+  table: RetrievalVectorTable,
   embeddingSpaceId: string,
   retrievalIds: string[],
 ): Promise<ActiveRetrievalWindowRow[]> {
   return database
     .select({
-      evidenceContent: retrievalChunks384.evidenceContent,
-      id: retrievalChunks384.id,
-      nextRetrievalId: retrievalChunks384.nextRetrievalId,
-      previousRetrievalId: retrievalChunks384.previousRetrievalId,
+      evidenceContent: table.evidenceContent,
+      id: table.id,
+      nextRetrievalId: table.nextRetrievalId,
+      previousRetrievalId: table.previousRetrievalId,
     })
-    .from(retrievalChunks384)
+    .from(table)
     .innerJoin(
       indexedDocumentSpaces,
       and(
-        eq(indexedDocumentSpaces.documentId, retrievalChunks384.documentId),
-        eq(indexedDocumentSpaces.sourceFile, retrievalChunks384.sourceFile),
-        eq(
-          indexedDocumentSpaces.embeddingSpaceId,
-          retrievalChunks384.embeddingSpaceId,
-        ),
-        eq(indexedDocumentSpaces.generationId, retrievalChunks384.generationId),
+        eq(indexedDocumentSpaces.documentId, table.documentId),
+        eq(indexedDocumentSpaces.sourceFile, table.sourceFile),
+        eq(indexedDocumentSpaces.embeddingSpaceId, table.embeddingSpaceId),
+        eq(indexedDocumentSpaces.generationId, table.generationId),
       ),
     )
     .where(and(
-      eq(retrievalChunks384.embeddingSpaceId, embeddingSpaceId),
-      inArray(retrievalChunks384.id, retrievalIds),
-      eq(retrievalChunks384.representationType, "exact-window"),
-    ));
-}
-
-async function readActiveRetrievalWindows768(
-  database: CiteLoomDatabase,
-  embeddingSpaceId: string,
-  retrievalIds: string[],
-): Promise<ActiveRetrievalWindowRow[]> {
-  return database
-    .select({
-      evidenceContent: retrievalChunks768.evidenceContent,
-      id: retrievalChunks768.id,
-      nextRetrievalId: retrievalChunks768.nextRetrievalId,
-      previousRetrievalId: retrievalChunks768.previousRetrievalId,
-    })
-    .from(retrievalChunks768)
-    .innerJoin(
-      indexedDocumentSpaces,
-      and(
-        eq(indexedDocumentSpaces.documentId, retrievalChunks768.documentId),
-        eq(indexedDocumentSpaces.sourceFile, retrievalChunks768.sourceFile),
-        eq(
-          indexedDocumentSpaces.embeddingSpaceId,
-          retrievalChunks768.embeddingSpaceId,
-        ),
-        eq(indexedDocumentSpaces.generationId, retrievalChunks768.generationId),
-      ),
-    )
-    .where(and(
-      eq(retrievalChunks768.embeddingSpaceId, embeddingSpaceId),
-      inArray(retrievalChunks768.id, retrievalIds),
-      eq(retrievalChunks768.representationType, "exact-window"),
-    ));
-}
-
-async function readActiveRetrievalWindows1024(
-  database: CiteLoomDatabase,
-  embeddingSpaceId: string,
-  retrievalIds: string[],
-): Promise<ActiveRetrievalWindowRow[]> {
-  return database
-    .select({
-      evidenceContent: retrievalChunks1024.evidenceContent,
-      id: retrievalChunks1024.id,
-      nextRetrievalId: retrievalChunks1024.nextRetrievalId,
-      previousRetrievalId: retrievalChunks1024.previousRetrievalId,
-    })
-    .from(retrievalChunks1024)
-    .innerJoin(
-      indexedDocumentSpaces,
-      and(
-        eq(indexedDocumentSpaces.documentId, retrievalChunks1024.documentId),
-        eq(indexedDocumentSpaces.sourceFile, retrievalChunks1024.sourceFile),
-        eq(
-          indexedDocumentSpaces.embeddingSpaceId,
-          retrievalChunks1024.embeddingSpaceId,
-        ),
-        eq(indexedDocumentSpaces.generationId, retrievalChunks1024.generationId),
-      ),
-    )
-    .where(and(
-      eq(retrievalChunks1024.embeddingSpaceId, embeddingSpaceId),
-      inArray(retrievalChunks1024.id, retrievalIds),
-      eq(retrievalChunks1024.representationType, "exact-window"),
+      eq(table.embeddingSpaceId, embeddingSpaceId),
+      inArray(table.id, retrievalIds),
+      eq(table.representationType, "exact-window"),
     ));
 }

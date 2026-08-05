@@ -115,20 +115,34 @@ interface ProviderTranscriptionResponse {
   timeoutSignal: AbortSignal;
 }
 
+interface ProviderTranscriptionRequest {
+  body: FormData | string;
+  headers: Headers;
+}
+
+interface OpenRouterTranscriptionRequest {
+  input_audio: {
+    data: string;
+    format: "m4a" | "ogg" | "wav" | "webm";
+  };
+  language?: string;
+  model: string;
+}
+
 async function requestProviderTranscription(
   config: SpeechToTextConfig,
   audio: TranscriptionAudio,
   abortSignal: AbortSignal,
   adapter: TranscriptionAdapterContract,
 ): Promise<ProviderTranscriptionResponse> {
-  const form = buildProviderForm(config, audio);
+  const request = buildProviderTranscriptionRequest(config, audio, adapter);
   const timeoutSignal = AbortSignal.timeout(config.timeoutMs);
   const requestSignal = AbortSignal.any([abortSignal, timeoutSignal]);
   let response: Response;
   try {
     response = await fetch(`${config.baseUrl}${adapter.path}`, {
-      body: form,
-      headers: buildProviderHeaders(config),
+      body: request.body,
+      headers: request.headers,
       method: "POST",
       signal: requestSignal,
     });
@@ -150,6 +164,7 @@ async function requestProviderTranscription(
 interface TranscriptionAdapterContract {
   path: "/audio/transcriptions";
   rejectPromptEcho: boolean;
+  requestFormat: "multipart" | "openrouter-json";
 }
 
 function readTranscriptionAdapter(
@@ -160,13 +175,85 @@ function readTranscriptionAdapter(
       return {
         path: "/audio/transcriptions",
         rejectPromptEcho: true,
+        requestFormat: "multipart",
+      };
+    case "openrouter-transcription":
+      return {
+        path: "/audio/transcriptions",
+        rejectPromptEcho: false,
+        requestFormat: "openrouter-json",
       };
     case "openai-transcription":
       return {
         path: "/audio/transcriptions",
         rejectPromptEcho: false,
+        requestFormat: "multipart",
       };
   }
+}
+
+function buildProviderTranscriptionRequest(
+  config: SpeechToTextConfig,
+  audio: TranscriptionAudio,
+  adapter: TranscriptionAdapterContract,
+): ProviderTranscriptionRequest {
+  if (adapter.requestFormat === "openrouter-json") {
+    return {
+      body: JSON.stringify(buildOpenRouterTranscriptionRequest(config, audio)),
+      headers: buildProviderHeaders(config, "application/json"),
+    };
+  }
+  return {
+    body: buildProviderForm(config, audio),
+    headers: buildProviderHeaders(config, null),
+  };
+}
+
+function buildOpenRouterTranscriptionRequest(
+  config: SpeechToTextConfig,
+  audio: TranscriptionAudio,
+): OpenRouterTranscriptionRequest {
+  const request: OpenRouterTranscriptionRequest = {
+    input_audio: {
+      data: audio.content.toString("base64"),
+      format: readOpenRouterAudioFormat(audio.mediaType),
+    },
+    model: config.model,
+  };
+  const language = normalizeOpenRouterLanguage(config.language);
+  if (language !== null) {
+    request.language = language;
+  }
+  return request;
+}
+
+function normalizeOpenRouterLanguage(language: string | null): string | null {
+  if (language === null) {
+    return null;
+  }
+  const normalizedLanguage = language.trim().toLowerCase();
+  if (/^[a-z]{2}$/.test(normalizedLanguage)) {
+    return normalizedLanguage;
+  }
+  if (normalizedLanguage === "english") {
+    return "en";
+  }
+  return null;
+}
+
+function readOpenRouterAudioFormat(
+  mediaType: TranscriptionMediaType,
+): OpenRouterTranscriptionRequest["input_audio"]["format"] {
+  if (mediaType === "audio/mp4") {
+    return "m4a";
+  }
+  if (mediaType === "audio/ogg") {
+    return "ogg";
+  }
+  if (mediaType === "audio/wav") {
+    return "wav";
+  }
+  return "webm";
 }
 
 function buildProviderForm(
@@ -186,8 +273,14 @@ function buildProviderForm(
   return form;
 }
 
-function buildProviderHeaders(config: SpeechToTextConfig): Headers {
+function buildProviderHeaders(
+  config: SpeechToTextConfig,
+  contentType: "application/json" | null,
+): Headers {
   const headers = new Headers({ accept: "application/json" });
+  if (contentType !== null) {
+    headers.set("content-type", contentType);
+  }
   if (config.apiToken !== null) {
     headers.set("authorization", `Bearer ${config.apiToken}`);
   }

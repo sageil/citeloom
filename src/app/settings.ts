@@ -51,6 +51,7 @@ import {
   readEmbeddingInputFormatContract,
   type EmbeddingInputFormatContract,
 } from "../embedding/input-format-model.js";
+import { SUPPORTED_EMBEDDING_DIMENSIONS } from "../embedding/dimensions.js";
 import {
   featureSetting,
   nullableSetting,
@@ -128,6 +129,7 @@ const runtimeSettingKeySchema = z.enum([
   "retrievalWindowPolicy",
   "retryBaseMs",
   "rrfK",
+  "searchMethod",
   "summaryTimeoutSeconds",
   "sttLanguage",
   "sttMaxAudioMegabytes",
@@ -179,7 +181,7 @@ export class SettingsValidationError extends Error {
 }
 
 const searchMatchingPanel: RuntimeSettingPanel = {
-  description: "Choose how CiteLoom combines results found through similar meaning, matching words, or more than one search.",
+  description: "Choose whether CiteLoom searches by matching words, similar meaning, or both.",
   id: "search-matching",
   label: "Search matching",
 };
@@ -218,6 +220,12 @@ const doclingVlmProviderOptions = providerCatalog.map((provider) => {
   return { label: provider.displayName, value: provider.id };
 });
 
+const embeddingDimensionOptions = SUPPORTED_EMBEDDING_DIMENSIONS.map(
+  (dimensions) => {
+    return { label: String(dimensions), value: dimensions };
+  },
+);
+
 export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   setting("claimVerifierRuntimeName", "Answers and citation checks", "Citation checker name", "text", "The name shown for the service that checks whether citations support an answer."),
   setting("claimVerifierBaseUrl", "Answers and citation checks", "Citation checker address", "url", "The address of the service that checks whether citations support an answer."),
@@ -229,9 +237,14 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   featureSetting(numberSetting("answerMinimumOutputTokens", "Answers and citation checks", "Minimum answer space", "The space CiteLoom requires before starting an answer. If less space is available, the request stops instead of returning a cut-off answer.", 1, 262_144, 1, "tokens"), "answer"),
   featureSetting(numberSetting("answerProviderSafetyMarginTokens", "Answers and citation checks", "Reserved model space", "Space kept free so the selected provider can add its required instructions without exceeding the model limit.", 0, 262_144, 1, "tokens"), "answer"),
   featureSetting(numberSetting("chatTemperature", "Answers and citation checks", "Temperature", "How much Chat responses may vary between runs.", 0, 2, 0.01), "chat"),
-  featureSetting(selectSetting("embeddingInputFormatId", "Embedding model", "Search text format", "The text format required by the selected embedding model.", []), "embedding"),
-  featureSetting(positiveIntegerSetting("retrievalChunkTargetTokens", "Embedding model", "Document section size", "The preferred size of searchable document sections. Smaller values create more focused sections, while larger values keep more nearby text together.", "tokens"), "embedding"),
-  featureSetting(numberSetting("embeddingTimeoutSeconds", "Embedding model", "Embedding model timeout", "How long CiteLoom waits for the embedding model while indexing documents or searching.", 1, 86_400, 1, "seconds"), "embedding"),
+  featureSetting(selectSetting("embeddingDimensions", "Embedding space", "Vector dimensions", "The application-wide vector size stored and searched in this embedding space.", embeddingDimensionOptions), "embedding"),
+  featureSetting(selectSetting("embeddingInputFormatId", "Embedding space", "Search text format", "The application-wide text format used for document and query embeddings in this space.", []), "embedding"),
+  featureSetting(selectSetting("retrievalWindowPolicy", "Embedding space", "Document section method", "How CiteLoom keeps nearby document content together for search.", [
+    { label: "Keep document structure", value: "structured-token-v3" },
+  ]), "embedding"),
+  featureSetting(positiveIntegerSetting("retrievalChunkTargetTokens", "Embedding space", "Document section size", "The preferred size of searchable document sections. Smaller values create more focused sections, while larger values keep more nearby text together.", "tokens"), "embedding"),
+  featureSetting(numberSetting("embeddingTimeoutSeconds", "Embedding space", "Embedding timeout", "How long CiteLoom waits while indexing documents or searching.", 1, 86_400, 1, "seconds"), "embedding"),
+  featureSetting(nullableSetting("embeddingSpaceId", "Embedding space", "Search index name", "text", "An optional name for this search setup. Leave it blank to let CiteLoom choose one."), "embedding"),
   featureSetting(numberSetting("summaryTimeoutSeconds", "Document processing", "Indexing model timeout", "How long CiteLoom waits for the indexing model while preparing document content for search.", 1, 86_400, 1, "seconds"), "summarization"),
   featureSetting(numberSetting("queryExpansions", "Search and answers", "Number of expansions", "How many alternative searches CiteLoom may create for one question. Set this to 0 to search only the original wording.", 0, 4, 1), "queryExpansion"),
   featureSetting(numberSetting("queryExpansionTemperature", "Search and answers", "Temperature", "How much generated search wording may vary. Set this to 0 for the most repeatable wording.", 0, 2, 0.01), "queryExpansion"),
@@ -239,15 +252,6 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   featureSetting(numberSetting("expansionQueryWeight", "Search and answers", "First expansion influence", "How strongly results found using the first query expansion affect the final search order compared with the original question.", 0.01, 100, 0.01), "queryExpansion"),
   featureSetting(numberSetting("expansionDecay", "Search and answers", "Later expansion influence", "How much influence each later expansion keeps from the expansion before it. A value of 1 gives every expansion equal influence; lower values reduce the influence of later expansions.", 0.01, 1, 0.01), "queryExpansion"),
   featureSetting(numberSetting("queryExpansionTimeoutSeconds", "Search and answers", "Timeout", "How long CiteLoom waits for query expansions before stopping the request.", 1, 3_600, 1, "seconds"), "queryExpansion"),
-  featureSetting(selectSetting("embeddingDimensions", "Embedding model", "Embedding dimensions", "Choose the value required by the selected embedding model.", [
-    { label: "384", value: 384 },
-    { label: "768", value: 768 },
-    { label: "1024", value: 1024 },
-  ]), "embedding"),
-  featureSetting(nullableSetting("embeddingSpaceId", "Embedding model", "Search index name", "text", "An optional name for this search setup. Leave it blank to let CiteLoom choose one."), "embedding"),
-  featureSetting(selectSetting("retrievalWindowPolicy", "Embedding model", "Document section method", "How CiteLoom keeps nearby document content together for search.", [
-    { label: "Keep document structure", value: "structured-token-v3" },
-  ]), "embedding"),
   panelSetting(setting("doclingBaseUrl", "Docling", "Docling base URL", "url", "Where CiteLoom sends documents for conversion."), doclingConnectionPanel),
   panelSetting(sensitiveSetting("doclingApiKey", "Docling", "Docling API key", "The secret CiteLoom uses to sign in to Docling."), doclingConnectionPanel),
   panelSetting(numberSetting("doclingDefaultServiceCapacity", "Docling", "Documents converted at once", "How many documents Docling can convert at the same time.", 1, 16, 1), doclingConnectionPanel),
@@ -294,6 +298,11 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
     { label: "Stable", value: "stable" },
     { label: "Random", value: "random" },
   ]),
+  panelSetting(selectSetting("searchMethod", "Search and answers", "Search method", "Choose how CiteLoom finds document sections for Ask and Chat.", [
+    { label: "Hybrid - Recommended", value: "hybrid" },
+    { label: "Keyword", value: "bm25" },
+    { label: "Semantic", value: "dense" },
+  ]), searchMatchingPanel),
   panelSetting(numberSetting("denseWeight", "Search and answers", "Semantic similarity", "How strongly results expressing the same meaning as the question influence search order, even when they use different words.", 0.01, 100, 0.01), searchMatchingPanel),
   panelSetting(numberSetting("lexicalWeight", "Search and answers", "Exact-word matches", "How strongly results containing the same words, names, codes, or phrases as the question influence search order.", 0.01, 100, 0.01), searchMatchingPanel),
   panelSetting(numberSetting("rrfK", "Search and answers", "Repeated matches", "How strongly CiteLoom favors source sections found by more than one search method or query. Higher values favor repeated matches; lower values favor the highest-ranked individual matches.", 1, 1_000, 1), searchMatchingPanel),
@@ -376,8 +385,8 @@ export const runtimeSettingChangeExamples = {
   answerMaximumOutputTokens: "Raise this to allow longer answers, or lower it to keep answers shorter.",
   answerMinimumOutputTokens: "Set this to the smallest space that can hold a complete answer in your preferred format.",
   answerProviderSafetyMarginTokens: "Increase this if the provider reports that a request is too large even though the selected model should have enough room.",
-  embeddingInputFormatId: "Select the text format required by the embedding model. Changing it requires reindexing.",
-  embeddingDimensions: "Change 768 to 1024 only when the selected embedding model requires 1024. Changing this value requires reindexing.",
+  embeddingInputFormatId: "Select the application-wide text format for this embedding space. Changing it creates a new embedding space and requires reindexing.",
+  embeddingDimensions: "Choose the application-wide vector size for this embedding space. Changing it creates a new embedding space and requires reindexing.",
   embeddingSpaceId: "Set a stable name such as legal-v2 when you want to identify this search setup across restarts.",
   embeddingTimeoutSeconds: "Raise 600 to 900 when a local embedding request needs more than 10 minutes.",
   retrievalChunkTargetTokens: "Use 512 for focused document sections. Larger values keep more nearby text together but may make individual matches less precise.",
@@ -421,6 +430,7 @@ export const runtimeSettingChangeExamples = {
   expansionQueryWeight: "Raise this relative to Original question influence to favor results found using the first expansion.",
   expansionDecay: "Use 1 to give all expansions equal influence. Lower values progressively reduce the influence of later expansions.",
   rrfK: "Raise this to favor source sections found by more than one search method or query. Lower it to favor the highest-ranked individual matches.",
+  searchMethod: "Hybrid combines exact words with meaning-based matches. Keyword skips the document-query embedding call. Semantic searches by meaning only.",
   topK: "Higher values give Ask and Chat more source material but may make answers less focused. Sections available for answers cannot be higher than Matching sections reviewed.",
   sttLanguage: "Set en to bias recognition toward English.",
   sttPrompt: "Add “CiteLoom, HHEM, Docling” to help the model recognize project names.",

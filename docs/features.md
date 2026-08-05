@@ -120,11 +120,14 @@ Generated browser audio URLs are released when the answer, thread, or conversati
 
 ## Search and answer controls
 
-CiteLoom combines semantic similarity and exact-word retrieval through weighted Reciprocal Rank Fusion.
-Administrators can configure how many matching sections are reviewed, how many sections an answer may use, how many Find Sources results and excerpts are displayed, and how semantic, lexical, and repeated matches influence ordering.
+Administrators can choose Keyword, Semantic, or Hybrid retrieval for Ask and Chat.
+Keyword uses BM25 exact-word retrieval and does not embed the document query.
+Semantic embeds the document query and searches by vector similarity.
+Hybrid runs both paths and combines them through weighted Reciprocal Rank Fusion.
+Administrators can also configure how many matching sections are reviewed, how many sections an answer may use, how many Find Sources results and excerpts are displayed, and how semantic, lexical, and repeated matches influence ordering.
 
 Optional Query Expansion creates up to four alternative searches for a question.
-Optional search ranking reorders the strongest fused candidates with a dedicated relevance model.
+Optional search ranking reorders the strongest candidates from any search method with a dedicated relevance model.
 Stable seed mode asks compatible providers for repeatable Query Expansion results and answer text, while random mode omits those deterministic seeds.
 
 Document table-of-contents routing can use stored headings as an additional way to reach relevant branches in long documents.
@@ -142,7 +145,7 @@ Administrators can route Ask, Chat, Query Expansion, indexing summaries, embeddi
 Feature routes can override the provider model and, where the capability exposes it, input capacity or speech voice.
 Provider connections contain their endpoint, credentials, default models, and one deployment-wide concurrency limit shared by all capabilities using that provider.
 
-Built-in profiles are available for oMLX, Ollama, LM Studio, OpenAI, OpenAI Codex, DeepSeek, Groq, Cohere, Jina, and Custom endpoints.
+Built-in profiles are available for oMLX, Ollama, LM Studio, OpenAI, OpenRouter, OpenAI Codex, DeepSeek, Groq, Cohere, Jina, and Custom endpoints.
 OpenAI Codex uses device authorization from Settings.
 The Custom profile lets the administrator select the protocol adapter for each supported capability.
 

@@ -86,6 +86,25 @@ describe("application configuration", () => {
     ]);
   });
 
+  it("selects the application search method independently from reranking", () => {
+    const methods = ["bm25", "dense", "hybrid"] as const;
+    for (const method of methods) {
+      const withoutReranker = readEqualWeightTestConfig({
+        providerOptions: { rerankEnabled: false },
+        runtime: { searchMethod: method },
+      });
+      const withReranker = readEqualWeightTestConfig({
+        providerOptions: { rerankEnabled: true },
+        runtime: { searchMethod: method },
+      });
+
+      expect(withoutReranker.retrieval.mode).toBe(method);
+      expect(withoutReranker.retrieval.reranker).toBeNull();
+      expect(withReranker.retrieval.mode).toBe(method);
+      expect(withReranker.retrieval.reranker).not.toBeNull();
+    }
+  });
+
   it("maps provider capabilities onto provider concurrency limits", () => {
     const runtimeSettings = createTestRuntimeSettings();
     const providers = createTestProviderSettings();
@@ -155,6 +174,10 @@ describe("application configuration", () => {
       ...runtimeSettings,
       retrievalChunkTargetTokens: 0,
     })).toThrow("retrievalChunkTargetTokens");
+    expect(() => parseRuntimeSettings({
+      ...runtimeSettings,
+      searchMethod: "automatic",
+    })).toThrow("searchMethod");
   });
 
   it("accepts retrieval counts above the former fixed limits", () => {

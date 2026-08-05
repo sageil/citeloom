@@ -37,7 +37,6 @@ import {
   buildResearchRunConfiguration,
 } from "../research/store.js";
 import {
-  embedChatMessageParts,
   prepareChatMemory,
 } from "./memory.js";
 import { createChatRetrievalQuestionInput } from "./retrieval-question.js";
@@ -250,13 +249,6 @@ export async function answerChatMessageWithRuntime(
     );
     lease.signal.throwIfAborted();
     const assistantContent = result.answer;
-    const assistantEmbeddings = await embedChatMessageParts(
-      runtime,
-      accepted.run.id,
-      "assistant",
-      assistantContent,
-      lease.signal,
-    );
 
     await lease.stop();
     lease.throwIfFailed();
@@ -264,7 +256,6 @@ export async function answerChatMessageWithRuntime(
       principal,
       {
         answerDocument: result.answerDocument,
-        assistantEmbeddings,
         attemptCount: accepted.run.attemptCount,
         claims: pendingFindings,
         completedAt: new Date(),

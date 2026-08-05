@@ -157,8 +157,30 @@ describe("database administrator bootstrap", () => {
           model: "qwen3.5:9b",
         },
       });
+      expect(document.providers.connections.openrouter).toMatchObject({
+        answer: {
+          contextCapacityTokens: 200_000,
+          model: "openrouter/free",
+        },
+        baseUrl: "https://openrouter.ai/api/v1",
+        embedding: {
+          contextCapacityTokens: 32_768,
+          model: "nvidia/nemotron-3-embed-1b:free",
+        },
+        reranking: {
+          model: "nvidia/llama-nemotron-rerank-vl-1b-v2:free",
+        },
+        speechToText: {
+          model: "openai/gpt-4o-mini-transcribe",
+        },
+        textToSpeech: {
+          model: "fish-audio/s2.1-pro-free:free",
+          voice: "alloy",
+        },
+      });
     }
   });
+
 });
 
 describe("authentication persistence", () => {
