@@ -56,6 +56,7 @@ const providerIds = Object.freeze([
   "ollama",
   "lmstudio",
   "openai",
+  "openrouter",
   "openai-codex",
   "deepseek",
   "groq",
@@ -72,6 +73,18 @@ const runtimeInputs = Object.freeze([
   "url",
 ]);
 const runtimeSources = Object.freeze(["database", "database-default"]);
+const embeddingSpaceIdentityFieldKeys = Object.freeze([
+  "embeddingDimensions",
+  "embeddingInputFormatId",
+  "embeddingSpaceId",
+  "retrievalChunkTargetTokens",
+  "retrievalWindowPolicy",
+]);
+const embeddingSpacePrimaryFieldKeys = Object.freeze([
+  "embeddingDimensions",
+  "embeddingInputFormatId",
+  "retrievalWindowPolicy",
+]);
 const sourceFilters = Object.freeze([
   "all",
   "database",
@@ -104,17 +117,19 @@ const embeddingAdapters = Object.freeze([
 const rerankingAdapters = Object.freeze(["top-n-rerank"]);
 const speechToTextAdapters = Object.freeze([
   "omlx-transcription",
+  "openrouter-transcription",
   "openai-transcription",
 ]);
 const textToSpeechAdapters = Object.freeze([
   "groq-speech",
   "omlx-speech",
+  "openrouter-speech",
   "openai-speech",
 ]);
 const capabilityLabels = Object.freeze({
   answer: "Ask",
   chat: "Chat",
-  embedding: "Embedding model",
+  embedding: "Embedding space",
   queryExpansion: "Query Expansion",
   reranking: "Search ranking",
   speechToText: "Speech input",
@@ -141,10 +156,15 @@ function readApplicationSettings(value) {
     response.embeddingInputFormats,
   );
   const fields = readRuntimeSettingFields(response.fields);
+  const embeddingSpace = readEmbeddingSpaceStatus(
+    response.embeddingSpace,
+    fields,
+  );
   const providers = readProviderSettings(response.providers);
   const startupSettings = readStartupSettings(response.startupSettings);
   const warnings = readConfigurationWarnings(response.warnings);
   return {
+    embeddingSpace,
     embeddingInputFormats,
     fields,
     providers,
@@ -155,6 +175,41 @@ function readApplicationSettings(value) {
     ),
     version: readNonNegativeInteger(response.version, "settings version"),
     warnings,
+  };
+}
+
+function readEmbeddingSpaceStatus(value, fields) {
+  const status = readPlainObject(value, "embedding-space status");
+  const activeDocumentCount = readNonNegativeInteger(
+    status.activeDocumentCount,
+    "active embedding-space document count",
+  );
+  const dimensions = readPositiveInteger(
+    status.dimensions,
+    "embedding-space dimensions",
+  );
+  const totalDocumentCount = readNonNegativeInteger(
+    status.totalDocumentCount,
+    "indexed document count",
+  );
+  const dimensionField = fields.find((field) => {
+    return field.key === "embeddingDimensions";
+  });
+  if (
+    dimensionField === undefined
+    || dimensionField.input !== "select"
+    || !dimensionField.options.some((option) => option.value === dimensions)
+  ) {
+    throw new Error("The embedding-space dimensions response is invalid.");
+  }
+  if (activeDocumentCount > totalDocumentCount) {
+    throw new Error("The embedding-space document counts are invalid.");
+  }
+  return {
+    activeDocumentCount,
+    dimensions,
+    id: readNonEmptyString(status.id, "embedding-space ID"),
+    totalDocumentCount,
   };
 }
 
@@ -969,6 +1024,37 @@ function buildFeatureConfiguration(providers, capability) {
     };
   }
   return { capability, modelOverride, providerId };
+}
+
+function readEffectiveFeatureModel(providers, capability) {
+  const override = providers.featureOverrides[capability].modelOverride;
+  if (override !== null) {
+    return override;
+  }
+  const providerId = providers.routing[capability];
+  if (providerId === null) {
+    return null;
+  }
+  const connection = providers.connections.find((candidate) => {
+    return candidate.providerId === providerId;
+  });
+  return connection?.configuration[capability].model ?? null;
+}
+
+function readEffectiveEmbeddingContextCapacity(providers) {
+  const override = providers.featureOverrides.embedding
+    .contextCapacityTokensOverride;
+  if (override !== null) {
+    return override;
+  }
+  const providerId = providers.routing.embedding;
+  if (providerId === null) {
+    return null;
+  }
+  const connection = providers.connections.find((candidate) => {
+    return candidate.providerId === providerId;
+  });
+  return connection?.configuration.embedding.contextCapacityTokens ?? null;
 }
 
 function cloneProviderDrafts(providerDrafts, alpine) {
@@ -1820,6 +1906,79 @@ export function registerPage(alpine) {
       }) ?? null;
     },
 
+    activeEmbeddingInputFormat() {
+      if (this.settings === null) {
+        return null;
+      }
+      return this.settings.embeddingInputFormats.find((format) => {
+        return format.selected;
+      }) ?? null;
+    },
+
+    embeddingSpaceChangePending() {
+      if (this.settings === null || this.providerDrafts === null) {
+        return false;
+      }
+      for (const key of embeddingSpaceIdentityFieldKeys) {
+        if (Object.hasOwn(this.pending, key)) {
+          return true;
+        }
+      }
+      const currentModel = readEffectiveFeatureModel(
+        this.settings.providers,
+        "embedding",
+      );
+      const draftModel = readEffectiveFeatureModel(
+        this.providerDrafts,
+        "embedding",
+      );
+      if (currentModel !== draftModel) {
+        return true;
+      }
+      const currentCapacity = readEffectiveEmbeddingContextCapacity(
+        this.settings.providers,
+      );
+      const draftCapacity = readEffectiveEmbeddingContextCapacity(
+        this.providerDrafts,
+      );
+      return currentCapacity !== draftCapacity;
+    },
+
+    embeddingSpaceImpactMessage() {
+      const total = this.settings?.embeddingSpace.totalDocumentCount ?? 0;
+      if (total === 0) {
+        return "Saving changes the active embedding space. New documents will use the new settings.";
+      }
+      const noun = total === 1 ? "document" : "documents";
+      return `Saving changes the active embedding space. Up to ${total} indexed ${noun} may require reindexing before they are searchable in the new space.`;
+    },
+
+    embeddingSpaceCoverageLabel() {
+      const status = this.settings?.embeddingSpace;
+      if (status === undefined) {
+        return "Unavailable";
+      }
+      return `${status.activeDocumentCount} of ${status.totalDocumentCount}`;
+    },
+
+    embeddingSpaceNeedsReindex() {
+      const status = this.settings?.embeddingSpace;
+      if (status === undefined) {
+        return false;
+      }
+      return status.activeDocumentCount < status.totalDocumentCount;
+    },
+
+    embeddingSpaceReindexMessage() {
+      const status = this.settings?.embeddingSpace;
+      if (status === undefined) {
+        return "";
+      }
+      const count = status.totalDocumentCount - status.activeDocumentCount;
+      const noun = count === 1 ? "document needs" : "documents need";
+      return `${count} indexed ${noun} reindexing for the active embedding space.`;
+    },
+
     selectEmbeddingInputFormatById(id) {
       const field = this.featureFieldsFor("embedding").find((candidate) => {
         return candidate.key === "embeddingInputFormatId";
@@ -2199,7 +2358,7 @@ export function registerPage(alpine) {
       const descriptions = {
         answer: "Choose how CiteLoom answers questions in Ask.",
         chat: "Choose how CiteLoom responds in document chats.",
-        embedding: "Choose the model CiteLoom uses to make documents searchable.",
+        embedding: "Configure the application-wide vector space used to index and search documents.",
         queryExpansion: "Choose whether CiteLoom creates alternative searches and how their results influence ordering.",
         reranking: "Choose how CiteLoom orders semantic search results.",
         speechToText: "Choose how CiteLoom turns recorded questions into text.",
@@ -2253,6 +2412,35 @@ export function registerPage(alpine) {
 
     featureFieldsFor(capability) {
       return this.featureFieldsByCapability[capability] ?? [];
+    },
+
+    featurePrimaryFields(capability) {
+      const fields = this.featureFieldsFor(capability);
+      if (capability !== "embedding") {
+        return fields.slice(0, 1);
+      }
+      const primaryFields = [];
+      for (const key of embeddingSpacePrimaryFieldKeys) {
+        const field = fields.find((candidate) => candidate.key === key);
+        if (field !== undefined) {
+          primaryFields.push(field);
+        }
+      }
+      return primaryFields;
+    },
+
+    featureAdvancedFields(capability) {
+      const fields = this.featureFieldsFor(capability);
+      if (capability !== "embedding") {
+        return fields.slice(1);
+      }
+      const advancedFields = [];
+      for (const field of fields) {
+        if (!embeddingSpacePrimaryFieldKeys.includes(field.key)) {
+          advancedFields.push(field);
+        }
+      }
+      return advancedFields;
     },
 
     featureProviderId(capability) {
@@ -2782,11 +2970,13 @@ export function registerPage(alpine) {
       if (capability === "speechToText") {
         return [
           { label: "OpenAI transcription", value: "openai-transcription" },
+          { label: "OpenRouter transcription", value: "openrouter-transcription" },
           { label: "oMLX transcription", value: "omlx-transcription" },
         ];
       }
       return [
         { label: "OpenAI speech", value: "openai-speech" },
+        { label: "OpenRouter speech", value: "openrouter-speech" },
         { label: "Groq speech", value: "groq-speech" },
         { label: "oMLX speech", value: "omlx-speech" },
       ];

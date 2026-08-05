@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { and, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { MockRerankingModelV4 } from "ai/test";
 
 import { IngestionArtifactStore } from "../src/ingestion/artifact-store.js";
 import { reconcileIngestionControlExecutions } from "../src/ingestion/control.js";
@@ -118,6 +119,8 @@ import {
   retrievalChunks384,
   retrievalChunks768,
   retrievalChunks1024,
+  retrievalChunks1536,
+  retrievalChunks2048,
   retrievalLexicalChunks,
   retrievalDescriptionArtifacts,
   retrievalTocArtifacts,
@@ -138,8 +141,9 @@ import {
 import type {
   RetrievalDescriptionRecord,
 } from "../src/domain/retrieval-descriptions.js";
-import type {
-  StoredApplicationSettings,
+import {
+  parseStoredApplicationSettings,
+  type StoredApplicationSettings,
 } from "../src/providers/settings-persistence.js";
 import type {
   ImageElement,
@@ -147,6 +151,7 @@ import type {
   TableElement,
 } from "../src/domain/source-elements.js";
 import { InferenceCoordinator } from "../src/inference/coordinator.js";
+import { InferenceMetricsReporter } from "../src/inference/metrics.js";
 import { IngestionProcessor } from "../src/ingestion/processor.js";
 import {
   beginEmbeddingGeneration,
@@ -199,6 +204,7 @@ import {
   buildTableStructure,
 } from "./source-element-fixture.js";
 import { createDeferred } from "./deferred-fixture.js";
+import { TaskLimiter } from "../src/shared/concurrency.js";
 
 const databaseUrl = process.env.CITELOOM_TEST_DATABASE_URL
   ?? "postgresql://citeloom:citeloom@127.0.0.1:5433/citeloom_test";
@@ -305,6 +311,20 @@ const space1024: EmbeddingSpaceConfig = {
   model: "test-embedding",
   retrievalWindow: testRetrievalWindow,
 };
+const space1536: EmbeddingSpaceConfig = {
+  dimensions: 1536,
+  id: `test-embedding:plain:1536:${testRetrievalWindowIdentity}:representations-v2`,
+  inputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+  model: "test-embedding",
+  retrievalWindow: testRetrievalWindow,
+};
+const space2048: EmbeddingSpaceConfig = {
+  dimensions: 2048,
+  id: `test-embedding:plain:2048:${testRetrievalWindowIdentity}:representations-v2`,
+  inputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+  model: "test-embedding",
+  retrievalWindow: testRetrievalWindow,
+};
 let session: DatabaseSession;
 let sourceContentConfig: SourceContentConfig;
 
@@ -343,6 +363,8 @@ beforeEach(async () => {
   await session.database.delete(retrievalChunks384);
   await session.database.delete(retrievalChunks768);
   await session.database.delete(retrievalChunks1024);
+  await session.database.delete(retrievalChunks1536);
+  await session.database.delete(retrievalChunks2048);
   await session.database.delete(ingestionEmbeddingManifests);
   await session.database.delete(retrievalDescriptionArtifacts);
   await session.database.delete(retrievalTocArtifacts);
@@ -2786,6 +2808,8 @@ describe("PostgreSQL embedding-space retention", () => {
         indexedDocuments: 1,
         lexicalChunks: 1,
         vectorChunks1024: 0,
+        vectorChunks1536: 0,
+        vectorChunks2048: 0,
         vectorChunks384: 1,
         vectorChunks768: 0,
       },
@@ -5521,7 +5545,13 @@ describe("pgvector retrieval", () => {
       });
     }
 
-    for (const baseSpace of [space384, space768, space1024]) {
+    for (const baseSpace of [
+      space384,
+      space768,
+      space1024,
+      space1536,
+      space2048,
+    ]) {
       const space: EmbeddingSpaceConfig = {
         ...baseSpace,
         id: `${baseSpace.id}:structured-${policy.fingerprint.slice(0, 16)}`,
@@ -5588,7 +5618,7 @@ describe("pgvector retrieval", () => {
             eq(retrievalChunks768.embeddingSpaceId, space.id),
             ne(retrievalChunks768.representationType, "exact-window"),
           ));
-      } else {
+      } else if (space.dimensions === 1024) {
         vectorRows = await session.database
           .select({
             evidenceContent: retrievalChunks1024.evidenceContent,
@@ -5607,6 +5637,46 @@ describe("pgvector retrieval", () => {
           .where(and(
             eq(retrievalChunks1024.embeddingSpaceId, space.id),
             ne(retrievalChunks1024.representationType, "exact-window"),
+          ));
+      } else if (space.dimensions === 1536) {
+        vectorRows = await session.database
+          .select({
+            evidenceContent: retrievalChunks1536.evidenceContent,
+            id: retrievalChunks1536.id,
+            nextRetrievalId: retrievalChunks1536.nextRetrievalId,
+            previousRetrievalId: retrievalChunks1536.previousRetrievalId,
+          })
+          .from(retrievalChunks1536)
+          .where(and(
+            eq(retrievalChunks1536.embeddingSpaceId, space.id),
+            eq(retrievalChunks1536.representationType, "exact-window"),
+          ));
+        descriptionVectorRows = await session.database
+          .select({ id: retrievalChunks1536.id })
+          .from(retrievalChunks1536)
+          .where(and(
+            eq(retrievalChunks1536.embeddingSpaceId, space.id),
+            ne(retrievalChunks1536.representationType, "exact-window"),
+          ));
+      } else {
+        vectorRows = await session.database
+          .select({
+            evidenceContent: retrievalChunks2048.evidenceContent,
+            id: retrievalChunks2048.id,
+            nextRetrievalId: retrievalChunks2048.nextRetrievalId,
+            previousRetrievalId: retrievalChunks2048.previousRetrievalId,
+          })
+          .from(retrievalChunks2048)
+          .where(and(
+            eq(retrievalChunks2048.embeddingSpaceId, space.id),
+            eq(retrievalChunks2048.representationType, "exact-window"),
+          ));
+        descriptionVectorRows = await session.database
+          .select({ id: retrievalChunks2048.id })
+          .from(retrievalChunks2048)
+          .where(and(
+            eq(retrievalChunks2048.embeddingSpaceId, space.id),
+            ne(retrievalChunks2048.representationType, "exact-window"),
           ));
       }
       const lexicalRows = await session.database
@@ -5724,7 +5794,7 @@ describe("pgvector retrieval", () => {
       });
     }
 
-    const spaces = [space384, space768, space1024];
+    const spaces = [space384, space768, space1024, space1536, space2048];
     const observedRankings: Array<{
       dense: string[];
       dimensions: number;
@@ -5771,8 +5841,12 @@ describe("pgvector retrieval", () => {
         await session.database.insert(retrievalChunks384).values(vectorRows);
       } else if (space.dimensions === 768) {
         await session.database.insert(retrievalChunks768).values(vectorRows);
-      } else {
+      } else if (space.dimensions === 1024) {
         await session.database.insert(retrievalChunks1024).values(vectorRows);
+      } else if (space.dimensions === 1536) {
+        await session.database.insert(retrievalChunks1536).values(vectorRows);
+      } else {
+        await session.database.insert(retrievalChunks2048).values(vectorRows);
       }
       const lexicalRows = vectorRows.map((row) => ({
         documentId: row.documentId,
@@ -6345,6 +6419,73 @@ describe("pgvector retrieval", () => {
     expect(hybridResults[0]?.element.documentId).toBe(secondDocumentId);
     expect(hybridResults[0]?.evidenceContent).toBe(secondElement.content);
 
+    const rerankerConfig = readEqualWeightTestConfig({
+      providerOptions: { rerankEnabled: true },
+    }).retrieval.reranker;
+    if (rerankerConfig === null) {
+      throw new Error("Missing test reranker configuration.");
+    }
+    let rerankingCallCount = 0;
+    const rerankingModel = new MockRerankingModelV4({
+      doRerank: async (options) => {
+        rerankingCallCount += 1;
+        if (options.documents.type !== "text") {
+          throw new Error("Expected text reranker documents.");
+        }
+        return {
+          ranking: options.documents.values.map((_document, index) => ({
+            index,
+            relevanceScore: 1 - (index / 10),
+          })),
+        };
+      },
+    });
+    const resolvedReranker = {
+      metrics: new InferenceMetricsReporter({ enabled: false }),
+      model: rerankingModel,
+      timeoutMs: 1_000,
+    };
+    const rerankingScheduler = new TaskLimiter(1);
+    const rerankingScenarios = [
+      { embedding: null, mode: "bm25" as const },
+      { embedding: buildEmbedding(768, 1), mode: "dense" as const },
+      { embedding: buildEmbedding(768, 1), mode: "hybrid" as const },
+    ];
+    for (const scenario of rerankingScenarios) {
+      const reranked = await retrieveRelevantElements(
+        session.database,
+        session.query,
+        documentStore,
+        space768,
+        "zephyrcalibration",
+        [{
+          embedding: scenario.embedding,
+          text: "zephyrcalibration",
+        }],
+        {
+          answerTemperature: 0,
+          candidateK: 5,
+          chatTemperature: 0,
+          generationSeedMode: "stable",
+          fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
+          mode: scenario.mode,
+          queryExpansions: 0,
+          queryExpansionTemperature: 0,
+          reranker: rerankerConfig,
+          rrfK: 60,
+          topK: 5,
+        },
+        [
+          { documentId: firstDocumentId, sourceFile: firstElement.sourceFile },
+          { documentId: secondDocumentId, sourceFile: secondElement.sourceFile },
+        ],
+        resolvedReranker,
+        rerankingScheduler,
+      );
+      expect(reranked.length).toBeGreaterThan(0);
+    }
+    expect(rerankingCallCount).toBe(3);
+
     await indexTestElements(
       session.database,
       space768,
@@ -6760,6 +6901,38 @@ describe("PostgreSQL application settings", () => {
     expect(await session.database.select().from(applicationSettings)).toEqual([]);
   });
 
+  it("adds the default search method to an existing settings document", async () => {
+    await session.database
+      .update(applicationSettings)
+      .set({
+        defaults: sql`${applicationSettings.defaults} #- '{runtime,searchMethod}'`,
+        settings: sql`${applicationSettings.settings} #- '{runtime,searchMethod}'`,
+      })
+      .where(eq(applicationSettings.id, "runtime"));
+
+    await applyDatabaseBootstrap(session.database, {
+      CITELOOM_ADMIN_PASSWORD: "integration test administrator password",
+      CITELOOM_ADMIN_USERNAME: "IntegrationAdmin",
+      CITELOOM_SOURCE_CONTENT_DIRECTORY: sourceContentConfig.directory,
+    });
+
+    const rows = await session.database
+      .select({
+        defaults: applicationSettings.defaults,
+        settings: applicationSettings.settings,
+      })
+      .from(applicationSettings)
+      .where(eq(applicationSettings.id, "runtime"));
+    const row = rows[0];
+    if (row === undefined) {
+      throw new Error("Missing bootstrapped application settings.");
+    }
+    const defaults = parseStoredApplicationSettings(row.defaults);
+    const settings = parseStoredApplicationSettings(row.settings);
+    expect(defaults.runtime.searchMethod).toBe("hybrid");
+    expect(settings.runtime.searchMethod).toBe("hybrid");
+  });
+
   it("does not persist an unchanged database-owned settings document", async () => {
     const config = buildTestConfig();
     const doclingTopology = readDoclingServiceTopologyFromConfig(config);
@@ -6806,6 +6979,29 @@ describe("PostgreSQL application settings", () => {
       overrides: {
         doclingDefaultServiceCapacity: 2,
       },
+      version: 2,
+    });
+  });
+
+  it("persists the application search method independently from providers", async () => {
+    const config = buildTestConfig();
+    const doclingTopology = readDoclingServiceTopologyFromConfig(config);
+    const repository = new ApplicationSettingsRepository(session.database);
+
+    const updated = await repository.update(
+      config.database,
+      doclingTopology,
+      1,
+      [{ key: "searchMethod", value: "bm25" }],
+    );
+
+    expect(updated.runtimeSettings.searchMethod).toBe("bm25");
+    expect(updated.config.retrieval.mode).toBe("bm25");
+    await expect(repository.read(
+      config.database,
+      doclingTopology,
+    )).resolves.toMatchObject({
+      overrides: { searchMethod: "bm25" },
       version: 2,
     });
   });

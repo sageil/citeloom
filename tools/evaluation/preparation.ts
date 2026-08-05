@@ -4,7 +4,7 @@ import { inArray } from "drizzle-orm";
 
 import { createRuntimeTaskScheduler } from "../../src/app/runtime.js";
 import type { TaskScheduler } from "../../src/shared/concurrency.js";
-import type { AppConfig, RetrievalMode } from "../../src/config/index.js";
+import type { AppConfig } from "../../src/config/index.js";
 import { DocumentCatalog } from "../../src/documents/catalog/index.js";
 import {
   HNSW_QUERY_SETTINGS,
@@ -78,13 +78,12 @@ import {
   type AnswerThresholdPreparation,
   type AnswerThresholdPreparedCase,
 } from "./answer-threshold.js";
+import {
+  EVALUATION_RETRIEVAL_MODES,
+  type EvaluationRetrievalMode,
+} from "./retrieval-mode.js";
 
-const comparativeRetrievalModes: readonly RetrievalMode[] = [
-  "bm25",
-  "dense",
-  "hybrid",
-  "hybrid-reranked",
-];
+const comparativeRetrievalModes = EVALUATION_RETRIEVAL_MODES;
 const passiveAbortSignal = new AbortController().signal;
 
 export interface EvaluationPreparationContext {
@@ -413,7 +412,7 @@ function assertEvaluationDatasetPathClassification(
 export async function prepareEvaluationCasesWithExecutor(
   dataset: BenchmarkEvaluationDataset,
   provenance: EvaluationProvenance,
-  availableModes: RetrievalMode[],
+  availableModes: EvaluationRetrievalMode[],
   config: AppConfig,
   executor: EvaluationPreparationExecutor,
   reportProgress: (message: string) => void,
@@ -751,7 +750,7 @@ async function rerankEvaluationCandidates(
       provider: reranker.model.provider,
     },
     name: "reranking",
-    retrievalMode: "hybrid-reranked",
+    retrievalMode: "hybrid",
   });
   try {
     const reranked = await runtime.rerankingScheduler.run(
@@ -821,7 +820,7 @@ async function hydrateEvaluationCandidates(
   const stage = runTelemetry.startStage({
     model: null,
     name: "hydration",
-    retrievalMode: "hybrid-reranked",
+    retrievalMode: "hybrid",
   });
   try {
     const retrieved = await loadRetrievalCandidates(
@@ -846,7 +845,7 @@ async function hydrateEvaluationCandidates(
 async function prepareEvaluationCase(
   evaluationCase: BenchmarkEvaluationCase,
   generationSeed: number,
-  availableModes: RetrievalMode[],
+  availableModes: EvaluationRetrievalMode[],
   config: AppConfig,
   executor: EvaluationPreparationExecutor,
   reportProgress: (message: string) => void,
@@ -1218,11 +1217,11 @@ function compareResolvedQueryTargets(
 }
 
 function readAvailableModes(config: AppConfig): {
-  available: RetrievalMode[];
-  skipped: RetrievalMode[];
+  available: EvaluationRetrievalMode[];
+  skipped: EvaluationRetrievalMode[];
 } {
-  const available: RetrievalMode[] = [];
-  const skipped: RetrievalMode[] = [];
+  const available: EvaluationRetrievalMode[] = [];
+  const skipped: EvaluationRetrievalMode[] = [];
   for (const mode of comparativeRetrievalModes) {
     if (mode === "hybrid-reranked" && config.retrieval.reranker === null) {
       skipped.push(mode);

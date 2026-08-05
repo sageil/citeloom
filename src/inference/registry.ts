@@ -33,6 +33,7 @@ import {
   formatDocumentEmbeddingText,
   formatQueryEmbeddingText,
 } from "../embedding/input-format.js";
+import { readEmbeddingVector } from "../embedding/dimensions.js";
 import { HttpHhemClient, type HhemClient } from "../verification/hhem-client.js";
 import { createHttpRerankingModel, type ResolvedReranker } from "../retrieval/ranking/reranker.js";
 import {
@@ -228,6 +229,7 @@ export function createInferenceModelRegistry(
     middleware: createEmbeddingInputMiddleware(
       config.inference.embedding,
       "document",
+      config.embeddingSpace.dimensions,
     ),
     model: baseEmbeddingModel,
     modelId: `${config.inference.embedding.model}:document`,
@@ -236,6 +238,7 @@ export function createInferenceModelRegistry(
     middleware: createEmbeddingInputMiddleware(
       config.inference.embedding,
       "query",
+      config.embeddingSpace.dimensions,
     ),
     model: baseEmbeddingModel,
     modelId: `${config.inference.embedding.model}:query`,
@@ -456,8 +459,10 @@ function buildLanguageProviderSettings(
   config: LanguageInferenceConfig,
   providerName: string,
   supportsStructuredOutputs: boolean,
+  workload: OllamaAdaptiveWorkload,
 ): OpenAICompatibleProviderSettings {
   const usesDeepSeekContract = config.adapter === "deepseek-language";
+  const usesOpenRouterContract = config.providerId === "openrouter";
   const settings = buildProviderSettings(
     config,
     providerName,
@@ -465,6 +470,11 @@ function buildLanguageProviderSettings(
   );
   if (usesDeepSeekContract) {
     settings.transformRequestBody = transformDeepSeekRequestBody;
+  }
+  if (usesOpenRouterContract) {
+    settings.transformRequestBody = (requestBody) => {
+      return transformOpenRouterRequestBody(requestBody, workload);
+    };
   }
   return settings;
 }
@@ -535,6 +545,122 @@ function readDeepSeekObject(value: unknown): DeepSeekJsonSchema | null {
   return value as DeepSeekJsonSchema;
 }
 
+interface OpenRouterRequestObject {
+  [key: string]: unknown;
+}
+
+function transformOpenRouterRequestBody(
+  requestBody: OpenAICompatibleRequestBody,
+  workload: OllamaAdaptiveWorkload,
+): OpenAICompatibleRequestBody {
+  const transformedBody = { ...requestBody };
+  translateOpenRouterReasoning(transformedBody);
+  if (transformedBody.response_format === undefined) {
+    return transformedBody;
+  }
+  if (workload === "answer" || workload === "chat") {
+    translateOpenRouterAnswerOutput(transformedBody);
+    return transformedBody;
+  }
+  requireOpenRouterRequestParameters(transformedBody);
+  return transformedBody;
+}
+
+function translateOpenRouterReasoning(
+  requestBody: OpenAICompatibleRequestBody,
+): void {
+  const reasoningEffort = requestBody.reasoning_effort;
+  if (reasoningEffort === undefined) {
+    return;
+  }
+  if (typeof reasoningEffort !== "string" || reasoningEffort.trim() === "") {
+    throw new Error(
+      "OpenRouter reasoning_effort must be a non-empty string when provided.",
+    );
+  }
+  const reasoning = readOpenRouterRequestObject(
+    requestBody.reasoning,
+    "reasoning",
+  );
+  reasoning.effort = reasoningEffort;
+  requestBody.reasoning = reasoning;
+  delete requestBody.reasoning_effort;
+}
+
+function translateOpenRouterAnswerOutput(
+  requestBody: OpenAICompatibleRequestBody,
+): void {
+  const jsonSchema = readOpenRouterJsonSchema(requestBody.response_format);
+  if (jsonSchema === null) {
+    throw new Error(
+      "OpenRouter Answer and Chat output requires a JSON Schema response format.",
+    );
+  }
+  if (!Array.isArray(requestBody.messages)) {
+    throw new Error(
+      "OpenRouter Answer and Chat output requires an OpenAI-compatible messages array.",
+    );
+  }
+  requestBody.messages = [
+    {
+      content: `Return only one valid JSON object that matches this JSON Schema. Do not use Markdown fences or add text outside the JSON object.\n${
+        JSON.stringify(jsonSchema)
+      }`,
+      role: "system",
+    },
+    ...requestBody.messages,
+  ];
+  delete requestBody.response_format;
+}
+
+function requireOpenRouterRequestParameters(
+  requestBody: OpenAICompatibleRequestBody,
+): void {
+  const provider = readOpenRouterRequestObject(
+    requestBody.provider,
+    "provider",
+  );
+  provider.require_parameters = true;
+  requestBody.provider = provider;
+}
+
+function readOpenRouterJsonSchema(value: unknown): OpenRouterRequestObject | null {
+  const responseFormat = readOpenRouterRequestObjectOrNull(value);
+  if (responseFormat === null || responseFormat.type !== "json_schema") {
+    return null;
+  }
+  const jsonSchema = readOpenRouterRequestObjectOrNull(
+    responseFormat.json_schema,
+  );
+  if (jsonSchema === null) {
+    return null;
+  }
+  return readOpenRouterRequestObjectOrNull(jsonSchema.schema);
+}
+
+function readOpenRouterRequestObject(
+  value: unknown,
+  field: string,
+): OpenRouterRequestObject {
+  if (value === undefined) {
+    return {};
+  }
+  const object = readOpenRouterRequestObjectOrNull(value);
+  if (object === null) {
+    throw new Error(`OpenRouter request field ${field} must be an object.`);
+  }
+  return { ...object };
+}
+
+function readOpenRouterRequestObjectOrNull(
+  value: unknown,
+): OpenRouterRequestObject | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  return value as OpenRouterRequestObject;
+}
+
 function createLanguageModel(
   config: LanguageInferenceConfig,
   providerName: string,
@@ -587,6 +713,7 @@ function createLanguageModel(
       config,
       providerName,
       supportsStructuredOutputs,
+      workload,
     ),
   );
   return createFixedLanguageModelRuntime(config, provider(config.model));
@@ -668,6 +795,7 @@ function buildLanguageModelSettings(
 function createEmbeddingInputMiddleware(
   config: EmbeddingInferenceConfig,
   purpose: "document" | "query",
+  outputDimensions: AppConfig["embeddingSpace"]["dimensions"],
 ): EmbeddingModelMiddleware {
   return {
     specificationVersion: "v4",
@@ -688,6 +816,18 @@ function createEmbeddingInputMiddleware(
         };
       }
       return { ...params, values };
+    },
+    wrapEmbed: async ({ doEmbed }) => {
+      const result = await doEmbed();
+      const embeddings: number[][] = [];
+      for (let index = 0; index < result.embeddings.length; index += 1) {
+        embeddings.push(readEmbeddingVector(
+          result.embeddings[index],
+          outputDimensions,
+          `${config.runtimeName} embedding response ${index + 1}`,
+        ));
+      }
+      return { ...result, embeddings };
     },
   };
 }

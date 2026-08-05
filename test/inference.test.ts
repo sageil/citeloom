@@ -86,6 +86,72 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function buildTestEmbedding(
+  dimensions: number,
+  firstValue: number,
+): number[] {
+  const embedding = Array.from({ length: dimensions }, () => 0);
+  embedding[0] = firstValue;
+  return embedding;
+}
+
+function createOpenAIChatResponse(value: unknown): Response {
+  const content = typeof value === "string" ? value : JSON.stringify(value);
+  return Response.json({
+    choices: [{
+      finish_reason: "stop",
+      index: 0,
+      message: { content, role: "assistant" },
+    }],
+    created: 1_784_976_000,
+    id: "openrouter-completion",
+    model: "openrouter/free",
+    object: "chat.completion",
+    usage: {
+      completion_tokens: 5,
+      prompt_tokens: 10,
+      total_tokens: 15,
+    },
+  });
+}
+
+function createOpenAIChatStreamResponse(contentParts: readonly string[]): Response {
+  const events: string[] = [];
+  for (const content of contentParts) {
+    events.push(`data: ${JSON.stringify({
+      choices: [{
+        delta: { content, role: "assistant" },
+        finish_reason: null,
+        index: 0,
+      }],
+      created: 1_784_976_000,
+      id: "openrouter-stream",
+      model: "openrouter/free",
+      object: "chat.completion.chunk",
+    })}\n\n`);
+  }
+  events.push(`data: ${JSON.stringify({
+    choices: [{
+      delta: {},
+      finish_reason: "stop",
+      index: 0,
+    }],
+    created: 1_784_976_000,
+    id: "openrouter-stream",
+    model: "openrouter/free",
+    object: "chat.completion.chunk",
+    usage: {
+      completion_tokens: 5,
+      prompt_tokens: 10,
+      total_tokens: 15,
+    },
+  })}\n\n`);
+  events.push("data: [DONE]\n\n");
+  return new Response(events.join(""), {
+    headers: { "content-type": "text/event-stream" },
+  });
+}
+
 describe("document embedding worksets", () => {
   it("isolates provider inputs and preserves deterministic output order", async () => {
     const values = Array.from(
@@ -426,6 +492,7 @@ describe("createInferenceModelRegistry", () => {
   });
 
   it("uses Cohere native chat and embedding request contracts", async () => {
+    const providerEmbedding = buildTestEmbedding(768, 0.1);
     const requests: Array<{ body: unknown; headers: Headers; url: string }> = [];
     const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
@@ -458,7 +525,7 @@ describe("createInferenceModelRegistry", () => {
       }
       if (url === "https://api.cohere.com/v2/embed") {
         return Promise.resolve(Response.json({
-          embeddings: { float: [[0.1, 0.2]] },
+          embeddings: { float: [providerEmbedding] },
           meta: { billed_units: { input_tokens: 1 } },
         }));
       }
@@ -510,7 +577,7 @@ describe("createInferenceModelRegistry", () => {
       },
       findings: [],
     });
-    expect(embedding.embeddings).toEqual([[0.1, 0.2]]);
+    expect(embedding.embeddings).toEqual([providerEmbedding]);
     expect(requests).toHaveLength(2);
     expect(requests[0]).toMatchObject({
       body: {
@@ -724,6 +791,317 @@ describe("createInferenceModelRegistry", () => {
     expect(requestBodies[0]).not.toHaveProperty("seed");
   });
 
+  it("uses prompted JSON for OpenRouter Answer and Chat streaming", async () => {
+    const requestBodies: unknown[] = [];
+    const responseValue = {
+      answer: {
+        content: "The source material does not identify the requested information.",
+        evidenceRefs: [],
+      },
+      findings: [],
+    };
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe(
+        "https://openrouter.ai/api/v1/chat/completions",
+      );
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer openrouter-secret",
+      );
+      requestBodies.push(JSON.parse(String(init?.body)));
+      return Promise.resolve(createOpenAIChatResponse(responseValue));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const runtimeSettings = createTestRuntimeSettings();
+    const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
+    const providers = createTestProviderSettings();
+    providers.connections.openrouter.apiToken = "openrouter-secret";
+    providers.connections.openrouter.answer.model = "openrouter/free";
+    providers.routing.answer = "openrouter";
+    providers.routing.chat = "openrouter";
+    const config = buildAppConfig(
+      startup.database,
+      runtimeSettings,
+      1,
+      providers,
+      startup.doclingServices,
+      startup.sourceContent,
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+    );
+    const models = createInferenceModelRegistry(config);
+    const chatModel = models.chat;
+    if (chatModel === undefined) {
+      throw new Error("Expected a configured Chat model.");
+    }
+    const output = Output.object({
+      schema: jsonSchema(z.toJSONSchema(
+        createAnswerModelResponseSchema(createEvidenceReferences(1)),
+      )),
+    });
+
+    const answer = await generateText({
+      maxRetries: 0,
+      model: models.answer,
+      output,
+      prompt: "Return an uncited response.",
+    });
+    const chat = await generateText({
+      maxRetries: 0,
+      model: chatModel,
+      output,
+      prompt: "Return an uncited response.",
+    });
+
+    expect(answer.output).toEqual(responseValue);
+    expect(chat.output).toEqual(responseValue);
+    expect(requestBodies).toHaveLength(2);
+    for (const requestBody of requestBodies) {
+      expect(requestBody).toMatchObject({
+        messages: expect.arrayContaining([{
+          content: expect.stringContaining("JSON Schema"),
+          role: "system",
+        }]),
+        model: "openrouter/free",
+        reasoning: { effort: "none" },
+      });
+      expect(requestBody).not.toHaveProperty("reasoning_effort");
+      expect(requestBody).not.toHaveProperty("response_format");
+    }
+  });
+
+  it("requires OpenRouter parameter support for strict structured workloads", async () => {
+    const requestBodies: unknown[] = [];
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe(
+        "https://openrouter.ai/api/v1/chat/completions",
+      );
+      requestBodies.push(JSON.parse(String(init?.body)));
+      const responseValue = requestBodies.length === 1
+        ? { summary: "Summary" }
+        : { queries: ["expanded search"] };
+      return Promise.resolve(createOpenAIChatResponse(responseValue));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const runtimeSettings = createTestRuntimeSettings();
+    const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
+    const providers = createTestProviderSettings();
+    providers.connections.openrouter.apiToken = "openrouter-secret";
+    providers.connections.openrouter.queryExpansion.model = "openrouter/free";
+    providers.connections.openrouter.summarization.model = "openrouter/free";
+    providers.routing.queryExpansion = "openrouter";
+    providers.routing.summarization = "openrouter";
+    const config = buildAppConfig(
+      startup.database,
+      runtimeSettings,
+      1,
+      providers,
+      startup.doclingServices,
+      startup.sourceContent,
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+    );
+    const models = createInferenceModelRegistry(config);
+
+    const result = await generateText({
+      maxRetries: 0,
+      model: models.summary,
+      output: Output.object({
+        schema: jsonSchema(z.toJSONSchema(z.object({ summary: z.string() }).strict())),
+      }),
+      prompt: "Summarize this.",
+      providerOptions: {
+        citeloomInference: {
+          provider: { sort: "throughput" },
+          reasoningEffort: "none",
+        },
+      },
+    });
+    const expansions = await expandRetrievalQuery(
+      models,
+      "What changed?",
+      1,
+      new TaskLimiter(1),
+      new AbortController().signal,
+      { seed: 42, temperature: 0 },
+    );
+
+    expect(result.output).toEqual({ summary: "Summary" });
+    expect(expansions).toEqual(["expanded search"]);
+    expect(requestBodies).toHaveLength(2);
+    expect(requestBodies[0]).toMatchObject({
+      provider: {
+        require_parameters: true,
+        sort: "throughput",
+      },
+      reasoning: { effort: "none" },
+      response_format: {
+        type: "json_schema",
+      },
+    });
+    expect(requestBodies[0]).not.toHaveProperty("reasoning_effort");
+    expect(requestBodies[1]).toMatchObject({
+      provider: { require_parameters: true },
+      reasoning: { effort: "none" },
+      response_format: { type: "json_schema" },
+    });
+    expect(requestBodies[1]).not.toHaveProperty("reasoning_effort");
+  });
+
+  it("maps every Thinking mode to OpenRouter's unified reasoning contract", async () => {
+    const cases = [
+      { expectedEffort: undefined, mode: "auto" as const },
+      { expectedEffort: "none", mode: "disabled" as const },
+      { expectedEffort: "high", mode: "enabled" as const },
+    ];
+    for (const testCase of cases) {
+      let requestBody: unknown = null;
+      const fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body));
+        return Promise.resolve(createOpenAIChatResponse("Hello"));
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const runtimeSettings = createTestRuntimeSettings();
+      const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
+      const providers = createTestProviderSettings();
+      providers.connections.openrouter.apiToken = "openrouter-secret";
+      providers.connections.openrouter.thinkingMode = testCase.mode;
+      providers.routing.answer = "openrouter";
+      const config = buildAppConfig(
+        startup.database,
+        runtimeSettings,
+        1,
+        providers,
+        startup.doclingServices,
+        startup.sourceContent,
+        TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+      );
+      const models = createInferenceModelRegistry(config);
+
+      await generateText({
+        maxRetries: 0,
+        model: models.answer,
+        prompt: "Hello",
+      });
+
+      expect(requestBody).not.toHaveProperty("reasoning_effort");
+      if (testCase.expectedEffort === undefined) {
+        expect(requestBody).not.toHaveProperty("reasoning");
+      } else {
+        expect(requestBody).toMatchObject({
+          reasoning: { effort: testCase.expectedEffort },
+        });
+      }
+    }
+  });
+
+  it("publishes incremental OpenRouter Answer content from streamed JSON text", async () => {
+    const requestBodies: unknown[] = [];
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe(
+        "https://openrouter.ai/api/v1/chat/completions",
+      );
+      requestBodies.push(JSON.parse(String(init?.body)));
+      return Promise.resolve(createOpenAIChatStreamResponse([
+        '{"answer":{"content":"Revenue',
+        ' increased',
+        '.","evidenceRefs":["EVID_A"]},"findings":[]}',
+      ]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const runtimeSettings = createTestRuntimeSettings();
+    const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
+    const providers = createTestProviderSettings();
+    providers.connections.openrouter.apiToken = "openrouter-secret";
+    providers.connections.openrouter.answer.model = "openrouter/free";
+    providers.routing.answer = "openrouter";
+    const config = buildAppConfig(
+      startup.database,
+      runtimeSettings,
+      1,
+      providers,
+      startup.doclingServices,
+      startup.sourceContent,
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+    );
+    const models = createInferenceModelRegistry(config);
+    const previews: AnswerContentSnapshot[] = [];
+
+    const result = await streamAnswerQuestion(
+      models,
+      "What changed?",
+      [buildRetrievedElement("a", "b")],
+      new TaskLimiter(1),
+      new AbortController().signal,
+      { seed: 1, temperature: 0 },
+      undefined,
+      { receiveAnswerContent: (content) => previews.push(content) },
+    );
+
+    expect(result.answerDocument.statements[0]?.content).toBe(
+      "Revenue increased.",
+    );
+    expect(previews.length).toBeGreaterThanOrEqual(2);
+    expect(previews[0]?.statements[0]?.content).toBe("Revenue");
+    expect(previews.at(-1)?.statements[0]?.content).toBe("Revenue increased.");
+    expect(requestBodies).toHaveLength(1);
+    expect(requestBodies[0]).toMatchObject({
+      reasoning: { effort: "none" },
+      stream: true,
+    });
+    expect(requestBodies[0]).not.toHaveProperty("response_format");
+  });
+
+  it("preserves OpenRouter Answer correction without disabling streaming", async () => {
+    const requestBodies: unknown[] = [];
+    const fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) => {
+      requestBodies.push(JSON.parse(String(init?.body)));
+      const evidenceReference = requestBodies.length === 1
+        ? "EVID_B"
+        : "EVID_A";
+      return Promise.resolve(createOpenAIChatStreamResponse([
+        JSON.stringify({
+          answer: {
+            content: "Revenue increased.",
+            evidenceRefs: [evidenceReference],
+          },
+          findings: [],
+        }),
+      ]));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const runtimeSettings = createTestRuntimeSettings();
+    const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
+    const providers = createTestProviderSettings();
+    providers.connections.openrouter.apiToken = "openrouter-secret";
+    providers.routing.answer = "openrouter";
+    const config = buildAppConfig(
+      startup.database,
+      runtimeSettings,
+      1,
+      providers,
+      startup.doclingServices,
+      startup.sourceContent,
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+    );
+    const models = createInferenceModelRegistry(config);
+
+    const result = await streamAnswerQuestion(
+      models,
+      "What changed?",
+      [buildRetrievedElement("a", "b")],
+      new TaskLimiter(1),
+      new AbortController().signal,
+      { seed: 1, temperature: 0 },
+    );
+
+    expect(result.answerDocument.statements[0]?.content).toBe(
+      "Revenue increased.",
+    );
+    expect(requestBodies).toHaveLength(2);
+    for (const requestBody of requestBodies) {
+      expect(requestBody).toMatchObject({ stream: true });
+      expect(requestBody).not.toHaveProperty("response_format");
+    }
+  });
+
   it("uses Ollama's native structured-output and thinking contracts", async () => {
     const requestBodies: Array<{
       format?: unknown;
@@ -821,6 +1199,7 @@ describe("createInferenceModelRegistry", () => {
   });
 
   it("uses Ollama's native embedding request contract", async () => {
+    const embedding = buildTestEmbedding(768, 0.1);
     const requestBodies: unknown[] = [];
     const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
       expect(String(input)).toBe(
@@ -828,7 +1207,7 @@ describe("createInferenceModelRegistry", () => {
       );
       requestBodies.push(JSON.parse(String(init?.body)));
       return Promise.resolve(Response.json({
-        embeddings: [[0.1, 0.2]],
+        embeddings: [embedding],
         load_duration: 1,
         model: "embeddinggemma",
         prompt_eval_count: 1,
@@ -864,7 +1243,7 @@ describe("createInferenceModelRegistry", () => {
       values: ["Document"],
     });
 
-    expect(result.embeddings).toEqual([[0.1, 0.2]]);
+    expect(result.embeddings).toEqual([embedding]);
     expect(requestBodies).toEqual([{
       input: "Document",
       model: "embeddinggemma",
@@ -875,18 +1254,21 @@ describe("createInferenceModelRegistry", () => {
   });
 
   it("uses Jina's OpenAI-compatible embedding request contract", async () => {
+    const embedding = buildTestEmbedding(768, 0.3);
     const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
       expect(String(input)).toBe("https://api.jina.ai/v1/embeddings");
       expect(new Headers(init?.headers).get("authorization")).toBe(
         "Bearer jina-secret",
       );
-      expect(JSON.parse(String(init?.body))).toMatchObject({
+      const requestBody: unknown = JSON.parse(String(init?.body));
+      expect(requestBody).toMatchObject({
         encoding_format: "float",
         input: ["Document"],
         model: "configured-jina-embedding",
       });
+      expect(requestBody).not.toHaveProperty("dimensions");
       return Promise.resolve(Response.json({
-        data: [{ embedding: [0.3, 0.4] }],
+        data: [{ embedding }],
         usage: { prompt_tokens: 1 },
       }));
     });
@@ -916,8 +1298,95 @@ describe("createInferenceModelRegistry", () => {
       values: ["Document"],
     });
 
-    expect(result.embeddings).toEqual([[0.3, 0.4]]);
+    expect(result.embeddings).toEqual([embedding]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts OpenRouter output matching application dimensions", async () => {
+    const embedding = buildTestEmbedding(2_048, 0.3);
+    const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe("https://openrouter.ai/api/v1/embeddings");
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        "Bearer openrouter-secret",
+      );
+      const requestBody: unknown = JSON.parse(String(init?.body));
+      expect(requestBody).toMatchObject({
+        encoding_format: "float",
+        input: ["Document"],
+        model: "configured-openrouter-embedding",
+      });
+      expect(requestBody).not.toHaveProperty("dimensions");
+      return Promise.resolve(Response.json({
+        data: [{ embedding }],
+        usage: { prompt_tokens: 1 },
+      }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const runtimeSettings = createTestRuntimeSettings({
+      embeddingDimensions: 2_048,
+    });
+    const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
+    const providers = createTestProviderSettings();
+    providers.connections.openrouter.apiToken = "openrouter-secret";
+    providers.connections.openrouter.embedding.model =
+      "configured-openrouter-embedding";
+    providers.routing.embedding = "openrouter";
+    const config = buildAppConfig(
+      startup.database,
+      runtimeSettings,
+      1,
+      providers,
+      startup.doclingServices,
+      startup.sourceContent,
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+    );
+
+    const models = createInferenceModelRegistry(config);
+    const result = await embedMany({
+      maxRetries: 0,
+      model: models.documentEmbedding,
+      values: ["Document"],
+    });
+
+    expect(result.embeddings).toEqual([embedding]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects mismatched provider output at the inference boundary", async () => {
+    const fetchMock = vi.fn(() => {
+      return Promise.resolve(Response.json({
+        data: [{ embedding: [0.3, 0.4] }],
+        usage: { prompt_tokens: 1 },
+      }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const runtimeSettings = createTestRuntimeSettings({
+      embeddingDimensions: 2_048,
+    });
+    const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
+    const providers = createTestProviderSettings();
+    providers.connections.openrouter.apiToken = "openrouter-secret";
+    providers.connections.openrouter.embedding.model =
+      "configured-openrouter-embedding";
+    providers.routing.embedding = "openrouter";
+    const config = buildAppConfig(
+      startup.database,
+      runtimeSettings,
+      1,
+      providers,
+      startup.doclingServices,
+      startup.sourceContent,
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+    );
+
+    const models = createInferenceModelRegistry(config);
+    await expect(embedMany({
+      maxRetries: 0,
+      model: models.documentEmbedding,
+      values: ["Document"],
+    })).rejects.toThrow(
+      "expected 2048 finite numbers with at least one nonzero value",
+    );
   });
 });
 

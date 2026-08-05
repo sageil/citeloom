@@ -149,6 +149,66 @@ describe("provider profiles", () => {
     });
   });
 
+  it("resolves OpenRouter language, embedding, reranking, and speech capabilities", () => {
+    const runtimeSettings = createTestRuntimeSettings();
+    const providers = createTestProviderSettings();
+    providers.connections.openrouter.apiToken = "openrouter-token";
+    providers.routing.answer = "openrouter";
+    providers.routing.chat = "openrouter";
+    providers.routing.embedding = "openrouter";
+    providers.routing.queryExpansion = "openrouter";
+    providers.routing.reranking = "openrouter";
+    providers.routing.speechToText = "openrouter";
+    providers.routing.summarization = "openrouter";
+    providers.routing.textToSpeech = "openrouter";
+    const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
+
+    const config = buildAppConfig(
+      startup.database,
+      runtimeSettings,
+      1,
+      providers,
+      startup.doclingServices,
+      startup.sourceContent,
+      TEST_EMBEDDING_INPUT_FORMAT,
+    );
+
+    expect(config.inference.answer).toMatchObject({
+      adapter: "openai-compatible-language",
+      apiToken: "openrouter-token",
+      baseUrl: "https://openrouter.ai/api/v1",
+      contextCapacityTokens: 200_000,
+      model: "openrouter/free",
+      runtimeName: "OpenRouter",
+    });
+    expect(config.inference.embedding).toMatchObject({
+      adapter: "openai-compatible-embedding",
+      apiToken: "openrouter-token",
+      baseUrl: "https://openrouter.ai/api/v1",
+      maximumInputTokens: 32_768,
+      model: "nvidia/nemotron-3-embed-1b:free",
+      runtimeName: "OpenRouter",
+    });
+    expect(config.retrieval.reranker).toMatchObject({
+      adapter: "top-n-rerank",
+      apiToken: "openrouter-token",
+      baseUrl: "https://openrouter.ai/api/v1",
+      model: "nvidia/llama-nemotron-rerank-vl-1b-v2:free",
+      runtimeName: "OpenRouter",
+    });
+    expect(config.speechToText).toMatchObject({
+      adapter: "openrouter-transcription",
+      apiToken: "openrouter-token",
+      model: "openai/gpt-4o-mini-transcribe",
+    });
+    expect(config.textToSpeech).toMatchObject({
+      adapter: "openrouter-speech",
+      apiToken: "openrouter-token",
+      model: "fish-audio/s2.1-pro-free:free",
+      voice: "alloy",
+    });
+  });
+
   it("uses feature model and context overrides without changing provider defaults", () => {
     const runtimeSettings = createTestRuntimeSettings();
     const providers = createTestProviderSettings();

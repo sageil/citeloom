@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import type { AppConfig, RankFusionConfig, RetrievalMode } from "../../src/config/index.js";
+import type { AppConfig, RankFusionConfig } from "../../src/config/index.js";
 import type { NonOverlappingCandidateSelection } from "../../src/retrieval/document-retrieval.js";
 import type { RetrievedElement } from "../../src/retrieval/document-retrieval.js";
 import type {
@@ -40,13 +40,12 @@ import {
   type ContextSelectionPolicy,
   type PostRerankCandidateSelection,
 } from "../../src/retrieval/ranking/candidate-selection.js";
+import {
+  EVALUATION_RETRIEVAL_MODES,
+  type EvaluationRetrievalMode,
+} from "./retrieval-mode.js";
 
-const comparativeRetrievalModes: readonly RetrievalMode[] = [
-  "bm25",
-  "dense",
-  "hybrid",
-  "hybrid-reranked",
-];
+const comparativeRetrievalModes = EVALUATION_RETRIEVAL_MODES;
 
 export interface EvaluationCaseResult {
   domain: string;
@@ -78,7 +77,7 @@ export interface EvaluationMethodResult {
   meanNdcgInterval: EvaluationConfidenceInterval;
   meanRecall: number;
   meanRecallInterval: EvaluationConfidenceInterval;
-  mode: RetrievalMode;
+  mode: EvaluationRetrievalMode;
   questionTypes: EvaluationSliceResult[];
   sourceKinds: EvaluationSliceResult[];
 }
@@ -111,9 +110,9 @@ export interface EvaluationCaseDelta {
 }
 
 export interface EvaluationMethodComparison {
-  baselineMode: RetrievalMode;
+  baselineMode: EvaluationRetrievalMode;
   cases: EvaluationCaseDelta[];
-  contenderMode: RetrievalMode;
+  contenderMode: EvaluationRetrievalMode;
   meanNdcgDelta: number;
   meanNdcgDeltaInterval: EvaluationConfidenceInterval;
   meanRecallDelta: number;
@@ -145,7 +144,7 @@ export interface EvaluationResult {
     version: EvaluationPreparationArtifact["version"];
   };
   provenance: EvaluationProvenance;
-  skippedModes: RetrievalMode[];
+  skippedModes: EvaluationRetrievalMode[];
   split: EvaluationDataset["split"];
   statisticalDesign: EvaluationStatisticalDesign;
 }
@@ -288,11 +287,11 @@ export function assertEvaluationResultMatchesPreparation(
 }
 
 export function readAvailableEvaluationModes(config: AppConfig): {
-  available: RetrievalMode[];
-  skipped: RetrievalMode[];
+  available: EvaluationRetrievalMode[];
+  skipped: EvaluationRetrievalMode[];
 } {
-  const available: RetrievalMode[] = [];
-  const skipped: RetrievalMode[] = [];
+  const available: EvaluationRetrievalMode[] = [];
+  const skipped: EvaluationRetrievalMode[] = [];
   for (const mode of comparativeRetrievalModes) {
     if (mode === "hybrid-reranked" && config.retrieval.reranker === null) {
       skipped.push(mode);
@@ -329,7 +328,7 @@ function buildPreparedEvaluationCaseResult(
 
 export function derivePreparedEvaluationCandidates(
   evaluationCase: PreparedEvaluationCase,
-  mode: RetrievalMode,
+  mode: EvaluationRetrievalMode,
   config: PreparedRetrievalScoringConfig,
   contextPolicy: "relevance-cliff" | "top-k" = "relevance-cliff",
   rerankerScoreSource: PreparedRerankerScoreSource = "production",
@@ -547,7 +546,7 @@ function slicePreparedRankings(
 }
 
 export function summarizeEvaluationMethod(
-  mode: RetrievalMode,
+  mode: EvaluationRetrievalMode,
   cases: EvaluationCaseResult[],
   seed: string = `${mode}:${cases.map((entry) => entry.id).join(":")}`,
 ): EvaluationMethodResult {

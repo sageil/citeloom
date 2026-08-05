@@ -112,7 +112,7 @@ export function buildAppConfig(
       originalQueryWeight: settings.originalQueryWeight,
     },
     generationSeedMode: settings.generationSeedMode,
-    mode: reranker === null ? "hybrid" : "hybrid-reranked",
+    mode: settings.searchMethod,
     queryExpansions: settings.queryExpansions,
     queryExpansionTemperature: settings.queryExpansionTemperature,
     reranker,

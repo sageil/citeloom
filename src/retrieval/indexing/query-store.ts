@@ -265,14 +265,15 @@ export async function retrieveRelevantElementsWithScores(
       config.fusion,
     );
     if (
-      config.mode === "hybrid-reranked"
-      && useDocumentToc
+      useDocumentToc
+      && retrievalModeUsesDense(config.mode)
       && queries[0]?.embedding !== null
       && queries[0]?.embedding !== undefined
     ) {
       const tocRanking = await createDocumentTocRanking(
         database,
         space,
+        config.mode,
         queries[0].embedding,
         rankedCandidates,
         config.candidateK,
@@ -342,7 +343,7 @@ export async function retrieveRelevantElementsWithScores(
     hydratedCandidates,
   );
   runTelemetry.recordCandidateBudget(candidateBudget);
-  if (config.mode !== "hybrid-reranked") {
+  if (config.reranker === null) {
     const selected = selectTopRetrievedElements(retrieved, config.topK);
     const contextualized = await addAdjacentRetrievalContext(
       database,
@@ -356,14 +357,11 @@ export async function retrieveRelevantElementsWithScores(
       strongestRerankerScore: null,
     };
   }
-  if (config.reranker === null) {
-    throw new Error("Hybrid reranking requires a configured reranker.");
-  }
   if (reranker === null) {
     throw new Error("The configured reranker model was not resolved.");
   }
   if (rerankerScheduler === null) {
-    throw new Error("Hybrid reranking requires an inference scheduler.");
+    throw new Error("The configured reranker scheduler was not resolved.");
   }
   const rerankerCandidateIdentities = buildRerankerCandidateIdentities(
     hydratedCandidates,
@@ -691,9 +689,6 @@ export function selectPreparedRetrievalCandidates(
     "fused-order",
   );
   const candidates = admission.selected;
-  if (mode === "hybrid-reranked") {
-    return candidates;
-  }
   return selectTopCandidates(candidates, topK);
 }
 
@@ -705,7 +700,7 @@ export function selectPreparedRerankingCandidatesWithTrace(
   fusion: RankFusionConfig,
 ): NonOverlappingCandidateSelection {
   const ranked = rankRetrievalCandidates(
-    "hybrid-reranked",
+    "hybrid",
     rankings,
     rrfK,
     fusion,
@@ -1149,7 +1144,7 @@ function readActiveRankings(
   lexicalRankings: LexicalCandidate[][],
   fusion: RankFusionConfig,
 ): WeightedRanking[] {
-  const isHybrid = mode === "hybrid" || mode === "hybrid-reranked";
+  const isHybrid = mode === "hybrid";
   if (isHybrid && denseRankings.length !== lexicalRankings.length) {
     throw new Error(
       "Hybrid retrieval requires one dense and lexical ranking per query.",

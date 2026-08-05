@@ -6,6 +6,7 @@ import {
   customType,
   doublePrecision,
   foreignKey,
+  halfvec,
   index,
   integer,
   jsonb,
@@ -31,6 +32,7 @@ import type {
 import type { StoredApplicationSettings } from "../providers/settings-persistence.js";
 import type { MatchedDocument } from "../retrieval/document-retrieval.js";
 import type { EmbeddingSpaceRowCounts } from "../embedding/space/types.js";
+import { EMBEDDING_DIMENSIONS } from "../embedding/dimensions.js";
 import type { QueryScope } from "../domain/query-scope.js";
 import type {
   CitationEvidence,
@@ -1418,7 +1420,9 @@ export const chatMessageEmbeddings384 = pgTable(
   "chat_message_embeddings_384",
   {
     ...createChatMessageEmbeddingColumns(),
-    embedding: vector("embedding", { dimensions: 384 }).notNull(),
+    embedding: vector("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_384,
+    }).notNull(),
   },
   (table) => [
     primaryKey({
@@ -1442,7 +1446,9 @@ export const chatMessageEmbeddings768 = pgTable(
   "chat_message_embeddings_768",
   {
     ...createChatMessageEmbeddingColumns(),
-    embedding: vector("embedding", { dimensions: 768 }).notNull(),
+    embedding: vector("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_768,
+    }).notNull(),
   },
   (table) => [
     primaryKey({
@@ -1466,7 +1472,9 @@ export const chatMessageEmbeddings1024 = pgTable(
   "chat_message_embeddings_1024",
   {
     ...createChatMessageEmbeddingColumns(),
-    embedding: vector("embedding", { dimensions: 1024 }).notNull(),
+    embedding: vector("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_1024,
+    }).notNull(),
   },
   (table) => [
     primaryKey({
@@ -1483,6 +1491,58 @@ export const chatMessageEmbeddings1024 = pgTable(
     index("chat_message_embeddings_1024_message_idx").on(table.messageId),
     index("chat_message_embeddings_1024_hnsw_idx")
       .using("hnsw", table.embedding.op("vector_cosine_ops")),
+  ],
+);
+
+export const chatMessageEmbeddings1536 = pgTable(
+  "chat_message_embeddings_1536",
+  {
+    ...createChatMessageEmbeddingColumns(),
+    embedding: vector("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_1536,
+    }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.embeddingSpaceId,
+        table.messageId,
+        table.partOrdinal,
+      ],
+    }),
+    check(
+      "chat_message_embeddings_1536_values_check",
+      sql`${table.inputTokens} > 0 AND ${table.partOrdinal} >= 0`,
+    ),
+    index("chat_message_embeddings_1536_message_idx").on(table.messageId),
+    index("chat_message_embeddings_1536_hnsw_idx")
+      .using("hnsw", table.embedding.op("vector_cosine_ops")),
+  ],
+);
+
+export const chatMessageEmbeddings2048 = pgTable(
+  "chat_message_embeddings_2048",
+  {
+    ...createChatMessageEmbeddingColumns(),
+    embedding: halfvec("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_2048,
+    }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.embeddingSpaceId,
+        table.messageId,
+        table.partOrdinal,
+      ],
+    }),
+    check(
+      "chat_message_embeddings_2048_values_check",
+      sql`${table.inputTokens} > 0 AND ${table.partOrdinal} >= 0`,
+    ),
+    index("chat_message_embeddings_2048_message_idx").on(table.messageId),
+    index("chat_message_embeddings_2048_hnsw_idx")
+      .using("hnsw", table.embedding.op("halfvec_cosine_ops")),
   ],
 );
 
@@ -1959,7 +2019,9 @@ export const retrievalChunks384 = pgTable(
   "retrieval_chunks_384",
   {
     ...createRetrievalMetadataColumns(),
-    embedding: vector("embedding", { dimensions: 384 }).notNull(),
+    embedding: vector("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_384,
+    }).notNull(),
   },
   (table) => [
     primaryKey({
@@ -1979,7 +2041,9 @@ export const retrievalChunks768 = pgTable(
   "retrieval_chunks",
   {
     ...createRetrievalMetadataColumns(),
-    embedding: vector("embedding", { dimensions: 768 }).notNull(),
+    embedding: vector("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_768,
+    }).notNull(),
   },
   (table) => [
     primaryKey({
@@ -2001,7 +2065,9 @@ export const retrievalChunks1024 = pgTable(
   "retrieval_chunks_1024",
   {
     ...createRetrievalMetadataColumns(),
-    embedding: vector("embedding", { dimensions: 1024 }).notNull(),
+    embedding: vector("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_1024,
+    }).notNull(),
   },
   (table) => [
     primaryKey({
@@ -2014,6 +2080,50 @@ export const retrievalChunks1024 = pgTable(
     ),
     index("retrieval_chunks_1024_embedding_hnsw_idx")
       .using("hnsw", table.embedding.op("vector_cosine_ops")),
+  ],
+);
+
+export const retrievalChunks1536 = pgTable(
+  "retrieval_chunks_1536",
+  {
+    ...createRetrievalMetadataColumns(),
+    embedding: vector("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_1536,
+    }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.embeddingSpaceId, table.generationId, table.id],
+    }),
+    index("retrieval_chunks_1536_document_idx").on(
+      table.embeddingSpaceId,
+      table.generationId,
+      table.documentId,
+    ),
+    index("retrieval_chunks_1536_embedding_hnsw_idx")
+      .using("hnsw", table.embedding.op("vector_cosine_ops")),
+  ],
+);
+
+export const retrievalChunks2048 = pgTable(
+  "retrieval_chunks_2048",
+  {
+    ...createRetrievalMetadataColumns(),
+    embedding: halfvec("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_2048,
+    }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.embeddingSpaceId, table.generationId, table.id],
+    }),
+    index("retrieval_chunks_2048_document_idx").on(
+      table.embeddingSpaceId,
+      table.generationId,
+      table.documentId,
+    ),
+    index("retrieval_chunks_2048_embedding_hnsw_idx")
+      .using("hnsw", table.embedding.op("halfvec_cosine_ops")),
   ],
 );
 

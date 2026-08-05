@@ -139,6 +139,37 @@ describe("transcribeAudio", () => {
     )).resolves.toEqual({ text: prompt });
   });
 
+  it("uses OpenRouter's base64 JSON transcription contract", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      text: "OpenRouter transcript",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const config = buildEnabledConfig();
+    if (config.speechToText === null) {
+      throw new Error("Expected enabled speech-to-text configuration.");
+    }
+    config.speechToText.adapter = "openrouter-transcription";
+
+    await expect(transcribeAudio(
+      config,
+      buildAudio(),
+      new AbortController().signal,
+    )).resolves.toEqual({ text: "OpenRouter transcript" });
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(new Headers(request?.headers).get("content-type")).toBe(
+      "application/json",
+    );
+    expect(JSON.parse(String(request?.body))).toEqual({
+      input_audio: {
+        data: Buffer.from("recorded audio").toString("base64"),
+        format: "webm",
+      },
+      language: "en",
+      model: "Qwen3-ASR-1.7B-8bit",
+    });
+  });
+
   it("bounds and redacts provider error responses", async () => {
     const cancel = vi.fn();
     const body = new ReadableStream<Uint8Array>({

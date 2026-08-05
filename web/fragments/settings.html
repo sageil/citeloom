@@ -271,7 +271,11 @@
           </section>
 
           <section class="settings-feature-step" x-show="featureConnection(selectedFeatureCapability) !== null">
-            <header><span>2</span><h3>Model settings</h3><p>Choose the model and limits used by this feature.</p></header>
+            <header>
+              <span>2</span>
+              <h3 x-text="selectedFeatureCapability === 'embedding' ? 'Embedding model and space' : 'Model settings'"></h3>
+              <p x-text="selectedFeatureCapability === 'embedding' ? 'Choose the model and application-wide embedding-space identity.' : 'Choose the model and limits used by this feature.'"></p>
+            </header>
             <div class="settings-feature-form-grid">
               <label class="form-field">
                 <span x-text="featureModelFieldLabel(selectedFeatureCapability)"></span>
@@ -306,9 +310,9 @@
                 </select>
                 <small x-text="featureThinkingModeOverride(selectedFeatureCapability) === null ? `Uses the provider setting: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.` : `Uses this feature setting: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.`"></small>
               </label>
-              <template x-if="featureFieldsFor(selectedFeatureCapability).length > 0">
-                <div class="settings-feature-primary-field">
-                  <template x-for="field in featureFieldsFor(selectedFeatureCapability).slice(0, 1)" :key="field.key">
+              <template x-if="featurePrimaryFields(selectedFeatureCapability).length > 0">
+                <div class="settings-feature-primary-fields">
+                  <template x-for="field in featurePrimaryFields(selectedFeatureCapability)" :key="field.key">
                     <label class="form-field">
                       <span x-text="field.label"></span>
                       <template x-if="field.input === 'select'">
@@ -377,11 +381,23 @@
                 </template>
               </div>
             </template>
+            <div
+              class="settings-embedding-space-impact"
+              role="status"
+              x-cloak
+              x-show="selectedFeatureCapability === 'embedding' &amp;&amp; embeddingSpaceChangePending()"
+            >
+              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use></svg>
+              <div>
+                <strong>Reindexing may be required</strong>
+                <span x-text="embeddingSpaceImpactMessage()"></span>
+              </div>
+            </div>
           </section>
 
           <section class="settings-feature-step" x-show="featureConnection(selectedFeatureCapability) !== null">
             <header><span>3</span><h3>Settings in use</h3><p>These are the values CiteLoom will use.</p></header>
-            <div class="settings-resolved-result">
+            <div class="settings-resolved-result" :class="{ 'settings-embedding-space-status': selectedFeatureCapability === 'embedding' }">
               <div><span>Selected model</span><code x-text="valueOrFallback(featureEffectiveModel(selectedFeatureCapability))"></code></div>
               <div><span>Model selection</span><strong x-text="featureModelSourceLabel(selectedFeatureCapability)"></strong></div>
               <template x-if="capabilityHasModelContext(selectedFeatureCapability)">
@@ -390,23 +406,40 @@
               <template x-if="selectedFeatureCapability === 'textToSpeech'">
                 <div><span>Selected voice</span><code x-text="valueOrFallback(featureEffectiveVoice())"></code></div>
               </template>
+              <template x-if="selectedFeatureCapability === 'embedding'">
+                <div><span>Vector dimensions</span><strong x-text="settings.embeddingSpace.dimensions"></strong></div>
+              </template>
+              <template x-if="selectedFeatureCapability === 'embedding'">
+                <div><span>Search text format</span><strong x-text="activeEmbeddingInputFormat()?.name ?? 'Unavailable'"></strong></div>
+              </template>
+              <template x-if="selectedFeatureCapability === 'embedding'">
+                <div><span>Indexed in active space</span><strong x-text="embeddingSpaceCoverageLabel()"></strong></div>
+              </template>
+              <template x-if="selectedFeatureCapability === 'embedding'">
+                <div><span>Active search index</span><code :title="settings.embeddingSpace.id" x-text="settings.embeddingSpace.id"></code></div>
+              </template>
+            </div>
+            <div class="settings-embedding-space-reindex" x-cloak x-show="selectedFeatureCapability === 'embedding' &amp;&amp; embeddingSpaceNeedsReindex()">
+              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use></svg>
+              <span><strong x-text="embeddingSpaceReindexMessage()"></strong><small>Reindex from the Documents workspace to make them searchable with these settings.</small></span>
+              <a class="button secondary citeloom-navigation-link" data-view="documents" href="./index.html?view=documents" hx-get="./fragments/documents.html" hx-push-url="./index.html?view=documents">Review documents</a>
             </div>
           </section>
 
-          <section class="settings-feature-advanced" x-show="featureFieldsFor(selectedFeatureCapability).length > 1">
+          <section class="settings-feature-advanced" x-show="featureAdvancedFields(selectedFeatureCapability).length > 0">
             <button type="button" :aria-expanded="featureAdvancedOpen" @click="featureAdvancedOpen = !featureAdvancedOpen">
               <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use></svg>
               <strong x-text="featureAdvancedOpen ? 'Hide advanced settings' : 'Show advanced settings'"></strong>
               <span>Timeouts, retries, limits, and more.</span>
             </button>
             <div class="application-feature-settings" x-show="featureAdvancedOpen">
-              <template x-for="field in featureFieldsFor(selectedFeatureCapability).slice(1)" :key="field.key">
+              <template x-for="field in featureAdvancedFields(selectedFeatureCapability)" :key="field.key">
                 <div class="settings-field">
                   <div class="settings-field-heading"><label :for="`setting-${field.key}`" x-text="field.label"></label><span class="setting-source" :class="fieldSourceClass(field)" x-text="fieldSourceLabel(field)"></span></div>
                   <p x-text="field.description"></p>
                   <div class="settings-control-row">
                     <template x-if="field.input === 'boolean'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value === 'true')"><option value="true">Enabled</option><option value="false">Disabled</option></select></template>
-                    <template x-if="field.input === 'select'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template></select></template>
+                    <template x-if="field.input === 'select'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :selected="String(option.value) === String(drafts[field.key])" :value="String(option.value)" x-text="option.label"></option></template></select></template>
                     <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input class="form-control" :id="`setting-${field.key}`" :max="field.max" :min="field.min" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
                     <span class="setting-unit" x-show="field.unit !== null" x-text="field.unit"></span>
                     <button class="text-button" type="button" :disabled="fieldResetDisabled(field)" @click="resetField(field)">Reset</button>
@@ -798,7 +831,7 @@
                       <div class="settings-control-row">
                         <template x-if="field.key === 'doclingPipeline'"><div class="settings-docling-mode-control" :id="`setting-${field.key}`" role="group" aria-label="Docling processing mode"><button type="button" :aria-pressed="drafts[field.key] === 'standard'" :class="{ active: drafts[field.key] === 'standard' }" @click="writeFieldDraft(field, 'standard')"><span><strong>Standard</strong><small>Faster text-based processing</small></span><svg x-show="drafts[field.key] === 'standard'" aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use></svg></button><button type="button" :aria-pressed="drafts[field.key] === 'vlm'" :class="{ active: drafts[field.key] === 'vlm' }" @click="writeFieldDraft(field, 'vlm')"><span><strong>VLM</strong><small>Visual page understanding</small></span><svg x-show="drafts[field.key] === 'vlm'" aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use></svg></button></div></template>
                         <template x-if="field.input === 'boolean'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value === 'true')"><option value="true">Enabled</option><option value="false">Disabled</option></select></template>
-                        <template x-if="field.input === 'select' &amp;&amp; field.key !== 'doclingPipeline'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :value="String(option.value)" x-text="option.label"></option></template></select></template>
+                        <template x-if="field.input === 'select' &amp;&amp; field.key !== 'doclingPipeline'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :selected="String(option.value) === String(drafts[field.key])" :value="String(option.value)" x-text="option.label"></option></template></select></template>
                         <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input class="form-control" :autocomplete="field.sensitive ? 'new-password' : 'off'" :data-1p-ignore="field.sensitive ? 'true' : null" :data-bwignore="field.sensitive ? 'true' : null" :data-lpignore="field.sensitive ? 'true' : null" :id="`setting-${field.key}`" :max="field.max" :min="field.min" :name="`setting-${field.key}`" :placeholder="field.sensitive &amp;&amp; field.configured ? 'Configured' : ''" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
                         <span class="setting-unit" x-show="field.unit !== null" x-text="field.unit"></span>
                         <button class="text-button" type="button" :disabled="fieldResetDisabled(field)" @click="resetField(field)">Reset to default</button>

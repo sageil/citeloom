@@ -1,4 +1,8 @@
-import type { EmbeddingSpaceConfig, RankFusionConfig } from "../../config/index.js";
+import type {
+  EmbeddingSpaceConfig,
+  RankFusionConfig,
+  RetrievalMode,
+} from "../../config/index.js";
 import type { CiteLoomDatabase } from "../../database/client.js";
 import type { DocumentTocEntry } from "../../domain/document-toc.js";
 import {
@@ -34,6 +38,7 @@ interface TocLookup {
 export async function createDocumentTocRanking(
   database: CiteLoomDatabase,
   space: EmbeddingSpaceConfig,
+  retrievalMode: RetrievalMode,
   queryEmbedding: number[],
   rankedCandidates: FusedCandidate[],
   candidateK: number,
@@ -48,7 +53,7 @@ export async function createDocumentTocRanking(
   const stage = runTelemetry.startStage({
     model: null,
     name: "toc-expansion",
-    retrievalMode: "hybrid-reranked",
+    retrievalMode,
   });
   try {
     const selections = await selectMatchedSections(

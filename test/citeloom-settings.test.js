@@ -174,6 +174,73 @@ describe("CiteLoom settings resets", () => {
   });
 });
 
+describe("CiteLoom embedding-space settings", () => {
+  it("keeps application-wide identity fields visible and operational fields advanced", () => {
+    const page = createSettingsPage();
+    page.featureFieldsByCapability.embedding = [
+      { key: "embeddingDimensions" },
+      { key: "embeddingInputFormatId" },
+      { key: "retrievalWindowPolicy" },
+      { key: "retrievalChunkTargetTokens" },
+      { key: "embeddingTimeoutSeconds" },
+      { key: "embeddingSpaceId" },
+    ];
+
+    expect(page.featurePrimaryFields("embedding").map((field) => field.key))
+      .toEqual([
+        "embeddingDimensions",
+        "embeddingInputFormatId",
+        "retrievalWindowPolicy",
+      ]);
+    expect(page.featureAdvancedFields("embedding").map((field) => field.key))
+      .toEqual([
+        "retrievalChunkTargetTokens",
+        "embeddingTimeoutSeconds",
+        "embeddingSpaceId",
+      ]);
+  });
+
+  it("reports pending embedding-space impact and active-space coverage", () => {
+    const page = createSettingsPage();
+    page.settings = {
+      embeddingSpace: {
+        activeDocumentCount: 2,
+        dimensions: 2048,
+        id: "application-search-space",
+        totalDocumentCount: 7,
+      },
+    };
+    page.providerDrafts = {};
+    page.pending.embeddingDimensions = "set";
+
+    expect(page.embeddingSpaceChangePending()).toBe(true);
+    expect(page.embeddingSpaceImpactMessage()).toContain(
+      "Up to 7 indexed documents may require reindexing",
+    );
+    expect(page.embeddingSpaceCoverageLabel()).toBe("2 of 7");
+    expect(page.embeddingSpaceNeedsReindex()).toBe(true);
+    expect(page.embeddingSpaceReindexMessage()).toBe(
+      "5 indexed documents need reindexing for the active embedding space.",
+    );
+  });
+
+  it("renders application-wide dimensions, impact, status, and reindex navigation", async () => {
+    const fragment = await readFile(
+      new URL("../web/fragments/settings.html", import.meta.url),
+      "utf8",
+    );
+
+    expect(fragment).toContain(
+      'x-for="field in featurePrimaryFields(selectedFeatureCapability)"',
+    );
+    expect(fragment).toContain("Vector dimensions");
+    expect(fragment).toContain("embeddingSpaceImpactMessage()");
+    expect(fragment).toContain("embeddingSpaceCoverageLabel()");
+    expect(fragment).toContain("embeddingSpaceNeedsReindex()");
+    expect(fragment).toContain('data-view="documents"');
+  });
+});
+
 function createSettingsPage({ reactiveResetState = false } = {}) {
   let pageFactory = null;
   const rawValues = new WeakMap();

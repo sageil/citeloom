@@ -100,6 +100,7 @@ Each feature can use a different provider, so the service that writes answers do
 | Ollama | Yes | Yes | Yes | Yes | Yes | - | - | - |
 | LM Studio | Yes | Yes | Yes | Yes | Yes | - | - | - |
 | OpenAI | Yes | Yes | Yes | Yes | Yes | - | Yes | Yes |
+| OpenRouter | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | OpenAI Codex | Yes | Yes | Yes | Yes | - | - | - | - |
 | DeepSeek | Yes | Yes | Yes | Yes | - | - | - | - |
 | Groq | Yes | Yes | Yes | Yes | - | - | Yes | Yes |
@@ -129,6 +130,7 @@ A source-run process normally uses the equivalent `127.0.0.1` or network address
 | Ollama | `http://host.docker.internal:11434` | Native Ollama API without an OpenAI-compatible `/v1` suffix |
 | LM Studio | `http://host.docker.internal:1234/v1` | LM Studio OpenAI-compatible endpoints |
 | OpenAI | `https://api.openai.com/v1` | OpenAI-compatible language, embedding, and audio endpoints |
+| OpenRouter | `https://openrouter.ai/api/v1` | OpenAI-compatible language and embedding endpoints, Top-N reranking, JSON/base64 transcription, and MP3 speech output |
 | OpenAI Codex | Fixed by the adapter | OpenAI device sign-in and the Codex model catalog |
 | DeepSeek | `https://api.deepseek.com` | DeepSeek OpenAI-compatible Chat Completions contract |
 | Groq | `https://api.groq.com/openai/v1` | Groq OpenAI-compatible language and audio endpoints |
@@ -139,13 +141,22 @@ A source-run process normally uses the equivalent `127.0.0.1` or network address
 Base URLs, model IDs, context capacities, and maximum parallel requests are editable in Settings.
 Use the exact model identifier exposed by the configured endpoint.
 Provider APIs and model catalogs change independently of CiteLoom.
-Confirm current details in the official documentation for [oMLX](https://github.com/jundot/omlx), [Ollama](https://docs.ollama.com/api/introduction), [LM Studio](https://lmstudio.ai/docs/developer/core/server), [OpenAI](https://platform.openai.com/docs/api-reference), [DeepSeek](https://api-docs.deepseek.com/), [Groq](https://console.groq.com/docs/openai), [Cohere](https://docs.cohere.com/v2), and [Jina](https://jina.ai/en-US/reranker/).
+Confirm current details in the official documentation for [oMLX](https://github.com/jundot/omlx), [Ollama](https://docs.ollama.com/api/introduction), [LM Studio](https://lmstudio.ai/docs/developer/core/server), [OpenAI](https://platform.openai.com/docs/api-reference), [OpenRouter](https://openrouter.ai/docs/quickstart), [DeepSeek](https://api-docs.deepseek.com/), [Groq](https://console.groq.com/docs/openai), [Cohere](https://docs.cohere.com/v2), and [Jina](https://jina.ai/en-US/reranker/).
+
+The bootstrap OpenRouter profile uses `openrouter/free` for language features, `nvidia/nemotron-3-embed-1b:free` for embeddings, `nvidia/llama-nemotron-rerank-vl-1b-v2:free` for search ranking, `openai/gpt-4o-mini-transcribe` for speech input, and `fish-audio/s2.1-pro-free:free` with voice `alloy` for spoken answers.
+CiteLoom validates every embedding response against the application-wide Vector dimensions setting in Settings → Application Features → Embedding space.
+The bootstrap OpenRouter embedding model returns 2048-dimensional vectors, so select `2048` before routing Embedding to OpenRouter.
+The selected model must return the configured 384, 768, 1024, 1536, or 2048 output dimensions without CiteLoom padding, truncating, or otherwise reshaping the vector.
+Changing Vector dimensions creates a new embedding space and requires reindexing.
+OpenRouter model availability and free pricing can change independently of CiteLoom.
+Requests routed through OpenRouter leave CiteLoom and may be processed or logged according to the selected model provider's data policy.
+Review the current provider policy before sending confidential or regulated documents through `openrouter/free`, because the router may select different free models over time.
 
 ### Fresh-install routes and models
 
 Fresh installs use Ollama for Ask, Chat, Query Expansion, Indexing model, and Embedding model.
 Search ranking and both speech features start unassigned.
-The saved oMLX models are ready to use if an administrator selects oMLX for one of those capabilities.
+The saved oMLX models and OpenRouter's free reranker are ready to use if an administrator selects those providers for one of their capabilities.
 The saved oMLX URL uses port 9000 and can be changed in Settings.
 
 | Feature | Bootstrap provider | Bootstrap model |
@@ -155,7 +166,7 @@ The saved oMLX URL uses port 9000 and can be changed in Settings.
 | Query Expansion | Ollama | `qwen3.5:9b-mlx` |
 | Indexing model | Ollama | `qwen3.5:9b` |
 | Embedding model | Ollama | `snowflake-arctic-embed:137m` |
-| Search ranking | Not selected | oMLX default `gte-reranker-modernbert-base` is available |
+| Search ranking | Not selected | oMLX default `gte-reranker-modernbert-base` and OpenRouter default `nvidia/llama-nemotron-rerank-vl-1b-v2:free` are available |
 | Speech input | Not selected | oMLX default `Qwen3-ASR-1.7B-8bit` is available |
 | Spoken answers | Not selected | oMLX default `Kokoro-82M-bf16`, voice `af_heart`, is available |
 
@@ -238,7 +249,8 @@ CiteLoom handles reasoning output through its provider adapters, so no runtime-s
 | Enabled | Requests the adapter's high-reasoning behavior. |
 | Provider default | Sends no CiteLoom thinking override and lets the provider or model decide. |
 
-For OpenAI-compatible language adapters, CiteLoom sends `reasoning_effort` as `none` or `high`.
+For OpenAI-compatible language adapters other than OpenRouter, CiteLoom sends `reasoning_effort` as `none` or `high`.
+The OpenRouter adapter translates those values to its unified nested `reasoning.effort` contract.
 The DeepSeek adapter translates those values to its `thinking.type` contract.
 The Ollama and Cohere adapters receive the AI SDK reasoning setting.
 OpenAI Codex always uses a reasoning-capable request, so Disabled selects `low`, Enabled selects `high`, and Provider default omits the effort override.
@@ -252,6 +264,19 @@ Changing the embedding model, dimensions, document section method, or search tex
 Settings reports when the selected configuration has no indexed documents.
 
 Search and answer settings control how widely CiteLoom searches documents and how much source material it can use in an answer.
+Search method controls how Ask and Chat find document sections.
+
+| Search method | Document retrieval | Document query embeddings |
+| --- | --- | --- |
+| Keyword | Exact words, names, codes, and phrases through BM25 | None |
+| Semantic | Meaning-based vector search | The original query and every configured expansion |
+| Hybrid | BM25 and vector search combined with reciprocal rank fusion | The original query and every configured expansion |
+
+Hybrid is the default.
+Changing the search method does not require reindexing because CiteLoom maintains both lexical and vector indexes during ingestion.
+The document query embedding behavior above applies only to document retrieval.
+With query expansions set to zero, Semantic and Hybrid each make one document-query embedding request.
+Chat can make separate embedding calls when a conversation no longer fits in the model context and semantic chat-memory retrieval is required.
 Sections considered (`retrievalCandidates`) is the maximum number of document sections CiteLoom checks for Ask, Chat, and semantic Find Sources.
 Sections used in answers (`topK`) is the maximum number of the strongest matching sections CiteLoom can use to write an Ask or Chat answer.
 Sections considered must be at least as large as Sections used in answers.
@@ -267,8 +292,7 @@ These two display settings do not change how many document sections CiteLoom sea
 
 ### Optional search ranking
 
-Hybrid retrieval searches both by meaning and by exact words, then combines the two result lists.
-When search ranking is enabled, CiteLoom uses the configured ranking model to order the matching document sections for the original question.
+When search ranking is enabled, CiteLoom uses the configured ranking model to order the candidates returned by the selected Keyword, Semantic, or Hybrid method.
 Ask and Chat then use up to Sections used in answers (`topK`) of the strongest matching sections.
 A remote search ranking service adds network time and provider usage.
 

@@ -188,11 +188,13 @@ This prevents cleanup from removing a file while its job is being created and li
 ## Question answering
 
 Before searching, CiteLoom resolves the exact set of documents selected for the question.
-It always searches the original question with both meaning-based retrieval and BM25 keyword retrieval.
-When Query Expansion is enabled, CiteLoom also searches the generated query variations through those same retrieval paths.
+The application-wide Search method selects BM25 keyword retrieval, meaning-based vector retrieval, or both paths in parallel.
+Keyword retrieval does not call the embedding model for the document query.
+Semantic and Hybrid retrieval embed the original document query and every configured expansion.
+When Query Expansion is enabled, CiteLoom also searches the generated query variations through the selected retrieval method.
 At a configured count of 0, CiteLoom does not call the extra-search-query model.
-It then combines those rankings and can optionally rerank the best candidates.
-When a published TOC map is available, CiteLoom may select relevant branches from the strongest normally retrieved document and merge their mapped passages into the candidate ranking before reranking.
+It then ranks the active results and can optionally rerank the best candidates.
+When a published TOC map is available and the selected method includes vector retrieval, CiteLoom may select relevant branches from the strongest normally retrieved document and merge their mapped passages into the candidate ranking before reranking.
 TOC entries remain unavailable to answer generation and citation publication.
 Reranking can improve answer and citation accuracy by using a specialized relevance model to reorder candidates before CiteLoom selects the answer context.
 
@@ -219,12 +221,20 @@ sequenceDiagram
     opt Query Expansion enabled
         Query->>AI: Run Query Expansion
     end
-    par Dense retrieval
-        Query->>DB: pgvector cosine search
-    and Lexical retrieval
+    alt Keyword search
         Query->>DB: BM25 search
+    else Semantic search
+        Query->>AI: Embed document queries
+        Query->>DB: pgvector cosine search
+    else Hybrid search
+        Query->>AI: Embed document queries
+        par Dense retrieval
+            Query->>DB: pgvector cosine search
+        and Lexical retrieval
+            Query->>DB: BM25 search
+        end
     end
-    Query->>Query: Fuse rankings
+    Query->>Query: Rank active results
     opt Reranking enabled
         Query->>Ranker: Fused candidates
         Ranker-->>Query: Reranked candidates

@@ -36,9 +36,6 @@ import {
   chatCitationRecords,
   chatConversations,
   chatEvidenceDocuments,
-  chatMessageEmbeddings384,
-  chatMessageEmbeddings768,
-  chatMessageEmbeddings1024,
   chatMessages,
   chatRuns,
   chatVerificationJobs,
@@ -46,6 +43,10 @@ import {
   documentVersions,
   indexedDocuments,
 } from "../database/schema.js";
+import {
+  readChatMessageEmbeddingTable,
+  type ChatMessageEmbeddingTable,
+} from "../embedding/storage-tables.js";
 import {
   type BufferedDocumentSource,
   decodeDocumentFormat,
@@ -286,7 +287,6 @@ export interface ClaimedChatVerificationJob {
 
 export interface PublishChatAssistantInput {
   answerDocument: PublishedAnswerDocument;
-  assistantEmbeddings: readonly ChatMessageEmbeddingPart[];
   attemptCount: number;
   claims: readonly ChatClaimVerificationResult[];
   completedAt: Date;
@@ -866,13 +866,12 @@ export class ChatStore {
     dimensions: EmbeddingDimensions,
   ): Promise<ChatMessageEmbeddingRecord[]> {
     await this.requireOwnedConversation(principal, conversationId);
-    if (dimensions === 384) {
-      return this.readMissing384(conversationId, embeddingSpaceId);
-    }
-    if (dimensions === 768) {
-      return this.readMissing768(conversationId, embeddingSpaceId);
-    }
-    return this.readMissing1024(conversationId, embeddingSpaceId);
+    const table = readChatMessageEmbeddingTable(dimensions);
+    return this.readMissingEmbeddingsFromTable(
+      conversationId,
+      embeddingSpaceId,
+      table,
+    );
   }
 
   public async saveMessageEmbeddings(
@@ -891,19 +890,8 @@ export class ChatStore {
       messageId: part.messageId,
       partOrdinal: part.partOrdinal,
     }));
-    if (dimensions === 384) {
-      await this.database.insert(chatMessageEmbeddings384)
-        .values(values)
-        .onConflictDoNothing();
-      return;
-    }
-    if (dimensions === 768) {
-      await this.database.insert(chatMessageEmbeddings768)
-        .values(values)
-        .onConflictDoNothing();
-      return;
-    }
-    await this.database.insert(chatMessageEmbeddings1024)
+    const table = readChatMessageEmbeddingTable(dimensions);
+    await this.database.insert(table)
       .values(values)
       .onConflictDoNothing();
   }
@@ -918,78 +906,22 @@ export class ChatStore {
     limit: number,
   ): Promise<ChatSemanticMemoryHit[]> {
     await this.requireOwnedConversation(principal, conversationId);
-    if (dimensions === 384) {
-      const distance = cosineDistance(
-        chatMessageEmbeddings384.embedding,
-        embedding,
-      );
-      const rows = await this.database
-        .select({
-          distance,
-          runId: chatRuns.id,
-          sequence: chatRuns.sequence,
-        })
-        .from(chatMessageEmbeddings384)
-        .innerJoin(
-          chatMessages,
-          eq(chatMessages.id, chatMessageEmbeddings384.messageId),
-        )
-        .innerJoin(chatRuns, eq(chatRuns.id, chatMessages.runId))
-        .where(and(
-          eq(chatMessageEmbeddings384.embeddingSpaceId, embeddingSpaceId),
-          eq(chatRuns.conversationId, conversationId),
-          eq(chatRuns.state, "completed"),
-          ne(chatRuns.id, excludeRunId),
-        ))
-        .orderBy(distance, desc(chatRuns.sequence))
-        .limit(limit * SEMANTIC_MEMORY_PART_OVERSAMPLING);
-      return decodeSemanticHits(rows, limit);
-    }
-    if (dimensions === 768) {
-      const distance = cosineDistance(
-        chatMessageEmbeddings768.embedding,
-        embedding,
-      );
-      const rows = await this.database
-        .select({
-          distance,
-          runId: chatRuns.id,
-          sequence: chatRuns.sequence,
-        })
-        .from(chatMessageEmbeddings768)
-        .innerJoin(
-          chatMessages,
-          eq(chatMessages.id, chatMessageEmbeddings768.messageId),
-        )
-        .innerJoin(chatRuns, eq(chatRuns.id, chatMessages.runId))
-        .where(and(
-          eq(chatMessageEmbeddings768.embeddingSpaceId, embeddingSpaceId),
-          eq(chatRuns.conversationId, conversationId),
-          eq(chatRuns.state, "completed"),
-          ne(chatRuns.id, excludeRunId),
-        ))
-        .orderBy(distance, desc(chatRuns.sequence))
-        .limit(limit * SEMANTIC_MEMORY_PART_OVERSAMPLING);
-      return decodeSemanticHits(rows, limit);
-    }
-    const distance = cosineDistance(
-      chatMessageEmbeddings1024.embedding,
-      embedding,
-    );
+    const table = readChatMessageEmbeddingTable(dimensions);
+    const distance = cosineDistance(table.embedding, embedding);
     const rows = await this.database
       .select({
         distance,
         runId: chatRuns.id,
         sequence: chatRuns.sequence,
       })
-      .from(chatMessageEmbeddings1024)
+      .from(table)
       .innerJoin(
         chatMessages,
-        eq(chatMessages.id, chatMessageEmbeddings1024.messageId),
+        eq(chatMessages.id, table.messageId),
       )
       .innerJoin(chatRuns, eq(chatRuns.id, chatMessages.runId))
       .where(and(
-        eq(chatMessageEmbeddings1024.embeddingSpaceId, embeddingSpaceId),
+        eq(table.embeddingSpaceId, embeddingSpaceId),
         eq(chatRuns.conversationId, conversationId),
         eq(chatRuns.state, "completed"),
         ne(chatRuns.id, excludeRunId),
@@ -1005,9 +937,6 @@ export class ChatStore {
     abortSignal: AbortSignal = passiveAbortSignal,
   ): Promise<ChatAssistantMessage> {
     abortSignal.throwIfAborted();
-    if (input.assistantEmbeddings.length === 0) {
-      throw new Error("A completed chat assistant message requires an embedding.");
-    }
     const answerDocument = decodePublishedAnswerDocument(input.answerDocument);
     const content = normalizePublishedChatContent(
       answerDocument,
@@ -1078,23 +1007,6 @@ export class ChatStore {
           state: "pending",
           updatedAt: input.completedAt,
         });
-      }
-      if (input.assistantEmbeddings.length > 0) {
-        const values = input.assistantEmbeddings.map((part) => ({
-          content: part.content,
-          embedding: part.embedding,
-          embeddingSpaceId: this.config.embeddingSpace.id,
-          inputTokens: part.inputTokens,
-          messageId: assistantMessageId,
-          partOrdinal: part.partOrdinal,
-        }));
-        if (this.config.embeddingSpace.dimensions === 384) {
-          await transaction.insert(chatMessageEmbeddings384).values(values);
-        } else if (this.config.embeddingSpace.dimensions === 768) {
-          await transaction.insert(chatMessageEmbeddings768).values(values);
-        } else {
-          await transaction.insert(chatMessageEmbeddings1024).values(values);
-        }
       }
       if (citationSources.length > 0) {
         const citationValues = citationSources.map((source) => ({
@@ -1701,9 +1613,10 @@ export class ChatStore {
     return grouped;
   }
 
-  private async readMissing384(
+  private async readMissingEmbeddingsFromTable(
     conversationId: string,
     embeddingSpaceId: string,
+    table: ChatMessageEmbeddingTable,
   ): Promise<ChatMessageEmbeddingRecord[]> {
     const rows = await this.database
       .select({
@@ -1717,76 +1630,11 @@ export class ChatStore {
         eq(chatRuns.conversationId, conversationId),
         notExists(
           this.database
-            .select({ messageId: chatMessageEmbeddings384.messageId })
-            .from(chatMessageEmbeddings384)
+            .select({ messageId: table.messageId })
+            .from(table)
             .where(and(
-              eq(chatMessageEmbeddings384.messageId, chatMessages.id),
-              eq(
-                chatMessageEmbeddings384.embeddingSpaceId,
-                embeddingSpaceId,
-              ),
-            )),
-        ),
-      ))
-      .orderBy(asc(chatRuns.sequence), asc(chatMessages.createdAt));
-    return decodeEmbeddingRecords(rows);
-  }
-
-  private async readMissing768(
-    conversationId: string,
-    embeddingSpaceId: string,
-  ): Promise<ChatMessageEmbeddingRecord[]> {
-    const rows = await this.database
-      .select({
-        content: chatMessages.content,
-        id: chatMessages.id,
-        role: chatMessages.role,
-      })
-      .from(chatMessages)
-      .innerJoin(chatRuns, eq(chatRuns.id, chatMessages.runId))
-      .where(and(
-        eq(chatRuns.conversationId, conversationId),
-        notExists(
-          this.database
-            .select({ messageId: chatMessageEmbeddings768.messageId })
-            .from(chatMessageEmbeddings768)
-            .where(and(
-              eq(chatMessageEmbeddings768.messageId, chatMessages.id),
-              eq(
-                chatMessageEmbeddings768.embeddingSpaceId,
-                embeddingSpaceId,
-              ),
-            )),
-        ),
-      ))
-      .orderBy(asc(chatRuns.sequence), asc(chatMessages.createdAt));
-    return decodeEmbeddingRecords(rows);
-  }
-
-  private async readMissing1024(
-    conversationId: string,
-    embeddingSpaceId: string,
-  ): Promise<ChatMessageEmbeddingRecord[]> {
-    const rows = await this.database
-      .select({
-        content: chatMessages.content,
-        id: chatMessages.id,
-        role: chatMessages.role,
-      })
-      .from(chatMessages)
-      .innerJoin(chatRuns, eq(chatRuns.id, chatMessages.runId))
-      .where(and(
-        eq(chatRuns.conversationId, conversationId),
-        notExists(
-          this.database
-            .select({ messageId: chatMessageEmbeddings1024.messageId })
-            .from(chatMessageEmbeddings1024)
-            .where(and(
-              eq(chatMessageEmbeddings1024.messageId, chatMessages.id),
-              eq(
-                chatMessageEmbeddings1024.embeddingSpaceId,
-                embeddingSpaceId,
-              ),
+              eq(table.messageId, chatMessages.id),
+              eq(table.embeddingSpaceId, embeddingSpaceId),
             )),
         ),
       ))

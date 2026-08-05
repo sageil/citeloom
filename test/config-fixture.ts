@@ -124,6 +124,7 @@ const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
   retrievalWindowPolicy: "structured-token-v3",
   retryBaseMs: 5_000,
   rrfK: 60,
+  searchMethod: "hybrid",
   sttLanguage: "English",
   sttMaxAudioMegabytes: 10,
   sttPrompt: null,

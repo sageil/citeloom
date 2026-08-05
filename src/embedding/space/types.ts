@@ -1,7 +1,11 @@
+import type { EmbeddingDimensions } from "../dimensions.js";
+
 export interface EmbeddingSpaceRowCounts {
   indexedDocuments: number;
   lexicalChunks: number;
   vectorChunks1024: number;
+  vectorChunks1536: number;
+  vectorChunks2048: number;
   vectorChunks384: number;
   vectorChunks768: number;
 }
@@ -14,7 +18,7 @@ export type EmbeddingSpaceProtectionKind =
 
 export interface EmbeddingSpaceGcSpaceRecord {
   createdAt: string;
-  dimensions: 384 | 768 | 1024;
+  dimensions: EmbeddingDimensions;
   disposition: "deletable" | "protected";
   errorMessage: string | null;
   estimatedBytes: string;

@@ -54,7 +54,7 @@ export function printEmbeddingSpaceGcReport(
       `    input format: ${space.inputFormatName} (${space.inputFormatHash})`,
     );
     console.log(
-      `    rows: ${rows.vectorChunks384} vector-384, ${rows.vectorChunks768} vector-768, ${rows.vectorChunks1024} vector-1024, ${rows.lexicalChunks} lexical, ${rows.indexedDocuments} document links`,
+      `    rows: ${rows.vectorChunks384} vector-384, ${rows.vectorChunks768} vector-768, ${rows.vectorChunks1024} vector-1024, ${rows.vectorChunks1536} vector-1536, ${rows.vectorChunks2048} vector-2048, ${rows.lexicalChunks} lexical, ${rows.indexedDocuments} document links`,
     );
     if (space.errorMessage !== null) {
       console.log(`    error: ${space.errorMessage}`);

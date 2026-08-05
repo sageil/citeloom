@@ -45,14 +45,12 @@ import {
   indexedDocumentSpaces,
   ingestionEmbeddingManifests,
   ingestionJobs,
-  retrievalChunks384,
-  retrievalChunks768,
-  retrievalChunks1024,
   retrievalLexicalChunks,
   retrievalDescriptionArtifacts,
   retrievalTocArtifacts,
   sourceElements,
 } from "../../database/schema.js";
+import { RETRIEVAL_VECTOR_TABLES } from "../../embedding/storage-tables.js";
 import {
   deleteRetrievalGenerationRows,
   validateEmbeddingGenerationForPublication,
@@ -747,32 +745,16 @@ async function synchronizeRetrievalSourceFile(
   previousSourceFile: string,
   canonicalSourceFile: string,
 ): Promise<void> {
-  const condition384 = and(
-    eq(retrievalChunks384.documentId, documentId),
-    eq(retrievalChunks384.sourceFile, previousSourceFile),
-  );
-  await transaction
-    .update(retrievalChunks384)
-    .set({ sourceFile: canonicalSourceFile })
-    .where(condition384);
-
-  const condition768 = and(
-    eq(retrievalChunks768.documentId, documentId),
-    eq(retrievalChunks768.sourceFile, previousSourceFile),
-  );
-  await transaction
-    .update(retrievalChunks768)
-    .set({ sourceFile: canonicalSourceFile })
-    .where(condition768);
-
-  const condition1024 = and(
-    eq(retrievalChunks1024.documentId, documentId),
-    eq(retrievalChunks1024.sourceFile, previousSourceFile),
-  );
-  await transaction
-    .update(retrievalChunks1024)
-    .set({ sourceFile: canonicalSourceFile })
-    .where(condition1024);
+  for (const table of RETRIEVAL_VECTOR_TABLES) {
+    const condition = and(
+      eq(table.documentId, documentId),
+      eq(table.sourceFile, previousSourceFile),
+    );
+    await transaction
+      .update(table)
+      .set({ sourceFile: canonicalSourceFile })
+      .where(condition);
+  }
 
   const lexicalCondition = and(
     eq(retrievalLexicalChunks.documentId, documentId),

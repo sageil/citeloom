@@ -14,6 +14,7 @@ export const PROVIDER_IDS = [
   "ollama",
   "lmstudio",
   "openai",
+  "openrouter",
   "openai-codex",
   "deepseek",
   "groq",
@@ -311,11 +312,13 @@ export const embeddingModelAdapterSchema = z.enum([
 export const rerankerAdapterSchema = z.enum(["top-n-rerank"]);
 export const speechToTextAdapterSchema = z.enum([
   "omlx-transcription",
+  "openrouter-transcription",
   "openai-transcription",
 ]);
 export const textToSpeechAdapterSchema = z.enum([
   "groq-speech",
   "omlx-speech",
+  "openrouter-speech",
   "openai-speech",
 ]);
 const providerCapabilityConnectionSchema = z.object({
@@ -524,6 +527,20 @@ export const providerCatalog: readonly ProviderProfile[] = [
     ],
     displayName: "OpenAI",
     id: "openai",
+  },
+  {
+    capabilities: [
+      { adapter: "openai-compatible-language", capability: "answer" },
+      { adapter: "openai-compatible-language", capability: "chat" },
+      { adapter: "openai-compatible-language", capability: "queryExpansion" },
+      { adapter: "openai-compatible-language", capability: "summarization" },
+      { adapter: "openai-compatible-embedding", capability: "embedding" },
+      { adapter: "top-n-rerank", capability: "reranking" },
+      { adapter: "openrouter-transcription", capability: "speechToText" },
+      { adapter: "openrouter-speech", capability: "textToSpeech" },
+    ],
+    displayName: "OpenRouter",
+    id: "openrouter",
   },
   {
     capabilities: [
@@ -837,6 +854,9 @@ export function readTextToSpeechSpeedRange(
   if (adapter === "groq-speech") {
     return { displayName: "Groq", maximum: 5, minimum: 0.5 };
   }
+  if (adapter === "openrouter-speech") {
+    return { displayName: "OpenRouter", maximum: 4, minimum: 0.25 };
+  }
   return {
     displayName: adapter === "omlx-speech" ? "oMLX" : "OpenAI-compatible",
     maximum: 4,
@@ -996,6 +1016,7 @@ function isTextToSpeechAdapter(
 ): value is TextToSpeechAdapter {
   return value === "groq-speech"
     || value === "omlx-speech"
+    || value === "openrouter-speech"
     || value === "openai-speech";
 }
 
@@ -1047,6 +1068,7 @@ function isSpeechToTextAdapter(
     | TextToSpeechAdapter,
 ): value is SpeechToTextAdapter {
   return value === "omlx-transcription"
+    || value === "openrouter-transcription"
     || value === "openai-transcription";
 }
 

@@ -118,6 +118,14 @@ export interface PreparedRetrieval {
   retrieved: RetrievedElement[];
 }
 
+export interface PrepareRetrievalOptions {
+  applyReranking: boolean;
+}
+
+const defaultPrepareRetrievalOptions: Readonly<PrepareRetrievalOptions> = {
+  applyReranking: true,
+};
+
 function createRetrievalTrace(
   generation: TurnGenerationSettings,
   question: QuestionInput,
@@ -379,6 +387,7 @@ export async function prepareRetrieval(
   abortSignal: AbortSignal,
   runTelemetry: RunTelemetry = noopRunTelemetry,
   workload: WorkloadClass = "interactive-search",
+  options: PrepareRetrievalOptions = defaultPrepareRetrievalOptions,
 ): Promise<PreparedRetrieval> {
   const questionInput = readQuestionInput(question);
   abortSignal.throwIfAborted();
@@ -428,6 +437,7 @@ export async function prepareRetrieval(
     abortSignal,
     runTelemetry,
     workload === "interactive-answer",
+    options,
   );
 }
 
@@ -440,6 +450,7 @@ export async function prepareRetrievalWithRuntime(
   runTelemetry: RunTelemetry = noopRunTelemetry,
   config: AppConfig = runtime.config,
   workload: WorkloadClass = "interactive-search",
+  options: PrepareRetrievalOptions = defaultPrepareRetrievalOptions,
 ): Promise<PreparedRetrieval> {
   const questionInput = readQuestionInput(question);
   return prepareRetrievalWithResources(
@@ -460,6 +471,7 @@ export async function prepareRetrievalWithRuntime(
     abortSignal,
     runTelemetry,
     workload === "interactive-answer",
+    options,
   );
 }
 
@@ -477,6 +489,7 @@ async function prepareRetrievalWithResources(
   abortSignal: AbortSignal,
   runTelemetry: RunTelemetry,
   useDocumentToc: boolean,
+  options: PrepareRetrievalOptions,
 ): Promise<PreparedRetrieval> {
   const catalog = new DocumentCatalog(databaseSession.database);
   const scopeStage = runTelemetry.startStage({
@@ -539,10 +552,16 @@ async function prepareRetrievalWithResources(
     runTelemetry,
   );
   const retrievalMode = readRetrievalModeLabel(config.retrieval.mode);
+  const rerankingDescription = config.retrieval.reranker === null
+    ? ""
+    : " followed by reranking";
   reportProgress(
-    `Retrieving ${config.retrieval.candidateK} candidates with ${retrievalMode} from ${scopeTargets.length} source(s)`,
+    `Retrieving ${config.retrieval.candidateK} candidates with ${retrievalMode}${rerankingDescription} from ${scopeTargets.length} source(s)`,
   );
   const documentStore = new SourceDocumentStore(databaseSession.database);
+  const retrievalConfig = options.applyReranking
+    ? config.retrieval
+    : { ...config.retrieval, reranker: null };
   const retrieval = await retrieveRelevantElementsWithScores(
     databaseSession.database,
     databaseSession.query,
@@ -550,14 +569,13 @@ async function prepareRetrievalWithResources(
     config.embeddingSpace,
     question.processing,
     queries,
-    config.retrieval,
+    retrievalConfig,
     scopeTargets,
     models.reranker,
     rerankingScheduler,
     abortSignal,
     runTelemetry,
-    config.docling.tocEnabled && config.retrieval.mode === "hybrid-reranked"
-      && useDocumentToc,
+    config.docling.tocEnabled && useDocumentToc,
   );
   abortSignal.throwIfAborted();
   if (
@@ -986,10 +1004,7 @@ function readRetrievalModeLabel(mode: RetrievalMode): string {
   if (mode === "dense") {
     return "vector search";
   }
-  if (mode === "hybrid") {
-    return "BM25 and vector search with RRF";
-  }
-  return "BM25 and vector search with RRF and local reranking";
+  return "BM25 and vector search with RRF";
 }
 
 function readErrorMessage(error: unknown): string {
@@ -1319,6 +1334,8 @@ function readAnswerProviderFailureCode(
       return "inference_provider_request_too_large";
     case "timeout":
       return "inference_provider_timeout";
+    case "unsupported-parameters":
+      return "inference_provider_parameters_unsupported";
     case "unavailable":
       return "inference_provider_unavailable";
     case "unreachable":
@@ -1350,6 +1367,8 @@ function readAnswerProviderFailureMessage(
       return "The AI request exceeds the provider input limit. Check the model context capacity or use a model with a larger context window.";
     case "timeout":
       return "The AI provider timed out before completing the request. Check the provider status, then try again.";
+    case "unsupported-parameters":
+      return "The selected model does not support the response format CiteLoom requires. Select a different model in Settings, then try again.";
     case "unavailable":
       return "The AI provider is temporarily unavailable. Check the provider status, then try again.";
     case "unreachable":

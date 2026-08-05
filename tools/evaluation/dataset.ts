@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { calculateRequiredPairedCaseCount } from "./statistics.js";
 import { contentIdSchema } from "../../src/domain/validation.js";
+import { EVALUATION_RETRIEVAL_MODES } from "./retrieval-mode.js";
 
 export const evaluationStableNameSchema = z
   .string()
@@ -65,12 +66,7 @@ export const evaluationStatisticalDesignSchema = z.object({
   }
 });
 
-const retrievalModeSchema = z.enum([
-  "bm25",
-  "dense",
-  "hybrid",
-  "hybrid-reranked",
-]);
+const retrievalModeSchema = z.enum(EVALUATION_RETRIEVAL_MODES);
 const evaluationCaseOriginSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("manual") }).strict(),
   z.object({

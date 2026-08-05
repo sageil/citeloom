@@ -8,7 +8,7 @@ export type RuntimeSettingGroup =
   | "Answers and citation checks"
   | "Document processing"
   | "Search and answers"
-  | "Embedding model"
+  | "Embedding space"
   | "Search ranking"
   | "Speech input"
   | "Spoken answers"

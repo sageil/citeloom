@@ -41,7 +41,7 @@ describe("production and prepared candidate-selection parity", () => {
     const question = "What is Alpha Guide?";
     const production = selectRerankingCandidatesWithTrace(
       question,
-      rankRetrievalCandidates("hybrid-reranked", rankings, 60, fusion),
+      rankRetrievalCandidates("hybrid", rankings, 60, fusion),
       3,
     );
     const preparedCase = buildPreparedCase(
@@ -56,7 +56,7 @@ describe("production and prepared candidate-selection parity", () => {
       buildScoringConfig(3, 3),
     );
     const preparedCandidates = selectPreparedRetrievalCandidates(
-      "hybrid-reranked",
+      "hybrid",
       question,
       rankings,
       3,
@@ -85,7 +85,7 @@ describe("production and prepared candidate-selection parity", () => {
     const question = "Which passages explain the subject?";
     const production = selectRerankingCandidatesWithTrace(
       question,
-      rankRetrievalCandidates("hybrid-reranked", rankings, 60, fusion),
+      rankRetrievalCandidates("hybrid", rankings, 60, fusion),
       3,
     );
     const prepared = selectPreparedRerankingCandidatesWithTrace(

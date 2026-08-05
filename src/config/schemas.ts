@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 import { providerIdSchema } from "../providers/profiles.js";
+import { embeddingDimensionsSchema } from "../embedding/dimensions.js";
+import { RETRIEVAL_MODES } from "../retrieval/mode.js";
 
 import type {
   ApplicationErrorRetentionConfig,
@@ -100,7 +102,7 @@ export const runtimeSettingsSchema = z.object({
   doclingVlmModelOverride: z.string().trim().min(1).max(300).nullable(),
   doclingVlmPrompt: z.string().trim().min(1).max(2_000),
   doclingVlmProviderId: providerIdSchema,
-  embeddingDimensions: z.union([z.literal(384), z.literal(768), z.literal(1024)]),
+  embeddingDimensions: embeddingDimensionsSchema,
   embeddingInputFormatId: z.uuid(),
   embeddingSpaceId: z.string().trim().min(1).max(200).nullable(),
   embeddingTimeoutSeconds: z.number().int().min(1).max(86_400),
@@ -124,6 +126,7 @@ export const runtimeSettingsSchema = z.object({
   retrievalWindowPolicy: z.literal("structured-token-v3"),
   retryBaseMs: z.number().int().min(100).max(3_600_000),
   rrfK: z.number().int().min(1).max(1_000),
+  searchMethod: z.enum(RETRIEVAL_MODES),
   queryExpansionTimeoutSeconds: z.number().int().min(1).max(3_600),
   summaryTimeoutSeconds: z.number().int().min(1).max(86_400),
   sttLanguage: z.string().trim().min(1).max(100).nullable(),

@@ -12,6 +12,7 @@ export type InferenceApiFailureKind =
   | "rate-limited"
   | "request-too-large"
   | "timeout"
+  | "unsupported-parameters"
   | "unavailable"
   | "unreachable"
   | "unexpected";
@@ -30,7 +31,7 @@ export function readInferenceApiFailure(
     return null;
   }
   return {
-    kind: classifyApiFailure(apiError.statusCode),
+    kind: classifyApiFailure(apiError),
     retryable: apiError.isRetryable,
     statusCode: apiError.statusCode ?? null,
   };
@@ -63,9 +64,12 @@ export function readInferenceErrorMessage(error: unknown): string {
 }
 
 function classifyApiFailure(
-  statusCode: number | undefined,
+  error: APICallError,
 ): InferenceApiFailureKind {
-  switch (statusCode) {
+  if (isUnsupportedParameterFailure(error)) {
+    return "unsupported-parameters";
+  }
+  switch (error.statusCode) {
     case undefined:
       return "unreachable";
     case 400:
@@ -89,8 +93,25 @@ function classifyApiFailure(
     case 429:
       return "rate-limited";
     default:
-      return statusCode >= 500 ? "unavailable" : "unexpected";
+      return error.statusCode >= 500 ? "unavailable" : "unexpected";
   }
+}
+
+function isUnsupportedParameterFailure(error: APICallError): boolean {
+  if (error.statusCode !== 400 && error.statusCode !== 404) {
+    return false;
+  }
+  const upstreamMessage = readUpstreamMessage(error.responseBody);
+  if (upstreamMessage === null) {
+    return false;
+  }
+  const normalized = upstreamMessage.toLocaleLowerCase("en-CA");
+  const noCompatibleEndpoint = normalized.includes("no endpoints")
+    && normalized.includes("support")
+    && normalized.includes("parameter");
+  const structuredOutputUnsupported = normalized.includes("support")
+    && normalized.includes("structured output");
+  return noCompatibleEndpoint || structuredOutputUnsupported;
 }
 
 function readApiCallError(error: unknown): APICallError | null {
