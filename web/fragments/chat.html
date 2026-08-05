@@ -22,13 +22,40 @@
       <div class="chat-conversation">
         <header class="chat-conversation-header">
           <div class="chat-context-bar">
-            <div class="chat-context-scope">
-              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
-              <span x-text="scopeLabel()"></span>
+            <div class="chat-context-details">
+              <div class="chat-context-scope">
+                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
+                <span x-text="scopeLabel()"></span>
+              </div>
+              <div class="chat-conversation-title" :title="conversation.title">
+                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
+                <span x-text="conversation.title"></span>
+              </div>
             </div>
-            <div class="chat-conversation-title" :title="conversation.title">
-              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
-              <span x-text="conversation.title"></span>
+            <div
+              class="chat-context-verification chat-verification-status"
+              :class="`chat-verification-status-${conversationVerificationState()}`"
+              x-cloak
+              x-show="conversationVerificationVisible()"
+              :title="conversationVerificationLabel()"
+              aria-live="polite"
+            >
+              <span
+                class="chat-verification-status-label"
+                x-text="conversationVerificationStatusLabel()"
+              ></span>
+              <span
+                class="chat-verification-progress"
+                :class="`chat-verification-progress-${conversationVerificationState()}`"
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                :aria-valuenow="conversationVerificationProgressValue()"
+                :aria-valuetext="conversationVerificationLabel()"
+                :aria-label="conversationVerificationLabel()"
+              >
+                <span></span>
+              </span>
             </div>
             <div class="chat-context-actions">
               <button
@@ -39,24 +66,7 @@
                 @click="openNewChat()"
               >
                 <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
-              </button>
-              <button
-                class="chat-context-icon-button"
-                type="button"
-                x-cloak
-                x-show="canUseChatSpeech()"
-                :aria-label="chatSpeechActionLabel()"
-                :title="chatSpeechActionLabel()"
-                :disabled="speechAudioLoading"
-                @click="toggleChatSpeech()"
-              >
-                <svg
-                  aria-hidden="true"
-                  class="citeloom-icon"
-                  :class="{ spin: speechAudioLoading }"
-                >
-                  <use :href="chatSpeechIcon()"></use>
-                </svg>
+                <span>New chat</span>
               </button>
               <button
                 class="chat-context-icon-button danger"
@@ -67,12 +77,18 @@
                 @click="deleteConversation()"
               >
                 <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use></svg>
+                <span>Delete chat</span>
               </button>
             </div>
           </div>
         </header>
 
-        <div class="chat-thread" x-ref="thread" aria-live="polite">
+        <div
+          class="chat-thread"
+          x-ref="thread"
+          aria-live="polite"
+          @scroll.passive="handleThreadScroll()"
+        >
           <template x-for="run in conversation.runs" :key="run.id">
             <article class="chat-turn">
               <template x-for="message in run.messages" :key="`${run.id}-${message.role}`">
@@ -98,6 +114,27 @@
                         </span>
                         <strong>CiteLoom</strong>
                         <time :datetime="message.createdAt" x-text="formatTime(message.createdAt)"></time>
+                        <div class="chat-response-actions">
+                          <button
+                            class="chat-response-speech-button"
+                            type="button"
+                            x-cloak
+                            x-show="canUseMessageSpeech(message)"
+                            :aria-label="messageSpeechActionLabel(message)"
+                            :title="messageSpeechActionLabel(message)"
+                            :disabled="messageSpeechLoading(message)"
+                            @click="toggleMessageSpeech(message)"
+                          >
+                            <svg
+                              aria-hidden="true"
+                              class="citeloom-icon"
+                              :class="{ spin: messageSpeechLoading(message) }"
+                            >
+                              <use :href="messageSpeechIcon(message)"></use>
+                            </svg>
+                            <span x-text="messageSpeechButtonLabel(message)"></span>
+                          </button>
+                        </div>
                       </header>
                       <div class="answer-content chat-assistant-content">
                         <div
@@ -108,32 +145,50 @@
                           <span>Retrieving evidence and preparing a cited response…</span>
                         </div>
                         <template x-for="(statement, statementIndex) in messageAnswerStatements(message)" :key="`${run.id}-statement-${statementIndex}`">
-                          <div class="chat-statement" :class="`chat-statement-${statement.presentation}`">
+                          <div
+                            class="chat-statement"
+                            :class="[`chat-statement-${statement.presentation}`, `chat-statement-${statement.section}`]"
+                          >
                             <h3
                               x-show="shouldShowStatementSectionHeading(message, statementIndex)"
                               x-text="statementSectionHeading(statement.section)"
                             ></h3>
-                            <div class="answer-markdown" x-html="statement.contentHtml"></div>
-                            <div
-                              class="chat-statement-citations"
-                              x-show="findingCheckForStatement(message, statementIndex) !== null"
-                            >
-                              <template x-for="citationId in statement.citationIds" :key="citationId">
-                                <button
-                                  type="button"
-                                  x-show="citationVerificationStatus(message, statementIndex, citationId) !== null"
-                                  :class="citationVerificationClasses(message, statementIndex, citationId)"
-                                  x-text="citationLabel(citationForId(message, citationId))"
-                                  :title="citationVerificationDescription(message, statementIndex, citationId)"
-                                  :aria-label="statementCitationLabel(message, statementIndex, citationId)"
-                                  @click="openCitation(citationForId(message, citationId))"
-                                ></button>
-                              </template>
+                            <div class="chat-statement-body">
+                              <span
+                                class="chat-statement-number"
+                                :class="`chat-statement-number-${statement.section}`"
+                                x-show="statement.presentation === 'bullet'"
+                                x-text="statementSectionNumber(message, statementIndex)"
+                                aria-hidden="true"
+                              ></span>
+                              <div class="chat-statement-copy">
+                                <div class="answer-markdown" x-html="statement.contentHtml"></div>
+                                <div
+                                  class="chat-statement-citations"
+                                  x-show="statement.presentation === 'bullet' &amp;&amp; statement.citationKeys.length > 0"
+                                >
+                                  <template x-for="citationKey in statement.citationKeys" :key="citationKey">
+                                    <button
+                                      type="button"
+                                      x-show="citationForKey(message, citationKey) !== null"
+                                      :class="citationVerificationClasses(message, statementIndex, citationKey)"
+                                      x-text="citationLabel(citationForKey(message, citationKey))"
+                                      :title="citationVerificationDescription(message, statementIndex, citationKey)"
+                                      :aria-label="statementCitationLabel(message, statementIndex, citationKey)"
+                                      :disabled="citationForKey(message, citationKey)?.preview === true"
+                                      @click="openCitation(citationForKey(message, citationKey))"
+                                    ></button>
+                                  </template>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </template>
 
-                        <section class="chat-answer-evidence" x-show="message.citations.length > 0">
+                        <section
+                          class="chat-answer-evidence"
+                          x-show="message.streaming !== true &amp;&amp; message.citations.length > 0"
+                        >
                           <header>
                             <strong>Evidence used in this answer</strong>
                             <span x-text="`· ${evidenceSources(message).length} ${evidenceSources(message).length === 1 ? 'source' : 'sources'}`"></span>

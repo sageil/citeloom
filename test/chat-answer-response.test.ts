@@ -9,29 +9,33 @@ import {
 } from "../src/chat/prompt.js";
 
 describe("Chat answer response", () => {
-  it("exposes only answer and findings at the structured-output root", () => {
+  it("exposes only answer at the structured-output root", () => {
     const schema = z.toJSONSchema(
       CHAT_ANSWER_RESPONSE.createSchema(["SOURCE_1", "SOURCE_2"]),
     );
 
     expect(schema).toMatchObject({
       additionalProperties: false,
-      required: ["answer", "findings"],
+      required: ["answer"],
       type: "object",
     });
-    expect(JSON.stringify(schema)).not.toContain('"status"');
+    const schemaText = JSON.stringify(schema);
+    expect(schemaText).toContain('"topics"');
+    expect(schemaText).not.toContain('"findings"');
+    expect(schemaText).not.toContain('"status"');
   });
 
-  it("decodes a cited response without a status field", () => {
+  it("decodes a cited answer and verifies only its topics", () => {
     const result = CHAT_ANSWER_RESPONSE.decode({
       answer: {
-        content: "Rule B provides access and correction rights.",
+        content: "Rule B establishes two related rights.",
         source_refs: ["SOURCE_2"],
+        topics: [{
+          content: "People may access and correct their records.",
+          source_refs: ["SOURCE_2"],
+          title: "Access and correction",
+        }],
       },
-      findings: [{
-        claim: "Rule B provides access and correction rights.",
-        source_refs: ["SOURCE_2"],
-      }],
     }, ["SOURCE_1", "SOURCE_2"]);
 
     expect(result).toEqual({
@@ -39,16 +43,16 @@ describe("Chat answer response", () => {
         conflictGroups: [],
         statements: [
           {
-            content: "Rule B provides access and correction rights.",
+            content: "Rule B establishes two related rights.",
             evidenceRefs: ["SOURCE_2"],
             presentation: "paragraph",
             section: "answer",
           },
           {
-            content: "Rule B provides access and correction rights.",
+            content: "Access and correction\n\nPeople may access and correct their records.",
             evidenceRefs: ["SOURCE_2"],
             presentation: "bullet",
-            section: "key-points",
+            section: "answer",
           },
         ],
         status: "answered",
@@ -62,8 +66,8 @@ describe("Chat answer response", () => {
       answer: {
         content: "The supplied sources do not establish who signed the agreement.",
         source_refs: [],
+        topics: [],
       },
-      findings: [],
     }, ["SOURCE_1"]);
 
     expect(result).toEqual({
@@ -75,11 +79,12 @@ describe("Chat answer response", () => {
     });
   });
 
-  it("rejects findings on an uncited response", () => {
+  it("rejects the removed findings field", () => {
     expect(() => CHAT_ANSWER_RESPONSE.decode({
       answer: {
-        content: "The supplied sources do not establish who signed the agreement.",
-        source_refs: [],
+        content: "Rule B provides access rights.",
+        source_refs: ["SOURCE_1"],
+        topics: [],
       },
       findings: [{
         claim: "The agreement takes effect on January 1.",
@@ -93,8 +98,8 @@ describe("Chat answer response", () => {
       answer: {
         content: "The supplied sources do not establish who signed the agreement.",
         source_refs: [],
+        topics: [],
       },
-      findings: [],
       status: "no_answer",
     }, ["SOURCE_1"])).toThrow("Invalid Chat answer model response.");
   });
@@ -110,8 +115,15 @@ describe("Chat system prompt", () => {
     expect(prompt).toContain("OUTPUT CONTRACT");
     expect(prompt).toContain("INSUFFICIENT-EVIDENCE EXAMPLE");
     expect(prompt).toContain(
-      "The top-level object must contain only:\n  - answer;\n  - findings.",
+      "The top-level object must contain only answer.",
     );
+    expect(prompt).toContain(
+      "Do not reduce answer.content to a generic introduction or an announcement of the topics that follow.",
+    );
+    expect(prompt).toContain(
+      "Do not repeat the same detailed claim in answer.content and answer.topics.",
+    );
+    expect(prompt).not.toContain("findings");
     expect(prompt).not.toContain('"status"');
     expect(prompt).not.toContain("no_answer");
   });

@@ -34,7 +34,7 @@ import {
 } from "../inference/error.js";
 import {
   createPendingAnswerClaimChecks,
-  verifyPublishedAnswer,
+  verifyPublishedAnswerClaims,
 } from "../answers/claim-verification.js";
 import { createPublishedAnswerContentSnapshot } from "../answers/content-snapshot.js";
 import { DocumentCatalog } from "../documents/catalog/index.js";
@@ -233,11 +233,12 @@ export async function askIndexedDocuments(
       prepared.generationSettings.answer,
       runTelemetry,
     );
-    if (result.outcome === "answered") {
+    if (result.outcome === "answered" && result.claims.length > 0) {
       reportProgress("Scoring cited claims with advisory HHEM checks");
-      const verified = await verifyPublishedAnswer(
+      const verified = await verifyPublishedAnswerClaims(
         prepared.models,
         result.answerDocument,
+        result.claims,
         prepared.answerScheduler,
         passiveAbortSignal,
         runTelemetry,
@@ -874,7 +875,7 @@ export async function writeStreamedAnswer(
       createPublishedAnswerContentSnapshot(result.answerDocument),
     );
     let claimChecks: ClaimVerificationResult[] = [];
-    if (result.outcome === "answered") {
+    if (result.outcome === "answered" && result.claims.length > 0) {
       reportProgress("Scoring cited claims with advisory HHEM checks");
       claimChecks = await verifyAdvisoryClaimChecks(
         prepared,
@@ -955,9 +956,10 @@ async function verifyAdvisoryClaimChecks(
   runTelemetry: RunTelemetry,
 ): Promise<ClaimVerificationResult[]> {
   try {
-    const verified = await verifyPublishedAnswer(
+    const verified = await verifyPublishedAnswerClaims(
       prepared.models,
       result.answerDocument,
+      result.claims,
       prepared.answerScheduler,
       abortSignal,
       runTelemetry,

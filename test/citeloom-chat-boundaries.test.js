@@ -87,6 +87,24 @@ describe("CiteLoom chat boundaries", () => {
     });
   });
 
+  it("assigns the same stable identity to persisted chat citations", () => {
+    const conversation = readChatConversation(buildCitedConversation());
+    const citation = conversation.runs[0].messages[0].citations[0];
+
+    expect(citation).toMatchObject({
+      key: JSON.stringify(["version-1", "document-1", "element-1"]),
+      preview: false,
+    });
+    expect(conversation.runs[0].messages[0].answerContent).toMatchObject({
+      statements: [{
+        citationKeys: [
+          JSON.stringify(["version-1", "document-1", "element-1"]),
+        ],
+        content: "Revenue increased.",
+      }],
+    });
+  });
+
   it("rejects malformed chat feature and scope values at the boundary", () => {
     expect(() => readChatSpeechFeatures({
       features: {
@@ -107,3 +125,67 @@ describe("CiteLoom chat boundaries", () => {
     })).toThrow("The scope kind response is invalid.");
   });
 });
+
+function buildCitedConversation() {
+  const answerCitation = {
+    citationNumber: 1,
+    documentId: "document-1",
+    documentVersionId: "version-1",
+    elementId: "element-1",
+    evidence: { excerpt: "Revenue increased.", kind: "text" },
+    id: "citation-1",
+    kind: "text",
+    pageNumbers: [7],
+    regions: [],
+    sectionPath: [],
+    sourceFile: "report.pdf",
+  };
+  return {
+    createdAt: "2026-08-04T00:00:00.000Z",
+    id: "chat-1",
+    ownerUserId: "user-1",
+    runs: [{
+      attemptCount: 1,
+      completedAt: "2026-08-04T00:01:00.000Z",
+      errorMessage: null,
+      id: "run-1",
+      messages: [{
+        answerDocument: {
+          citations: [answerCitation],
+          schemaVersion: 1,
+          statements: [{
+            citationIds: ["citation-1"],
+            content: "Revenue increased.",
+            presentation: "bullet",
+            section: "answer",
+          }],
+        },
+        citations: [{
+          ...answerCitation,
+          createdAt: "2026-08-04T00:01:00.000Z",
+          mediaType: "application/pdf",
+          sourceAvailable: true,
+        }],
+        claims: [{
+          citationNumbers: [1],
+          claim: "Revenue increased.",
+          claimIndex: 0,
+          evidenceUnits: [{ citationNumber: 1, outcome: "supported" }],
+          status: "supported",
+        }],
+        content: "Revenue increased.",
+        createdAt: "2026-08-04T00:01:00.000Z",
+        id: "message-1",
+        role: "assistant",
+        runId: "run-1",
+        verificationState: "completed",
+      }],
+      sequence: 1,
+      state: "completed",
+    }],
+    scope: { kind: "all" },
+    title: "Quarterly results",
+    updatedAt: "2026-08-04T00:01:00.000Z",
+    workspaceId: "workspace-1",
+  };
+}

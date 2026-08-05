@@ -208,6 +208,10 @@ describe("answer draft boundary", () => {
     ["Revenue increased [1-2].", "Revenue increased."],
     ["Revenue increased (Source 1).", "Revenue increased."],
     ["Revenue increased, source #1.", "Revenue increased."],
+    ["Revenue increased (EVID_A).", "Revenue increased."],
+    ["Revenue increased (EVID_A-EVID_B).", "Revenue increased."],
+    ["Revenue increased (Reference EVID_A).", "Revenue increased."],
+    ["Revenue increased. Evidence references EVID_A to EVID_B.", "Revenue increased."],
   ])("normalizes model citation decoration in %s", (content, expected) => {
     const draft = decodeAnswerModelResponse(
       buildAnswerModelResponse(content),

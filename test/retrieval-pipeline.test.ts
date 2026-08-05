@@ -100,7 +100,9 @@ describe("atomic structured answer publication", () => {
 
   it("verifies, persists, and then publishes one completed answer entity", async () => {
     const events: string[] = [];
-    const answerModel = buildAnswerModel(buildAnsweredDraft(["EVID_A"]));
+    const answerModel = buildAnswerModel(
+      buildVerifiableAnsweredDraft(["EVID_A"]),
+    );
     const verifier = new FakeHhemClient(0.5, async (items) => {
       events.push("verify");
       return items.map((item) => ({
@@ -133,12 +135,17 @@ describe("atomic structured answer publication", () => {
       answerDocument: {
         citations: [expect.objectContaining({ citationNumber: 1 })],
         schemaVersion: 1,
-        statements: [expect.objectContaining({ content: "Revenue increased." })],
+        statements: [
+          expect.objectContaining({
+            content: "The report describes a revenue change.",
+          }),
+          expect.objectContaining({ content: "Revenue increased." }),
+        ],
       },
       claims: [{
         citationNumbers: [1],
         claim: "Revenue increased.",
-        claimIndex: 0,
+        claimIndex: 1,
         status: "supported",
       }],
       matchedDocuments: [{
@@ -156,7 +163,12 @@ describe("atomic structured answer publication", () => {
     expect(saveTurnMock).toHaveBeenCalledOnce();
     expect(readSavedTurnInput()).toMatchObject({
       answerDocument: {
-        statements: [expect.objectContaining({ content: "Revenue increased." })],
+        statements: [
+          expect.objectContaining({
+            content: "The report describes a revenue change.",
+          }),
+          expect.objectContaining({ content: "Revenue increased." }),
+        ],
       },
       claims: [{
         citationNumbers: [1],
@@ -208,7 +220,6 @@ describe("atomic structured answer publication", () => {
     expect(saved.answerDocument.statements.map((statement) => statement.content))
       .toEqual(["Unsupported statement.", "Revenue decreased."]);
     expect(saved.claims.map((claim) => claim.status)).toEqual([
-      "unsupported",
       "partially-supported",
     ]);
     expect(saved.claims).toEqual(published.claims.map((claim) => {
@@ -231,8 +242,8 @@ describe("atomic structured answer publication", () => {
       doGenerate: async () => {
         requestCount += 1;
         const draft = requestCount === 1
-          ? buildAnsweredDraft(["EVID_C"])
-          : buildAnsweredDraft(["EVID_A", "EVID_B"]);
+          ? buildVerifiableAnsweredDraft(["EVID_C"])
+          : buildVerifiableAnsweredDraft(["EVID_A", "EVID_B"]);
         return buildTextGeneration(JSON.stringify(draft));
       },
       modelId: "answer-model:answer",
@@ -267,6 +278,8 @@ describe("atomic structured answer publication", () => {
           elementId: "d".repeat(64),
         }],
         statements: [{
+          content: "The report describes a revenue change.",
+        }, {
           content: "Revenue increased.",
         }],
       },
@@ -291,7 +304,7 @@ describe("atomic structured answer publication", () => {
 
     await runStreamedAnswer(
       buildPrepared(
-        buildAnswerModel(buildAnsweredDraft(["EVID_A"])),
+        buildAnswerModel(buildVerifiableAnsweredDraft(["EVID_A"])),
         verifier,
       ),
       stream.writer,
@@ -301,6 +314,9 @@ describe("atomic structured answer publication", () => {
     const published = readChunks(stream.chunks, "data-answer")[0]?.data;
     expect(saved.answerDocument.citations).toHaveLength(1);
     expect(saved.answerDocument.statements).toEqual([
+      expect.objectContaining({
+        content: "The report describes a revenue change.",
+      }),
       expect.objectContaining({ content: "Revenue increased." }),
     ]);
     expect(saved.claims).toEqual([
@@ -353,7 +369,7 @@ describe("atomic structured answer publication", () => {
 
     expect(verifiedClaims).toContain("Revenue increased.");
     expect(verifiedClaims).toContain("Revenue decreased.");
-    expect(verifiedClaims).toContain(
+    expect(verifiedClaims).not.toContain(
       "The reports describe opposite revenue changes.",
     );
     const published = readChunks(stream.chunks, "data-answer")[0]?.data;
@@ -397,7 +413,10 @@ describe("atomic structured answer publication", () => {
     const stream = buildWriter();
 
     await runStreamedAnswer(
-      buildPrepared(buildAnswerModel(buildAnsweredDraft(["EVID_A"])), verifier),
+      buildPrepared(
+        buildAnswerModel(buildVerifiableAnsweredDraft(["EVID_A"])),
+        verifier,
+      ),
       stream.writer,
     );
 
@@ -409,7 +428,26 @@ describe("atomic structured answer publication", () => {
     expect(readChunks(stream.chunks, "finish")).toHaveLength(1);
   });
 
-  it("completes after collective verifier failure while preserving the unverified answer", async () => {
+  it("does not send an overview-only Ask answer to the verifier", async () => {
+    const verifier = new FakeHhemClient();
+    const stream = buildWriter();
+
+    await runStreamedAnswer(
+      buildPrepared(
+        buildAnswerModel(buildAnsweredDraft(["EVID_A", "EVID_B"])),
+        verifier,
+        [buildTextRetrieved(), buildContradictingTextRetrieved()],
+      ),
+      stream.writer,
+    );
+
+    expect(verifier.scoreCalls).toHaveLength(0);
+    expect(saveTurnMock).toHaveBeenCalledOnce();
+    expect(readChunks(stream.chunks, "data-answer")).toHaveLength(1);
+    expect(readChunks(stream.chunks, "finish")).toHaveLength(1);
+  });
+
+  it("completes after collective finding verification fails", async () => {
     const verifierError = new Error("collective verifier unavailable");
     let scoreRequestCount = 0;
     const verifier = new FakeHhemClient(0.5, async (items) => {
@@ -427,7 +465,7 @@ describe("atomic structured answer publication", () => {
 
     await runStreamedAnswer(
       buildPrepared(
-        buildAnswerModel(buildAnsweredDraft(["EVID_A", "EVID_B"])),
+        buildAnswerModel(buildVerifiableAnsweredDraft(["EVID_A", "EVID_B"])),
         verifier,
         [buildTextRetrieved(), buildContradictingTextRetrieved()],
       ),
@@ -591,6 +629,19 @@ function buildAnsweredDraft(evidenceRefs: string[]) {
       evidenceRefs,
     },
     findings: [],
+  };
+}
+
+function buildVerifiableAnsweredDraft(evidenceRefs: string[]) {
+  return {
+    answer: {
+      content: "The report describes a revenue change.",
+      evidenceRefs,
+    },
+    findings: [{
+      content: "Revenue increased.",
+      evidenceRefs,
+    }],
   };
 }
 

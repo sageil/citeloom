@@ -4,7 +4,6 @@ import {
 } from "./citeloom-boundaries.js";
 import {
   applyAnswerContentUpdate,
-  createAnswerContentFromDocument,
   createEmptyAnswerContent,
 } from "./citeloom-answer-content.js";
 import { requestAnswerSpeech } from "./citeloom-answer-speech.js";
@@ -105,12 +104,60 @@ function updatePendingChatAnswer(conversation, runId, answerContentUpdate) {
         message.answerContent,
         answerContentUpdate,
       );
-      messages.push({ ...message, answerContent });
+      messages.push({
+        ...message,
+        answerContent,
+        citations: answerContent.citations,
+      });
       continue;
     }
     messages.push(message);
   }
   return replaceChatRun(conversation, { ...run, messages });
+}
+
+function applyChatVerificationUpdate(conversation, refreshedConversation) {
+  const refreshedMessages = new Map();
+  for (const run of refreshedConversation.runs) {
+    for (const message of run.messages) {
+      if (message.role === "assistant") {
+        refreshedMessages.set(message.id, message);
+      }
+    }
+  }
+  for (const run of conversation.runs) {
+    for (const message of run.messages) {
+      if (message.role !== "assistant" || message.streaming === true) {
+        continue;
+      }
+      const refreshedMessage = refreshedMessages.get(message.id);
+      if (refreshedMessage === undefined) {
+        continue;
+      }
+      if (refreshedMessage.verificationState !== message.verificationState) {
+        message.verificationState = refreshedMessage.verificationState;
+        if (
+          refreshedMessage.verificationState === "completed"
+          || refreshedMessage.verificationState === "failed"
+        ) {
+          message.claims = refreshedMessage.claims;
+        }
+      }
+      const refreshedCitations = new Map();
+      for (const citation of refreshedMessage.citations) {
+        refreshedCitations.set(citation.id, citation);
+      }
+      for (const citation of message.citations) {
+        const refreshedCitation = refreshedCitations.get(citation.id);
+        if (
+          refreshedCitation !== undefined
+          && citation.sourceAvailable !== refreshedCitation.sourceAvailable
+        ) {
+          citation.sourceAvailable = refreshedCitation.sourceAvailable;
+        }
+      }
+    }
+  }
 }
 
 function findLatestChatSpeechTarget(conversation) {
@@ -137,6 +184,45 @@ function findLatestChatSpeechTarget(conversation) {
   return latest;
 }
 
+function findChatSpeechTarget(conversation, messageId) {
+  if (conversation === null) {
+    return null;
+  }
+  for (const run of conversation.runs) {
+    if (run.state !== "completed") {
+      continue;
+    }
+    for (const message of run.messages) {
+      if (message.role !== "assistant" || message.id !== messageId) {
+        continue;
+      }
+      return {
+        answerDocument: message.answerDocument,
+        messageId: message.id,
+      };
+    }
+  }
+  return null;
+}
+
+function findLatestChatVerificationState(conversation) {
+  if (conversation === null) {
+    return "not-applicable";
+  }
+  let state = "not-applicable";
+  for (const run of conversation.runs) {
+    for (const message of run.messages) {
+      if (message.role !== "assistant") {
+        continue;
+      }
+      state = message.streaming === true
+        ? "not-applicable"
+        : message.verificationState;
+    }
+  }
+  return state;
+}
+
 export function registerPage(alpine) {
   alpine.data("citeloomChatPage", () => ({
     busy: false,
@@ -153,6 +239,7 @@ export function registerPage(alpine) {
     dictationStatus: "",
     draft: "",
     errorMessage: "",
+    followLatest: true,
     loading: true,
     newChatCatalogController: null,
     newChatCatalogLoading: false,
@@ -325,7 +412,7 @@ export function registerPage(alpine) {
         if (!this.textToSpeechEnabled) {
           return;
         }
-        this.prepareSpeechForLatestAnswer();
+        this.prepareSpeechForConversation();
         this.maybePreloadChatSpeech();
       } catch (error) {
         const message = error instanceof Error
@@ -415,9 +502,10 @@ export function registerPage(alpine) {
           "Chat",
           readChatConversation,
         );
-        this.$nextTick(() => this.scrollToLatest());
+        this.followLatest = true;
+        this.$nextTick(() => this.scrollToLatest(true));
         this.scheduleVerificationRefresh();
-        this.prepareSpeechForLatestAnswer();
+        this.prepareSpeechForConversation();
         this.maybePreloadChatSpeech();
         this.focusMessageComposer();
       } catch (error) {
@@ -425,37 +513,116 @@ export function registerPage(alpine) {
       }
     },
 
-    canUseChatSpeech() {
-      return this.textToSpeechEnabled
-        && findLatestChatSpeechTarget(this.conversation) !== null;
+    canUseMessageSpeech(message) {
+      if (!this.textToSpeechEnabled || message.streaming === true) {
+        return false;
+      }
+      return findChatSpeechTarget(this.conversation, message.id) !== null;
     },
 
-    chatSpeechActionLabel() {
-      if (this.speechAudioLoading) {
-        return "Preparing latest answer audio";
+    messageSpeechActionLabel(message) {
+      const active = this.speechAnswerMessageId === message.id;
+      if (active && this.speechAudioLoading) {
+        return "Preparing this answer audio";
       }
-      if (this.speechAudioPlaying) {
-        return "Pause latest answer";
+      if (active && this.speechAudioPlaying) {
+        return "Pause this answer";
       }
-      return "Play latest answer";
+      return "Listen to this answer";
     },
 
-    chatSpeechIcon() {
-      if (this.speechAudioLoading) {
+    messageSpeechButtonLabel(message) {
+      const active = this.speechAnswerMessageId === message.id;
+      if (active && this.speechAudioLoading) {
+        return "Preparing";
+      }
+      if (active && this.speechAudioPlaying) {
+        return "Pause";
+      }
+      return "Listen";
+    },
+
+    messageSpeechIcon(message) {
+      const active = this.speechAnswerMessageId === message.id;
+      if (active && this.speechAudioLoading) {
         return "./assets/images/citeloom-icons.svg#citeloom-refresh";
       }
-      if (this.speechAudioPlaying) {
+      if (active && this.speechAudioPlaying) {
         return "./assets/images/citeloom-icons.svg#citeloom-pause";
       }
       return "./assets/images/citeloom-icons.svg#citeloom-speaker";
     },
 
-    prepareSpeechForLatestAnswer() {
-      const target = findLatestChatSpeechTarget(this.conversation);
-      if (target?.messageId === this.speechAnswerMessageId) {
+    messageSpeechLoading(message) {
+      return this.speechAnswerMessageId === message.id
+        && this.speechAudioLoading;
+    },
+
+    verificationLabel(state) {
+      if (state === "pending") {
+        return "Evidence validation is queued";
+      }
+      if (state === "running") {
+        return "Validating evidence";
+      }
+      if (state === "completed") {
+        return "Evidence validation complete";
+      }
+      if (state === "failed") {
+        return "Evidence validation could not be completed";
+      }
+      return "Evidence validation is not required";
+    },
+
+    verificationStatusLabel(state) {
+      if (state === "pending") {
+        return "Queued";
+      }
+      if (state === "running") {
+        return "Checking evidence";
+      }
+      if (state === "completed") {
+        return "Verified";
+      }
+      if (state === "failed") {
+        return "Check failed";
+      }
+      return "";
+    },
+
+    conversationVerificationState() {
+      return findLatestChatVerificationState(this.conversation);
+    },
+
+    conversationVerificationVisible() {
+      return this.conversationVerificationState() !== "not-applicable";
+    },
+
+    conversationVerificationLabel() {
+      return this.verificationLabel(this.conversationVerificationState());
+    },
+
+    conversationVerificationStatusLabel() {
+      return this.verificationStatusLabel(
+        this.conversationVerificationState(),
+      );
+    },
+
+    conversationVerificationProgressValue() {
+      return this.conversationVerificationState() === "completed" ? 100 : null;
+    },
+
+    prepareSpeechForConversation() {
+      if (this.speechAnswerMessageId === null) {
         return;
       }
-      this.resetChatSpeechAudio();
+      const target = findChatSpeechTarget(
+        this.conversation,
+        this.speechAnswerMessageId,
+      );
+      if (target === null) {
+        this.resetChatSpeechAudio();
+      }
     },
 
     maybePreloadChatSpeech() {
@@ -464,16 +631,18 @@ export function registerPage(alpine) {
         || !this.textToSpeechPreloadEnabled
         || this.speechAudioLoading
         || this.speechAudioUrl !== ""
-        || findLatestChatSpeechTarget(this.conversation) === null
       ) {
         return;
       }
-      void this.loadLatestChatSpeech(false);
+      const target = findLatestChatSpeechTarget(this.conversation);
+      if (target !== null) {
+        void this.loadChatSpeech(target.messageId, false);
+      }
     },
 
-    async loadLatestChatSpeech(surfaceError = true) {
-      const target = findLatestChatSpeechTarget(this.conversation);
-      if (target === null || this.speechAudioLoading) {
+    async loadChatSpeech(messageId, surfaceError = true) {
+      const target = findChatSpeechTarget(this.conversation, messageId);
+      if (target === null) {
         return false;
       }
       if (
@@ -493,7 +662,10 @@ export function registerPage(alpine) {
           target.answerDocument,
           controller.signal,
         );
-        const currentTarget = findLatestChatSpeechTarget(this.conversation);
+        const currentTarget = findChatSpeechTarget(
+          this.conversation,
+          target.messageId,
+        );
         if (
           controller.signal.aborted
           || currentTarget?.messageId !== target.messageId
@@ -513,7 +685,7 @@ export function registerPage(alpine) {
         if (!controller.signal.aborted && surfaceError) {
           const message = error instanceof Error
             ? error.message
-            : "The latest answer audio could not be generated.";
+            : "This answer audio could not be generated.";
           this.speechAudioError = message;
           dispatchNotice("error", message);
         }
@@ -526,17 +698,18 @@ export function registerPage(alpine) {
       }
     },
 
-    async toggleChatSpeech() {
+    async toggleMessageSpeech(message) {
       const audio = this.$refs.chatSpeechAudio;
       if (!(audio instanceof HTMLAudioElement)) {
         return;
       }
-      if (!audio.paused && !audio.ended) {
+      const active = this.speechAnswerMessageId === message.id;
+      if (active && !audio.paused && !audio.ended) {
         audio.pause();
         return;
       }
-      if (this.speechAudioUrl === "") {
-        const loaded = await this.loadLatestChatSpeech(true);
+      if (!active || this.speechAudioUrl === "") {
+        const loaded = await this.loadChatSpeech(message.id, true);
         if (!loaded) {
           return;
         }
@@ -547,12 +720,12 @@ export function registerPage(alpine) {
       try {
         await audio.play();
       } catch (error) {
-        const message = error instanceof Error
+        const errorMessage = error instanceof Error
           ? error.message
-          : "The latest answer audio could not be played.";
-        this.speechAudioError = message;
+          : "This answer audio could not be played.";
+        this.speechAudioError = errorMessage;
         this.speechAudioPlaying = false;
-        dispatchNotice("error", message);
+        dispatchNotice("error", errorMessage);
       }
     },
 
@@ -581,9 +754,9 @@ export function registerPage(alpine) {
         return;
       }
       this.speechAudioPlaying = false;
-      const message = "The latest answer audio could not be played.";
-      this.speechAudioError = message;
-      dispatchNotice("error", message);
+      const errorMessage = "This answer audio could not be played.";
+      this.speechAudioError = errorMessage;
+      dispatchNotice("error", errorMessage);
     },
 
     openNewChat() {
@@ -1037,7 +1210,8 @@ export function registerPage(alpine) {
         content,
       );
       this.conversation = replaceChatRun(this.conversation, pendingRun);
-      this.$nextTick(() => this.scrollToLatest());
+      this.followLatest = true;
+      this.$nextTick(() => this.scrollToLatest(true));
       try {
         const response = await fetch(
           `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages`,
@@ -1074,7 +1248,7 @@ export function registerPage(alpine) {
             completed = true;
             this.$nextTick(() => this.scrollToLatest());
             this.scheduleVerificationRefresh();
-            this.prepareSpeechForLatestAnswer();
+            this.prepareSpeechForConversation();
             this.maybePreloadChatSpeech();
           },
           (answerContentUpdate) => {
@@ -1114,26 +1288,23 @@ export function registerPage(alpine) {
       input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
     },
 
-    citationForId(message, id) {
-      return message.citations.find((citation) => citation.id === id) ?? null;
+    citationForKey(message, key) {
+      return message.citations.find((citation) => citation.key === key) ?? null;
     },
 
     messageAnswerStatements(message) {
-      if (message.streaming === true) {
-        return message.answerContent.statements;
-      }
-      return createAnswerContentFromDocument(message.answerDocument).statements;
+      return message.answerContent.statements;
     },
 
-    findingCheckForStatement(message, statementIndex) {
+    verificationCheckForStatement(message, statementIndex) {
       return message.claims.find((claim) => {
         return claim.claimIndex === statementIndex;
       }) ?? null;
     },
 
-    citationVerificationStatus(message, statementIndex, citationId) {
-      const check = this.findingCheckForStatement(message, statementIndex);
-      const citation = this.citationForId(message, citationId);
+    citationVerificationStatus(message, statementIndex, citationKey) {
+      const check = this.verificationCheckForStatement(message, statementIndex);
+      const citation = this.citationForKey(message, citationKey);
       if (check === null || citation === null) {
         return null;
       }
@@ -1149,19 +1320,25 @@ export function registerPage(alpine) {
       if (evidenceUnit.outcome === "unsupported") {
         return "unsupported";
       }
+      if (
+        message.verificationState === "pending"
+        || message.verificationState === "running"
+      ) {
+        return "pending";
+      }
       return "unverified";
     },
 
-    citationVerificationClasses(message, statementIndex, citationId) {
+    citationVerificationClasses(message, statementIndex, citationKey) {
       const status = this.citationVerificationStatus(
         message,
         statementIndex,
-        citationId,
+        citationKey,
       );
       if (status === null) {
         return "";
       }
-      const check = this.findingCheckForStatement(message, statementIndex);
+      const check = this.verificationCheckForStatement(message, statementIndex);
       if (
         status === "unsupported"
         && check?.status === "collectively-supported"
@@ -1171,39 +1348,47 @@ export function registerPage(alpine) {
       return status;
     },
 
-    citationVerificationDescription(message, statementIndex, citationId) {
+    citationVerificationDescription(message, statementIndex, citationKey) {
+      const citation = this.citationForKey(message, citationKey);
+      if (citation?.preview === true) {
+        const source = this.sourceTitle(citation.sourceFile);
+        return `Source identified from ${source}. Evidence verification starts when the answer is complete.`;
+      }
       const status = this.citationVerificationStatus(
         message,
         statementIndex,
-        citationId,
+        citationKey,
       );
-      const check = this.findingCheckForStatement(message, statementIndex);
+      const check = this.verificationCheckForStatement(message, statementIndex);
       if (status === "supported") {
-        return "Automated evidence check: this citation supports the finding.";
+        return "Automated evidence check: this citation supports the statement.";
       }
       if (status === "unsupported") {
         if (check?.status === "collectively-supported") {
-          return "Automated evidence check: this citation does not independently support the complete finding, but the cited evidence supports it collectively.";
+          return "Automated evidence check: this citation does not independently support the complete statement, but the cited evidence supports it collectively.";
         }
-        return "Automated evidence check: this citation does not sufficiently support the finding.";
+        return "Automated evidence check: this citation does not sufficiently support the statement.";
+      }
+      if (status === "pending") {
+        return "Automated evidence check is pending.";
       }
       if (status === "unverified") {
-        if (
-          message.verificationState === "pending"
-          || message.verificationState === "running"
-        ) {
-          return "Automated evidence check is pending.";
-        }
         if (message.verificationState === "failed") {
           return "Automated evidence check could not be completed.";
         }
         return "Automated evidence check: this citation could not be verified.";
       }
-      return "This citation was not checked because the statement is not a finding.";
+      if (
+        message.verificationState === "pending"
+        || message.verificationState === "running"
+      ) {
+        return "Automated evidence check is pending.";
+      }
+      return "Automated evidence check result is unavailable for this citation.";
     },
 
-    statementCitationLabel(message, statementIndex, citationId) {
-      const citation = this.citationForId(message, citationId);
+    statementCitationLabel(message, statementIndex, citationKey) {
+      const citation = this.citationForKey(message, citationKey);
       if (citation === null) {
         return "";
       }
@@ -1211,7 +1396,7 @@ export function registerPage(alpine) {
       const description = this.citationVerificationDescription(
         message,
         statementIndex,
-        citationId,
+        citationKey,
       );
       return `${label}. ${description}`;
     },
@@ -1221,6 +1406,9 @@ export function registerPage(alpine) {
         return "";
       }
       const page = citation.pageNumbers[0];
+      if (citation.citationNumber === null) {
+        return page === undefined ? "Source" : `p. ${page}`;
+      }
       return page === undefined
         ? `[${citation.citationNumber}]`
         : `[${citation.citationNumber}] p. ${page}`;
@@ -1268,7 +1456,7 @@ export function registerPage(alpine) {
     },
 
     openCitation(citation) {
-      if (citation === null) {
+      if (citation === null || citation.preview === true) {
         return;
       }
       this.selectedCitation = citation;
@@ -1296,6 +1484,25 @@ export function registerPage(alpine) {
       }
       const previousStatement = statements[statementIndex - 1];
       return previousStatement?.section !== statement.section;
+    },
+
+    statementSectionNumber(message, statementIndex) {
+      const statements = this.messageAnswerStatements(message);
+      const statement = statements[statementIndex];
+      if (statement === undefined || statement.presentation !== "bullet") {
+        return "";
+      }
+      let sectionIndex = 0;
+      for (let index = 0; index <= statementIndex; index += 1) {
+        const candidate = statements[index];
+        if (
+          candidate?.section === statement.section
+          && candidate.presentation === "bullet"
+        ) {
+          sectionIndex += 1;
+        }
+      }
+      return String(sectionIndex).padStart(2, "0");
     },
 
     evidenceText(citation) {
@@ -1387,7 +1594,7 @@ export function registerPage(alpine) {
           readChatConversation,
         );
         if (this.conversation?.id === conversationId) {
-          this.conversation = conversation;
+          applyChatVerificationUpdate(this.conversation, conversation);
         }
       } catch {
         // Verification refresh is best effort. The published answer remains usable.
@@ -1441,11 +1648,27 @@ export function registerPage(alpine) {
       }).format(date);
     },
 
-    scrollToLatest() {
+    handleThreadScroll() {
       const thread = this.$refs.thread;
-      if (thread instanceof HTMLElement) {
-        thread.scrollTop = thread.scrollHeight;
+      if (!(thread instanceof HTMLElement)) {
+        return;
       }
+      const distanceFromBottom = thread.scrollHeight
+        - thread.scrollTop
+        - thread.clientHeight;
+      this.followLatest = distanceFromBottom <= 72;
+    },
+
+    scrollToLatest(force = false) {
+      const thread = this.$refs.thread;
+      if (!(thread instanceof HTMLElement)) {
+        return;
+      }
+      if (!force && !this.followLatest) {
+        return;
+      }
+      thread.scrollTop = thread.scrollHeight;
+      this.followLatest = true;
     },
 
     reportError(error, fallback) {

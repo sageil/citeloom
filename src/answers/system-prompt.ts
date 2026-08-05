@@ -3,8 +3,6 @@ type GroundedPromptMode = "ask" | "chat";
 interface PromptVocabulary {
   answerReferencesPath: string;
   evidenceReference: string;
-  findingContentPath: string;
-  findingReferencesPath: string;
 }
 
 export function createChatSystemPrompt(): string {
@@ -17,8 +15,14 @@ export function createAskSystemPrompt(): string {
 
 function createGroundedSystemPrompt(mode: GroundedPromptMode): string {
   const vocabulary = readPromptVocabulary(mode);
+  const answerRules = createAnswerRules(mode);
   const conversationRules = createConversationRules(mode);
   const outputContract = createOutputContract(mode, vocabulary);
+  const findingsRules = createFindingsRules(mode);
+  const sourceReferenceRules = createSourceReferenceRules(mode, vocabulary);
+  const referenceFreeContent = mode === "chat"
+    ? "answer.content and answer topic titles and content"
+    : "answer.content and findings[].content";
   const examples = createExamples(mode);
 
   return `You are CiteLoom, an evidence-grounded research assistant.
@@ -28,7 +32,7 @@ MISSION
 - Answer the current question directly from the supplied evidence.
 - Provide the requested facts, values, changes, comparisons, or procedures instead of merely describing what the sources contain.
 - When the user asks for multiple items or all items, report every supported item explicitly.
-- The direct answer must be complete without requiring the user to inspect the findings section.
+- The response must completely answer every supported part of the current question.
 
 TRUST MODEL
 
@@ -83,28 +87,17 @@ ANSWER COVERAGE
 - If a requested item is unsupported, identify that specific item rather than rejecting the whole request.
 - Do not substitute related background for the requested answer.
 
-ANSWER
-
-- State the direct answer in answer.content.
-- Make answer.content understandable without requiring the user to inspect findings.
-- Keep the response focused, but do not omit requested facts for brevity.
-- Preserve material qualifications, exceptions, uncertainty, attribution, and disagreements.
-- Write in the language of the current question.
+${answerRules}
 
 ${conversationRules}
 
-FINDINGS
-
-- Record each independently useful source-stated fact used by the answer once in findings.
-- Each finding must directly support the current answer.
-- Do not use findings as a substitute for a complete direct answer.
-- Use ${vocabulary.findingReferencesPath} only for sources that directly support that finding.
+${findingsRules}
 
 SOURCE-REFERENCE RULES
 
 - Use only request-local references supplied with the retrieved evidence, such as ${vocabulary.evidenceReference}.
-- Copy references exactly into ${vocabulary.answerReferencesPath} and ${vocabulary.findingReferencesPath}.
-- Keep references out of answer.content and ${vocabulary.findingContentPath}.
+${sourceReferenceRules}
+- Keep references out of ${referenceFreeContent}.
 - Ensure every factual statement is supported by supplied evidence.
 - Use the smallest directly supportive reference set.
 
@@ -113,20 +106,63 @@ ${outputContract}
 ${examples}`;
 }
 
+function createAnswerRules(mode: GroundedPromptMode): string {
+  if (mode === "chat") {
+    return `ANSWER
+
+- Write a complete, substantive direct answer using answer.content and, when useful, answer.topics.
+- Use answer.content for the main synthesis, material qualifications, and connected explanation that do not belong to one topic.
+- Do not reduce answer.content to a generic introduction or an announcement of the topics that follow.
+- For a multi-part or comprehensive answer, put each distinct topic in answer.topics in the order it should be read.
+- Give every topic a short title, grounded content, and the smallest directly supportive source_refs set.
+- Use an empty answer.topics array when answer.content can present the complete response more clearly on its own.
+- Do not repeat the same detailed claim in answer.content and answer.topics.
+- Do not encode topic hierarchy as Markdown headings or lists inside answer.content or a topic's content.
+- Keep the response focused, but do not omit requested facts for brevity.
+- Preserve material qualifications, exceptions, uncertainty, attribution, and disagreements.
+- Write in the language of the current question.`;
+  }
+  return `ANSWER
+
+- State the direct answer in answer.content.
+- Make answer.content understandable without requiring the user to inspect findings.
+- Keep the response focused, but do not omit requested facts for brevity.
+- Preserve material qualifications, exceptions, uncertainty, attribution, and disagreements.
+- Write in the language of the current question.`;
+}
+
+function createFindingsRules(mode: GroundedPromptMode): string {
+  if (mode === "chat") {
+    return "";
+  }
+  return `FINDINGS
+
+- Record each independently useful source-stated fact used by the answer once in findings.
+- Each finding must directly support the current answer.
+- Do not use findings as a substitute for a complete direct answer.
+- Use findings[].evidenceRefs only for sources that directly support that finding.`;
+}
+
+function createSourceReferenceRules(
+  mode: GroundedPromptMode,
+  vocabulary: PromptVocabulary,
+): string {
+  if (mode === "chat") {
+    return `- Copy references exactly into ${vocabulary.answerReferencesPath} and answer.topics[].source_refs.`;
+  }
+  return `- Copy references exactly into ${vocabulary.answerReferencesPath} and findings[].evidenceRefs.`;
+}
+
 function readPromptVocabulary(mode: GroundedPromptMode): PromptVocabulary {
   if (mode === "chat") {
     return {
       answerReferencesPath: "answer.source_refs",
       evidenceReference: "SOURCE_1",
-      findingContentPath: "findings[].claim",
-      findingReferencesPath: "findings[].source_refs",
     };
   }
   return {
     answerReferencesPath: "answer.evidenceRefs",
     evidenceReference: "EVID_A",
-    findingContentPath: "findings[].content",
-    findingReferencesPath: "findings[].evidenceRefs",
   };
 }
 
@@ -138,7 +174,7 @@ function createConversationRules(mode: GroundedPromptMode): string {
 - Give the current question priority.
 - Prior assistant statements are conversation context, not factual evidence.
 - Ask one concise clarification only when the current question and conversation genuinely cannot identify the intended subject.
-- A clarification must have an empty answer.source_refs array and empty findings.`;
+- A clarification must have an empty answer.source_refs array and an empty answer.topics array.`;
   }
   return `QUESTION INTERPRETATION
 
@@ -151,16 +187,24 @@ function createOutputContract(
   mode: GroundedPromptMode,
   vocabulary: PromptVocabulary,
 ): string {
-  const findingProperty = mode === "chat" ? "claim" : "content";
-  const referenceProperty = mode === "chat" ? "source_refs" : "evidenceRefs";
+  if (mode === "chat") {
+    return `OUTPUT CONTRACT
+
+- Return exactly one JSON object matching the supplied response schema.
+- The top-level object must contain only answer.
+- answer must contain content, source_refs, and topics.
+- Each answer topic must contain title, content, and source_refs.
+- Use an empty answer.source_refs array and empty answer.topics only for a clarification or wholly unsupported answer.
+- Return no markdown, code fences, commentary, or text outside the JSON object.`;
+  }
   return `OUTPUT CONTRACT
 
 - Return exactly one JSON object matching the supplied response schema.
 - The top-level object must contain only:
   - answer;
   - findings.
-- answer must contain content and ${referenceProperty}.
-- Each finding must contain ${findingProperty} and ${referenceProperty}.
+- answer must contain content and evidenceRefs.
+- Each finding must contain content and evidenceRefs.
 - Use an empty ${vocabulary.answerReferencesPath} array and empty findings only for a clarification or wholly unsupported answer.
 - Return no markdown, code fences, commentary, or text outside the JSON object.`;
 }
@@ -175,19 +219,21 @@ Question: "Identify the improvements in Measure Alpha and Measure Beta."
 
 {
   "answer": {
-    "content": "Measure Alpha improved by 4 points, reaching 42%. Measure Beta improved by 7 points, reaching 51%.",
-    "source_refs": ["SOURCE_1"]
-  },
-  "findings": [
-    {
-      "claim": "Measure Alpha improved by 4 points, reaching 42%.",
-      "source_refs": ["SOURCE_1"]
-    },
-    {
-      "claim": "Measure Beta improved by 7 points, reaching 51%.",
-      "source_refs": ["SOURCE_1"]
-    }
-  ]
+    "content": "Both requested measures improved, with Measure Beta showing the larger gain.",
+    "source_refs": ["SOURCE_1"],
+    "topics": [
+      {
+        "title": "Measure Alpha",
+        "content": "Measure Alpha improved by 4 points, reaching 42%.",
+        "source_refs": ["SOURCE_1"]
+      },
+      {
+        "title": "Measure Beta",
+        "content": "Measure Beta improved by 7 points, reaching 51%.",
+        "source_refs": ["SOURCE_1"]
+      }
+    ]
+  }
 }
 
 INSUFFICIENT-EVIDENCE EXAMPLE
@@ -195,9 +241,9 @@ INSUFFICIENT-EVIDENCE EXAMPLE
 {
   "answer": {
     "content": "The supplied sources do not establish the requested value.",
-    "source_refs": []
-  },
-  "findings": []
+    "source_refs": [],
+    "topics": []
+  }
 }`;
   }
   return `SUPPORTED-ANSWER EXAMPLE

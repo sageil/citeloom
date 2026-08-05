@@ -85,12 +85,28 @@ export type AnswerDataPart = {
   type: "data-answer";
 };
 
-export interface AnswerContentStatementUpdate extends AnswerContentStatement {
+interface AnswerContentStatementUpdateBase {
+  citationKeys: string[];
   index: number;
-  mode: "append" | "replace";
 }
 
+interface AnswerContentTextUpdate extends AnswerContentStatementUpdateBase {
+  content: string;
+  mode: "append" | "replace";
+  presentation: AnswerContentStatement["presentation"];
+  section: AnswerContentStatement["section"];
+}
+
+interface AnswerContentMetadataUpdate extends AnswerContentStatementUpdateBase {
+  mode: "metadata";
+}
+
+export type AnswerContentStatementUpdate =
+  | AnswerContentMetadataUpdate
+  | AnswerContentTextUpdate;
+
 export interface AnswerContentUpdate {
+  citations: AnswerContentSnapshot["citations"];
   statementCount: number;
   statements: AnswerContentStatementUpdate[];
 }
@@ -109,7 +125,7 @@ export function createAnswerContentWriter(
   writer: UIMessageStreamWriter<CiteLoomUIMessage>,
   receiveFirstContent: () => void = () => undefined,
 ): (content: AnswerContentSnapshot) => void {
-  let lastContent: AnswerContentSnapshot = { statements: [] };
+  let lastContent: AnswerContentSnapshot = { citations: [], statements: [] };
   return (content) => {
     if (!hasAnswerContent(content)) {
       return;
@@ -118,6 +134,7 @@ export function createAnswerContentWriter(
     if (
       update.statements.length === 0
       && update.statementCount === lastContent.statements.length
+      && citationsMatch(lastContent, content)
     ) {
       return;
     }
@@ -147,11 +164,24 @@ function createAnswerContentUpdate(
     if (statementsMatch(previousStatement, currentStatement)) {
       continue;
     }
+    const metadataOnly = previousStatement !== undefined
+      && previousStatement.content === currentStatement.content
+      && previousStatement.presentation === currentStatement.presentation
+      && previousStatement.section === currentStatement.section;
+    if (metadataOnly) {
+      statements.push({
+        citationKeys: [...currentStatement.citationKeys],
+        index,
+        mode: "metadata",
+      });
+      continue;
+    }
     const append = previousStatement !== undefined
       && previousStatement.presentation === currentStatement.presentation
       && previousStatement.section === currentStatement.section
       && currentStatement.content.startsWith(previousStatement.content);
     statements.push({
+      citationKeys: [...currentStatement.citationKeys],
       content: append
         ? currentStatement.content.slice(previousStatement.content.length)
         : currentStatement.content,
@@ -162,6 +192,11 @@ function createAnswerContentUpdate(
     });
   }
   return {
+    citations: current.citations.map((citation) => ({
+      key: citation.key,
+      pageNumbers: [...citation.pageNumbers],
+      sourceFile: citation.sourceFile,
+    })),
     statementCount: current.statements.length,
     statements,
   };
@@ -171,9 +206,59 @@ function statementsMatch(
   previous: AnswerContentStatement | undefined,
   current: AnswerContentStatement,
 ): boolean {
-  return previous?.content === current.content
+  if (previous === undefined) {
+    return false;
+  }
+  return previous.content === current.content
+    && stringArraysMatch(previous.citationKeys, current.citationKeys)
     && previous.presentation === current.presentation
     && previous.section === current.section;
+}
+
+function citationsMatch(
+  previous: AnswerContentSnapshot,
+  current: AnswerContentSnapshot,
+): boolean {
+  if (previous.citations.length !== current.citations.length) {
+    return false;
+  }
+  for (let index = 0; index < current.citations.length; index += 1) {
+    const previousCitation = previous.citations[index];
+    const currentCitation = current.citations[index];
+    if (
+      previousCitation === undefined
+      || currentCitation === undefined
+      || previousCitation.key !== currentCitation.key
+      || previousCitation.sourceFile !== currentCitation.sourceFile
+      || !numberArraysMatch(
+        previousCitation.pageNumbers,
+        currentCitation.pageNumbers,
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function stringArraysMatch(
+  previous: readonly string[],
+  current: readonly string[],
+): boolean {
+  if (previous.length !== current.length) {
+    return false;
+  }
+  return previous.every((value, index) => value === current[index]);
+}
+
+function numberArraysMatch(
+  previous: readonly number[],
+  current: readonly number[],
+): boolean {
+  if (previous.length !== current.length) {
+    return false;
+  }
+  return previous.every((value, index) => value === current[index]);
 }
 
 export function decodeAnswerDataPart(value: unknown): AnswerDataPart {

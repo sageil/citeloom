@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { describe, expect, it } from "vitest";
 
 import { publishedAnswerDocumentSchema } from "../src/answers/published-schema.js";
@@ -8,6 +10,17 @@ import {
 } from "./source-element-fixture.js";
 
 describe("ask answer presentation", () => {
+  it("hides aggregate answer citations while retaining finding citations", async () => {
+    const fragment = await readFile(
+      new URL("../web/fragments/ask.html", import.meta.url),
+      "utf8",
+    );
+
+    expect(fragment).toContain("section.key !== 'answer'");
+    expect(fragment).toContain("block.statements[0].citations");
+    expect(fragment).toContain("block.kind === 'bullets'");
+  });
+
   it("keeps table presentation rows out of the canonical speech document", () => {
     const citationId = "00000000-0000-4000-8000-000000000001";
     const answerDocument = {

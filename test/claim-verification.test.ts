@@ -6,6 +6,7 @@ import {
   readAnswerClaims,
   verifyAnswerClaims,
   verifyPublishedAnswer,
+  verifyPublishedAnswerClaims,
 } from "../src/answers/claim-verification.js";
 import { TaskLimiter } from "../src/shared/concurrency.js";
 import type { AnswerSource } from "../src/answers/inference.js";
@@ -131,6 +132,60 @@ describe("claim verification", () => {
       "supported",
       "unsupported",
     ]);
+  });
+
+  it("scores identical claim and evidence pairs once and fans out the result", async () => {
+    const verifier = new FakeHhemClient(0.5, async (items) => {
+      return items.map((item) => ({
+        id: item.id,
+        outcome: "scored" as const,
+        supportProbability: 0.9,
+      }));
+    });
+    const claims = readAnswerClaims(
+      "Revenue increased [1]. Revenue increased [1].",
+    );
+
+    const checks = await verifyAnswerClaims(
+      buildModels(verifier),
+      claims,
+      [buildSource(1, "Revenue increased.")],
+      new TaskLimiter(1),
+      new AbortController().signal,
+    );
+
+    expect(verifier.scoreCalls).toHaveLength(1);
+    expect(verifier.scoreCalls[0]).toHaveLength(1);
+    expect(checks).toHaveLength(2);
+    expect(checks.map((check) => check.status)).toEqual([
+      "supported",
+      "supported",
+    ]);
+    expect(checks.map((check) => check.claimIndex)).toEqual([0, 1]);
+  });
+
+  it("does not merge different claims that cite the same evidence", async () => {
+    const verifier = new FakeHhemClient(0.5, async (items) => {
+      return items.map((item) => ({
+        id: item.id,
+        outcome: "scored" as const,
+        supportProbability: 0.9,
+      }));
+    });
+    const claims = readAnswerClaims(
+      "Revenue increased [1]. Costs decreased [1].",
+    );
+
+    await verifyAnswerClaims(
+      buildModels(verifier),
+      claims,
+      [buildSource(1, "Revenue increased while costs decreased.")],
+      new TaskLimiter(1),
+      new AbortController().signal,
+    );
+
+    expect(verifier.scoreCalls).toHaveLength(1);
+    expect(verifier.scoreCalls[0]).toHaveLength(2);
   });
 
   it("verifies every citation independently and reports partial support", async () => {
@@ -396,6 +451,25 @@ describe("claim verification", () => {
     );
 
     expect(verifier.scoreCalls).toHaveLength(0);
+    expect(verified).toEqual({ answerDocument: document, claims: [] });
+  });
+
+  it("does not start verifier telemetry when no statements were selected", async () => {
+    const verifier = new FakeHhemClient();
+    const document = buildPublishedAnswer([buildSource()], [1]);
+    const startStage = vi.fn();
+
+    const verified = await verifyPublishedAnswerClaims(
+      buildModels(verifier),
+      document,
+      [],
+      new TaskLimiter(1),
+      new AbortController().signal,
+      { ...noopRunTelemetry, startStage },
+    );
+
+    expect(verifier.scoreCalls).toHaveLength(0);
+    expect(startStage).not.toHaveBeenCalled();
     expect(verified).toEqual({ answerDocument: document, claims: [] });
   });
 

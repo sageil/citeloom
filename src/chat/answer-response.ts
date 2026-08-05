@@ -11,27 +11,29 @@ import type {
   AnswerResponseContract,
   AnswerResponseDecodeResult,
 } from "../answers/inference.js";
+import { formatAnswerTopicContent } from "../answers/topic-content.js";
 
 interface ChatAnswerPoint {
   content: string;
   source_refs: EvidenceReference[];
+  topics: ChatAnswerTopic[];
 }
 
-interface ChatGroundedClaim {
-  claim: string;
+interface ChatAnswerTopic {
+  content: string;
   source_refs: EvidenceReference[];
+  title: string;
 }
 
 interface ChatAnswerModelResponse {
   answer: ChatAnswerPoint;
-  findings: ChatGroundedClaim[];
 }
 
 export const CHAT_ANSWER_RESPONSE: AnswerResponseContract = {
   createSchema: createChatAnswerModelResponseSchema,
   decode: decodeChatAnswerModelResponse,
   description:
-    "A Chat response containing either a grounded answer with findings and source references or an uncited clarification question with no findings.",
+    "A Chat response containing either a comprehensive grounded answer with optional topics and source references or an uncited clarification question.",
   name: "chat_answer",
 };
 
@@ -39,32 +41,39 @@ function createChatAnswerModelResponseSchema(
   allowedEvidenceRefs: readonly EvidenceReference[],
 ): z.ZodType<unknown> {
   const sourceReference = createSourceReferenceSchema(allowedEvidenceRefs);
-  const groundedClaim: z.ZodType<ChatGroundedClaim> = z.object({
-    claim: z.string().min(1),
-    source_refs: z.array(sourceReference).min(1),
+  const answerTopic: z.ZodType<ChatAnswerTopic> = z.object({
+    content: z.string().trim().min(1).describe(
+      "The grounded details for this topic without repeating the title.",
+    ),
+    source_refs: z.array(sourceReference).min(1).describe(
+      "The smallest set of sources that directly supports this topic.",
+    ),
+    title: z.string().trim().min(1).describe(
+      "A short descriptive title for this topic.",
+    ),
   }).strict();
   const answerPoint: z.ZodType<ChatAnswerPoint> = z.object({
     content: z.string().trim().min(1).describe(
-      "The grounded answer, evidence limitation, or focused clarification question with meaningful options.",
+      "The substantive grounded answer content, including synthesis and qualifications that do not belong to one topic.",
     ),
     source_refs: z.array(sourceReference).describe(
       "Supporting source references for a grounded answer, or an empty array for a clarification or wholly unsupported response.",
     ),
+    topics: z.array(answerTopic).describe(
+      "Ordered topical sections for a multi-part or comprehensive answer, or an empty array for a concise or uncited response.",
+    ),
   }).strict();
   return z.object({
     answer: answerPoint,
-    findings: z.array(groundedClaim).describe(
-      "Grounded findings for an answered response, or an empty array for a clarification or wholly unsupported response.",
-    ),
   }).strict().superRefine((response, context) => {
     if (
       response.answer.source_refs.length === 0
-      && response.findings.length > 0
+      && response.answer.topics.length > 0
     ) {
       context.addIssue({
         code: "custom",
-        message: "An uncited response must not contain findings.",
-        path: ["findings"],
+        message: "An uncited response must not contain topics.",
+        path: ["answer"],
       });
     }
   });
@@ -96,14 +105,9 @@ function decodeChatAnswerModelResponse(
   }
   const statements: AnswerDraftStatement[] = [];
   statements.push(createAnswerStatement(response.answer));
-  const findingsStartIndex = statements.length;
-  appendGroundedClaims(statements, response.findings);
+  appendAnswerTopics(statements, response.answer.topics);
   const verificationStatementIndexes: number[] = [];
-  for (
-    let index = findingsStartIndex;
-    index < statements.length;
-    index += 1
-  ) {
+  for (let index = 1; index < statements.length; index += 1) {
     verificationStatementIndexes.push(index);
   }
   return {
@@ -119,16 +123,16 @@ function decodeChatAnswerModelResponse(
   };
 }
 
-function appendGroundedClaims(
+function appendAnswerTopics(
   statements: AnswerDraftStatement[],
-  claims: readonly ChatGroundedClaim[],
+  topics: readonly ChatAnswerTopic[],
 ): void {
-  for (const claim of claims) {
+  for (const topic of topics) {
     statements.push({
-      content: normalizeAnswerModelText(claim.claim),
-      evidenceRefs: normalizeSourceReferences(claim.source_refs),
+      content: formatAnswerTopicContent(topic.title, topic.content),
+      evidenceRefs: normalizeSourceReferences(topic.source_refs),
       presentation: "bullet",
-      section: "key-points",
+      section: "answer",
     });
   }
 }

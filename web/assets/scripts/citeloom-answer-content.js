@@ -4,6 +4,7 @@ import {
   readNonEmptyString,
   readNonNegativeInteger,
   readPlainObject,
+  readPositiveInteger,
 } from "./citeloom-boundaries.js";
 
 const answerSections = Object.freeze([
@@ -55,7 +56,15 @@ const answerMarkdownAllowedTags = Object.freeze([
 let answerMarkdownRuntime = null;
 
 export function createEmptyAnswerContent() {
-  return { statements: [] };
+  return { citations: [], statements: [] };
+}
+
+export function createAnswerCitationKey(
+  documentVersionId,
+  documentId,
+  elementId,
+) {
+  return JSON.stringify([documentVersionId, documentId, elementId]);
 }
 
 export function renderAnswerMarkdown(content) {
@@ -80,6 +89,34 @@ export function renderAnswerMarkdown(content) {
 
 export function readAnswerContentUpdate(value) {
   const update = readPlainObject(value, "streamed answer content update");
+  const citationValues = readArray(
+    update.citations,
+    "streamed answer citation previews",
+  );
+  const citations = [];
+  const availableCitationKeys = new Set();
+  for (let index = 0; index < citationValues.length; index += 1) {
+    const label = `streamed answer citation preview ${index + 1}`;
+    const citation = readPlainObject(citationValues[index], label);
+    const key = readNonEmptyString(citation.key, `${label} key`);
+    if (availableCitationKeys.has(key)) {
+      throw new Error(`${label} duplicates citation key ${key}.`);
+    }
+    const pageNumberValues = readArray(
+      citation.pageNumbers,
+      `${label} page numbers`,
+    );
+    const pageNumbers = [];
+    for (const pageNumber of pageNumberValues) {
+      pageNumbers.push(readPositiveInteger(pageNumber, `${label} page number`));
+    }
+    availableCitationKeys.add(key);
+    citations.push({
+      key,
+      pageNumbers,
+      sourceFile: readNonEmptyString(citation.sourceFile, `${label} source file`),
+    });
+  }
   const statementCount = readNonNegativeInteger(
     update.statementCount,
     "streamed answer statement count",
@@ -97,11 +134,41 @@ export function readAnswerContentUpdate(value) {
     if (statementIndex >= statementCount || indexes.has(statementIndex)) {
       throw new Error(`The ${label} index is invalid.`);
     }
+    const citationKeyValues = readArray(
+      statement.citationKeys,
+      `${label} citation keys`,
+    );
+    const citationKeys = [];
+    const seenCitationKeys = new Set();
+    for (const citationKeyValue of citationKeyValues) {
+      const citationKey = readNonEmptyString(
+        citationKeyValue,
+        `${label} citation key`,
+      );
+      if (
+        seenCitationKeys.has(citationKey)
+        || !availableCitationKeys.has(citationKey)
+      ) {
+        throw new Error(`${label} has an invalid citation key.`);
+      }
+      seenCitationKeys.add(citationKey);
+      citationKeys.push(citationKey);
+    }
+    const mode = readEnum(
+      statement.mode,
+      ["append", "metadata", "replace"],
+      `${label} mode`,
+    );
     indexes.add(statementIndex);
+    if (mode === "metadata") {
+      statements.push({ citationKeys, index: statementIndex, mode });
+      continue;
+    }
     statements.push({
+      citationKeys,
       content: readNonEmptyString(statement.content, `${label} content`),
       index: statementIndex,
-      mode: readEnum(statement.mode, ["append", "replace"], `${label} mode`),
+      mode,
       presentation: readEnum(
         statement.presentation,
         statementPresentations,
@@ -114,13 +181,23 @@ export function readAnswerContentUpdate(value) {
       ),
     });
   }
-  return { statementCount, statements };
+  return { citations, statementCount, statements };
 }
 
 export function applyAnswerContentUpdate(content, update) {
   const statements = content.statements.slice(0, update.statementCount);
   for (const statementUpdate of update.statements) {
     const previous = statements[statementUpdate.index];
+    if (statementUpdate.mode === "metadata") {
+      if (previous === undefined) {
+        throw new Error("A streamed answer metadata update has no existing statement.");
+      }
+      statements[statementUpdate.index] = {
+        ...previous,
+        citationKeys: [...statementUpdate.citationKeys],
+      };
+      continue;
+    }
     if (statementUpdate.mode === "append" && previous === undefined) {
       throw new Error("A streamed answer append has no existing statement.");
     }
@@ -130,6 +207,7 @@ export function applyAnswerContentUpdate(content, update) {
       : statementUpdate.content;
     statements[statementUpdate.index] = {
       citationIds: [],
+      citationKeys: [...statementUpdate.citationKeys],
       content: statementContent,
       contentHtml: renderAnswerMarkdown(statementContent),
       presentation: statementUpdate.presentation,
@@ -141,14 +219,34 @@ export function applyAnswerContentUpdate(content, update) {
       throw new Error("A streamed answer update omitted a new statement.");
     }
   }
-  return { statements };
+  const citations = update.citations.map((citation) => ({
+    citationNumber: null,
+    key: citation.key,
+    pageNumbers: [...citation.pageNumbers],
+    preview: true,
+    sourceFile: citation.sourceFile,
+  }));
+  return { citations, statements };
 }
 
 export function createAnswerContentFromDocument(document) {
+  const citationKeyById = new Map();
+  for (const citation of document.citations) {
+    citationKeyById.set(
+      citation.id,
+      createAnswerCitationKey(
+        citation.documentVersionId,
+        citation.documentId,
+        citation.elementId,
+      ),
+    );
+  }
   if (document.statements.length === 0) {
     return {
+      citations: [],
       statements: [{
         citationIds: [],
+        citationKeys: [],
         content: document.content,
         contentHtml: renderAnswerMarkdown(document.content),
         presentation: "paragraph",
@@ -158,15 +256,24 @@ export function createAnswerContentFromDocument(document) {
   }
   const statements = [];
   for (const statement of document.statements) {
+    const citationKeys = [];
+    for (const citationId of statement.citationIds) {
+      const citationKey = citationKeyById.get(citationId);
+      if (citationKey === undefined) {
+        throw new Error(`Answer statement citation ${citationId} is unavailable.`);
+      }
+      citationKeys.push(citationKey);
+    }
     statements.push({
       citationIds: statement.citationIds,
+      citationKeys,
       content: statement.content,
       contentHtml: renderAnswerMarkdown(statement.content),
       presentation: statement.presentation,
       section: statement.section,
     });
   }
-  return { statements };
+  return { citations: [], statements };
 }
 
 export function buildAnswerContentSections(content, citations) {

@@ -18,6 +18,7 @@ import {
   type EvidenceReference,
 } from "./draft.js";
 import {
+  createAnswerContentCitationCatalog,
   decodePartialAnswerContentSnapshot,
   type AnswerContentSnapshot,
 } from "./content-snapshot.js";
@@ -278,8 +279,21 @@ function decodeDefaultAnswerModelResponse(
   );
   return {
     draft,
-    verificationStatementIndexes: null,
+    verificationStatementIndexes: readKeyPointStatementIndexes(draft),
   };
+}
+
+function readKeyPointStatementIndexes(draft: AnswerDraft): number[] {
+  if (draft.status === "uncited") {
+    return [];
+  }
+  const indexes: number[] = [];
+  for (let index = 0; index < draft.statements.length; index += 1) {
+    if (draft.statements[index]?.section === "key-points") {
+      indexes.push(index);
+    }
+  }
+  return indexes;
 }
 
 const defaultAnswerGenerationPrompt: AnswerGenerationPrompt = {
@@ -460,6 +474,7 @@ async function generateAnswer(
         const result = await requestAnswerDraft(
           models,
           answerRequest.content,
+          selectedRetrieved,
           allowedEvidenceRefs,
           requestSignal,
           generationSettings,
@@ -684,6 +699,7 @@ async function correctAnswerDraft(
     return requestAnswerDraft(
       models,
       answerRequest.content,
+      retrieved,
       allowedEvidenceRefs,
       requestSignal,
       generationSettings,
@@ -832,6 +848,7 @@ function recordAnswerRequest(
 async function requestAnswerDraft(
   models: InferenceModelRegistry,
   content: UserContent,
+  retrieved: readonly RetrievedElement[],
   allowedEvidenceRefs: readonly EvidenceReference[],
   abortSignal: AbortSignal,
   generationSettings: AppliedGenerationSettings,
@@ -842,6 +859,10 @@ async function requestAnswerDraft(
   responseContract: AnswerResponseContract,
   receiveAnswerContent: (content: AnswerContentSnapshot) => void,
 ) {
+  const citationCatalog = createAnswerContentCitationCatalog(
+    retrieved,
+    allowedEvidenceRefs,
+  );
   const output = createAnswerModelOutput(
     allowedEvidenceRefs,
     responseContract,
@@ -885,7 +906,10 @@ async function requestAnswerDraft(
       telemetry,
     });
     for await (const partialOutput of result.partialOutputStream) {
-      const preview = decodePartialAnswerContentSnapshot(partialOutput);
+      const preview = decodePartialAnswerContentSnapshot(
+        partialOutput,
+        citationCatalog,
+      );
       if (preview !== null) {
         receiveAnswerContent(preview);
       }

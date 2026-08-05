@@ -9,7 +9,11 @@ import {
   readPositiveInteger,
   readUIMessageStream,
 } from "./citeloom-boundaries.js";
-import { readAnswerContentUpdate } from "./citeloom-answer-content.js";
+import {
+  createAnswerCitationKey,
+  createAnswerContentFromDocument,
+  readAnswerContentUpdate,
+} from "./citeloom-answer-content.js";
 import {
   buildCitationPresentation,
 } from "./citeloom-citation-presentation.js";
@@ -202,6 +206,7 @@ function readChatMessage(value) {
   const answerDocument = readChatAnswerDocument(message.answerDocument);
   return {
     ...normalized,
+    answerContent: createAnswerContentFromDocument(answerDocument),
     answerDocument,
     citations: readArray(message.citations, "chat citations")
       .map(readChatCitation),
@@ -296,6 +301,18 @@ function readChatEvidenceUnits(value, citationNumberValue, label) {
 
 function readChatCitation(value) {
   const citation = readPlainObject(value, "chat citation");
+  const documentId = readNonEmptyString(
+    citation.documentId,
+    "citation document ID",
+  );
+  const documentVersionId = readNonEmptyString(
+    citation.documentVersionId,
+    "citation document version ID",
+  );
+  const elementId = readNonEmptyString(
+    citation.elementId,
+    "citation element ID",
+  );
   const normalized = {
     citationNumber: readPositiveInteger(
       citation.citationNumber,
@@ -305,17 +322,15 @@ function readChatCitation(value) {
       citation.createdAt,
       "citation creation time",
     ),
-    documentId: readNonEmptyString(citation.documentId, "citation document ID"),
-    documentVersionId: readNonEmptyString(
-      citation.documentVersionId,
-      "citation document version ID",
-    ),
-    elementId: readNonEmptyString(citation.elementId, "citation element ID"),
+    documentId,
+    documentVersionId,
+    elementId,
     evidence: readPublishedAnswerEvidence(
       citation.evidence,
       "citation evidence",
     ),
     id: readNonEmptyString(citation.id, "citation ID"),
+    key: createAnswerCitationKey(documentVersionId, documentId, elementId),
     mediaType: readNonEmptyString(citation.mediaType, "citation media type"),
     pageNumbers: readArray(citation.pageNumbers, "citation page numbers")
       .map((page) => readPositiveInteger(page, "citation page number")),
@@ -327,6 +342,7 @@ function readChatCitation(value) {
       "citation source availability",
     ),
     sourceFile: readNonEmptyString(citation.sourceFile, "citation source file"),
+    preview: false,
   };
   return buildCitationPresentation(normalized);
 }

@@ -243,7 +243,7 @@ sequenceDiagram
     Query->>AI: Generate structured answer draft
     AI-->>Validate: Statements and request-local evidence references
     Validate->>Validate: Match exact evidence references and compile server-owned citations
-    Validate->>HHEM: Score claims against cited evidence
+    Validate->>HHEM: Score selected findings and topics against cited evidence
     HHEM-->>Validate: Advisory support scores
     Validate->>Research: Cited answer, advisory checks, and retrieval trace
     Research->>DB: Validate citation anchors and atomically publish turn
@@ -252,7 +252,10 @@ sequenceDiagram
 ```
 
 CiteLoom shows a citation only when the answer model produced it and citation validation accepted it.
-HHEM claim-support scoring is a separate advisory check that measures whether the cited evidence appears to support each answer statement.
+HHEM claim-support scoring is a separate advisory check that measures whether cited evidence appears to support the selected atomic statements.
+Ask selects supporting findings, while Chat selects ordered answer topics.
+The direct synthesis is not sent to HHEM.
+Exact duplicate claim and evidence pairs are scored once and their result is reused for each matching statement.
 HHEM scores never remove, replace, or rewrite answer statements or citations, and they never convert a cited response into an uncited response.
 When HHEM is unavailable or times out, CiteLoom publishes the cited answer with unverified advisory checks.
 Structured answer validation and citation validation remain publication requirements.
@@ -271,12 +274,12 @@ When the conversation exceeds its memory budget, CiteLoom combines the most rece
 Each selected prior assistant answer includes a citation source map built from its stored citation snapshots so its numeric citation markers retain their document identity.
 Conversation memory can clarify a follow-up, but it cannot support a factual claim or replace currently retrieved document evidence.
 If document retrieval finds no relevant evidence, Chat publishes an uncited response instead of using model knowledge.
-An answered Chat response must begin with a direct answer and may then provide supporting reasoning, comparison criteria, limitations, exceptions, and conflicts.
-The Chat model contract represents the direct answer separately from its supporting findings.
-The direct answer and each finding carry exact request-local evidence references.
+An answered Chat response contains a substantive direct synthesis and may add ordered topics for distinct parts of a comprehensive response.
+The Chat model contract represents the direct synthesis separately from those topics and does not include a findings field.
+The direct synthesis and each topic carry exact request-local evidence references.
 The model may cite only request-local evidence references, and the server resolves those references to stored source elements before publication.
-Chat sends only `findings` to HHEM because those entries contain atomic facts stated by the retrieved sources.
-The direct answer is not an HHEM input.
+Chat sends only its topics to HHEM because they are the atomic supporting statements presented for verification.
+The direct synthesis is not an HHEM input.
 Chat stores the resulting checks as diagnostic metadata and never uses them to reject, remove, or rewrite the answer.
 
 Chat run leases are renewable and retry attempts are fenced by an attempt number.

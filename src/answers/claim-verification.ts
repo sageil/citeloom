@@ -146,10 +146,31 @@ export async function verifyPublishedAnswer(
   abortSignal: AbortSignal,
   runTelemetry: RunTelemetry = noopRunTelemetry,
 ): Promise<VerifiedPublishedAnswer> {
+  const claims = readPublishedAnswerClaims(answerDocument);
+  return verifyPublishedAnswerClaims(
+    models,
+    answerDocument,
+    claims,
+    scheduler,
+    abortSignal,
+    runTelemetry,
+  );
+}
+
+export async function verifyPublishedAnswerClaims(
+  models: InferenceModelRegistry,
+  answerDocument: PublishedAnswerDocument,
+  claims: readonly AnswerClaim[],
+  scheduler: TaskScheduler,
+  abortSignal: AbortSignal,
+  runTelemetry: RunTelemetry = noopRunTelemetry,
+): Promise<VerifiedPublishedAnswer> {
   if (isPublishedUncitedAnswerDocument(answerDocument)) {
     return { answerDocument, claims: [] };
   }
-  const claims = readPublishedAnswerClaims(answerDocument);
+  if (claims.length === 0) {
+    return { answerDocument, claims: [] };
+  }
   const verifier = models.claimVerifier;
   const stage = runTelemetry.startStage({
     model: {
@@ -460,8 +481,10 @@ async function scorePreparedClaimVerifications(
   for (const prepared of modelClaims) {
     items.push(prepared.item);
   }
-  return scheduler.run(
-    (requestSignal) => score(items, requestSignal),
+  return scoreUniqueHhemItems(
+    items,
+    score,
+    scheduler,
     abortSignal,
     timingObserver,
   );
@@ -487,7 +510,8 @@ function prepareRetainedCollectiveCitationSetVerifications(
     if (unsupportedNumbers.length !== check.citationNumbers.length) {
       continue;
     }
-    const candidateCitationNumbers = [...check.citationNumbers];
+    const candidateCitationNumbers = [...check.citationNumbers]
+      .sort((left, right) => left - right);
     const item = buildCitationSetScoreItem(
       check,
       candidateCitationNumbers,
@@ -563,11 +587,78 @@ async function scorePendingCitationSets(
   if (items.length === 0) {
     return [];
   }
-  return scheduler.run(
-    (requestSignal) => score(items, requestSignal),
+  return scoreUniqueHhemItems(
+    items,
+    score,
+    scheduler,
     abortSignal,
     timingObserver,
   );
+}
+
+interface HhemScoreItemGroup {
+  item: HhemScoreItem;
+  resultIds: string[];
+}
+
+async function scoreUniqueHhemItems(
+  items: readonly HhemScoreItem[],
+  score: (
+    items: readonly HhemScoreItem[],
+    abortSignal: AbortSignal,
+  ) => Promise<HhemScoreResult[]>,
+  scheduler: TaskScheduler,
+  abortSignal: AbortSignal,
+  timingObserver: Parameters<TaskScheduler["run"]>[2],
+): Promise<HhemScoreResult[]> {
+  const groupsByContent = new Map<string, HhemScoreItemGroup>();
+  const groups: HhemScoreItemGroup[] = [];
+  for (const item of items) {
+    const contentKey = JSON.stringify([item.claim, item.evidence]);
+    const existing = groupsByContent.get(contentKey);
+    if (existing !== undefined) {
+      existing.resultIds.push(item.id);
+      continue;
+    }
+    const group: HhemScoreItemGroup = {
+      item,
+      resultIds: [item.id],
+    };
+    groupsByContent.set(contentKey, group);
+    groups.push(group);
+  }
+  const uniqueItems: HhemScoreItem[] = [];
+  for (const group of groups) {
+    uniqueItems.push(group.item);
+  }
+  const uniqueResults = await scheduler.run(
+    (requestSignal) => score(uniqueItems, requestSignal),
+    abortSignal,
+    timingObserver,
+  );
+  const uniqueResultById = new Map<string, HhemScoreResult>();
+  for (const result of uniqueResults) {
+    uniqueResultById.set(result.id, result);
+  }
+  const results: HhemScoreResult[] = [];
+  for (const group of groups) {
+    const result = uniqueResultById.get(group.item.id);
+    if (result === undefined) {
+      continue;
+    }
+    for (const resultId of group.resultIds) {
+      if (result.outcome === "scored") {
+        results.push({
+          id: resultId,
+          outcome: "scored",
+          supportProbability: result.supportProbability,
+        });
+        continue;
+      }
+      results.push({ id: resultId, outcome: "model-context-capacity" });
+    }
+  }
+  return results;
 }
 
 function buildClaimVerificationResults(

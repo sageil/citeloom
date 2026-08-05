@@ -16,7 +16,7 @@ CiteLoom is a domain-agnostic Retrieval-Augmented Generation (RAG) system for yo
 It supports PDF, HTML, DOCX, XLSX, PPTX, JPEG, PNG, WebP, and readable UTF-8 text files.
 
 Use local or remote LLM providers while keeping generated answers connected to original evidence through validated citations.
-CiteLoom also records advisory Hughes Hallucination Evaluation Model (HHEM) support scores for cited claims without allowing those scores to alter the answer.
+CiteLoom also records advisory Hughes Hallucination Evaluation Model (HHEM) support scores for cited Ask findings and Chat topics without allowing those scores to alter the answer.
 
 See [Features](#features) for supported capabilities and [How it works](#how-it-works) for the ingestion, retrieval, citation, and claim-support flow.
 
@@ -259,7 +259,7 @@ CiteLoom keeps generated answers connected to their sources:
 
 - Generated descriptions can improve discovery, but citations always point to original evidence.
 - Evidence references are validated before they become citations.
-- The Hughes Hallucination Evaluation Model (HHEM) records an advisory support score for each cited claim.
+- The Hughes Hallucination Evaluation Model (HHEM) records advisory support scores for cited Ask findings and Chat topics.
 - HHEM scores help reviewers identify potentially unsupported claims, but never remove, rewrite, or add answer content.
 
 See [Architecture](docs/architecture.md) for the detailed execution paths and system boundaries.

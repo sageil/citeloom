@@ -112,7 +112,7 @@ Users can record with the microphone control or hold Option on macOS or Alt on W
 CiteLoom sends the temporary recording to the configured transcription provider and discards it after transcription or cancellation.
 
 Spoken answers are optional in both Ask and Chat.
-Ask can play the displayed answer, and Chat can play the latest completed assistant answer.
+Ask can play the displayed answer, and Chat can play any completed assistant answer in the conversation.
 The administrator selects the provider, model, voice, speed, and timeout in Settings.
 When Preload answer audio is enabled, the browser requests the audio asynchronously after a completed answer is loaded or published.
 When it is disabled, CiteLoom requests audio only after the user chooses the play control.

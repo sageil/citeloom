@@ -58,7 +58,10 @@ import {
   InvalidAnswerDraftError,
   streamAnswerQuestion,
 } from "../src/answers/inference.js";
-import type { AnswerContentSnapshot } from "../src/answers/content-snapshot.js";
+import {
+  createAnswerContentCitationKey,
+  type AnswerContentSnapshot,
+} from "../src/answers/content-snapshot.js";
 import {
   noopRunTelemetry,
   type RunTelemetry,
@@ -2153,17 +2156,57 @@ describe("answer generation", () => {
     );
 
     expect(previews).toHaveLength(1);
+    const citationKey = createAnswerContentCitationKey(
+      "00000000-0000-4000-8000-000000000001",
+      "a".repeat(64),
+      "b".repeat(64),
+    );
     expect(previews.at(-1)).toEqual({
+      citations: [{
+        key: citationKey,
+        pageNumbers: [3],
+        sourceFile: "/tmp/report.pdf",
+      }],
       statements: [{
+        citationKeys: [citationKey],
         content: "Zardev sold the riparian lots.",
         presentation: "paragraph",
         section: "answer",
       }, {
+        citationKeys: [citationKey],
         content: "The submerged lots were treated as accessories.",
         presentation: "bullet",
         section: "key-points",
       }],
     });
+  });
+
+  it("selects only key points for Ask claim verification", async () => {
+    const answerModel = buildAnswerModel({
+      answer: {
+        content: "The report describes one supported change.",
+        evidenceRefs: ["EVID_A"],
+      },
+      findings: [{
+        content: "Revenue increased by 12 percent.",
+        evidenceRefs: ["EVID_A"],
+      }],
+    });
+
+    const result = await answerQuestion(
+      buildModelRegistry(answerModel),
+      "What changed?",
+      [buildRetrievedElement("a", "b")],
+      new TaskLimiter(1),
+      generationSettings,
+    );
+
+    expect(result.outcome).toBe("answered");
+    expect(result.claims).toEqual([expect.objectContaining({
+      citationNumbers: [1],
+      claim: "Revenue increased by 12 percent.",
+      claimIndex: 1,
+    })]);
   });
 
   it("uses evidenceRefs as citation authority instead of model citation decoration", async () => {
