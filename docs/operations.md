@@ -11,7 +11,7 @@ CiteLoom keeps its database definition in three places:
 Create a complete local Compose installation with one command.
 
 ```bash
-./infra/scripts/install-local.sh
+docker compose up -d --build --wait
 ```
 
 `0000_citeloom_schema.sql` creates the complete schema, required extensions, database functions, and triggers in one migration.
@@ -42,7 +42,7 @@ pnpm db:migrate:production
 Before creating a backup, stop every writer so the database and source files represent the same point in time.
 
 ```bash
-./infra/compose.sh stop web worker
+docker compose stop web worker
 ```
 
 Create a backup that contains both a PostgreSQL dump and the source files.
@@ -66,28 +66,25 @@ Compose PostgreSQL data is stored under `data/citeloomdb` by default and remains
 Set `CITELOOM_POSTGRES_DATA_DIRECTORY` in `.env` before the first install to use a different bind-mounted directory.
 Compose source content is stored under `documents/blobs` by default.
 Set `CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY` in `.env` before installation to use a different bind-mounted directory.
-The installer stops writers before migration, creates and validates the selected host directory, and preserves the old directory if migration validation fails.
+Use absolute paths when the same deployment could be managed from more than one checkout.
 
-## Local installer recovery
+## Compose recovery
 
-The installer records its progress in the ignored `data/local-install.state` file.
-A first installation moves through `unconfigured`, `configured`, and `starting`.
-It reaches `ready` only after the migration, service health checks, and HTTPS check succeed.
-Running the installer again safely starts a new attempt from any saved state.
-After a failure, the state remains `starting`, and the database and containers remain available for diagnosis and retry.
-
-Validate the current configuration and state without changing the deployment.
+Validate the current configuration without changing the deployment.
 
 ```bash
-./infra/scripts/install-local.sh --check
+docker compose config --quiet
 ```
 
-After recording `ready`, the installer refuses to continue if the data directory is missing or empty.
-If an interactive installation finds a nonempty PostgreSQL directory it does not recognize, it shows the exact path and asks you to type `RESET`.
-After confirmation, it stops database writers, moves the existing directory to a timestamped recovery path, creates an empty directory, and continues.
-Check mode and noninteractive installation never change an unrecognized directory.
-A configured directory that does not match the saved installer state is always rejected.
-Recovery moves old PostgreSQL data but never permanently deletes it.
+Inspect service state and logs after a failed start.
+
+```bash
+docker compose ps
+docker compose logs migrate web worker
+```
+
+After correcting the configuration or dependency failure, rerun the normal `docker compose up` command.
+Do not change persistent database or source-content paths when resuming an existing deployment.
 
 ## Reindexing
 
@@ -101,7 +98,7 @@ pnpm dev document-toc backfill
 For the supplied container deployment, run:
 
 ```bash
-./infra/compose.sh --profile worker run --rm --no-deps worker node dist/cli/index.js document-toc backfill
+docker compose run --rm --no-deps worker node dist/cli/index.js document-toc backfill
 ```
 
 The command applies to documents in the active embedding space and is safe to rerun after interruption.

@@ -207,7 +207,7 @@ Renewable leases and fenced attempts prevent an expired worker or Chat attempt f
 Completed document indexes and answers are published atomically so partial results remain unavailable.
 
 CiteLoom supports coordinated PostgreSQL and source-content backups, guarded restore, embedding-space retention, document TOC backfill, queue inspection, failed-job retries, and dependency diagnostics.
-The local installer records its progress and can resume a failed installation without silently deleting an existing database.
+Docker Compose reconciles interrupted starts while preserving bind-mounted PostgreSQL and source-content data.
 
 See [Operations](operations.md), [pnpm commands](commands.md), and [Architecture](architecture.md) for the complete operational and internal behavior.
 

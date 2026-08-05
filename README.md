@@ -44,7 +44,6 @@ See the [complete feature guide](docs/features.md) for user workflows, administr
 ## Requirements
 
 - Docker with Docker Compose.
-- Bash and curl for the local installer.
 - Node.js 26.5.0 for source-based development outside Docker.
 - Configured model providers for answers, Chat, the Indexing model, embeddings, and any enabled reranking or speech features.
 - Enough local memory and storage for the selected models, PostgreSQL data, document artifacts, and extracted images.
@@ -89,13 +88,13 @@ See [Deployment](docs/deployment.md) for storage paths, restart behavior, and bu
 
 ### Build locally
 
-Run the installer from the repository root to build the images locally.
+Build and start the complete stack from the repository root.
 
 ```bash
-./infra/scripts/install-local.sh
+docker compose up -d --build --wait
 ```
 
-The installer creates `.env` when needed, asks for the initial administrator credentials, builds the stack, applies migrations, and waits for CiteLoom to become ready.
+Docker Compose builds the images, applies migrations, starts the application services, and waits for CiteLoom to become ready.
 
 ## Supported providers
 

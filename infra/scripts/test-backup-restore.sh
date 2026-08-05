@@ -16,7 +16,10 @@ retained_space="backup-retained:plain:384"
 collected_space="backup-collected:plain:384"
 
 run_compose() {
-  "${infrastructure_directory}/compose.sh" --profile test "$@"
+  (
+    cd "${repository_directory}"
+    docker compose --profile test "$@"
+  )
 }
 
 cleanup() {

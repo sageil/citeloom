@@ -127,7 +127,6 @@ services:
       start_period: 10s
 
   migrate:
-    profiles: ["https", "web", "worker"]
     build: *app-build
     command: ["node", "dist/database/migrate.js"]
     environment:
@@ -144,7 +143,6 @@ services:
       - ${CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY:-./documents/blobs}:/app/documents/blobs
 
   worker:
-    profiles: ["worker"]
     build: *app-build
     command: ["node", "dist/cli/index.js", "worker"]
     environment:
@@ -178,7 +176,6 @@ services:
       start_period: 20s
 
   web:
-    profiles: ["https", "web"]
     build: *app-build
     command: ["node", "dist/web-server.js"]
     environment:
@@ -221,7 +218,6 @@ services:
       start_period: 20s
 
   https-proxy:
-    profiles: ["https"]
     image: caddy:2.11.4-alpine
     command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
     depends_on:

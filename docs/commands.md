@@ -29,7 +29,7 @@ pnpm dev document-toc backfill
 For the supplied container deployment, run the compiled command through the worker service.
 
 ```bash
-./infra/compose.sh --profile worker run --rm --no-deps worker node dist/cli/index.js document-toc backfill
+docker compose run --rm --no-deps worker node dist/cli/index.js document-toc backfill
 ```
 
 The command reads stored document elements, recreates their existing retrieval-window identifiers, and writes only missing TOC artifacts.

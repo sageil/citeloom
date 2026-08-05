@@ -76,8 +76,8 @@ The [standalone frontend guide](../web/README.md) documents its additional varia
 | `HHEM_TORCH_THREADS` | CPU thread count used by HHEM |
 | `HHEM_PORT` | Host port published for the HHEM service |
 
-The local installer defaults `CITELOOM_POSTGRES_DATA_DIRECTORY` to `./data/citeloomdb`, resolved from the repository root.
-It also creates and checks `CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY`, which defaults to `./documents/blobs`.
+Docker Compose defaults `CITELOOM_POSTGRES_DATA_DIRECTORY` to `./data/citeloomdb`, resolved from the repository root.
+It defaults `CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY` to `./documents/blobs`.
 
 The database setting `sourceContent.directory` tells CiteLoom where processes can read stored source files.
 The web application, worker, and ordinary command-line tools use this database value instead of the environment variable.
@@ -401,7 +401,7 @@ Use document headings in search is a Docling setting because CiteLoom reads head
 When enabled, Ask and Chat can use a document's table of contents to find relevant sections in long documents.
 Table-of-contents titles help search but are not used as answer sources or citations.
 Run `pnpm dev document-toc backfill` after enabling the setting to update existing documents without converting or fully indexing them again.
-For the supplied container deployment, run `./infra/compose.sh --profile worker run --rm --no-deps worker node dist/cli/index.js document-toc backfill`.
+For the supplied container deployment, run `docker compose run --rm --no-deps worker node dist/cli/index.js document-toc backfill`.
 The command is safe to rerun because it skips documents that are already updated.
 Turning the setting off stops using document headings as an additional search aid. Regular search continues to work.
 
@@ -426,7 +426,7 @@ DOCLING_CONTAINER_ADDITIONAL_SERVICE_INSTANCES=[{"id":"replica-b","baseUrl":"htt
 ```
 
 ```bash
-./infra/compose.sh --profile docling-scale up -d --wait docling-replica
+docker compose --profile docling-scale up -d --wait docling-replica
 ```
 
 ## Provider models and request limits

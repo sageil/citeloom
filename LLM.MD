@@ -13,7 +13,7 @@ pnpm install
 ```
 
 CiteLoom requires Node.js 26.5 and pnpm 11 for source-based development.
-The complete Docker installer does not require Node.js on the host.
+The Docker Compose stack does not require Node.js on the host.
 
 Check the working tree before making changes.
 
@@ -74,7 +74,8 @@ An answer is not published when required validation fails.
 | `test/` | Unit, integration, boundary, and live-service tests |
 | `drizzle/` | Greenfield PostgreSQL schema and bootstrap SQL |
 | `queries/` | SQL used while the application runs |
-| `infra/` | Docker Compose, images, installer, backup, restore, and local HTTPS |
+| `compose.yml` | Local source-build Docker Compose topology |
+| `infra/` | Docker images, backup, restore, and local HTTPS |
 | `scripts/` | Build, validation, probes, and development benchmark tooling |
 | `docs/` | Architecture, configuration, deployment, operations, evaluation, and command guides |
 | `corpora/` | Evaluation corpus manifests and provenance |

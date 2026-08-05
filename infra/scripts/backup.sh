@@ -19,10 +19,16 @@ fi
 
 run_compose() {
   if [ -n "${compose_profile}" ]; then
-    "${infrastructure_directory}/compose.sh" --profile "${compose_profile}" "$@"
+    (
+      cd "${repository_directory}"
+      docker compose --profile "${compose_profile}" "$@"
+    )
     return
   fi
-  "${infrastructure_directory}/compose.sh" "$@"
+  (
+    cd "${repository_directory}"
+    docker compose "$@"
+  )
 }
 
 resolve_source_content_directory() {

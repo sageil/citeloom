@@ -1,6 +1,6 @@
 -- Run from the repository root with:
--- ./infra/compose.sh stop web worker
--- ./infra/compose.sh exec -T postgres psql \
+-- docker compose stop web worker
+-- docker compose exec -T postgres psql \
 --   -U citeloom \
 --   -d postgres \
 --   -v reset_citeloom=RESET_CITELOOM \

@@ -56,7 +56,6 @@ CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY=/srv/citeloom/documents/blobs
 ```
 
 When reusing existing data, verify both bind paths and back up PostgreSQL and source content together.
-The path guard described under [Local installer recovery](operations.md#local-installer-recovery) applies to the local build installer.
 
 Stop the stack without deleting its bind-mounted data.
 
@@ -64,38 +63,38 @@ Stop the stack without deleting its bind-mounted data.
 docker compose --env-file .env -f compose.dockerhub.yml down
 ```
 
-## Build and install locally
+## Build and run locally
 
-Run the installer from the repository root.
-The host needs Bash, Docker Compose, and curl.
+The host needs Docker Compose.
+Create the untracked environment file and configure the initial administrator credentials before the first start.
 
 ```bash
-./infra/scripts/install-local.sh
+cp .env.example .env
+chmod 600 .env
 ```
 
-The installer:
+Build and start the complete stack from the repository root.
 
-- Creates `.env` from `.env.example` when the file is absent.
-- Asks for the administrator credentials required by migrations and saves them in the untracked `.env` file.
-- Uses `data/citeloomdb` for PostgreSQL by default.
-- Starts Caddy, which generates and retains its local certificate authority and HTTPS certificate under the ignored `data/caddy` directory.
-- Builds and starts the HTTPS, web, worker, PostgreSQL, Docling, and HHEM services.
-- Creates the database schema and initial administrator before starting the web application and worker.
-- Reports success only after migration, container health, and `https://localhost:3443` are verified.
+```bash
+docker compose up -d --build --wait
+```
+
+Docker Compose builds and starts the HTTPS, web, worker, PostgreSQL, Docling, and HHEM services.
+The migration service creates the database schema and initial administrator before the web application and worker start.
+Caddy generates and retains its local certificate authority and HTTPS certificate under the ignored `data/caddy` directory.
 
 The first build may take several minutes while Docker downloads images and model assets.
 When the command finishes, CiteLoom is ready at `https://localhost:3443`.
 
-### Resume an installation
+### Resume or reconcile the stack
 
-After an interruption, fix the reported problem and run the installer again.
-It resumes from the saved state while keeping the database and containers available for diagnosis.
-See [Local installer recovery](operations.md#local-installer-recovery) for data-directory checks and recovery behavior.
+After an interruption, fix the reported problem and run the same Compose command again.
+Docker Compose preserves bind-mounted data and reconciles services with the declared configuration.
 
-To check prerequisites, configuration, storage paths, and installer state without changing anything, run:
+Validate the resolved configuration without changing containers.
 
 ```bash
-./infra/scripts/install-local.sh --check
+docker compose config --quiet
 ```
 
 Open `https://localhost:3443` after installation.
@@ -110,13 +109,13 @@ The HTTPS proxy uses Docker DNS to discover replicas, distributes new requests a
 Scale the web service through the proxy rather than publishing a host port for each replica.
 
 ```bash
-./infra/compose.sh --profile https --profile worker up -d --wait --scale web=3
+docker compose up -d --wait --scale web=3
 ```
 
 Stop all local services without deleting their persistent data.
 
 ```bash
-./infra/compose.sh --profile https --profile worker down
+docker compose down
 ```
 
 ## Publishing Docker Hub images
@@ -155,7 +154,7 @@ CITELOOM_POSTGRES_DATA_DIRECTORY=./data/citeloomdb
 ```
 
 Compose stores unmodified source files under `CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY`, which defaults to `documents/blobs` under the same directory.
-The installer creates that host directory and mounts it at `/app/documents/blobs` in the migration, web, worker, and Docling containers.
+Docker Compose creates that host directory when needed and mounts it at `/app/documents/blobs` in the migration, web, worker, and Docling containers.
 Docling mounts it read-only and accepts content IDs instead of uploaded document bytes.
 Database bootstrap stores `/app/documents/blobs` in `application_settings`, and application processes read the path from there.
 
