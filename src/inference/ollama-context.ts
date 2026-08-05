@@ -29,15 +29,25 @@ export interface OllamaLanguageModelRuntime {
 }
 
 interface OllamaAdaptiveContextOptions {
+  createDynamicModel: () => LanguageModelV4;
   createModel: (contextCapacityTokens: number) => LanguageModelV4;
+  metadataCache: OllamaModelMetadataCache;
   providerSafetyMarginTokens: number;
   workload: OllamaAdaptiveWorkload;
 }
 
-interface OllamaModelIdentity {
+export interface OllamaModelMetadata {
   contextCapacityTokens: number;
   digest: string;
   format: string;
+}
+
+export interface OllamaModelMetadataCache {
+  invalidate(config: LanguageInferenceConfig): void;
+  read(
+    config: LanguageInferenceConfig,
+    abortSignal: AbortSignal | undefined,
+  ): Promise<OllamaModelMetadata>;
 }
 
 interface OllamaLoadedModel {
@@ -47,7 +57,7 @@ interface OllamaLoadedModel {
 }
 
 interface OllamaRuntimeInspection {
-  identity: OllamaModelIdentity;
+  identity: OllamaModelMetadata;
   loaded: OllamaLoadedModel | null;
 }
 
@@ -107,6 +117,61 @@ const ollamaPsResponseSchema = z.object({
   }).loose()),
 }).loose();
 
+interface OllamaModelMetadataCacheEntry {
+  inFlight: Promise<OllamaModelMetadata> | null;
+  value: OllamaModelMetadata | null;
+}
+
+export function createOllamaModelMetadataCache(): OllamaModelMetadataCache {
+  return new InMemoryOllamaModelMetadataCache();
+}
+
+class InMemoryOllamaModelMetadataCache
+  implements OllamaModelMetadataCache {
+  private readonly entries = new Map<
+    string,
+    OllamaModelMetadataCacheEntry
+  >();
+
+  public invalidate(config: LanguageInferenceConfig): void {
+    this.entries.delete(buildOllamaModelMetadataCacheKey(config));
+  }
+
+  public async read(
+    config: LanguageInferenceConfig,
+    abortSignal: AbortSignal | undefined,
+  ): Promise<OllamaModelMetadata> {
+    abortSignal?.throwIfAborted();
+    const key = buildOllamaModelMetadataCacheKey(config);
+    const existing = this.entries.get(key);
+    if (existing !== undefined) {
+      if (existing.value !== null) {
+        return existing.value;
+      }
+      if (existing.inFlight !== null) {
+        return await waitForSharedMetadata(existing.inFlight, abortSignal);
+      }
+    }
+    const entry: OllamaModelMetadataCacheEntry = {
+      inFlight: null,
+      value: null,
+    };
+    const discovery = discoverOllamaModelMetadata(config).then((metadata) => {
+      if (this.entries.get(key) === entry) {
+        entry.value = metadata;
+      }
+      return metadata;
+    }).finally(() => {
+      if (this.entries.get(key) === entry) {
+        entry.inFlight = null;
+      }
+    });
+    entry.inFlight = discovery;
+    this.entries.set(key, entry);
+    return await waitForSharedMetadata(discovery, abortSignal);
+  }
+}
+
 const adaptiveAnswerRequestSchema = z.object({
   contextCapacityTokens: z.number().int().positive(),
   modelDigest: z.string().trim().min(1),
@@ -155,14 +220,24 @@ class AdaptiveOllamaLanguageModel implements LanguageModelV4 {
     options: LanguageModelV4CallOptions,
   ): Promise<LanguageModelV4GenerateResult> {
     const model = await this.controller.selectModel(options);
-    return await model.doGenerate(options);
+    try {
+      return await model.doGenerate(options);
+    } catch (error: unknown) {
+      this.controller.invalidateModelMetadata();
+      throw error;
+    }
   }
 
   public async doStream(
     options: LanguageModelV4CallOptions,
   ): Promise<LanguageModelV4StreamResult> {
     const model = await this.controller.selectModel(options);
-    return await model.doStream(options);
+    try {
+      return await model.doStream(options);
+    } catch (error: unknown) {
+      this.controller.invalidateModelMetadata();
+      throw error;
+    }
   }
 }
 
@@ -176,10 +251,16 @@ class OllamaAdaptiveContextController {
     abortSignal: AbortSignal,
   ): Promise<LanguageModelCapabilities> {
     try {
-      const identity = await this.inspectModelIdentity(abortSignal);
+      const identity = await this.options.metadataCache.read(
+        this.config,
+        abortSignal,
+      );
+      if (identity.format === "safetensors") {
+        return readLanguageModelCapabilities(this.config, abortSignal);
+      }
       if (identity.format !== "gguf") {
         throw new Error(
-          `Ollama reported model format ${identity.format} instead of GGUF.`,
+          `Ollama reported unsupported model format ${identity.format}.`,
         );
       }
       return {
@@ -192,6 +273,7 @@ class OllamaAdaptiveContextController {
       };
     } catch (error: unknown) {
       abortSignal.throwIfAborted();
+      this.invalidateModelMetadata();
       this.reportFallback(error);
       return readLanguageModelCapabilities(this.config, abortSignal);
     }
@@ -202,14 +284,31 @@ class OllamaAdaptiveContextController {
   ): Promise<LanguageModelV4> {
     const request = readAdaptiveAnswerRequest(options);
     try {
-      const inspection = request === null
-        ? await this.inspectRuntime(options.abortSignal)
-        : await this.inspectAnswerRuntime(request, options.abortSignal);
-      if (inspection.identity.format !== "gguf") {
+      const identity = request === null
+        ? await this.options.metadataCache.read(
+          this.config,
+          options.abortSignal,
+        )
+        : {
+          contextCapacityTokens: request.contextCapacityTokens,
+          digest: request.modelDigest,
+          format: request.modelFormat,
+        };
+      if (identity.format === "safetensors") {
+        return this.options.createDynamicModel();
+      }
+      if (identity.format !== "gguf") {
         throw new Error(
-          `Ollama reported model format ${inspection.identity.format} instead of GGUF.`,
+          `Ollama reported unsupported model format ${identity.format}.`,
         );
       }
+      const inspection: OllamaRuntimeInspection = {
+        identity,
+        loaded: await this.inspectLoadedModel(
+          identity.digest,
+          options.abortSignal,
+        ),
+      };
       const target = readContextTarget(
         options,
         this.options.workload,
@@ -236,6 +335,7 @@ class OllamaAdaptiveContextController {
       return this.options.createModel(requestedContextTokens);
     } catch (error: unknown) {
       options.abortSignal?.throwIfAborted();
+      this.invalidateModelMetadata();
       const fallbackContextTokens = request?.contextCapacityTokens
         ?? this.config.contextCapacityTokens;
       this.reportFallback(error, fallbackContextTokens);
@@ -243,67 +343,14 @@ class OllamaAdaptiveContextController {
     }
   }
 
-  private async inspectModelIdentity(
-    abortSignal: AbortSignal | undefined,
-  ): Promise<OllamaModelIdentity> {
-    const signal = createInspectionSignal(this.config.timeoutMs, abortSignal);
-    const showRequest = requestOllamaJson(
-      this.config,
-      "/api/show",
-      {
-        body: JSON.stringify({ model: this.config.model }),
-        method: "POST",
-      },
-      signal,
-    );
-    const tagsRequest = requestOllamaJson(
-      this.config,
-      "/api/tags",
-      { method: "GET" },
-      signal,
-    );
-    const [showValue, tagsValue] = await Promise.all([
-      showRequest,
-      tagsRequest,
-    ]);
-    const show = decodeOllamaShowResponse(showValue);
-    const digest = decodeConfiguredModelDigest(tagsValue, this.config.model);
-    return {
-      contextCapacityTokens: show.contextCapacityTokens,
-      digest,
-      format: show.format,
-    };
+  public invalidateModelMetadata(): void {
+    this.options.metadataCache.invalidate(this.config);
   }
 
-  private async inspectRuntime(
+  private async inspectLoadedModel(
+    modelDigest: string,
     abortSignal: AbortSignal | undefined,
-  ): Promise<OllamaRuntimeInspection> {
-    const signal = createInspectionSignal(this.config.timeoutMs, abortSignal);
-    const identityRequest = this.inspectModelIdentity(signal);
-    const loadedRequest = requestOllamaJson(
-      this.config,
-      "/api/ps",
-      { method: "GET" },
-      signal,
-    );
-    const [identity, loadedValue] = await Promise.all([
-      identityRequest,
-      loadedRequest,
-    ]);
-    return {
-      identity,
-      loaded: decodeLoadedModel(
-        loadedValue,
-        this.config.model,
-        identity.digest,
-      ),
-    };
-  }
-
-  private async inspectAnswerRuntime(
-    request: z.infer<typeof adaptiveAnswerRequestSchema>,
-    abortSignal: AbortSignal | undefined,
-  ): Promise<OllamaRuntimeInspection> {
+  ): Promise<OllamaLoadedModel | null> {
     const signal = createInspectionSignal(this.config.timeoutMs, abortSignal);
     const loadedValue = await requestOllamaJson(
       this.config,
@@ -311,18 +358,11 @@ class OllamaAdaptiveContextController {
       { method: "GET" },
       signal,
     );
-    return {
-      identity: {
-        contextCapacityTokens: request.contextCapacityTokens,
-        digest: request.modelDigest,
-        format: request.modelFormat,
-      },
-      loaded: decodeLoadedModel(
-        loadedValue,
-        this.config.model,
-        request.modelDigest,
-      ),
-    };
+    return decodeLoadedModel(
+      loadedValue,
+      this.config.model,
+      modelDigest,
+    );
   }
 
   private reportDecision(
@@ -484,6 +524,84 @@ function containsFileContent(options: LanguageModelV4CallOptions): boolean {
     }
   }
   return false;
+}
+
+function buildOllamaModelMetadataCacheKey(
+  config: LanguageInferenceConfig,
+): string {
+  return JSON.stringify([
+    config.apiToken,
+    config.baseUrl.replace(/\/+$/, ""),
+    config.model,
+  ]);
+}
+
+async function discoverOllamaModelMetadata(
+  config: LanguageInferenceConfig,
+): Promise<OllamaModelMetadata> {
+  const signal = AbortSignal.timeout(config.timeoutMs);
+  const showRequest = requestOllamaJson(
+    config,
+    "/api/show",
+    {
+      body: JSON.stringify({ model: config.model }),
+      method: "POST",
+    },
+    signal,
+  );
+  const tagsRequest = requestOllamaJson(
+    config,
+    "/api/tags",
+    { method: "GET" },
+    signal,
+  );
+  const [showValue, tagsValue] = await Promise.all([
+    showRequest,
+    tagsRequest,
+  ]);
+  const show = decodeOllamaShowResponse(showValue);
+  return {
+    contextCapacityTokens: show.contextCapacityTokens,
+    digest: decodeConfiguredModelDigest(tagsValue, config.model),
+    format: show.format,
+  };
+}
+
+function waitForSharedMetadata(
+  discovery: Promise<OllamaModelMetadata>,
+  abortSignal: AbortSignal | undefined,
+): Promise<OllamaModelMetadata> {
+  if (abortSignal === undefined) {
+    return discovery;
+  }
+  abortSignal.throwIfAborted();
+  return new Promise<OllamaModelMetadata>((resolve, reject) => {
+    const finish = (): void => {
+      abortSignal.removeEventListener("abort", onAbort);
+    };
+    const onAbort = (): void => {
+      finish();
+      try {
+        abortSignal.throwIfAborted();
+      } catch (error: unknown) {
+        reject(error);
+      }
+    };
+    abortSignal.addEventListener("abort", onAbort, { once: true });
+    if (abortSignal.aborted) {
+      onAbort();
+    }
+    void discovery.then(
+      (metadata) => {
+        finish();
+        resolve(metadata);
+      },
+      (error: unknown) => {
+        finish();
+        reject(error);
+      },
+    );
+  });
 }
 
 function decodeOllamaShowResponse(value: unknown): {

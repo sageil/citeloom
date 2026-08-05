@@ -167,7 +167,8 @@ Availability does not confirm that a model has been downloaded or that its endpo
 The default Ollama profile allows one parallel request.
 The `-mlx` models are intended for Macs.
 Linux users should select compatible non-MLX models available in their Ollama installation.
-Embeddings, MLX runners, and other providers remain outside Ollama adaptive context allocation.
+Embeddings and other providers remain outside Ollama adaptive context allocation.
+MLX runners use Ollama's dynamic context and do not use CiteLoom's GGUF runner inspection.
 See [Configuration](docs/configuration.md) for all runtime settings and [Ollama automatic context size](docs/configuration.md#ollama-automatic-context-size) for sizing examples, operational requirements, fallback behavior, and opt-out instructions.
 
 ```mermaid

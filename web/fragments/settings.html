@@ -529,7 +529,7 @@
                   <span class="toggle-track" aria-hidden="true"><span></span></span>
                   <span><strong x-text="providerAdaptiveContextEnabled() ? 'Enabled' : 'Off'"></strong></span>
                 </label>
-                <small>Lets CiteLoom give a request more input space when Ollama needs it. This limits the provider to one request at a time, and the Ollama server must use <code>OLLAMA_NUM_PARALLEL=1</code>. Turn it off to always use the configured input limit.</small>
+                <small>Adaptively sizes native GGUF runners. MLX models use Ollama's dynamic context automatically. Adaptive GGUF sizing limits the provider to one request at a time, and the Ollama server must use <code>OLLAMA_NUM_PARALLEL=1</code>. Turn it off to use the configured input limit for GGUF.</small>
               </div>
               <div class="settings-provider-authentication" x-show="providerUsesDeviceAuth()">
                 <div class="settings-provider-auth-heading">

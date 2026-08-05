@@ -41,8 +41,10 @@ import {
 } from "./model-capabilities.js";
 import {
   createOllamaLanguageModelRuntime,
+  createOllamaModelMetadataCache,
   type OllamaAdaptiveWorkload,
   type OllamaLanguageModelRuntime,
+  type OllamaModelMetadataCache,
 } from "./ollama-context.js";
 import type { AnswerBudgetConfiguration } from "../answers/context-budget.js";
 import type { CiteLoomDatabase } from "../database/client.js";
@@ -81,6 +83,7 @@ interface QueryExpansionRuntime {
 function createQueryExpansionRuntime(
   config: LanguageInferenceConfig | null,
   database: CiteLoomDatabase | undefined,
+  ollamaModelMetadataCache: OllamaModelMetadataCache,
 ): QueryExpansionRuntime | null {
   if (config === null) {
     return null;
@@ -92,6 +95,7 @@ function createQueryExpansionRuntime(
     database,
     "query-expansion",
     0,
+    ollamaModelMetadataCache,
   );
   const thinkingProviderOptions = buildLanguageThinkingProviderOptions(
     config,
@@ -118,6 +122,7 @@ export function createInferenceModelRegistry(
   database?: CiteLoomDatabase,
 ): InferenceModelRegistry {
   const metrics = new InferenceMetricsReporter(config.inferenceMetrics);
+  const ollamaModelMetadataCache = createOllamaModelMetadataCache();
   const chatConfig = config.inference.chat;
   const answerRuntime = createLanguageModel(
     config.inference.answer,
@@ -126,6 +131,7 @@ export function createInferenceModelRegistry(
     database,
     "answer",
     config.inference.answerBudget.providerSafetyMarginTokens,
+    ollamaModelMetadataCache,
   );
   const chatRuntime = createLanguageModel(
     chatConfig,
@@ -134,6 +140,7 @@ export function createInferenceModelRegistry(
     database,
     "chat",
     config.inference.answerBudget.providerSafetyMarginTokens,
+    ollamaModelMetadataCache,
   );
   const summaryRuntime = createLanguageModel(
     config.inference.summary,
@@ -142,6 +149,7 @@ export function createInferenceModelRegistry(
     database,
     "summary",
     0,
+    ollamaModelMetadataCache,
   );
   const baseLanguageModel = answerRuntime.model;
   const baseChatModel = chatRuntime.model;
@@ -209,6 +217,7 @@ export function createInferenceModelRegistry(
   const queryExpansionRuntime = createQueryExpansionRuntime(
     config.inference.queryExpansion,
     database,
+    ollamaModelMetadataCache,
   );
   const claimVerifier = new HttpHhemClient(config.claimVerifier);
   const baseEmbeddingModel = createEmbeddingModel(
@@ -533,6 +542,7 @@ function createLanguageModel(
   database: CiteLoomDatabase | undefined,
   workload: OllamaAdaptiveWorkload,
   providerSafetyMarginTokens: number,
+  ollamaModelMetadataCache: OllamaModelMetadataCache,
 ): OllamaLanguageModelRuntime {
   if (config.adapter === "openai-codex-language") {
     if (database === undefined) {
@@ -549,6 +559,12 @@ function createLanguageModel(
   }
   if (config.adapter === "ollama-language") {
     const provider = createOllamaProvider(config);
+    const createDynamicModel = (): LanguageModelV4 => {
+      return provider(config.model, {
+        reliableObjectGeneration: false,
+        structuredOutputs: supportsStructuredOutputs,
+      });
+    };
     const createModel = (contextCapacityTokens: number): LanguageModelV4 => {
       return provider(config.model, {
         options: {
@@ -559,7 +575,9 @@ function createLanguageModel(
       });
     };
     return createOllamaLanguageModelRuntime(config, {
+      createDynamicModel,
       createModel,
+      metadataCache: ollamaModelMetadataCache,
       providerSafetyMarginTokens,
       workload,
     });

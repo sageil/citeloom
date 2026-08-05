@@ -165,7 +165,13 @@ Work already in progress keeps its saved settings snapshot when a model, endpoin
 
 Automatic context size is enabled by default for Ollama language models.
 It applies only to native Ollama GGUF language models used for Ask, Chat, Query Expansion, and Indexing model.
-It does not change Embedding model requests, other providers, or MLX runners.
+It does not change Embedding model requests or other providers.
+Ollama safetensors models use the MLX runner's dynamic context instead of CiteLoom's GGUF sizing.
+
+CiteLoom discovers each configured Ollama language model's format, digest, and maximum context lazily on first use and reuses that metadata for the lifetime of the application runtime.
+An application restart or saved settings change creates a new runtime and discovers the configured models again on first use.
+MLX and fixed-context GGUF requests do not inspect `/api/ps`.
+Adaptive GGUF requests inspect `/api/ps` before inference so CiteLoom can reuse an already larger resident runner instead of requesting a smaller reload.
 
 For a bounded answer, CiteLoom calculates the requested context as:
 
@@ -174,7 +180,8 @@ conservative input upper bound + maximum answer output + provider safety margin
 ```
 
 CiteLoom uses a 65,536-token floor unless the model maximum reported by Ollama is smaller, and it never requests more than that model maximum.
-The configured context capacity remains the fixed fallback when CiteLoom cannot inspect Ollama or the loaded model is not a native GGUF model.
+The configured context capacity remains the fixed fallback when CiteLoom cannot inspect Ollama or Ollama reports an unsupported model format.
+For a recognized MLX model, the configured capacity bounds CiteLoom's prompt budget while Ollama manages the runner's dynamic context.
 
 These examples assume Ollama reports a model maximum of at least 131,072 tokens and use the fresh-install 20,000-token answer output limit and 2,048-token safety margin:
 
@@ -189,14 +196,14 @@ These examples assume Ollama reports a model maximum of at least 131,072 tokens 
 Automatic context size requires CiteLoom's Ollama provider limit and Ollama's `OLLAMA_NUM_PARALLEL` setting to both be `1`.
 Use a dedicated Ollama endpoint, or coordinate every client that can load the same model, because another client can change the resident runner.
 The Settings page locks CiteLoom's provider limit to `1` while Automatic context size is enabled.
-Turn Automatic context size off to make every Ollama language request use the configured fixed input size.
+Turn Automatic context size off to make native GGUF language requests use the configured fixed input size.
 
 Fresh installations and provider resets enable Automatic context size.
 An upgraded configuration with no saved Automatic context size choice is enabled when its Ollama provider limit is already `1`.
 An explicit opt-out is preserved, and an older configuration with higher concurrency remains fixed-context instead of having its concurrency changed silently.
 
-The fresh Mac language model uses MLX, so it continues to use fixed-context fallback behavior even though the setting is enabled.
-Do not infer MLX context resizing from native GGUF behavior.
+The fresh Mac language model uses MLX, so Ollama manages its context dynamically even though Automatic context size is enabled for GGUF models.
+Do not infer MLX context allocation from native GGUF behavior.
 
 ## Search text formats
 
