@@ -715,6 +715,7 @@ describe("web server boundary", () => {
         ],
         system: { queue: [], workers: [] },
         telemetry: {
+          corrections: [],
           enabled: false,
           requests: [],
           stages: [],
@@ -2796,6 +2797,7 @@ class TestRevisionResponse extends EventEmitter {
 
 function buildTelemetryDashboard() {
   return {
+    corrections: [],
     enabled: false,
     generatedAt: "2026-07-15T12:00:00.000Z",
     requests: [],

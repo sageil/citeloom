@@ -11,6 +11,7 @@ import {
 import {
   decodeTelemetryStageSamples,
   summarizeTelemetry,
+  type TelemetryCorrectionSummary,
   type TelemetryRunSample,
   type TelemetrySchedulingSample,
   type TelemetryStageSample,
@@ -402,14 +403,21 @@ describe("run telemetry", () => {
       buildSchedulingSample(12, 100, "success"),
       buildSchedulingSample(4, 80, "abort"),
     ];
+    const corrections: TelemetryCorrectionSummary[] = [{
+      count: 3,
+      provider: "ollama",
+      reason: "invalid-structure",
+    }];
 
     const summary = summarizeTelemetry(
       runs,
       stages,
       new Date("2026-07-15T12:00:00.000Z"),
       scheduling,
+      corrections,
     );
 
+    expect(summary.corrections).toEqual(corrections);
     expect(summary.requests[0]).toMatchObject({
       abortRate: 0.25,
       errorRate: 0.25,

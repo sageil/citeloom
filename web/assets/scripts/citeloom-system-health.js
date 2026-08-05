@@ -21,18 +21,6 @@ const telemetryRequestKinds = Object.freeze([
   "retrieval",
   "search",
 ]);
-const telemetryStageNames = Object.freeze([
-  "answer",
-  "claim-verification",
-  "dense-retrieval",
-  "fusion",
-  "hydration",
-  "lexical-retrieval",
-  "query-embedding",
-  "query-expansion",
-  "reranking",
-  "scope-resolution",
-]);
 const telemetryWorkloads = Object.freeze([
   "offline-tool",
   "ingestion",
@@ -135,11 +123,29 @@ function readTelemetry(value) {
   readNonEmptyString(telemetry.generatedAt, "telemetry generated time");
   readPositiveInteger(telemetry.windowHours, "telemetry window");
   return {
+    corrections: readTelemetryCorrections(telemetry.corrections),
     enabled: readBoolean(telemetry.enabled, "telemetry enabled state"),
     requests: readTelemetryRequests(telemetry.requests),
     scheduling: readTelemetryScheduling(telemetry.scheduling),
     stages: readTelemetryStages(telemetry.stages),
   };
+}
+
+function readTelemetryCorrections(value) {
+  const values = readArray(value, "correction telemetry");
+  const rows = [];
+  for (const value of values) {
+    const correction = readPlainObject(value, "correction telemetry row");
+    rows.push({
+      count: readPositiveInteger(correction.count, "correction count"),
+      provider: readNonEmptyString(
+        correction.provider,
+        "correction provider",
+      ),
+      reason: readNonEmptyString(correction.reason, "correction reason"),
+    });
+  }
+  return rows;
 }
 
 function readTelemetryRequests(value) {
@@ -197,7 +203,7 @@ function readTelemetryStages(value) {
       abortRate: readTelemetryRate(stage.abortRate, "stage abort rate"),
       errorRate: readTelemetryRate(stage.errorRate, "stage error rate"),
       fallbackRate: readTelemetryRate(stage.fallbackRate, "stage fallback rate"),
-      label: readEnum(stage.name, telemetryStageNames, "telemetry stage"),
+      label: readNonEmptyString(stage.name, "telemetry stage"),
       model,
       p50: duration.p50,
       p95: duration.p95,
@@ -280,6 +286,7 @@ function buildEmptySystemHealth() {
     },
     queueLength: 0,
     telemetry: {
+      corrections: [],
       enabled: false,
       requests: [],
       scheduling: [],
@@ -315,6 +322,11 @@ export function registerPage(alpine) {
         });
       }
       return tables;
+    },
+
+    get telemetryHasData() {
+      return this.telemetryTables.length > 0
+        || this.systemHealth.telemetry.corrections.length > 0;
     },
 
     initialize() {
@@ -381,6 +393,12 @@ export function registerPage(alpine) {
         return "Conversion";
       }
       return this.formatProviderLabel(resourceGroup);
+    },
+
+    formatCorrectionReason(reason) {
+      const words = reason.split("-");
+      const label = words.join(" ");
+      return label.charAt(0).toUpperCase() + label.slice(1);
     },
 
     formatTelemetryDuration(value) {

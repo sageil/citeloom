@@ -172,12 +172,12 @@
     <p x-cloak x-show="systemHealthHasData &amp;&amp; !systemHealth.telemetry.enabled">Privacy-safe telemetry is disabled.</p>
     <p
       x-cloak
-      x-show="systemHealthHasData &amp;&amp; systemHealth.telemetry.enabled &amp;&amp; telemetryTables.length === 0"
+      x-show="systemHealthHasData &amp;&amp; systemHealth.telemetry.enabled &amp;&amp; !telemetryHasData"
     >No completed retrieval or answer traces are available.</p>
     <div
       class="telemetry-tables"
       x-cloak
-      x-show="systemHealthHasData &amp;&amp; systemHealth.telemetry.enabled &amp;&amp; telemetryTables.length > 0"
+      x-show="systemHealthHasData &amp;&amp; systemHealth.telemetry.enabled &amp;&amp; telemetryHasData"
     >
       <template x-for="table in telemetryTables" :key="table.id">
         <div
@@ -222,6 +222,33 @@
           </table>
         </div>
       </template>
+      <div
+        class="telemetry-table-wrap correction-telemetry-table-wrap"
+        x-show="systemHealth.telemetry.corrections.length > 0"
+      >
+        <table class="telemetry-table correction-telemetry-table">
+          <caption>Answer correction prompts</caption>
+          <thead>
+            <tr>
+              <th scope="col">Provider</th>
+              <th scope="col">Reason</th>
+              <th scope="col">Uses</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template
+              x-for="row in systemHealth.telemetry.corrections"
+              :key="`${row.provider}:${row.reason}`"
+            >
+              <tr>
+                <th scope="row" x-text="formatProviderLabel(row.provider)"></th>
+                <td x-text="formatCorrectionReason(row.reason)"></td>
+                <td x-text="row.count"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>
 

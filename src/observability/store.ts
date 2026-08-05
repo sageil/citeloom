@@ -1,6 +1,6 @@
 import { hostname } from "node:os";
 
-import { and, eq, gte, isNotNull } from "drizzle-orm";
+import { and, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { ApplicationRuntime } from "../app/runtime.js";
@@ -15,6 +15,7 @@ import {
   telemetryStages,
 } from "../database/schema.js";
 import type {
+  AnswerResponseFailureCategory,
   RunTelemetrySink,
   TelemetryRunCompletionRecord,
   TelemetryRunKind,
@@ -69,7 +70,14 @@ export interface TelemetrySchedulingSummary {
   workload: WorkloadClass;
 }
 
+export interface TelemetryCorrectionSummary {
+  count: number;
+  provider: string;
+  reason: AnswerResponseFailureCategory;
+}
+
 export interface TelemetryDashboardSummary {
+  corrections: TelemetryCorrectionSummary[];
   enabled: boolean;
   generatedAt: string;
   requests: TelemetryRequestSummary[];
@@ -143,6 +151,17 @@ const schedulingSampleSchema = z.object({
     "interactive-answer",
     "interactive-search",
     "maintenance",
+  ]),
+}).strict();
+
+const correctionSummarySchema = z.object({
+  count: z.coerce.number().int().positive(),
+  provider: z.string().min(1),
+  reason: z.enum([
+    "invalid-content",
+    "invalid-json",
+    "invalid-structure",
+    "unknown-evidence-reference",
   ]),
 }).strict();
 
@@ -224,7 +243,7 @@ export class TelemetryRepository {
     const windowStartedAt = new Date(
       now.getTime() - (TELEMETRY_WINDOW_HOURS * 60 * 60 * 1_000),
     );
-    const [rawRuns, rawStages, rawScheduling] = await Promise.all([
+    const [rawRuns, rawStages, rawScheduling, rawCorrections] = await Promise.all([
       this.database
         .select({
           durationMs: telemetryRuns.durationMs,
@@ -263,11 +282,29 @@ export class TelemetryRepository {
         })
         .from(inferenceSchedulingEvents)
         .where(gte(inferenceSchedulingEvents.completedAt, windowStartedAt)),
+      this.database.execute(sql`
+        SELECT
+          count(*)::integer AS "count",
+          diagnostic->>'provider' AS "provider",
+          diagnostic->>'failureCategory' AS "reason"
+        FROM "telemetry_runs" run
+        CROSS JOIN LATERAL jsonb_array_elements(
+          COALESCE(run."answer_budget"->'responseDiagnostics', '[]'::jsonb)
+        ) diagnostic
+        WHERE run."started_at" >= ${windowStartedAt}
+          AND run."completed_at" IS NOT NULL
+          AND diagnostic->>'phase' = 'initial'
+          AND diagnostic->>'correctionOutcome' <> 'not-needed'
+          AND diagnostic->>'failureCategory' IS NOT NULL
+        GROUP BY diagnostic->>'provider', diagnostic->>'failureCategory'
+        ORDER BY diagnostic->>'provider', diagnostic->>'failureCategory'
+      `),
     ]);
     const runs = decodeRunSamples(rawRuns);
     const stages = decodeTelemetryStageSamples(rawStages);
     const scheduling = decodeSchedulingSamples(rawScheduling);
-    return summarizeTelemetry(runs, stages, now, scheduling);
+    const corrections = decodeCorrectionSummaries(rawCorrections.rows);
+    return summarizeTelemetry(runs, stages, now, scheduling, corrections);
   }
 }
 
@@ -301,6 +338,7 @@ export function summarizeTelemetry(
   stages: TelemetryStageSample[],
   generatedAt: Date = new Date(),
   scheduling: TelemetrySchedulingSample[] = [],
+  corrections: TelemetryCorrectionSummary[] = [],
 ): TelemetryDashboardSummary {
   const requestsByKind = new Map<TelemetryRunKind, TelemetryRunSample[]>();
   for (const run of runs) {
@@ -363,6 +401,7 @@ export function summarizeTelemetry(
     schedulingSummaries.push(summarizeScheduling(samples));
   }
   return {
+    corrections: [...corrections],
     enabled: true,
     generatedAt: generatedAt.toISOString(),
     requests,
@@ -376,6 +415,7 @@ function createEmptyTelemetryDashboard(
   enabled: boolean,
 ): TelemetryDashboardSummary {
   return {
+    corrections: [],
     enabled,
     generatedAt: new Date().toISOString(),
     requests: [],
@@ -383,6 +423,22 @@ function createEmptyTelemetryDashboard(
     stages: [],
     windowHours: TELEMETRY_WINDOW_HOURS,
   };
+}
+
+function decodeCorrectionSummaries(
+  rows: unknown[],
+): TelemetryCorrectionSummary[] {
+  const summaries: TelemetryCorrectionSummary[] = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const result = correctionSummarySchema.safeParse(rows[index]);
+    if (!result.success) {
+      throw new Error(
+        `Invalid correction telemetry row ${index + 1}: ${result.error.message}`,
+      );
+    }
+    summaries.push(result.data);
+  }
+  return summaries;
 }
 
 function decodeRunSamples(rows: unknown[]): TelemetryRunSample[] {

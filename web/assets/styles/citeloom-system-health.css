@@ -187,6 +187,10 @@
   font-size: 10px;
 }
 
+.correction-telemetry-table {
+  min-width: 480px;
+}
+
 .telemetry-table caption {
   padding: 10px 12px;
   color: var(--text);

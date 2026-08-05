@@ -122,7 +122,7 @@ See [Configuration](docs/configuration.md#provider-reference) for endpoint conve
 
 ## Development Configuration
 
-CiteLoom services run in Docker Compose, Ollama runs on the host at `http://host.docker.internal:11434`, and the optional oMLX server runs at `http://host.docker.internal:9000/v1`.
+CiteLoom services run in Docker Compose, Ollama runs on the host at `http://host.docker.internal:11434`, and the optional oMLX server runs at `http://host.docker.internal:9000/v1`. Linux users, use the custom profile to configure Text-to-speech and Speech-to-text provider.
 The tables below describe the configuration created for a fresh database.
 Enabled means the feature is routed and active by default, while Disabled means a model profile may be saved but the feature is not active.
 Availability does not confirm that a model has been downloaded or that its endpoint is running.
