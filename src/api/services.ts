@@ -63,7 +63,11 @@ import {
   type DeleteIndexedDocumentResult,
 } from "../ingestion/deletion.js";
 import { reconcileIngestionControlExecutions } from "../ingestion/control.js";
-import { runDoctorWithRuntime, type DoctorCheck } from "../observability/doctor.js";
+import {
+  runDoctorWithRuntime,
+  type DoctorCheck,
+  type DoctorLiveChecks,
+} from "../observability/doctor.js";
 import {
   ApplicationErrorReporter,
   reportApplicationErrorToContainerLog,
@@ -276,7 +280,7 @@ export interface RuntimeWebServices {
   readDocumentFile: (
     request: ReadDocumentFileRequest,
   ) => Promise<IndexedDocumentFile | null>;
-  readHealth: () => Promise<DoctorCheck[]>;
+  readHealth: (liveChecks: DoctorLiveChecks) => Promise<DoctorCheck[]>;
   readResearchThread: (id: string) => Promise<ResearchThread | null>;
   readRevisions: () => Promise<ApplicationStateRevisionSnapshot>;
   readStatus: () => Promise<SystemStatus>;
@@ -422,25 +426,46 @@ export interface SettingsReloadControllerDependencies {
 const SETTINGS_REFRESH_FALLBACK_MS = 15_000;
 
 export function createDiagnosticRunner(
-  readHealth: (runtime: RuntimeWebServices) => Promise<DoctorCheck[]>,
-): (runtime: RuntimeWebServices) => Promise<DoctorCheck[]> {
-  const runningBySettingsVersion = new Map<number, Promise<DoctorCheck[]>>();
-  return async (runtime): Promise<DoctorCheck[]> => {
-    const settingsVersion = runtime.config.settingsVersion;
-    const running = runningBySettingsVersion.get(settingsVersion);
+  readHealth: (
+    runtime: RuntimeWebServices,
+    liveChecks: DoctorLiveChecks,
+  ) => Promise<DoctorCheck[]>,
+): (
+  runtime: RuntimeWebServices,
+  liveChecks: DoctorLiveChecks,
+) => Promise<DoctorCheck[]> {
+  const runningByRequest = new Map<string, Promise<DoctorCheck[]>>();
+  return async (runtime, liveChecks): Promise<DoctorCheck[]> => {
+    const requestKey = buildDiagnosticRequestKey(
+      runtime.config.settingsVersion,
+      liveChecks,
+    );
+    const running = runningByRequest.get(requestKey);
     if (running !== undefined) {
       return running;
     }
-    const current = readHealth(runtime);
-    runningBySettingsVersion.set(settingsVersion, current);
+    const current = readHealth(runtime, liveChecks);
+    runningByRequest.set(requestKey, current);
     try {
       return await current;
     } finally {
-      if (runningBySettingsVersion.get(settingsVersion) === current) {
-        runningBySettingsVersion.delete(settingsVersion);
+      if (runningByRequest.get(requestKey) === current) {
+        runningByRequest.delete(requestKey);
       }
     }
   };
+}
+
+function buildDiagnosticRequestKey(
+  settingsVersion: number,
+  liveChecks: DoctorLiveChecks,
+): string {
+  const selection = [
+    liveChecks.modelResponse ? "1" : "0",
+    liveChecks.searchRanking ? "1" : "0",
+    liveChecks.speech ? "1" : "0",
+  ].join("");
+  return `${settingsVersion}:${selection}`;
 }
 
 export async function startWebServices(
@@ -972,7 +997,7 @@ function createRuntimeWebServices(
     readDocumentFile: async (request) => {
       return readIndexedDocumentFileWithRuntime(runtime, request);
     },
-    readHealth: async () => runDoctorWithRuntime(runtime),
+    readHealth: async (liveChecks) => runDoctorWithRuntime(runtime, liveChecks),
     readResearchThread: async (id) => research.readThread(id),
     readResearchFeedback: async (turnId, dimension, citationId, userId) => {
       return research.readFeedbackSummary(turnId, dimension, citationId, userId);

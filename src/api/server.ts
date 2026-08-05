@@ -62,6 +62,7 @@ import {
   buildInlineContentDisposition,
   decodeApplicationErrorQuery,
   decodeCreateResearchThreadRequest,
+  decodeDiagnosticRequest,
   decodeDocumentVersionComparison,
   decodeDocumentVersionList,
   decodeDocumentCatalogQuery,
@@ -172,8 +173,8 @@ export async function buildWebServer(
     services = ownedServices.services;
     closeOwnedServices = ownedServices.close;
   }
-  const runDiagnostics = createDiagnosticRunner(async (runtime) => {
-    return runtime.readHealth();
+  const runDiagnostics = createDiagnosticRunner(async (runtime, liveChecks) => {
+    return runtime.readHealth(liveChecks);
   });
   const uploadDirectory = options.uploadDirectory ?? webConfig.uploadDirectory;
   await services.run(async (runtime) => {
@@ -505,7 +506,10 @@ export async function buildWebServer(
 
   server.post("/api/diagnostics", async (request): Promise<HealthResponse> => {
     requireAdministratorPrincipal(requestPrincipals, request);
-    const checks = await services.run(runDiagnostics);
+    const diagnostics = decodeDiagnosticRequest(request.body);
+    const checks = await services.run((runtime) => {
+      return runDiagnostics(runtime, diagnostics.liveChecks);
+    });
     return {
       checks: buildDiagnosticResponseChecks(checks),
       generatedAt: new Date().toISOString(),

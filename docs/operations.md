@@ -156,8 +156,8 @@ It excludes PostgreSQL index overhead because that space cannot be assigned exac
 
 Open System health to inspect the current application state, configured models, provider and worker capacity, scheduling telemetry, and recent AI request metrics when they are enabled.
 The page reads the saved runtime snapshot without contacting every provider.
-Choose Run diagnostics as an administrator to send small active checks to the configured database, document, model, claim-verification, reranking, and speech services.
-Active checks can consume provider time or usage.
+Choose Run diagnostics as an administrator to check the configured database, document service, claim verifier, and provider model availability without model inference.
+Model-response, speech, and reranking probes are optional live tests that must be selected explicitly and can consume provider credits or local compute.
 
 Open Error reports as an administrator to review sanitized failures recorded in PostgreSQL.
 The screen separates ingestion, application, and general failures and exposes request, run, job, document, task, release, retry, and Docling context when the event contains it.

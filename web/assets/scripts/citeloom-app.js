@@ -64,6 +64,18 @@ const documentDisplayStatuses = Object.freeze([
   "reindex-required",
   "running",
 ]);
+const diagnosticCategories = Object.freeze([
+  "claim-verification",
+  "document-processing",
+  "embedding",
+  "generation",
+  "model-response",
+  "persistence",
+  "search-ranking",
+  "speech-input",
+  "spoken-answers",
+]);
+const diagnosticModes = Object.freeze(["live", "readiness"]);
 const recentDocumentLimit = 10;
 
 const routes = Object.freeze({
@@ -560,9 +572,22 @@ function readDiagnostics(value) {
       throw new Error(`The diagnostic identifier ${id} appears more than once.`);
     }
     ids.add(id);
+    const items = [];
+    for (const item of readArray(check.items, "diagnostic items")) {
+      items.push(readNonEmptyString(item, "diagnostic item"));
+    }
     checks.push({
+      category: readEnum(
+        check.category,
+        diagnosticCategories,
+        "diagnostic category",
+      ),
       detail: readString(check.detail, "diagnostic detail"),
+      groupId: readNonEmptyString(check.groupId, "diagnostic group identifier"),
+      groupName: readNonEmptyString(check.groupName, "diagnostic group name"),
       id,
+      items,
+      mode: readEnum(check.mode, diagnosticModes, "diagnostic mode"),
       name: readNonEmptyString(check.name, "diagnostic name"),
       ok: readBoolean(check.ok, "diagnostic result"),
     });
@@ -574,6 +599,26 @@ function readDiagnostics(value) {
       "diagnostics generated time",
     ),
   };
+}
+
+function groupDiagnosticChecks(checks) {
+  const groups = [];
+  for (const check of checks) {
+    if (check.category === "model-response") {
+      continue;
+    }
+    let group = groups.find((candidate) => candidate.id === check.groupId);
+    if (group === undefined) {
+      group = {
+        checks: [],
+        id: check.groupId,
+        name: check.groupName,
+      };
+      groups.push(group);
+    }
+    group.checks.push(check);
+  }
+  return groups;
 }
 
 function buildWorkflowSnapshot(queue, readyDocumentCount) {
@@ -667,8 +712,16 @@ function registerShell(alpine) {
     dashboardRefreshing: false,
     dashboardStatus: "loading",
     diagnosticsChecks: [],
+    diagnosticsDialogOpen: false,
     diagnosticsErrorMessage: "",
+    diagnosticsExpandedGroupIds: [],
     diagnosticsGeneratedAt: null,
+    diagnosticsLiveChecks: {
+      modelResponse: false,
+      searchRanking: false,
+      speech: false,
+    },
+    diagnosticsRestoreFocusElement: null,
     diagnosticsRunning: false,
     documentNotificationChangeListener: null,
     documentNotificationRefreshController: null,
@@ -690,6 +743,36 @@ function registerShell(alpine) {
     workflow: { activeStep: 0, processingCount: 0, visible: false },
     workflowEventSource: null,
     workflowRefreshTimerId: null,
+
+    get diagnosticsGroups() {
+      return groupDiagnosticChecks(this.diagnosticsChecks);
+    },
+
+    get diagnosticsModelResponse() {
+      return this.diagnosticsChecks.find((check) => {
+        return check.category === "model-response";
+      }) ?? null;
+    },
+
+    get diagnosticsRunButtonLabel() {
+      const liveChecks = this.diagnosticsLiveChecks;
+      if (liveChecks.modelResponse || liveChecks.searchRanking || liveChecks.speech) {
+        return "Run selected checks";
+      }
+      return "Run service checks";
+    },
+
+    get diagnosticsServiceCheckCount() {
+      return this.diagnosticsChecks.filter((check) => {
+        return check.mode === "readiness";
+      }).length;
+    },
+
+    get diagnosticsServicePassedCount() {
+      return this.diagnosticsChecks.filter((check) => {
+        return check.mode === "readiness" && check.ok;
+      }).length;
+    },
 
     get showTaskLaunchpad() {
       return this.activeView === "overview"
@@ -1404,7 +1487,69 @@ function registerShell(alpine) {
       }, workflowRefreshDebounceMs);
     },
 
-    async runDiagnostics() {
+    openDiagnosticsDialog() {
+      if (this.diagnosticsRunning) {
+        return;
+      }
+      this.diagnosticsLiveChecks = {
+        modelResponse: false,
+        searchRanking: false,
+        speech: false,
+      };
+      this.diagnosticsRestoreFocusElement = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+      this.diagnosticsDialogOpen = true;
+      this.$nextTick(() => {
+        document.getElementById("diagnostics-dialog-close")?.focus();
+      });
+    },
+
+    closeDiagnosticsDialog(restoreFocus = true) {
+      if (!this.diagnosticsDialogOpen) {
+        return;
+      }
+      this.diagnosticsDialogOpen = false;
+      const restoreFocusElement = this.diagnosticsRestoreFocusElement;
+      this.diagnosticsRestoreFocusElement = null;
+      if (restoreFocus && restoreFocusElement?.isConnected === true) {
+        this.$nextTick(() => restoreFocusElement.focus());
+      }
+    },
+
+    cycleDiagnosticsDialogFocus(event) {
+      const dialog = document.getElementById("diagnostics-dialog");
+      if (dialog === null) {
+        return;
+      }
+      const controls = Array.from(dialog.querySelectorAll(
+        'button:not([disabled]), input:not([disabled])',
+      ));
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (!(first instanceof HTMLElement) || !(last instanceof HTMLElement)) {
+        return;
+      }
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    },
+
+    runSelectedDiagnostics() {
+      const liveChecks = { ...this.diagnosticsLiveChecks };
+      this.closeDiagnosticsDialog(false);
+      void this.runDiagnostics(liveChecks);
+    },
+
+    async runDiagnostics(liveChecks = {
+      modelResponse: false,
+      searchRanking: false,
+      speech: false,
+    }) {
       if (this.diagnosticsRunning) {
         return;
       }
@@ -1412,12 +1557,22 @@ function registerShell(alpine) {
       this.diagnosticsErrorMessage = "";
       try {
         const response = await fetch("/api/diagnostics", {
-          headers: { accept: "application/json" },
+          body: JSON.stringify({ liveChecks }),
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+          },
           method: "POST",
         });
         const value = await readJsonResponse(response, "Diagnostics request");
         const diagnostics = readDiagnostics(value);
         this.diagnosticsChecks = diagnostics.checks;
+        const firstExpandedGroup = this.diagnosticsGroups.find((group) => {
+          return group.id.startsWith("provider:");
+        }) ?? this.diagnosticsGroups[0];
+        this.diagnosticsExpandedGroupIds = firstExpandedGroup === undefined
+          ? []
+          : [firstExpandedGroup.id];
         this.diagnosticsGeneratedAt = diagnostics.generatedAt;
       } catch {
         this.diagnosticsErrorMessage = "Diagnostics could not be completed. No diagnostic result was saved.";
@@ -1428,6 +1583,40 @@ function registerShell(alpine) {
 
     dismissDiagnosticsError() {
       this.diagnosticsErrorMessage = "";
+    },
+
+    diagnosticGroupSummary(group) {
+      const passedCount = group.checks.filter((check) => check.ok).length;
+      if (group.checks.length === 1) {
+        return group.checks[0].ok ? "Passed" : "Failed";
+      }
+      return `${passedCount}/${group.checks.length} passed`;
+    },
+
+    diagnosticServiceSummary() {
+      const passed = this.diagnosticsServicePassedCount;
+      const total = this.diagnosticsServiceCheckCount;
+      if (passed === total) {
+        return `${total} service ${total === 1 ? "check" : "checks"} passed`;
+      }
+      return `${passed} of ${total} service checks passed`;
+    },
+
+    isDiagnosticGroupExpanded(groupId) {
+      return this.diagnosticsExpandedGroupIds.includes(groupId);
+    },
+
+    toggleDiagnosticGroup(groupId) {
+      if (this.isDiagnosticGroupExpanded(groupId)) {
+        this.diagnosticsExpandedGroupIds = this.diagnosticsExpandedGroupIds.filter(
+          (candidate) => candidate !== groupId,
+        );
+        return;
+      }
+      this.diagnosticsExpandedGroupIds = [
+        ...this.diagnosticsExpandedGroupIds,
+        groupId,
+      ];
     },
 
     async completeIngestion(destination) {

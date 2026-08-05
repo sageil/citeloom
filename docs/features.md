@@ -189,7 +189,7 @@ See [Configuration](configuration.md) for the settings reference.
 ## System health, diagnostics, and error reports
 
 System health shows the current runtime state, model and service configuration, request capacity, worker and scheduling telemetry, and recent usage metrics when collection is enabled.
-An administrator can run active diagnostics that send small requests to configured services.
+An administrator can run service-readiness diagnostics without model inference, then explicitly select optional live model, speech, or reranking tests that may use provider credits or local compute.
 
 The Error reports screen is administrator-only.
 It lists sanitized operational failures by ingestion, application, or general area and includes identifiers and Docling details useful for diagnosis.

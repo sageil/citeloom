@@ -60,6 +60,7 @@ import type {
   ApplicationErrorPageRequest,
   ApplicationErrorPageSize,
 } from "../observability/application-error-store.js";
+import type { DoctorLiveChecks } from "../observability/doctor.js";
 import type { ResearchExportFormat } from "../research/store.js";
 import {
   ResearchInputConflictError,
@@ -121,6 +122,10 @@ export interface CopyEmbeddingInputFormatRequest {
   name: string;
 }
 
+export interface DiagnosticRequest {
+  liveChecks: DoctorLiveChecks;
+}
+
 const MINIMUM_MP4_AUDIO_BYTES = 1_500;
 const questionRequestSchema = z.object({
   question: z.string().trim().min(1).max(8_000),
@@ -173,6 +178,13 @@ const researchFeedbackSummarySchema = researchFeedbackSchema.pick({
 }).strict();
 const speechRequestSchema = z.object({
   answerDocument: publishedAnswerDocumentSchema,
+}).strict();
+const diagnosticRequestSchema = z.object({
+  liveChecks: z.object({
+    modelResponse: z.boolean(),
+    searchRanking: z.boolean(),
+    speech: z.boolean(),
+  }).strict(),
 }).strict();
 const retryIngestionRequestSchema = z.object({
   sourceFile: sourceFileSchema,
@@ -646,6 +658,23 @@ export function decodeSpeechRequest(value: unknown): SpeechRequest {
   const result = speechRequestSchema.safeParse(value);
   if (!result.success) {
     throw new WebRequestError(400, "Speech answer document is invalid.");
+  }
+  return result.data;
+}
+
+export function decodeDiagnosticRequest(value: unknown): DiagnosticRequest {
+  if (value === undefined || value === null) {
+    return {
+      liveChecks: {
+        modelResponse: false,
+        searchRanking: false,
+        speech: false,
+      },
+    };
+  }
+  const result = diagnosticRequestSchema.safeParse(value);
+  if (!result.success) {
+    throw new WebRequestError(400, "Diagnostic check selection is invalid.");
   }
   return result.data;
 }

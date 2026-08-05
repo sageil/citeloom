@@ -8,8 +8,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("explicit speech provider diagnostics", () => {
-  it("tests active transcription and speech providers when diagnostics run", async () => {
+describe("optional live speech diagnostics", () => {
+  it("labels transcription and speech probes as live provider calls", async () => {
     const fetchMock = vi.fn((input: string | URL | Request) => {
       const url = String(input);
       if (url.endsWith("/audio/transcriptions")) {
@@ -39,18 +39,23 @@ describe("explicit speech provider diagnostics", () => {
     const pendingChecks = buildSpeechProviderChecks(config, () => scheduler);
     const checks = await Promise.all(pendingChecks);
 
-    expect(checks).toEqual([
-      {
-        detail: "model transcription-model accepted a transcription capability probe",
-        name: "Speech-to-text provider",
-        ok: true,
-      },
-      {
-        detail: "model speech-model returned an audio capability probe",
-        name: "Text-to-speech provider",
-        ok: true,
-      },
-    ]);
+    expect(checks).toHaveLength(2);
+    expect(checks[0]).toMatchObject({
+      category: "speech-input",
+      detail: "model transcription-model accepted a transcription capability probe",
+      items: ["transcription-model"],
+      mode: "live",
+      name: "Speech input",
+      ok: true,
+    });
+    expect(checks[1]).toMatchObject({
+      category: "spoken-answers",
+      detail: "model speech-model returned an audio capability probe",
+      items: ["speech-model"],
+      mode: "live",
+      name: "Spoken answers",
+      ok: true,
+    });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

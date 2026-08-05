@@ -9,14 +9,14 @@
   <header class="system-health-header">
     <div>
       <h1 id="system-health-title">System health</h1>
-      <p>Inspect runtime performance and configured service capacity. Run diagnostics sends small test requests to configured services, including active AI providers.</p>
+      <p>Inspect runtime performance and configured service capacity. Service checks do not run model inference. Optional live tests are clearly marked before anything is sent.</p>
     </div>
     <button
       class="button secondary system-health-run-button"
       type="button"
       :aria-busy="diagnosticsRunning"
       :disabled="diagnosticsRunning"
-      @click="runDiagnostics()"
+      @click="openDiagnosticsDialog()"
     >
       <svg
         aria-hidden="true"
@@ -89,35 +89,116 @@
             </svg>
             <div>
               <strong>Diagnostics not run</strong>
-              <span>Run diagnostics to test configured services</span>
+              <span>Run service checks to inspect connectivity and configuration</span>
             </div>
           </div>
         </template>
 
-        <template x-for="check in diagnosticsChecks" :key="check.id">
-          <div class="status-row" x-show="!diagnosticsRunning">
-            <template x-if="check.ok">
-              <svg aria-hidden="true" class="citeloom-icon status-icon">
-                <use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use>
+        <template x-if="!diagnosticsRunning &amp;&amp; diagnosticsChecks.length &gt; 0">
+          <div>
+            <div class="status-row system-health-diagnostic-summary">
+              <svg
+                aria-hidden="true"
+                class="citeloom-icon status-icon"
+                :class="{ error: diagnosticsServicePassedCount !== diagnosticsServiceCheckCount }"
+              >
+                <use :href="diagnosticsServicePassedCount === diagnosticsServiceCheckCount ? './assets/images/citeloom-icons.svg#citeloom-status-check' : './assets/images/citeloom-icons.svg#citeloom-warning-circle'"></use>
               </svg>
-            </template>
-            <template x-if="!check.ok">
-              <svg aria-hidden="true" class="citeloom-icon status-icon error">
-                <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
-              </svg>
-            </template>
-            <div>
-              <strong x-text="check.name"></strong>
-              <span x-text="check.detail"></span>
+              <div>
+                <strong x-text="diagnosticServiceSummary()"></strong>
+                <span>Last checked <span x-text="formatRelativeTime(diagnosticsGeneratedAt)"></span>.</span>
+              </div>
             </div>
+
+            <div class="system-health-diagnostic-group model-response-status">
+              <template x-if="diagnosticsModelResponse === null">
+                <div class="system-health-diagnostic-group-header static">
+                  <svg aria-hidden="true" class="citeloom-icon status-icon muted">
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use>
+                  </svg>
+                  <div>
+                    <strong>Model response verification</strong>
+                    <span>Not run</span>
+                    <small>Optional live run <span aria-hidden="true">·</span> Additional provider cost</small>
+                  </div>
+                </div>
+              </template>
+              <template x-if="diagnosticsModelResponse !== null">
+                <div class="system-health-diagnostic-group-header static">
+                  <svg
+                    aria-hidden="true"
+                    class="citeloom-icon status-icon"
+                    :class="{ error: !diagnosticsModelResponse.ok }"
+                  >
+                    <use :href="diagnosticsModelResponse.ok ? './assets/images/citeloom-icons.svg#citeloom-status-check' : './assets/images/citeloom-icons.svg#citeloom-warning-circle'"></use>
+                  </svg>
+                  <div>
+                    <strong>Model response verification</strong>
+                    <span x-text="diagnosticsModelResponse.ok ? 'Passed' : 'Failed'"></span>
+                    <small x-text="diagnosticsModelResponse.detail"></small>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <template x-for="group in diagnosticsGroups" :key="group.id">
+              <div class="system-health-diagnostic-group">
+                <button
+                  class="system-health-diagnostic-group-header"
+                  type="button"
+                  :aria-expanded="isDiagnosticGroupExpanded(group.id).toString()"
+                  @click="toggleDiagnosticGroup(group.id)"
+                >
+                  <svg
+                    aria-hidden="true"
+                    class="citeloom-icon status-icon"
+                    :class="{ error: group.checks.some((check) => !check.ok) }"
+                  >
+                    <use :href="group.checks.every((check) => check.ok) ? './assets/images/citeloom-icons.svg#citeloom-status-check' : './assets/images/citeloom-icons.svg#citeloom-warning-circle'"></use>
+                  </svg>
+                  <span>
+                    <strong x-text="group.name"></strong>
+                    <small x-text="diagnosticGroupSummary(group)"></small>
+                  </span>
+                  <svg
+                    aria-hidden="true"
+                    class="citeloom-icon citeloom-small-icon diagnostic-caret"
+                    :class="{ expanded: isDiagnosticGroupExpanded(group.id) }"
+                  >
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+                  </svg>
+                </button>
+                <div
+                  class="system-health-diagnostic-group-body"
+                  x-show="isDiagnosticGroupExpanded(group.id)"
+                >
+                  <template x-for="check in group.checks" :key="check.id">
+                    <div class="system-health-diagnostic-check">
+                      <div class="system-health-diagnostic-check-heading">
+                        <span aria-hidden="true"></span>
+                        <strong x-text="check.name"></strong>
+                      </div>
+                      <template x-for="item in check.items" :key="`${check.id}-${item}`">
+                        <div class="system-health-diagnostic-item">
+                          <svg
+                            aria-hidden="true"
+                            class="citeloom-icon"
+                            :class="{ error: !check.ok }"
+                          >
+                            <use :href="check.ok ? './assets/images/citeloom-icons.svg#citeloom-status-check' : './assets/images/citeloom-icons.svg#citeloom-warning-circle'"></use>
+                          </svg>
+                          <span x-text="item"></span>
+                        </div>
+                      </template>
+                      <p x-text="check.detail"></p>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
           </div>
         </template>
       </div>
-      <p
-        class="system-health-last-checked"
-        x-cloak
-        x-show="diagnosticsGeneratedAt !== null &amp;&amp; !diagnosticsRunning"
-      >Last checked <span x-text="formatRelativeTime(diagnosticsGeneratedAt)"></span>.</p>
     </div>
 
     <div class="system-health-capacity-snapshot">
@@ -164,6 +245,107 @@
       </div>
     </div>
   </section>
+
+  <div
+    class="dialog-backdrop system-health-diagnostics-backdrop"
+    x-cloak
+    x-show="diagnosticsDialogOpen"
+    x-transition.opacity.duration.120ms
+    @click.self="closeDiagnosticsDialog()"
+    @keydown.escape.window="diagnosticsDialogOpen &amp;&amp; closeDiagnosticsDialog()"
+  >
+    <form
+      class="dialog system-health-diagnostics-dialog"
+      id="diagnostics-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="diagnostics-dialog-title"
+      @keydown.tab="cycleDiagnosticsDialogFocus($event)"
+      @submit.prevent="runSelectedDiagnostics()"
+    >
+      <header>
+        <h2 id="diagnostics-dialog-title">Choose diagnostic checks</h2>
+        <button
+          class="icon-button"
+          id="diagnostics-dialog-close"
+          type="button"
+          aria-label="Close diagnostic checks"
+          @click="closeDiagnosticsDialog()"
+        >
+          <svg aria-hidden="true" class="citeloom-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-close"></use>
+          </svg>
+        </button>
+      </header>
+
+      <section class="diagnostics-readiness-option" aria-label="Included service checks">
+        <span class="diagnostics-option-icon">
+          <svg aria-hidden="true" class="citeloom-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-shield-check"></use>
+          </svg>
+        </span>
+        <div>
+          <h3>Service readiness</h3>
+          <p>Checks connectivity, configuration, and model availability.</p>
+          <small>No model inference <span aria-hidden="true">·</span> No provider usage</small>
+        </div>
+      </section>
+
+      <fieldset class="diagnostics-live-options">
+        <legend>Optional live tests</legend>
+        <p>These checks send requests to active models. Select only what you want to run.</p>
+
+        <label class="diagnostics-live-option">
+          <input type="checkbox" x-model="diagnosticsLiveChecks.modelResponse" />
+          <svg aria-hidden="true" class="citeloom-icon diagnostics-live-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-brain"></use>
+          </svg>
+          <span>
+            <strong>Verify model response</strong>
+            <span>Sends one evidence-backed prompt and validates the structured, cited response.</span>
+            <small>Live model run <span aria-hidden="true">·</span> Additional provider cost</small>
+          </span>
+        </label>
+
+        <label class="diagnostics-live-option">
+          <input type="checkbox" x-model="diagnosticsLiveChecks.speech" />
+          <svg aria-hidden="true" class="citeloom-icon diagnostics-live-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-microphone"></use>
+          </svg>
+          <span>
+            <strong>Speech input and spoken answers</strong>
+            <span>Runs short transcription and audio-generation probes.</span>
+            <small>Live provider calls <span aria-hidden="true">·</span> Additional provider cost</small>
+          </span>
+        </label>
+
+        <label class="diagnostics-live-option">
+          <input type="checkbox" x-model="diagnosticsLiveChecks.searchRanking" />
+          <svg aria-hidden="true" class="citeloom-icon diagnostics-live-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
+          </svg>
+          <span>
+            <strong>Search ranking</strong>
+            <span>Runs one small reranking request.</span>
+            <small>Live model run <span aria-hidden="true">·</span> Additional provider cost</small>
+          </span>
+        </label>
+      </fieldset>
+
+      <footer class="dialog-actions diagnostics-dialog-actions">
+        <p>Only selected live tests will run.</p>
+        <div>
+          <button class="button secondary" type="button" @click="closeDiagnosticsDialog()">Cancel</button>
+          <button class="button primary" type="submit">
+            <span x-text="diagnosticsRunButtonLabel">Run service checks</span>
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+            </svg>
+          </button>
+        </div>
+      </footer>
+    </form>
+  </div>
 
   <section class="system-health-telemetry" aria-labelledby="telemetry-title">
     <h2 id="telemetry-title">24 hour telemetry</h2>

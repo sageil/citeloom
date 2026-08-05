@@ -37,7 +37,7 @@
 
 .system-health-summary {
   display: grid;
-  grid-template-columns: minmax(280px, 0.36fr) minmax(0, 1fr);
+  grid-template-columns: minmax(340px, 0.36fr) minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
@@ -46,20 +46,292 @@
 
 .system-health-diagnostics {
   display: grid;
-  align-content: center;
+  align-content: start;
   padding: 16px 20px;
   border-right: 1px solid var(--border);
 }
 
-.system-health-status-list .status-row {
-  padding: 6px 0;
+.system-health-status-list > .status-row {
+  padding: 10px 0;
   border-bottom: 0;
 }
 
-.system-health-last-checked {
-  margin: 5px 0 0 30px;
+.system-health-diagnostic-summary {
+  padding: 2px 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.system-health-diagnostic-group {
+  border-bottom: 1px solid var(--border);
+}
+
+.system-health-diagnostic-group:last-child {
+  border-bottom: 0;
+}
+
+.system-health-diagnostic-group-header {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 18px;
+  align-items: center;
+  width: 100%;
+  min-height: 54px;
+  gap: 9px;
+  padding: 8px 0;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.system-health-diagnostic-group-header.static {
+  grid-template-columns: 22px minmax(0, 1fr);
+  cursor: default;
+}
+
+.system-health-diagnostic-group-header > div,
+.system-health-diagnostic-group-header > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.system-health-diagnostic-group-header strong {
+  font-size: 12px;
+}
+
+.system-health-diagnostic-group-header span > small,
+.system-health-diagnostic-group-header div > span {
   color: var(--muted);
   font-size: 10px;
+}
+
+.system-health-diagnostic-group-header div > small {
+  color: #f59e0b;
+  font-size: 10px;
+}
+
+.status-icon.muted {
+  color: var(--muted);
+}
+
+.diagnostic-caret {
+  color: var(--muted);
+  transition: transform 120ms ease;
+}
+
+.diagnostic-caret.expanded {
+  transform: rotate(90deg);
+}
+
+.system-health-diagnostic-group-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 0 12px 31px;
+}
+
+.system-health-diagnostic-check {
+  display: grid;
+  gap: 5px;
+}
+
+.system-health-diagnostic-check-heading {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.system-health-diagnostic-check-heading > span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(6, 182, 212, 0.52);
+}
+
+.system-health-diagnostic-check-heading strong {
+  color: #aab6ca;
+  font-size: 11px;
+  font-weight: 560;
+}
+
+.system-health-diagnostic-item {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.system-health-diagnostic-item .citeloom-icon {
+  width: 13px;
+  height: 13px;
+  color: var(--cyan);
+}
+
+.system-health-diagnostic-item .citeloom-icon.error {
+  color: var(--danger);
+}
+
+.system-health-diagnostic-check > p {
+  margin: 0;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.model-response-status {
+  margin-top: 2px;
+}
+
+.system-health-diagnostics-dialog {
+  width: min(720px, 100%);
+  overflow-y: auto;
+  padding: 0 20px;
+}
+
+.system-health-diagnostics-dialog > header {
+  align-items: center;
+  min-height: 62px;
+  border-bottom: 1px solid var(--border);
+}
+
+.system-health-diagnostics-dialog > header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.system-health-diagnostics-dialog .icon-button {
+  border: 0;
+  background: transparent;
+}
+
+.diagnostics-readiness-option {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 18px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.diagnostics-option-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  border: 1px solid rgba(6, 182, 212, 0.28);
+  border-radius: 50%;
+  color: var(--cyan);
+  background: rgba(6, 182, 212, 0.08);
+  place-items: center;
+}
+
+.diagnostics-option-icon .citeloom-icon {
+  width: 26px;
+  height: 26px;
+}
+
+.diagnostics-readiness-option h3,
+.diagnostics-readiness-option p {
+  margin: 0;
+}
+
+.diagnostics-readiness-option h3 {
+  font-size: 13px;
+}
+
+.diagnostics-readiness-option p,
+.diagnostics-live-options > p {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.diagnostics-readiness-option small {
+  color: #34d399;
+  font-size: 10px;
+}
+
+.diagnostics-live-options {
+  min-width: 0;
+  margin: 0;
+  padding: 18px 6px 0;
+  border: 0;
+}
+
+.diagnostics-live-options legend {
+  padding: 0;
+  color: var(--cyan);
+  font-size: 10px;
+  font-weight: 680;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.diagnostics-live-options > p {
+  margin: 6px 0 8px;
+}
+
+.diagnostics-live-option {
+  display: grid;
+  grid-template-columns: 20px 28px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.diagnostics-live-option input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--cyan);
+}
+
+.diagnostics-live-icon {
+  width: 23px;
+  height: 23px;
+  color: var(--cyan);
+}
+
+.diagnostics-live-option > span {
+  display: grid;
+  gap: 3px;
+}
+
+.diagnostics-live-option strong {
+  font-size: 12px;
+}
+
+.diagnostics-live-option > span > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.diagnostics-live-option small {
+  color: #f59e0b;
+  font-size: 10px;
+}
+
+.diagnostics-dialog-actions {
+  align-items: center;
+  justify-content: space-between;
+  min-height: 68px;
+}
+
+.diagnostics-dialog-actions > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.diagnostics-dialog-actions > div {
+  display: flex;
+  gap: 10px;
 }
 
 .system-health-capacity-snapshot {
@@ -315,6 +587,25 @@
   .system-health-detail-grid {
     grid-template-columns: 1fr;
     gap: 14px;
+  }
+
+  .system-health-diagnostics-backdrop {
+    padding: 10px;
+  }
+
+  .system-health-diagnostics-dialog {
+    max-height: calc(100vh - 20px);
+    padding: 0 14px;
+  }
+
+  .diagnostics-dialog-actions {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 12px 0;
+  }
+
+  .diagnostics-dialog-actions > div {
+    justify-content: flex-end;
   }
 }
 

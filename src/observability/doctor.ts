@@ -71,9 +71,52 @@ const ollamaModelsSchema = z.object({
 });
 
 export interface DoctorCheck {
+  category: DoctorCheckCategory;
   detail: string;
+  groupId: string;
+  groupName: string;
+  items: string[];
+  mode: "live" | "readiness";
   name: string;
   ok: boolean;
+}
+
+export type DoctorCheckCategory =
+  | "claim-verification"
+  | "document-processing"
+  | "embedding"
+  | "generation"
+  | "model-response"
+  | "persistence"
+  | "search-ranking"
+  | "speech-input"
+  | "spoken-answers";
+
+export interface DoctorLiveChecks {
+  modelResponse: boolean;
+  searchRanking: boolean;
+  speech: boolean;
+}
+
+export const SERVICE_READINESS_CHECKS: DoctorLiveChecks = Object.freeze({
+  modelResponse: false,
+  searchRanking: false,
+  speech: false,
+});
+
+const ALL_DOCTOR_LIVE_CHECKS: DoctorLiveChecks = Object.freeze({
+  modelResponse: true,
+  searchRanking: true,
+  speech: true,
+});
+
+interface DoctorCheckIdentity {
+  category: DoctorCheckCategory;
+  groupId: string;
+  groupName: string;
+  items: string[];
+  mode: "live" | "readiness";
+  name: string;
 }
 
 type DoctorSchedulerResolver = (
@@ -104,7 +147,10 @@ export async function runDoctor(config: AppConfig): Promise<DoctorCheck[]> {
     };
   } catch (error: unknown) {
     databaseCheck = Promise.resolve(
-      failedCheck("PostgreSQL", readErrorMessage(error)),
+      failedCheck(infrastructureCheck(
+        "persistence",
+        "Database",
+      ), readErrorMessage(error)),
     );
     resolveScheduler = (): TaskScheduler => {
       return createUnavailableScheduler(error);
@@ -117,7 +163,7 @@ export async function runDoctor(config: AppConfig): Promise<DoctorCheck[]> {
   ];
   if (models === null) {
     pendingChecks.push(Promise.resolve(failedCheck(
-      "Inference runtime",
+      infrastructureCheck("generation", "Inference runtime"),
       "the database connection required to initialize providers is unavailable",
     )));
   } else if (database !== null) {
@@ -127,9 +173,13 @@ export async function runDoctor(config: AppConfig): Promise<DoctorCheck[]> {
       models.answer,
       resolveScheduler("answer"),
       database,
+      ALL_DOCTOR_LIVE_CHECKS,
     ));
   }
   if (config.retrieval.reranker !== null) {
+    pendingChecks.push(checkRerankerProviderRuntime(
+      config.retrieval.reranker,
+    ));
     pendingChecks.push(checkRerankerWithScheduler(
       config.retrieval.reranker,
       resolveScheduler("reranking"),
@@ -146,6 +196,7 @@ export async function runDoctor(config: AppConfig): Promise<DoctorCheck[]> {
 
 export async function runDoctorWithRuntime(
   runtime: ApplicationRuntime,
+  liveChecks: DoctorLiveChecks = SERVICE_READINESS_CHECKS,
 ): Promise<DoctorCheck[]> {
   const config = runtime.config;
   const pendingChecks = [
@@ -155,18 +206,32 @@ export async function runDoctorWithRuntime(
       runtime.models.answer,
       runtime.scheduler("answer", "maintenance"),
       runtime.database,
-    ),
-    ...buildSpeechProviderChecks(
-      config,
-      (capability) => runtime.scheduler(capability, "maintenance"),
+      liveChecks,
     ),
     checkDatabaseSchema(runtime.database),
     checkDocling(config.docling),
   ];
+  if (liveChecks.speech) {
+    pendingChecks.push(...buildSpeechProviderChecks(
+      config,
+      (capability) => runtime.scheduler(capability, "maintenance"),
+    ));
+  }
   if (config.retrieval.reranker !== null) {
+    pendingChecks.push(checkRerankerProviderRuntime(
+      config.retrieval.reranker,
+    ));
+  }
+  if (liveChecks.searchRanking && config.retrieval.reranker !== null) {
     if (runtime.models.reranker === null) {
       pendingChecks.push(Promise.resolve(failedCheck(
-        config.retrieval.reranker.runtimeName,
+        providerCheck(
+          config.retrieval.reranker,
+          "search-ranking",
+          "Search ranking",
+          [config.retrieval.reranker.model],
+          "live",
+        ),
         "the configured reranker model is missing from the runtime snapshot",
       )));
     } else {
@@ -209,11 +274,23 @@ async function checkSpeechToText(
       (requestSignal) => probeSpeechToTextProvider(config, requestSignal),
     );
     return successfulCheck(
-      "Speech-to-text provider",
+      providerCheck(
+        config,
+        "speech-input",
+        "Speech input",
+        [config.model],
+        "live",
+      ),
       `model ${config.model} accepted a transcription capability probe`,
     );
   } catch (error: unknown) {
-    return failedCheck("Speech-to-text provider", readErrorMessage(error));
+    return failedCheck(providerCheck(
+      config,
+      "speech-input",
+      "Speech input",
+      [config.model],
+      "live",
+    ), readErrorMessage(error));
   }
 }
 
@@ -226,11 +303,23 @@ async function checkTextToSpeech(
       (requestSignal) => probeTextToSpeechProvider(config, requestSignal),
     );
     return successfulCheck(
-      "Text-to-speech provider",
+      providerCheck(
+        config,
+        "spoken-answers",
+        "Spoken answers",
+        [config.model],
+        "live",
+      ),
       `model ${config.model} returned an audio capability probe`,
     );
   } catch (error: unknown) {
-    return failedCheck("Text-to-speech provider", readErrorMessage(error));
+    return failedCheck(providerCheck(
+      config,
+      "spoken-answers",
+      "Spoken answers",
+      [config.model],
+      "live",
+    ), readErrorMessage(error));
   }
 }
 
@@ -240,24 +329,28 @@ function buildInferenceRuntimeChecks(
   answerModel: LanguageModelV4,
   answerScheduler: TaskScheduler,
   database: CiteLoomDatabase,
+  liveChecks: DoctorLiveChecks,
 ): Promise<DoctorCheck>[] {
   const groups = groupInferenceProviders([
-    config.answer,
-    config.queryExpansion,
-    config.summary,
-    config.embedding,
+    { config: config.answer, item: "Ask" },
+    { config: config.chat, item: "Chat" },
+    { config: config.queryExpansion, item: "Query expansion" },
+    { config: config.summary, item: "Summaries" },
+    { config: config.embedding, item: config.embedding.model },
   ]);
   const checks: Promise<DoctorCheck>[] = [];
-  checks.push(checkStructuredAnswerCapability(
-    answerModel,
-    config.answer.model,
-    config.answer.timeoutMs,
-    answerScheduler,
-  ));
+  if (liveChecks.modelResponse) {
+    checks.push(checkStructuredAnswerCapability(
+      answerModel,
+      config.answer,
+      answerScheduler,
+    ));
+  }
   for (const group of groups) {
     checks.push(checkInferenceProviderRuntime(
       group.config,
       group.models,
+      group.items,
       database,
     ));
   }
@@ -267,17 +360,25 @@ function buildInferenceRuntimeChecks(
 
 async function checkStructuredAnswerCapability(
   model: LanguageModelV4,
-  modelId: string,
-  timeoutMs: number,
+  config: LanguageInferenceConfig,
   scheduler: TaskScheduler,
 ): Promise<DoctorCheck> {
+  const identity = providerCheck(
+    config,
+    "model-response",
+    "Structured cited response",
+    [config.model],
+    "live",
+    "model-response",
+    "Model response verification",
+  );
   try {
     const allowedEvidenceRefs = createEvidenceReferences(1);
     const result = await scheduler.run(
       (requestSignal) => generateText({
         abortSignal: AbortSignal.any([
           requestSignal,
-          AbortSignal.timeout(timeoutMs),
+          AbortSignal.timeout(config.timeoutMs),
         ]),
         maxOutputTokens: 200,
         maxRetries: 0,
@@ -309,16 +410,16 @@ async function checkStructuredAnswerCapability(
     );
     if (draft.status !== "answered") {
       return failedCheck(
-        "Answer draft protocol",
-        `model ${modelId} returned an uncited response for the structured-output readiness probe`,
+        identity,
+        `model ${config.model} returned an uncited response for the structured-output readiness probe`,
       );
     }
     return successfulCheck(
-      "Answer draft protocol",
-      `model ${modelId} returned a valid structured answer draft`,
+      identity,
+      `model ${config.model} returned a valid structured, cited response`,
     );
   } catch (error) {
-    return failedCheck("Answer draft protocol", readErrorMessage(error));
+    return failedCheck(identity, readErrorMessage(error));
   }
 }
 
@@ -328,14 +429,21 @@ type InferenceProviderConfig =
 
 interface InferenceProviderGroup {
   config: InferenceProviderConfig;
+  items: string[];
   models: string[];
 }
 
+interface InferenceProviderTarget {
+  config: InferenceProviderConfig | null;
+  item: string;
+}
+
 function groupInferenceProviders(
-  configurations: readonly (InferenceProviderConfig | null)[],
+  targets: readonly InferenceProviderTarget[],
 ): InferenceProviderGroup[] {
   const groups: InferenceProviderGroup[] = [];
-  for (const config of configurations) {
+  for (const target of targets) {
+    const config = target.config;
     if (config === null) {
       continue;
     }
@@ -343,11 +451,15 @@ function groupInferenceProviders(
       return candidate.config.adapter === config.adapter
         && candidate.config.apiToken === config.apiToken
         && candidate.config.baseUrl === config.baseUrl
+        && candidate.config.providerId === config.providerId
         && candidate.config.runtimeName === config.runtimeName;
     });
     if (existing === undefined) {
-      groups.push({ config, models: [config.model] });
+      groups.push({ config, items: [target.item], models: [config.model] });
       continue;
+    }
+    if (!existing.items.includes(target.item)) {
+      existing.items.push(target.item);
     }
     if (!existing.models.includes(config.model)) {
       existing.models.push(config.model);
@@ -359,30 +471,53 @@ function groupInferenceProviders(
 function checkInferenceProviderRuntime(
   config: InferenceProviderConfig,
   configuredModels: readonly string[],
+  items: readonly string[],
   database: CiteLoomDatabase,
 ): Promise<DoctorCheck> {
+  const category = config.adapter.includes("embedding")
+    ? "embedding"
+    : "generation";
+  const name = category === "embedding"
+    ? "Embeddings"
+    : "Generation availability";
+  const identity = providerCheck(config, category, name, items);
   if (config.adapter === "openai-codex-language") {
-    return checkOpenAICodexRuntime(config, configuredModels, database);
+    return checkOpenAICodexRuntime(configuredModels, database, identity);
   }
   if (
     config.adapter === "cohere-language"
     || config.adapter === "cohere-embedding"
   ) {
-    return checkCohereRuntime(config, configuredModels);
+    return checkCohereRuntime(config, configuredModels, identity);
   }
   if (
     config.adapter === "ollama-embedding"
     || config.adapter === "ollama-language"
   ) {
-    return checkOllamaRuntime(config, configuredModels);
+    return checkOllamaRuntime(config, configuredModels, identity);
   }
-  return checkOpenAICompatibleRuntime(config, configuredModels);
+  return checkOpenAICompatibleRuntime(config, configuredModels, identity);
+}
+
+function checkRerankerProviderRuntime(
+  config: RerankerConfig,
+): Promise<DoctorCheck> {
+  const identity = providerCheck(
+    config,
+    "search-ranking",
+    "Search ranking availability",
+    [config.model],
+  );
+  if (config.providerId === "cohere") {
+    return checkCohereRuntime(config, [config.model], identity);
+  }
+  return checkOpenAICompatibleRuntime(config, [config.model], identity);
 }
 
 async function checkOpenAICodexRuntime(
-  config: ProviderRuntimeConfig,
   configuredModels: readonly string[],
   database: CiteLoomDatabase,
+  identity: DoctorCheckIdentity,
 ): Promise<DoctorCheck> {
   try {
     const models = await readOpenAICodexModels(database, {
@@ -392,39 +527,46 @@ async function checkOpenAICodexRuntime(
     const missing = configuredModels.filter((model) => !available.has(model));
     if (missing.length > 0) {
       return failedCheck(
-        config.runtimeName,
+        identity,
         `the Codex subscription does not list configured model(s): ${missing.join(", ")}`,
       );
     }
     return successfulCheck(
-      config.runtimeName,
+      identity,
       `the Codex subscription lists ${configuredModels.join(", ")}`,
     );
   } catch (error: unknown) {
-    return failedCheck(config.runtimeName, readErrorMessage(error));
+    return failedCheck(identity, readErrorMessage(error));
   }
 }
 
 async function checkHhemRuntime(
   config: ClaimVerifierConfig,
 ): Promise<DoctorCheck> {
+  const identity = readinessCheck(
+    "claim-verification",
+    "claim-verifier",
+    config.runtimeName,
+    "Claim verification",
+    [config.model],
+  );
   try {
     const client = new HttpHhemClient(config);
     await client.checkReady();
     return successfulCheck(
-      config.runtimeName,
+      identity,
       `model ${config.model} is loaded and ready`,
     );
   } catch (error: unknown) {
-    return failedCheck(config.runtimeName, readErrorMessage(error));
+    return failedCheck(identity, readErrorMessage(error));
   }
 }
 
 async function checkOpenAICompatibleRuntime(
   config: ProviderRuntimeConfig,
   configuredModels: readonly string[],
+  identity: DoctorCheckIdentity,
 ): Promise<DoctorCheck> {
-  const runtimeName = config.runtimeName;
   try {
     const headers = new Headers();
     if (config.apiToken !== null) {
@@ -435,13 +577,13 @@ async function checkOpenAICompatibleRuntime(
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) {
-      return failedCheck(runtimeName, `GET /models returned HTTP ${response.status}`);
+      return failedCheck(identity, `GET /models returned HTTP ${response.status}`);
     }
 
     const responseBody: unknown = await response.json();
     const parsed = inferenceModelsSchema.safeParse(responseBody);
     if (!parsed.success) {
-      return failedCheck(runtimeName, "GET /models returned an invalid response");
+      return failedCheck(identity, "GET /models returned an invalid response");
     }
 
     const modelIds = new Set(parsed.data.data.map((model) => model.id));
@@ -453,25 +595,25 @@ async function checkOpenAICompatibleRuntime(
     }
     if (missingModels.length > 0) {
       return failedCheck(
-        runtimeName,
+        identity,
         `server is reachable, but these configured models are not visible: ${missingModels.join(", ")}`,
       );
     }
 
     return successfulCheck(
-      runtimeName,
+      identity,
       `server is reachable and all configured models are visible`,
     );
   } catch (error) {
-    return failedCheck(runtimeName, readErrorMessage(error));
+    return failedCheck(identity, readErrorMessage(error));
   }
 }
 
 async function checkCohereRuntime(
   config: ProviderRuntimeConfig,
   configuredModels: readonly string[],
+  identity: DoctorCheckIdentity,
 ): Promise<DoctorCheck> {
-  const runtimeName = config.runtimeName;
   try {
     const headers = new Headers();
     if (config.apiToken !== null) {
@@ -489,25 +631,25 @@ async function checkCohereRuntime(
       });
       if (!response.ok) {
         return failedCheck(
-          runtimeName,
+          identity,
           `model ${model} check returned HTTP ${response.status}`,
         );
       }
     }
     return successfulCheck(
-      runtimeName,
+      identity,
       "server is reachable and all configured models are visible",
     );
   } catch (error) {
-    return failedCheck(runtimeName, readErrorMessage(error));
+    return failedCheck(identity, readErrorMessage(error));
   }
 }
 
 async function checkOllamaRuntime(
   config: ProviderRuntimeConfig,
   configuredModels: readonly string[],
+  identity: DoctorCheckIdentity,
 ): Promise<DoctorCheck> {
-  const runtimeName = config.runtimeName;
   try {
     const headers = new Headers();
     if (config.apiToken !== null) {
@@ -519,12 +661,12 @@ async function checkOllamaRuntime(
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) {
-      return failedCheck(runtimeName, `GET /api/tags returned HTTP ${response.status}`);
+      return failedCheck(identity, `GET /api/tags returned HTTP ${response.status}`);
     }
     const responseBody: unknown = await response.json();
     const parsed = ollamaModelsSchema.safeParse(responseBody);
     if (!parsed.success) {
-      return failedCheck(runtimeName, "GET /api/tags returned an invalid response");
+      return failedCheck(identity, "GET /api/tags returned an invalid response");
     }
     const modelIds = new Set<string>();
     for (const model of parsed.data.models) {
@@ -539,16 +681,16 @@ async function checkOllamaRuntime(
     }
     if (missingModels.length > 0) {
       return failedCheck(
-        runtimeName,
+        identity,
         `server is reachable, but these configured models are not visible: ${missingModels.join(", ")}`,
       );
     }
     return successfulCheck(
-      runtimeName,
+      identity,
       "Ollama is reachable and all configured models are visible",
     );
   } catch (error) {
-    return failedCheck(runtimeName, readErrorMessage(error));
+    return failedCheck(identity, readErrorMessage(error));
   }
 }
 
@@ -600,11 +742,14 @@ async function checkDatabaseSchema(
       ? "migration"
       : "migrations";
     return successfulCheck(
-      "PostgreSQL",
+      infrastructureCheck("persistence", "Database"),
       `database schema, ${readiness.appliedMigrationCount} ${migrationNoun}, and ${readiness.requiredExtensions.join(" and ")} extensions are ready`,
     );
   } catch (error) {
-    return failedCheck("PostgreSQL", readErrorMessage(error));
+    return failedCheck(
+      infrastructureCheck("persistence", "Database"),
+      readErrorMessage(error),
+    );
   }
 }
 
@@ -612,13 +757,18 @@ async function checkRerankerWithScheduler(
   config: RerankerConfig,
   scheduler: TaskScheduler,
 ): Promise<DoctorCheck> {
-  const runtimeName = config.runtimeName;
   try {
     return await scheduler.run(
       (requestSignal) => probeReranker(config, requestSignal),
     );
   } catch (error) {
-    return failedCheck(runtimeName, readErrorMessage(error));
+    return failedCheck(providerCheck(
+      config,
+      "search-ranking",
+      "Search ranking",
+      [config.model],
+      "live",
+    ), readErrorMessage(error));
   }
 }
 
@@ -663,7 +813,13 @@ async function checkRuntimeReranker(
       ),
     );
   } catch (error: unknown) {
-    return failedCheck(config.runtimeName, readErrorMessage(error));
+    return failedCheck(providerCheck(
+      config,
+      "search-ranking",
+      "Search ranking",
+      [config.model],
+      "live",
+    ), readErrorMessage(error));
   }
 }
 
@@ -672,7 +828,13 @@ async function probeRerankingModel(
   model: ResolvedReranker["model"],
   abortSignal: AbortSignal,
 ): Promise<DoctorCheck> {
-  const runtimeName = config.runtimeName;
+  const identity = providerCheck(
+    config,
+    "search-ranking",
+    "Search ranking",
+    [config.model],
+    "live",
+  );
   try {
     const result = await rerank({
       abortSignal,
@@ -692,16 +854,16 @@ async function probeRerankingModel(
     });
     if (result.ranking.length !== 1) {
       return failedCheck(
-        runtimeName,
+        identity,
         "the rerank capability probe returned no ranked document",
       );
     }
     return successfulCheck(
-      runtimeName,
+      identity,
       `model ${config.model} completed a rerank capability probe`,
     );
   } catch (error) {
-    return failedCheck(runtimeName, readErrorMessage(error));
+    return failedCheck(identity, readErrorMessage(error));
   }
 }
 
@@ -709,20 +871,77 @@ async function checkDocling(config: DoclingConfig): Promise<DoctorCheck> {
   try {
     const version = await verifyDoclingService(config);
     return successfulCheck(
-      "Docling",
+      infrastructureCheck("document-processing", "Document conversion"),
       `Docling Serve ${version.serveVersion} with Docling ${version.version} is ready`,
     );
   } catch (error) {
-    return failedCheck("Docling", readErrorMessage(error));
+    return failedCheck(
+      infrastructureCheck("document-processing", "Document conversion"),
+      readErrorMessage(error),
+    );
   }
 }
 
-function successfulCheck(name: string, detail: string): DoctorCheck {
-  return { detail, name, ok: true };
+function readinessCheck(
+  category: DoctorCheckCategory,
+  groupId: string,
+  groupName: string,
+  name: string,
+  items: readonly string[] = [],
+): DoctorCheckIdentity {
+  return {
+    category,
+    groupId,
+    groupName,
+    items: [...items],
+    mode: "readiness",
+    name,
+  };
 }
 
-function failedCheck(name: string, detail: string): DoctorCheck {
-  return { detail, name, ok: false };
+function infrastructureCheck(
+  category: "document-processing" | "generation" | "persistence",
+  name: string,
+): DoctorCheckIdentity {
+  return readinessCheck(
+    category,
+    "infrastructure",
+    "Infrastructure",
+    name,
+  );
+}
+
+function providerCheck(
+  config: ProviderRuntimeConfig,
+  category: DoctorCheckCategory,
+  name: string,
+  items: readonly string[],
+  mode: "live" | "readiness" = "readiness",
+  groupId = `provider:${config.providerId}`,
+  groupName = config.runtimeName,
+): DoctorCheckIdentity {
+  return {
+    category,
+    groupId,
+    groupName,
+    items: [...items],
+    mode,
+    name,
+  };
+}
+
+function successfulCheck(
+  identity: DoctorCheckIdentity,
+  detail: string,
+): DoctorCheck {
+  return { ...identity, detail, ok: true };
+}
+
+function failedCheck(
+  identity: DoctorCheckIdentity,
+  detail: string,
+): DoctorCheck {
+  return { ...identity, detail, ok: false };
 }
 
 function readErrorMessage(error: unknown): string {

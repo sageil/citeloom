@@ -58,6 +58,10 @@ import {
   AuthenticationRejectedError,
   WorkspaceAuthorizationError,
 } from "../src/auth/store.js";
+import type {
+  DoctorCheck,
+  DoctorLiveChecks,
+} from "../src/observability/doctor.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -771,18 +775,15 @@ describe("web server boundary", () => {
     }
   });
 
-  it("runs deep diagnostics only on POST and coalesces concurrent requests", async () => {
-    let diagnosticCalls = 0;
-    const diagnosticGate = { resolve: (): void => {
-      throw new Error("Diagnostics did not start.");
-    } };
+  it("runs selected diagnostics only on POST and coalesces matching requests", async () => {
+    const diagnosticGates = [createDeferred(), createDeferred()];
+    const diagnosticSelections: DoctorLiveChecks[] = [];
     const services = buildServices({
-      readHealth: async () => {
-        diagnosticCalls += 1;
-        await new Promise<void>((resolve) => {
-          diagnosticGate.resolve = resolve;
-        });
-        return [{ detail: "ready", name: "PostgreSQL", ok: true }];
+      readHealth: async (liveChecks) => {
+        const callIndex = diagnosticSelections.length;
+        diagnosticSelections.push(liveChecks);
+        await diagnosticGates[callIndex]?.promise;
+        return [buildReadyDiagnosticCheck()];
       },
     });
     const server = await buildWebServer(buildConfig(), {
@@ -795,11 +796,40 @@ describe("web server boundary", () => {
       expect((await server.inject({ method: "GET", url: "/api/health" })).statusCode).toBe(404);
       const first = server.inject({ method: "POST", url: "/api/diagnostics" });
       const second = server.inject({ method: "POST", url: "/api/diagnostics" });
-      await vi.waitFor(() => expect(diagnosticCalls).toBe(1));
-      diagnosticGate.resolve();
-      const responses = await Promise.all([first, second]);
+      const live = server.inject({
+        method: "POST",
+        payload: {
+          liveChecks: {
+            modelResponse: true,
+            searchRanking: false,
+            speech: true,
+          },
+        },
+        url: "/api/diagnostics",
+      });
+      await vi.waitFor(() => expect(diagnosticSelections).toHaveLength(2));
+      expect(diagnosticSelections).toEqual([
+        { modelResponse: false, searchRanking: false, speech: false },
+        { modelResponse: true, searchRanking: false, speech: true },
+      ]);
+      diagnosticGates[0]?.resolve();
+      diagnosticGates[1]?.resolve();
+      const responses = await Promise.all([first, second, live]);
       expect(responses.every((response) => response.statusCode === 200)).toBe(true);
-      expect(diagnosticCalls).toBe(1);
+      expect(diagnosticSelections).toHaveLength(2);
+
+      const invalid = await server.inject({
+        method: "POST",
+        payload: { liveChecks: { modelResponse: true } },
+        url: "/api/diagnostics",
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json()).toEqual({
+        error: {
+          code: "invalid_request",
+          message: "Diagnostic check selection is invalid.",
+        },
+      });
     } finally {
       await server.close();
     }
@@ -2625,6 +2655,19 @@ type TestWebServiceOverrides = Partial<RuntimeWebServices>
     | "updateSettings"
   >>;
 
+function buildReadyDiagnosticCheck(): DoctorCheck {
+  return {
+    category: "persistence",
+    detail: "ready",
+    groupId: "infrastructure",
+    groupName: "Infrastructure",
+    items: [],
+    mode: "readiness",
+    name: "Database",
+    ok: true,
+  };
+}
+
 function buildServices(
   overrides: TestWebServiceOverrides = {},
 ): WebServices {
@@ -2654,7 +2697,7 @@ function buildServices(
     readCitationHighlightedPdf: async () => null,
     readCitationImage: async () => null,
     readDocumentFile: async () => null,
-    readHealth: async () => [{ detail: "ready", name: "PostgreSQL", ok: true }],
+    readHealth: async () => [buildReadyDiagnosticCheck()],
     readResearchThread: async () => null,
     readResearchFeedback: async () => ({ negativeCount: 0, positiveCount: 0, rating: 0 }),
     readRevisions: async () => ({ catalog: "0", jobs: "0", settings: "0" }),
