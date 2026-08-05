@@ -112,6 +112,9 @@ function createAnswerRules(mode: GroundedPromptMode): string {
 
 - Write a complete, substantive direct answer using answer.content and, when useful, answer.topics.
 - Use answer.content for the main synthesis, material qualifications, and connected explanation that do not belong to one topic.
+- Combine related evidence into a coherent explanatory narrative rather than presenting disconnected source statements.
+- Explain implications only when they are explicitly stated or directly supported by the supplied evidence.
+- Do not merely reproduce source headings or statutory passages. Explain how the provisions answer the current question while preserving legally significant wording, exceptions, and qualifications.
 - Do not reduce answer.content to a generic introduction or an announcement of the topics that follow.
 - For a multi-part or comprehensive answer, put each distinct topic in answer.topics in the order it should be read.
 - Give every topic a short title, grounded content, and the smallest directly supportive source_refs set.
