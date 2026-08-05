@@ -33,7 +33,7 @@ export const CHAT_ANSWER_RESPONSE: AnswerResponseContract = {
   createSchema: createChatAnswerModelResponseSchema,
   decode: decodeChatAnswerModelResponse,
   description:
-    "A Chat response containing either a comprehensive grounded answer with optional topics and source references or an uncited clarification question.",
+    "A Chat response containing either a comprehensive grounded answer with required topics and source references or an uncited clarification question.",
   name: "chat_answer",
 };
 
@@ -52,31 +52,31 @@ function createChatAnswerModelResponseSchema(
       "A short descriptive title for this topic.",
     ),
   }).strict();
-  const answerPoint: z.ZodType<ChatAnswerPoint> = z.object({
+  const groundedAnswerPoint: z.ZodType<ChatAnswerPoint> = z.object({
     content: z.string().trim().min(1).describe(
       "The substantive grounded answer content, including synthesis and qualifications that do not belong to one topic.",
     ),
-    source_refs: z.array(sourceReference).describe(
-      "Supporting source references for a grounded answer, or an empty array for a clarification or wholly unsupported response.",
+    source_refs: z.array(sourceReference).min(1).describe(
+      "The smallest set of sources that directly supports the overall grounded answer.",
     ),
-    topics: z.array(answerTopic).describe(
-      "Ordered topical sections for a multi-part or comprehensive answer, or an empty array for a concise or uncited response.",
+    topics: z.array(answerTopic).min(1).describe(
+      "One or more ordered findings that contain the independently verifiable details of the grounded answer.",
+    ),
+  }).strict();
+  const uncitedAnswerPoint: z.ZodType<ChatAnswerPoint> = z.object({
+    content: z.string().trim().min(1).describe(
+      "A clarification question or explanation of what the supplied evidence does not establish.",
+    ),
+    source_refs: z.tuple([]).describe(
+      "An empty array because this response makes no grounded factual claims.",
+    ),
+    topics: z.tuple([]).describe(
+      "An empty array because this response makes no grounded factual claims.",
     ),
   }).strict();
   return z.object({
-    answer: answerPoint,
-  }).strict().superRefine((response, context) => {
-    if (
-      response.answer.source_refs.length === 0
-      && response.answer.topics.length > 0
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "An uncited response must not contain topics.",
-        path: ["answer"],
-      });
-    }
-  });
+    answer: z.union([groundedAnswerPoint, uncitedAnswerPoint]),
+  }).strict();
 }
 
 function decodeChatAnswerModelResponse(
