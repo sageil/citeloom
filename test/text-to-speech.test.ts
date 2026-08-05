@@ -40,7 +40,7 @@ describe("generateTextToSpeech", () => {
     expect(headers.get("accept")).toBe("audio/wav");
     expect(headers.get("authorization")).toBe("Bearer speech-token");
     expect(JSON.parse(String(request.body))).toEqual({
-      input: "The answer is supported by the document. See cited resource 1.",
+      input: "The answer is supported by the document.",
       model: "Kokoro-82M-bf16",
       response_format: "wav",
       speed: 1.1,
@@ -333,13 +333,9 @@ function buildSpeechRequest(content: string): SpeechRequest {
         sectionPath: [],
         sourceFile: "/tmp/report.pdf",
       }],
+      content,
       schemaVersion: 1,
-      statements: [{
-        citationIds: [citationId],
-        content,
-        presentation: "paragraph",
-        section: "answer",
-      }],
+      statements: [],
     },
   };
 }

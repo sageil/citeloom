@@ -106,10 +106,6 @@ function decodeChatAnswerModelResponse(
   const statements: AnswerDraftStatement[] = [];
   statements.push(createAnswerStatement(response.answer));
   appendAnswerTopics(statements, response.answer.topics);
-  const verificationStatementIndexes: number[] = [];
-  for (let index = 1; index < statements.length; index += 1) {
-    verificationStatementIndexes.push(index);
-  }
   return {
     draft: decodeAnswerDraft(
       {
@@ -119,7 +115,7 @@ function decodeChatAnswerModelResponse(
       },
       allowedEvidenceRefs,
     ),
-    verificationStatementIndexes,
+    verificationStatementIndexes: null,
   };
 }
 

@@ -99,7 +99,7 @@ function readPublishedAnswerDocument(value, context) {
 
   const hasCitations = citations.length > 0;
   const hasStatements = statements.length > 0;
-  if (hasCitations !== hasStatements) {
+  if (!hasCitations && hasStatements) {
     const message = context === "ask"
       ? "The answer response is incomplete."
       : "The chat answer is incomplete.";
@@ -113,7 +113,28 @@ function readPublishedAnswerDocument(value, context) {
       statements,
     };
   }
-  return { citations, schemaVersion, statements };
+  if (typeof answer.content === "string") {
+    return {
+      citations,
+      content: readNonEmptyString(answer.content, "answer content"),
+      schemaVersion,
+      statements,
+    };
+  }
+  const legacyDirectAnswer = statements.shift();
+  if (
+    legacyDirectAnswer === undefined
+    || legacyDirectAnswer.section !== "answer"
+    || legacyDirectAnswer.presentation !== "paragraph"
+  ) {
+    throw new Error("The answer response has no direct answer content.");
+  }
+  return {
+    citations,
+    content: legacyDirectAnswer.content,
+    schemaVersion,
+    statements,
+  };
 }
 
 function readAnswerCitation(value, label, context) {

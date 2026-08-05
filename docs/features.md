@@ -56,7 +56,7 @@ Users can create and delete threads, export a thread as Markdown or JSON, and ra
 
 Ask streams the completed published answer and exposes:
 
-- A direct answer and supporting findings with inline citation markers.
+- A direct answer without citation markers and supporting findings with inline citation markers.
 - The documents and pages used by the answer.
 - Original text, structured table, image, and highlighted PDF evidence.
 - The exact retained document version when the current library version has changed.
@@ -65,6 +65,7 @@ Ask streams the completed published answer and exposes:
 
 The answer model can cite only evidence references supplied for the current request.
 The server validates those references and creates the stored citation records.
+The direct answer remains separate from citations, while supporting findings link to the evidence that HHEM checks.
 HHEM scores are advisory and never remove, rewrite, or add answer content or citations.
 
 ## Find Sources

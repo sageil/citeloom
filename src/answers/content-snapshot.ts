@@ -93,11 +93,7 @@ export function decodePartialAnswerContentSnapshot(
   }
   const citationsByKey = new Map<string, AnswerContentCitationPreview>();
   const statements: AnswerContentStatement[] = [{
-    citationKeys: readPartialCitationKeys(
-      answer,
-      citationCatalog,
-      citationsByKey,
-    ),
+    citationKeys: [],
     content: normalizedAnswerContent,
     presentation: "paragraph",
     section: "answer",
@@ -241,6 +237,12 @@ export function createPublishedAnswerContentSnapshot(
     });
   }
   const statements: AnswerContentStatement[] = [];
+  statements.push({
+    citationKeys: [],
+    content: document.content,
+    presentation: "paragraph",
+    section: "answer",
+  });
   for (const statement of document.statements) {
     const citationKeys: string[] = [];
     for (const citationId of statement.citationIds) {

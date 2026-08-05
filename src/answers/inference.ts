@@ -279,21 +279,8 @@ function decodeDefaultAnswerModelResponse(
   );
   return {
     draft,
-    verificationStatementIndexes: readKeyPointStatementIndexes(draft),
+    verificationStatementIndexes: draft.status === "uncited" ? [] : null,
   };
-}
-
-function readKeyPointStatementIndexes(draft: AnswerDraft): number[] {
-  if (draft.status === "uncited") {
-    return [];
-  }
-  const indexes: number[] = [];
-  for (let index = 0; index < draft.statements.length; index += 1) {
-    if (draft.statements[index]?.section === "key-points") {
-      indexes.push(index);
-    }
-  }
-  return indexes;
 }
 
 const defaultAnswerGenerationPrompt: AnswerGenerationPrompt = {

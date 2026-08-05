@@ -97,6 +97,9 @@ describe("CiteLoom chat boundaries", () => {
     });
     expect(conversation.runs[0].messages[0].answerContent).toMatchObject({
       statements: [{
+        citationKeys: [],
+        content: "The report describes a revenue change.",
+      }, {
         citationKeys: [
           JSON.stringify(["version-1", "document-1", "element-1"]),
         ],
@@ -152,6 +155,7 @@ function buildCitedConversation() {
       messages: [{
         answerDocument: {
           citations: [answerCitation],
+          content: "The report describes a revenue change.",
           schemaVersion: 1,
           statements: [{
             citationIds: ["citation-1"],

@@ -82,6 +82,11 @@ export function compileAnswerDraft(
     evidenceRefs ?? createEvidenceReferences(retrieved.length),
   );
   const preparedStatements = prepareDraftStatements(draft, requestEvidence);
+  const directAnswerIndex = readDirectAnswerIndex(preparedStatements);
+  const directAnswer = preparedStatements[directAnswerIndex];
+  if (directAnswer === undefined) {
+    throw new AnswerDraftSourceError("The answer draft has no direct answer content.");
+  }
   const referencedEvidence = new Set<EvidenceReference>();
   for (const prepared of preparedStatements) {
     for (const evidenceRef of prepared.evidenceRefs) {
@@ -104,7 +109,14 @@ export function compileAnswerDraft(
   }
   const statements: PublishedAnswerStatement[] = [];
   for (const section of ANSWER_DRAFT_SECTIONS) {
-    for (const prepared of preparedStatements) {
+    for (let index = 0; index < preparedStatements.length; index += 1) {
+      if (index === directAnswerIndex) {
+        continue;
+      }
+      const prepared = preparedStatements[index];
+      if (prepared === undefined) {
+        continue;
+      }
       const draftStatement = prepared.statement;
       if (draftStatement.section !== section) {
         continue;
@@ -134,9 +146,25 @@ export function compileAnswerDraft(
   );
   return decodePublishedAnswerDocument({
     citations,
+    content: directAnswer.statement.content,
     schemaVersion: 1,
     statements,
   });
+}
+
+function readDirectAnswerIndex(
+  statements: readonly PreparedDraftStatement[],
+): number {
+  for (let index = 0; index < statements.length; index += 1) {
+    const statement = statements[index]?.statement;
+    if (
+      statement?.section === "answer"
+      && statement.presentation === "paragraph"
+    ) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function prepareDraftStatements(
@@ -445,10 +473,13 @@ export function renderPublishedAnswerMarkdown(
     return document.content;
   }
   const citationNumberById = createCitationNumberById(document.citations);
-  const lines: string[] = [];
+  const lines: string[] = [escapeMarkdownText(document.content)];
   let currentSection: AnswerSection | null = null;
   let previousPresentation: AnswerPresentation | null = null;
   for (const statement of document.statements) {
+    if (lines.length > 0 && currentSection === null) {
+      lines.push("");
+    }
     if (statement.section !== currentSection) {
       appendSectionHeading(lines, statement.section);
       currentSection = statement.section;
@@ -466,7 +497,11 @@ export function renderPublishedAnswerMarkdown(
     );
     const content = escapeMarkdownText(statement.content);
     const prefix = statement.presentation === "bullet" ? "- " : "";
-    lines.push(`${prefix}${content} ${citationText}`);
+    let line = `${prefix}${content}`;
+    if (citationText !== "") {
+      line += ` ${citationText}`;
+    }
+    lines.push(line);
     if (statement.presentation === "paragraph") {
       lines.push("");
     }
@@ -481,8 +516,8 @@ export function renderPublishedAnswerSpeech(
   if (isPublishedUncitedAnswerDocument(document)) {
     return normalizeTextForSpeech(document.content);
   }
-  const citationNumberById = createCitationNumberById(document.citations);
-  const lines: string[] = [];
+  const directAnswer = normalizeTextForSpeech(document.content);
+  const lines: string[] = [ensureTerminalPunctuation(directAnswer)];
   let currentSection: AnswerSection | null = null;
   for (const statement of document.statements) {
     if (statement.section !== currentSection) {
@@ -494,11 +529,7 @@ export function renderPublishedAnswerSpeech(
     }
     const speechContent = normalizeTextForSpeech(statement.content);
     const content = ensureTerminalPunctuation(speechContent);
-    const citationNumbers = readCitationNumbers(
-      statement.citationIds,
-      citationNumberById,
-    );
-    lines.push(`${content} ${renderSpeechCitations(citationNumbers)}`);
+    lines.push(content);
   }
   return lines.join("\n");
 }
@@ -672,13 +703,4 @@ function readRomanNumeral(value: string): number | null {
     result += currentValue;
   }
   return result;
-}
-
-function renderSpeechCitations(citationNumbers: readonly number[]): string {
-  if (citationNumbers.length === 1) {
-    return `See cited resource ${citationNumbers[0]}.`;
-  }
-  const finalNumber = citationNumbers.at(-1);
-  const leadingNumbers = citationNumbers.slice(0, -1);
-  return `See cited resources ${leadingNumbers.join(", ")}, and ${finalNumber}.`;
 }

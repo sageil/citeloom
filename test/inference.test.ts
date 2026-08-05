@@ -1038,7 +1038,7 @@ describe("createInferenceModelRegistry", () => {
       { receiveAnswerContent: (content) => previews.push(content) },
     );
 
-    expect(result.answerDocument.statements[0]?.content).toBe(
+    expect(result.answerDocument.content).toBe(
       "Revenue increased.",
     );
     expect(previews.length).toBeGreaterThanOrEqual(2);
@@ -1095,7 +1095,7 @@ describe("createInferenceModelRegistry", () => {
       { seed: 1, temperature: 0 },
     );
 
-    expect(result.answerDocument.statements[0]?.content).toBe(
+    expect(result.answerDocument.content).toBe(
       "Revenue increased.",
     );
     expect(requestBodies).toHaveLength(2);
@@ -1570,12 +1570,9 @@ describe("answer generation", () => {
 
     expect(result.outcome).toBe("answered");
     expect(result.answerDocument).toMatchObject({
+      content: "Revenue increased.",
       schemaVersion: 1,
-      statements: [{
-        content: "Revenue increased.",
-        presentation: "paragraph",
-        section: "answer",
-      }],
+      statements: [],
     });
     expect(result.sources).toEqual([
       expect.objectContaining({
@@ -1618,11 +1615,8 @@ describe("answer generation", () => {
 
     expect(result.outcome).toBe("answered");
     expect(answerModel.doGenerateCalls).toHaveLength(1);
-    expect(result.answerDocument.statements[0]).toMatchObject({
-      content: "Revenue increased.",
-      presentation: "paragraph",
-      section: "answer",
-    });
+    expect(result.answerDocument.content).toBe("Revenue increased.");
+    expect(result.answerDocument.statements).toEqual([]);
   });
 
   it("owns direct-answer presentation for a causal question", async () => {
@@ -1647,10 +1641,10 @@ describe("answer generation", () => {
 
     expect(result.outcome).toBe("answered");
     expect(answerModel.doGenerateCalls).toHaveLength(1);
-    expect(result.answerDocument.statements[0]).toMatchObject({
-      presentation: "paragraph",
-      section: "answer",
-    });
+    expect(result.answerDocument.content).toBe(
+      "A configuration failure stopped the service.",
+    );
+    expect(result.answerDocument.statements).toEqual([]);
     expect(result.answer).not.toContain("## Key points");
   });
 
@@ -1993,7 +1987,7 @@ describe("answer generation", () => {
     );
 
     expect(result.outcome).toBe("answered");
-    expect(result.answerDocument.statements[0]?.content).toBe(longContent);
+    expect(result.answerDocument.content).toBe(longContent);
   });
 
   it.each([
@@ -2022,7 +2016,8 @@ describe("answer generation", () => {
 
     expect(result.outcome).toBe("answered");
     expect(result.answer).not.toContain("Conflicting evidence");
-    expect(result.answerDocument.statements[0]?.section).toBe("answer");
+    expect(result.answerDocument.content).toBe(`The sources describe ${content}.`);
+    expect(result.answerDocument.statements).toEqual([]);
   });
 
   it("accepts an uncited structured response as a fallback", async () => {
@@ -2104,8 +2099,8 @@ describe("answer generation", () => {
     );
 
     expect(result.outcome).toBe("answered");
-    expect(result.answerDocument.statements[0]?.content).toBe("Revenue increased.");
-    expect(result.answer).toContain("Revenue increased\\. [1]");
+    expect(result.answerDocument.content).toBe("Revenue increased.");
+    expect(result.answer).toBe("Revenue increased\\.");
   });
 
   it("normalizes model citation decoration in the streamed answer path", async () => {
@@ -2127,7 +2122,7 @@ describe("answer generation", () => {
     );
 
     expect(result.outcome).toBe("answered");
-    expect(result.answerDocument.statements[0]?.content)
+    expect(result.answerDocument.content)
       .toBe("Treatment options include phenobarbital.");
   });
 
@@ -2168,7 +2163,7 @@ describe("answer generation", () => {
         sourceFile: "/tmp/report.pdf",
       }],
       statements: [{
-        citationKeys: [citationKey],
+        citationKeys: [],
         content: "Zardev sold the riparian lots.",
         presentation: "paragraph",
         section: "answer",
@@ -2205,7 +2200,7 @@ describe("answer generation", () => {
     expect(result.claims).toEqual([expect.objectContaining({
       citationNumbers: [1],
       claim: "Revenue increased by 12 percent.",
-      claimIndex: 1,
+      claimIndex: 0,
     })]);
   });
 
@@ -2227,7 +2222,7 @@ describe("answer generation", () => {
     );
 
     expect(result.outcome).toBe("answered");
-    expect(result.answerDocument.statements[0]?.content).toBe("Revenue increased.");
+    expect(result.answerDocument.content).toBe("Revenue increased.");
     expect(result.answerDocument.citations).toHaveLength(1);
     expect(result.answerDocument.citations[0]?.elementId).toBe("b".repeat(64));
   });

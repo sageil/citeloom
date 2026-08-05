@@ -241,20 +241,14 @@ export function createAnswerContentFromDocument(document) {
       ),
     );
   }
-  if (document.statements.length === 0) {
-    return {
-      citations: [],
-      statements: [{
-        citationIds: [],
-        citationKeys: [],
-        content: document.content,
-        contentHtml: renderAnswerMarkdown(document.content),
-        presentation: "paragraph",
-        section: "answer",
-      }],
-    };
-  }
-  const statements = [];
+  const statements = [{
+    citationIds: [],
+    citationKeys: [],
+    content: document.content,
+    contentHtml: renderAnswerMarkdown(document.content),
+    presentation: "paragraph",
+    section: "answer",
+  }];
   for (const statement of document.statements) {
     const citationKeys = [];
     for (const citationId of statement.citationIds) {

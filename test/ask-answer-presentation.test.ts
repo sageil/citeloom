@@ -41,13 +41,9 @@ describe("ask answer presentation", () => {
         sectionPath: ["Test section"],
         sourceFile: "source.pdf",
       }],
+      content: "The answer cites a table.",
       schemaVersion: 1,
-      statements: [{
-        citationIds: [citationId],
-        content: "The answer cites a table.",
-        presentation: "paragraph",
-        section: "answer",
-      }],
+      statements: [],
     };
 
     const answer = readAnswerPresentation(

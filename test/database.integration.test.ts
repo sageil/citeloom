@@ -2270,13 +2270,9 @@ describe("PostgreSQL research records", () => {
           sectionPath: oldElement.sectionPath,
           sourceFile,
         }],
+        content: "Revenue increased by 12 percent.",
         schemaVersion: 1,
         statements: [{
-          citationIds: [citationId],
-          content: "Revenue increased by 12 percent.",
-          presentation: "paragraph",
-          section: "answer",
-        }, {
           citationIds: [citationId],
           content: "The source reports a 12 percent revenue increase.",
           presentation: "bullet",
@@ -2286,29 +2282,15 @@ describe("PostgreSQL research records", () => {
       claims: [{
         citationNumbers: [1],
         claim: "The source reports a 12 percent revenue increase.",
-        claimIndex: 1,
+        claimIndex: 0,
         evidenceUnits: [{
           citationNumber: 1,
           outcome: "supported",
           rationale: "The exact excerpt directly supports the summary.",
           supportProbability: 0.98,
-          unitId: "claim-1-citation-1",
-        }],
-        rationale: "The exact excerpt directly supports the summary.",
-        status: "supported",
-        verifierModel: config.claimVerifier.model,
-      }, {
-        citationNumbers: [1],
-        claim: "Revenue increased by 12 percent.",
-        claimIndex: 0,
-        evidenceUnits: [{
-          citationNumber: 1,
-          outcome: "supported",
-          rationale: "The exact excerpt directly supports the claim.",
-          supportProbability: 0.99,
           unitId: "claim-0-citation-1",
         }],
-        rationale: "The exact excerpt directly supports the claim.",
+        rationale: "The exact excerpt directly supports the summary.",
         status: "supported",
         verifierModel: config.claimVerifier.model,
       }],
@@ -2343,7 +2325,7 @@ describe("PostgreSQL research records", () => {
       config.claimVerifier.model,
     );
     expect(turn.retrievalTrace?.version).toBe(3);
-    expect(turn.claims.map((claim) => claim.claimIndex)).toEqual([0, 1]);
+    expect(turn.claims.map((claim) => claim.claimIndex)).toEqual([0]);
     expect((await research.readCitation(citationId))?.element).toEqual(oldElement);
 
     await sourceContentStore.writeDocument({
@@ -2523,12 +2505,13 @@ describe("PostgreSQL research records", () => {
           sectionPath: ["Test section"],
           sourceFile: "/documents/invalid.txt",
         }],
+        content: "Invalid.",
         schemaVersion: 1,
         statements: [{
           citationIds: ["00000000-0000-4000-8000-000000000112"],
           content: "Invalid.",
-          presentation: "paragraph",
-          section: "answer",
+          presentation: "bullet",
+          section: "key-points",
         }],
       },
       claims: [{

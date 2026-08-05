@@ -983,12 +983,13 @@ function buildPublishedAnswer(
   }
   return decodePublishedAnswerDocument({
     citations,
+    content: "The answer summarizes the supported change.",
     schemaVersion: 1,
     statements: [{
       citationIds,
       content,
-      presentation: "paragraph",
-      section: "answer",
+      presentation: "bullet",
+      section: "key-points",
     }],
   });
 }
@@ -998,6 +999,7 @@ function buildPublishedConflictAnswer(): PublishedAnswerDocument {
   const second = buildSource(2, "Revenue decreased.");
   return decodePublishedAnswerDocument({
     citations: [first, second],
+    content: "The sources report conflicting revenue directions.",
     schemaVersion: 1,
     statements: [{
       citationIds: [first.id, second.id],

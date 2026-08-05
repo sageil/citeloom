@@ -241,8 +241,8 @@ sequenceDiagram
     end
     Query->>DB: Load original source elements
     Query->>AI: Generate structured answer draft
-    AI-->>Validate: Statements and request-local evidence references
-    Validate->>Validate: Match exact evidence references and compile server-owned citations
+    AI-->>Validate: Direct answer, findings, and request-local evidence references
+    Validate->>Validate: Separate the direct answer from citation-linked findings and compile server-owned evidence records
     Validate->>HHEM: Score selected findings and topics against cited evidence
     HHEM-->>Validate: Advisory support scores
     Validate->>Research: Cited answer, advisory checks, and retrieval trace
@@ -251,7 +251,7 @@ sequenceDiagram
     Entry-->>Client: Stream completed published answer
 ```
 
-CiteLoom shows a citation only when the answer model produced it and citation validation accepted it.
+CiteLoom publishes the direct answer without citation markers and attaches validated citations only to supporting findings or topics.
 HHEM claim-support scoring is a separate advisory check that measures whether cited evidence appears to support the selected atomic statements.
 Ask selects supporting findings, while Chat selects ordered answer topics.
 The direct synthesis is not sent to HHEM.
@@ -276,7 +276,8 @@ Conversation memory can clarify a follow-up, but it cannot support a factual cla
 If document retrieval finds no relevant evidence, Chat publishes an uncited response instead of using model knowledge.
 An answered Chat response contains a substantive direct synthesis and may add ordered topics for distinct parts of a comprehensive response.
 The Chat model contract represents the direct synthesis separately from those topics and does not include a findings field.
-The direct synthesis and each topic carry exact request-local evidence references.
+The model response carries exact request-local evidence references for the direct synthesis and each topic so the server can validate grounding before publication.
+The published direct synthesis does not retain citation links, while each published topic retains its validated citations.
 The model may cite only request-local evidence references, and the server resolves those references to stored source elements before publication.
 Chat sends only its topics to HHEM because they are the atomic supporting statements presented for verification.
 The direct synthesis is not an HHEM input.

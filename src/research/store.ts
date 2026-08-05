@@ -539,9 +539,7 @@ export class ResearchStore {
         answerSchemaVersion: normalized.answerDocument.schemaVersion,
         completedAt: normalized.completedAt,
         id: turnId,
-        uncitedAnswerContent: isPublishedUncitedAnswerDocument(normalized.answerDocument)
-          ? normalized.answerDocument.content
-          : null,
+        uncitedAnswerContent: normalized.answerDocument.content,
         outputState: "building",
         question: normalized.question,
         retrievedContext: [...normalized.retrievedContext],
@@ -1571,9 +1569,12 @@ function buildPersistedTurnOutput(
     publishedCitations.push(citation);
   }
   let answerDocument: PublishedAnswerDocument;
-  if (published.statements.length === 0) {
-    if (turn.uncitedAnswerContent === null) {
-      throw new Error(`Uncited turn ${turn.id} has no persisted content.`);
+  if (turn.uncitedAnswerContent === null) {
+    throw new Error(`Turn ${turn.id} has no persisted answer content.`);
+  }
+  if (publishedCitations.length === 0) {
+    if (published.statements.length > 0) {
+      throw new Error(`Uncited turn ${turn.id} contains cited findings.`);
     }
     answerDocument = decodePublishedAnswerDocument({
       citations: [],
@@ -1582,11 +1583,9 @@ function buildPersistedTurnOutput(
       statements: [],
     });
   } else {
-    if (turn.uncitedAnswerContent !== null) {
-      throw new Error(`Cited turn ${turn.id} contains uncited answer content.`);
-    }
     answerDocument = decodePublishedAnswerDocument({
       citations: publishedCitations,
+      content: turn.uncitedAnswerContent,
       schemaVersion: turn.answerSchemaVersion,
       statements: published.statements,
     });

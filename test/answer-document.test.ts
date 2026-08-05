@@ -396,7 +396,8 @@ describe("answer draft boundary", () => {
     }
     const document = compileAnswerDraft(draft, retrieved);
     expect(document).not.toHaveProperty("status");
-    expect(document.statements).toHaveLength(65);
+    expect(document.content).toBe(`${"a".repeat(1_000)} 0`);
+    expect(document.statements).toHaveLength(64);
     expect(document.citations).toHaveLength(12);
   });
 
@@ -503,11 +504,15 @@ describe("published answer compilation", () => {
       buildRetrievedElement("a", "b", 3),
       buildRetrievedElement("c", "d", 7),
     ];
+    const draft = buildAnsweredDraft(["EVID_B", "EVID_A"]);
+    draft.statements.push({
+      content: "Revenue increased by 12 percent.",
+      evidenceRefs: ["EVID_B", "EVID_A"],
+      presentation: "bullet",
+      section: "key-points",
+    });
     const document = compileAnswerDraft(
-      decodeAnswerDraft(
-        buildAnsweredDraft(["EVID_B", "EVID_A"]),
-        createEvidenceReferences(retrieved.length),
-      ),
+      decodeAnswerDraft(draft, createEvidenceReferences(retrieved.length)),
       retrieved,
     );
     if (document.citations.length === 0) {
@@ -525,7 +530,7 @@ describe("published answer compilation", () => {
     ]);
     expect(readPublishedAnswerClaims(document)).toEqual([{
       citationNumbers: [2, 1],
-      claim: "Revenue increased.",
+      claim: "Revenue increased by 12 percent.",
       claimIndex: 0,
     }]);
   });
@@ -552,13 +557,13 @@ describe("published answer compilation", () => {
     );
 
     expect(renderPublishedAnswerMarkdown(document)).toBe([
-      "Part II says revenue increased by 10% \\(estimated\\) \\[estimate\\]\\. [1]",
+      "Part II says revenue increased by 10% \\(estimated\\) \\[estimate\\]\\.",
       "",
       "The estimate remains limited\\. [1]",
     ].join("\n"));
     expect(renderPublishedAnswerSpeech(document)).toBe([
-      "Part 2 says revenue increased by 10% (estimated) [estimate]. See cited resource 1.",
-      "The estimate remains limited. See cited resource 1.",
+      "Part 2 says revenue increased by 10% (estimated) [estimate].",
+      "The estimate remains limited.",
     ].join("\n"));
   });
 
@@ -566,6 +571,11 @@ describe("published answer compilation", () => {
     const draft = decodeAnswerDraft({
       conflictGroups: [],
       statements: [{
+        content: "The report identifies a supported revenue change.",
+        evidenceRefs: ["EVID_A"],
+        presentation: "paragraph",
+        section: "answer",
+      }, {
         content: "Revenue increased.",
         evidenceRefs: ["EVID_A"],
         presentation: "bullet",
@@ -579,6 +589,8 @@ describe("published answer compilation", () => {
     );
 
     expect(renderPublishedAnswerMarkdown(document)).toBe([
+      "The report identifies a supported revenue change\\.",
+      "",
       "## Key points",
       "",
       "- Revenue increased\\. [1]",
@@ -620,27 +632,34 @@ describe("published answer compilation", () => {
     );
 
     expect(document.statements.map((statement) => statement.section)).toEqual([
-      "answer",
       "conflicting-evidence",
       "conflicting-evidence",
       "conflicting-evidence",
       "conflicting-evidence",
     ]);
-    expect(document.statements[2]?.content).toBe("Revenue increased.");
-    expect(document.statements[3]?.content).toBe("Revenue decreased.");
-    expect(document.statements[2]?.citationIds).toEqual([
+    expect(document.statements[1]?.content).toBe("Revenue increased.");
+    expect(document.statements[2]?.content).toBe("Revenue decreased.");
+    expect(document.statements[1]?.citationIds).toEqual([
       document.citations[0]?.id,
     ]);
-    expect(document.statements[3]?.citationIds).toEqual([
+    expect(document.statements[2]?.citationIds).toEqual([
       document.citations[1]?.id,
     ]);
   });
 
   it("omits an exact duplicate conflict group without dropping either position", () => {
-    const conflictDraft = buildConflictDraft([
-      { claim: "Revenue increased.", evidenceRefs: ["EVID_A"] },
-      { claim: "Revenue decreased.", evidenceRefs: ["EVID_B"] },
-    ]);
+    const conflictDraft = {
+      ...buildConflictDraft([
+        { claim: "Revenue increased.", evidenceRefs: ["EVID_A"] },
+        { claim: "Revenue decreased.", evidenceRefs: ["EVID_B"] },
+      ]),
+      statements: [{
+        content: "The sources report conflicting revenue directions.",
+        evidenceRefs: ["EVID_A", "EVID_B"],
+        presentation: "paragraph",
+        section: "answer",
+      }],
+    };
     const firstGroup = conflictDraft.conflictGroups[0];
     if (firstGroup === undefined) {
       throw new Error("Expected a conflict group fixture.");

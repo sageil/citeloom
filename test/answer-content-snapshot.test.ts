@@ -47,7 +47,7 @@ describe("answer content snapshots", () => {
         sourceFile: "second.pdf",
       }],
       statements: [{
-        citationKeys: ["citation-1"],
+        citationKeys: [],
         content: "The sources describe two changes.",
         presentation: "paragraph",
         section: "answer",

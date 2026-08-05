@@ -134,18 +134,16 @@ describe("atomic structured answer publication", () => {
     expect(answers[0]?.data).toMatchObject({
       answerDocument: {
         citations: [expect.objectContaining({ citationNumber: 1 })],
+        content: "The report describes a revenue change.",
         schemaVersion: 1,
         statements: [
-          expect.objectContaining({
-            content: "The report describes a revenue change.",
-          }),
           expect.objectContaining({ content: "Revenue increased." }),
         ],
       },
       claims: [{
         citationNumbers: [1],
         claim: "Revenue increased.",
-        claimIndex: 1,
+        claimIndex: 0,
         status: "supported",
       }],
       matchedDocuments: [{
@@ -163,10 +161,8 @@ describe("atomic structured answer publication", () => {
     expect(saveTurnMock).toHaveBeenCalledOnce();
     expect(readSavedTurnInput()).toMatchObject({
       answerDocument: {
+        content: "The report describes a revenue change.",
         statements: [
-          expect.objectContaining({
-            content: "The report describes a revenue change.",
-          }),
           expect.objectContaining({ content: "Revenue increased." }),
         ],
       },
@@ -217,8 +213,9 @@ describe("atomic structured answer publication", () => {
     }
     expect(saved.answerDocument).toEqual(published.answerDocument);
     expect(saved.answerDocument.citations).toHaveLength(2);
+    expect(saved.answerDocument.content).toBe("Unsupported statement.");
     expect(saved.answerDocument.statements.map((statement) => statement.content))
-      .toEqual(["Unsupported statement.", "Revenue decreased."]);
+      .toEqual(["Revenue decreased."]);
     expect(saved.claims.map((claim) => claim.status)).toEqual([
       "partially-supported",
     ]);
@@ -277,9 +274,8 @@ describe("atomic structured answer publication", () => {
           citationNumber: 2,
           elementId: "d".repeat(64),
         }],
+        content: "The report describes a revenue change.",
         statements: [{
-          content: "The report describes a revenue change.",
-        }, {
           content: "Revenue increased.",
         }],
       },
@@ -313,10 +309,10 @@ describe("atomic structured answer publication", () => {
     const saved = readSavedTurnInput();
     const published = readChunks(stream.chunks, "data-answer")[0]?.data;
     expect(saved.answerDocument.citations).toHaveLength(1);
+    expect(saved.answerDocument.content).toBe(
+      "The report describes a revenue change.",
+    );
     expect(saved.answerDocument.statements).toEqual([
-      expect.objectContaining({
-        content: "The report describes a revenue change.",
-      }),
       expect.objectContaining({ content: "Revenue increased." }),
     ]);
     expect(saved.claims).toEqual([
@@ -378,11 +374,11 @@ describe("atomic structured answer publication", () => {
     }
     expect(published.answerDocument.citations).toHaveLength(2);
     expect(published.answerDocument.statements.map((statement) => statement.section))
-      .toEqual(["answer", "key-points", "key-points"]);
-    expect(published.answerDocument.statements[1]?.citationIds).toEqual([
+      .toEqual(["key-points", "key-points"]);
+    expect(published.answerDocument.statements[0]?.citationIds).toEqual([
       published.answerDocument.citations[0]?.id,
     ]);
-    expect(published.answerDocument.statements[2]?.citationIds).toEqual([
+    expect(published.answerDocument.statements[1]?.citationIds).toEqual([
       published.answerDocument.citations[1]?.id,
     ]);
     expect(saveTurnMock).toHaveBeenCalledOnce();

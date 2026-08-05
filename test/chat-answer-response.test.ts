@@ -57,7 +57,7 @@ describe("Chat answer response", () => {
         ],
         status: "answered",
       },
-      verificationStatementIndexes: [1],
+      verificationStatementIndexes: null,
     });
   });
 
