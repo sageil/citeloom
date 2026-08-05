@@ -51,7 +51,7 @@ body:
     attributes:
       label: CiteLoom version
       description: Provide the release version or commit SHA when relevant.
-      placeholder: "Example: 0.2.1 or bf248d7"
+      placeholder: "Example: 0.2.2 or bf248d7"
 
   - type: textarea
     id: environment

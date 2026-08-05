@@ -35,7 +35,7 @@ body:
     attributes:
       label: CiteLoom version
       description: Provide the release version or commit SHA where the problem occurs.
-      placeholder: "Example: 0.2.1 or bf248d7"
+      placeholder: "Example: 0.2.2 or bf248d7"
     validations:
       required: true
 

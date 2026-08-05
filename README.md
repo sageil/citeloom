@@ -2,7 +2,7 @@
 
 > Private documents, woven into cited answers.
 
-![Version](https://img.shields.io/badge/version-0.2.1-0ea5e9)
+![Version](https://img.shields.io/badge/version-0.2.2-0ea5e9)
 ![Node.js](https://img.shields.io/badge/node-26.5.0-339933)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
@@ -68,8 +68,8 @@ Set the initial administrator credentials and release tag in `.env`.
 ```dotenv
 CITELOOM_ADMIN_USERNAME=Mayhem
 CITELOOM_ADMIN_PASSWORD='replace-with-a-private-passphrase'
-CITELOOM_IMAGE_TAG=0.2.1
-CITELOOM_RELEASE=0.2.1
+CITELOOM_IMAGE_TAG=0.2.2
+CITELOOM_RELEASE=0.2.2
 ```
 
 Pull the published images and start CiteLoom.
