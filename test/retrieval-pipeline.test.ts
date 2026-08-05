@@ -528,6 +528,7 @@ function buildModelRegistry(
     readAnswerCapabilities: async () => buildTestModelCapabilities(),
     claimVerifier: verifier,
     documentEmbedding: embedding,
+    invalidateOllamaModelMetadata: () => undefined,
     metrics: new InferenceMetricsReporter({ enabled: false }),
     queryExpansion: answerModel,
     queryEmbedding: embedding,

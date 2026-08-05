@@ -121,6 +121,7 @@ function buildModelRegistry(
     readAnswerCapabilities: async () => buildTestModelCapabilities(),
     claimVerifier: new FakeHhemClient(),
     documentEmbedding: embeddingModel,
+    invalidateOllamaModelMetadata: () => undefined,
     metrics: new InferenceMetricsReporter({ enabled: false }),
     queryExpansion: languageModel,
     queryEmbedding: embeddingModel,

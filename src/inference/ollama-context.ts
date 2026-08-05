@@ -43,6 +43,7 @@ export interface OllamaModelMetadata {
 }
 
 export interface OllamaModelMetadataCache {
+  clear(): void;
   invalidate(config: LanguageInferenceConfig): void;
   read(
     config: LanguageInferenceConfig,
@@ -133,6 +134,10 @@ class InMemoryOllamaModelMetadataCache
     OllamaModelMetadataCacheEntry
   >();
 
+  public clear(): void {
+    this.entries.clear();
+  }
+
   public invalidate(config: LanguageInferenceConfig): void {
     this.entries.delete(buildOllamaModelMetadataCacheKey(config));
   }
@@ -184,15 +189,11 @@ export function createOllamaLanguageModelRuntime(
   options: OllamaAdaptiveContextOptions,
 ): OllamaLanguageModelRuntime {
   const fixedModel = options.createModel(config.contextCapacityTokens);
-  if (!config.adaptiveContextEnabled) {
-    return {
-      model: fixedModel,
-      readCapabilities: (abortSignal) => {
-        return readLanguageModelCapabilities(config, abortSignal);
-      },
-    };
-  }
-  const controller = new OllamaAdaptiveContextController(config, options);
+  const controller = new OllamaAdaptiveContextController(
+    config,
+    fixedModel,
+    options,
+  );
   return {
     model: new AdaptiveOllamaLanguageModel(fixedModel, controller),
     readCapabilities: (abortSignal) => {
@@ -244,6 +245,7 @@ class AdaptiveOllamaLanguageModel implements LanguageModelV4 {
 class OllamaAdaptiveContextController {
   public constructor(
     private readonly config: LanguageInferenceConfig,
+    private readonly fixedModel: LanguageModelV4,
     private readonly options: OllamaAdaptiveContextOptions,
   ) {}
 
@@ -262,6 +264,9 @@ class OllamaAdaptiveContextController {
         throw new Error(
           `Ollama reported unsupported model format ${identity.format}.`,
         );
+      }
+      if (!this.config.adaptiveContextEnabled) {
+        return readLanguageModelCapabilities(this.config, abortSignal);
       }
       return {
         contextCapacityTokens: identity.contextCapacityTokens,
@@ -301,6 +306,9 @@ class OllamaAdaptiveContextController {
         throw new Error(
           `Ollama reported unsupported model format ${identity.format}.`,
         );
+      }
+      if (!this.config.adaptiveContextEnabled) {
+        return this.fixedModel;
       }
       const inspection: OllamaRuntimeInspection = {
         identity,

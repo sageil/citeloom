@@ -198,6 +198,7 @@ export async function runDoctorWithRuntime(
   runtime: ApplicationRuntime,
   liveChecks: DoctorLiveChecks = SERVICE_READINESS_CHECKS,
 ): Promise<DoctorCheck[]> {
+  runtime.models.invalidateOllamaModelMetadata();
   const config = runtime.config;
   const pendingChecks = [
     ...buildInferenceRuntimeChecks(

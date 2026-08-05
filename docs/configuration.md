@@ -169,7 +169,8 @@ It does not change Embedding model requests or other providers.
 Ollama safetensors models use the MLX runner's dynamic context instead of CiteLoom's GGUF sizing.
 
 CiteLoom discovers each configured Ollama language model's format, digest, and maximum context lazily on first use and reuses that metadata for the lifetime of the application runtime.
-An application restart or saved settings change creates a new runtime and discovers the configured models again on first use.
+An application restart or saved settings change creates a new runtime, and running diagnostics clears the current runtime's Ollama metadata cache.
+The next model use discovers the configured metadata again.
 MLX and fixed-context GGUF requests do not inspect `/api/ps`.
 Adaptive GGUF requests inspect `/api/ps` before inference so CiteLoom can reuse an already larger resident runner instead of requesting a smaller reload.
 

@@ -1793,6 +1793,7 @@ function buildModelRegistry(summary: LanguageModelV4): EvaluationModelRegistry {
     claimVerifier: new FakeHhemClient(),
     documentEmbedding: embedding,
     evaluation: summary,
+    invalidateOllamaModelMetadata: () => undefined,
     metrics: new InferenceMetricsReporter({ enabled: false }),
     queryExpansion: summary,
     queryEmbedding: embedding,
