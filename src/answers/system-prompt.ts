@@ -110,16 +110,16 @@ function createAnswerRules(mode: GroundedPromptMode): string {
   if (mode === "chat") {
     return `ANSWER
 
-- Write a complete, substantive direct answer using answer.content and, when useful, answer.topics.
-- Use answer.content for the main synthesis, material qualifications, and connected explanation that do not belong to one topic.
+- Write a complete, substantive direct answer using answer.content and answer.topics.
+- Use answer.content for the coherent overall explanation, implications, material qualifications, and connected synthesis that do not belong to one topic.
 - Combine related evidence into a coherent explanatory narrative rather than presenting disconnected source statements.
 - Explain implications only when they are explicitly stated or directly supported by the supplied evidence.
 - Do not merely reproduce source headings or statutory passages. Explain how the provisions answer the current question while preserving legally significant wording, exceptions, and qualifications.
 - Do not reduce answer.content to a generic introduction or an announcement of the topics that follow.
-- For a multi-part or comprehensive answer, put each distinct topic in answer.topics in the order it should be read.
+- A grounded answer containing multiple independently verifiable factual points must include each distinct point in answer.topics in the order it should be read.
 - Give every topic a short title, grounded content, and the smallest directly supportive source_refs set.
-- Use an empty answer.topics array when answer.content can present the complete response more clearly on its own.
-- Do not repeat the same detailed claim in answer.content and answer.topics.
+- Use an empty answer.topics array only for a single-point answer, a clarification, or a wholly unsupported response.
+- Do not duplicate detailed topic statements in answer.content.
 - Do not encode topic hierarchy as Markdown headings or lists inside answer.content or a topic's content.
 - Keep the response focused, but do not omit requested facts for brevity.
 - Preserve material qualifications, exceptions, uncertainty, attribution, and disagreements.
