@@ -107,27 +107,6 @@ describe("Ollama model metadata", () => {
     expect(runtime.dynamicModelSelections).toBe(1);
     expect(runtime.fixedContextSelections).toEqual([131_072]);
   });
-
-  it("rediscovers metadata after the cache is cleared", async () => {
-    const cache = createOllamaModelMetadataCache();
-    const mlxPaths: string[] = [];
-    vi.stubGlobal("fetch", buildOllamaFetch("safetensors", mlxPaths));
-    const mlx = buildRuntime(buildConfig("qwen3.5:9b-mlx"), cache);
-
-    await generateText({ maxRetries: 0, model: mlx.runtime.model, prompt: "MLX" });
-    cache.clear();
-
-    const ggufPaths: string[] = [];
-    vi.stubGlobal("fetch", buildOllamaFetch("gguf", ggufPaths));
-    const gguf = buildRuntime(buildConfig("qwen3.5:9b-mlx"), cache);
-    await generateText({ maxRetries: 0, model: gguf.runtime.model, prompt: "GGUF" });
-
-    expect(mlxPaths.filter((path) => path === "/api/show")).toHaveLength(1);
-    expect(ggufPaths.filter((path) => path === "/api/show")).toHaveLength(1);
-    expect(mlx.dynamicModelSelections).toBe(1);
-    expect(gguf.dynamicModelSelections).toBe(0);
-    expect(ggufPaths).toContain("/api/ps");
-  });
 });
 
 function buildConfig(model: string): LanguageInferenceConfig {

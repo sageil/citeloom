@@ -857,7 +857,6 @@ function buildModels(claimVerifier: FakeHhemClient): InferenceModelRegistry {
     readAnswerCapabilities: async () => buildTestModelCapabilities(),
     claimVerifier,
     documentEmbedding: embedding,
-    invalidateOllamaModelMetadata: () => undefined,
     metrics: new InferenceMetricsReporter({ enabled: false }),
     queryExpansion: languageModel,
     queryEmbedding: embedding,

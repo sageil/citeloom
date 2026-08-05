@@ -43,7 +43,6 @@ export interface OllamaModelMetadata {
 }
 
 export interface OllamaModelMetadataCache {
-  clear(): void;
   invalidate(config: LanguageInferenceConfig): void;
   read(
     config: LanguageInferenceConfig,
@@ -133,10 +132,6 @@ class InMemoryOllamaModelMetadataCache
     string,
     OllamaModelMetadataCacheEntry
   >();
-
-  public clear(): void {
-    this.entries.clear();
-  }
 
   public invalidate(config: LanguageInferenceConfig): void {
     this.entries.delete(buildOllamaModelMetadataCacheKey(config));

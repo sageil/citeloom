@@ -95,7 +95,6 @@ function buildModelRegistry(
     claimVerifier: new FakeHhemClient(),
     documentEmbedding: embedding,
     evaluation,
-    invalidateOllamaModelMetadata: () => undefined,
     metrics: new InferenceMetricsReporter({ enabled: false }),
     queryExpansion: evaluation,
     queryEmbedding: embedding,

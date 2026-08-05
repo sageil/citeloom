@@ -61,7 +61,6 @@ export interface InferenceModelRegistry {
   readChatCapabilities?: (abortSignal: AbortSignal) => Promise<LanguageModelCapabilities>;
   claimVerifier: HhemClient;
   documentEmbedding: EmbeddingModelV4;
-  invalidateOllamaModelMetadata(): void;
   metrics: InferenceMetricsReporter;
   queryExpansion: LanguageModelV4 | null;
   queryEmbedding: EmbeddingModelV4;
@@ -295,9 +294,6 @@ export function createInferenceModelRegistry(
     },
     claimVerifier,
     documentEmbedding: registry.embeddingModel("inference:document"),
-    invalidateOllamaModelMetadata: () => {
-      ollamaModelMetadataCache.clear();
-    },
     metrics,
     queryEmbedding: registry.embeddingModel("inference:query"),
     queryExpansion: queryExpansionRuntime === null
