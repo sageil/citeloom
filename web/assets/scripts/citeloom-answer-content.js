@@ -212,6 +212,7 @@ export function applyAnswerContentUpdate(content, update) {
       contentHtml: renderAnswerMarkdown(statementContent),
       presentation: statementUpdate.presentation,
       section: statementUpdate.section,
+      verificationIndex: null,
     };
   }
   for (let index = 0; index < statements.length; index += 1) {
@@ -248,8 +249,13 @@ export function createAnswerContentFromDocument(document) {
     contentHtml: renderAnswerMarkdown(document.content),
     presentation: "paragraph",
     section: "answer",
+    verificationIndex: null,
   }];
-  for (const statement of document.statements) {
+  for (let statementIndex = 0; statementIndex < document.statements.length; statementIndex += 1) {
+    const statement = document.statements[statementIndex];
+    if (statement === undefined) {
+      continue;
+    }
     const citationKeys = [];
     for (const citationId of statement.citationIds) {
       const citationKey = citationKeyById.get(citationId);
@@ -265,6 +271,7 @@ export function createAnswerContentFromDocument(document) {
       contentHtml: renderAnswerMarkdown(statement.content),
       presentation: statement.presentation,
       section: statement.section,
+      verificationIndex: statementIndex,
     });
   }
   return { citations: [], statements };

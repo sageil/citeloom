@@ -1296,14 +1296,17 @@ export function registerPage(alpine) {
       return message.answerContent.statements;
     },
 
-    verificationCheckForStatement(message, statementIndex) {
+    verificationCheckForStatement(message, statement) {
+      if (statement.verificationIndex === null) {
+        return null;
+      }
       return message.claims.find((claim) => {
-        return claim.claimIndex === statementIndex;
+        return claim.claimIndex === statement.verificationIndex;
       }) ?? null;
     },
 
-    citationVerificationStatus(message, statementIndex, citationKey) {
-      const check = this.verificationCheckForStatement(message, statementIndex);
+    citationVerificationStatus(message, statement, citationKey) {
+      const check = this.verificationCheckForStatement(message, statement);
       const citation = this.citationForKey(message, citationKey);
       if (check === null || citation === null) {
         return null;
@@ -1329,16 +1332,16 @@ export function registerPage(alpine) {
       return "unverified";
     },
 
-    citationVerificationClasses(message, statementIndex, citationKey) {
+    citationVerificationClasses(message, statement, citationKey) {
       const status = this.citationVerificationStatus(
         message,
-        statementIndex,
+        statement,
         citationKey,
       );
       if (status === null) {
         return "";
       }
-      const check = this.verificationCheckForStatement(message, statementIndex);
+      const check = this.verificationCheckForStatement(message, statement);
       if (
         status === "unsupported"
         && check?.status === "collectively-supported"
@@ -1348,7 +1351,7 @@ export function registerPage(alpine) {
       return status;
     },
 
-    citationVerificationDescription(message, statementIndex, citationKey) {
+    citationVerificationDescription(message, statement, citationKey) {
       const citation = this.citationForKey(message, citationKey);
       if (citation?.preview === true) {
         const source = this.sourceTitle(citation.sourceFile);
@@ -1356,10 +1359,10 @@ export function registerPage(alpine) {
       }
       const status = this.citationVerificationStatus(
         message,
-        statementIndex,
+        statement,
         citationKey,
       );
-      const check = this.verificationCheckForStatement(message, statementIndex);
+      const check = this.verificationCheckForStatement(message, statement);
       if (status === "supported") {
         return "Automated evidence check: this citation supports the statement.";
       }
@@ -1387,7 +1390,7 @@ export function registerPage(alpine) {
       return "Automated evidence check result is unavailable for this citation.";
     },
 
-    statementCitationLabel(message, statementIndex, citationKey) {
+    statementCitationLabel(message, statement, citationKey) {
       const citation = this.citationForKey(message, citationKey);
       if (citation === null) {
         return "";
@@ -1395,7 +1398,7 @@ export function registerPage(alpine) {
       const label = this.citationLabel(citation);
       const description = this.citationVerificationDescription(
         message,
-        statementIndex,
+        statement,
         citationKey,
       );
       return `${label}. ${description}`;

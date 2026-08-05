@@ -171,10 +171,10 @@
                                     <button
                                       type="button"
                                       x-show="citationForKey(message, citationKey) !== null"
-                                      :class="citationVerificationClasses(message, statementIndex, citationKey)"
+                                      :class="citationVerificationClasses(message, statement, citationKey)"
                                       x-text="citationLabel(citationForKey(message, citationKey))"
-                                      :title="citationVerificationDescription(message, statementIndex, citationKey)"
-                                      :aria-label="statementCitationLabel(message, statementIndex, citationKey)"
+                                      :title="citationVerificationDescription(message, statement, citationKey)"
+                                      :aria-label="statementCitationLabel(message, statement, citationKey)"
                                       :disabled="citationForKey(message, citationKey)?.preview === true"
                                       @click="openCitation(citationForKey(message, citationKey))"
                                     ></button>
