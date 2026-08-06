@@ -40,12 +40,12 @@ describe("answer content snapshots", () => {
 
     expect(snapshot).toEqual({
       citations: [{
-        citationNumber: null,
+        citationNumber: 1,
         key: "citation-1",
         pageNumbers: [2],
         sourceFile: "first.pdf",
       }, {
-        citationNumber: null,
+        citationNumber: 2,
         key: "citation-2",
         pageNumbers: [5],
         sourceFile: "second.pdf",
@@ -95,5 +95,41 @@ describe("answer content snapshots", () => {
       "key-points",
     ]);
     expect(snapshot?.statements[1]?.citationKeys).toEqual(["citation-1"]);
+    expect(snapshot?.citations[0]?.citationNumber).toBe(1);
+  });
+
+  it("numbers partial citations by retrieved evidence order", () => {
+    const catalog: AnswerContentCitationCatalog = new Map([
+      ["EVID_A", {
+        citationNumber: null,
+        key: "citation-a",
+        pageNumbers: [2],
+        sourceFile: "first.pdf",
+      }],
+      ["EVID_B", {
+        citationNumber: null,
+        key: "citation-b",
+        pageNumbers: [5],
+        sourceFile: "second.pdf",
+      }],
+    ]);
+
+    const snapshot = decodePartialAnswerContentSnapshot({
+      answer: {
+        content: "The report describes two changes.",
+        findings: [{
+          content: "The second source supports this finding.",
+          evidenceRefs: ["EVID_B"],
+        }, {
+          content: "The first source supports this finding.",
+          evidenceRefs: ["EVID_A"],
+        }],
+      },
+    }, catalog);
+
+    expect(snapshot?.citations).toEqual([
+      expect.objectContaining({ citationNumber: 1, key: "citation-a" }),
+      expect.objectContaining({ citationNumber: 2, key: "citation-b" }),
+    ]);
   });
 });

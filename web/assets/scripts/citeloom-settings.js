@@ -2254,11 +2254,6 @@ export function registerPage(alpine) {
       return field.source === "database" ? "Saved value" : "Default value";
     },
 
-    fieldResetDisabled(field) {
-      return field.source === "database-default"
-        && !Object.hasOwn(this.pending, field.key);
-    },
-
     fieldCredentialMessageVisible(field) {
       return field.sensitive
         && field.configured
@@ -2896,12 +2891,6 @@ export function registerPage(alpine) {
     writeProviderCapabilityBaseUrl(capability, value) {
       this.updateSelectedProviderConfiguration((configuration) => {
         configuration[capability].baseUrl = this.normalizeOptionalText(value);
-      });
-    },
-
-    clearProviderCapabilityBaseUrl(capability) {
-      this.updateSelectedProviderConfiguration((configuration) => {
-        configuration[capability].baseUrl = null;
       });
     },
 

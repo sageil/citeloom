@@ -44,7 +44,9 @@ describe("ask answer presentation", () => {
     expect(fragment).toContain("class=\"research-thread-actions\"");
     expect(fragment).not.toContain("class=\"research-context-menu\"");
     expect(fragment).not.toContain("class=\"evidence-sources-pane\"");
-    expect(fragment).toContain('x-show="hasAnswerContent()"');
+    expect(fragment).toContain(
+      'x-show="historicalAnswerVisible &amp;&amp; hasAnswerContent()"',
+    );
     expect(stylesheet).toContain(
       "grid-template-columns: 220px minmax(0, 1fr) 290px;",
     );

@@ -701,6 +701,7 @@ export function registerPage(alpine) {
     includeRelated: false,
     inferenceRuntimeName: "the configured inference runtime",
     inspectedCitation: null,
+    historicalAnswerVisible: false,
     mode: "ask",
     newThreadTitle: "",
     operation: null,
@@ -869,6 +870,7 @@ export function registerPage(alpine) {
       this.answer = null;
       this.streamedAnswerContent = createEmptyAnswerContent();
       this.answerContentSections = [];
+      this.historicalAnswerVisible = false;
     },
 
     presentHistoricalAnswer(answer) {
@@ -881,6 +883,7 @@ export function registerPage(alpine) {
       this.answer = answer;
       this.streamedAnswerContent = content;
       this.answerContentSections = buildAnswerContentSections(content);
+      this.historicalAnswerVisible = true;
     },
 
     applyStreamedAnswerUpdate(update) {

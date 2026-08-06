@@ -310,32 +310,34 @@
                 </select>
                 <small x-text="featureThinkingModeOverride(selectedFeatureCapability) === null ? `Uses the provider setting: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.` : `Uses this feature setting: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.`"></small>
               </label>
-              <template x-if="featurePrimaryFields(selectedFeatureCapability).length > 0">
-                <div class="settings-feature-primary-fields">
-                  <template x-for="field in featurePrimaryFields(selectedFeatureCapability)" :key="field.key">
-                    <label class="form-field">
-                      <span x-text="field.label"></span>
-                      <template x-if="field.input === 'select'">
-                        <select @change="writeFieldDraft(field, $event.target.value)">
-                          <template x-for="option in field.options" :key="String(option.value)"><option :selected="String(option.value) === String(drafts[field.key])" :value="String(option.value)" x-text="option.label"></option></template>
-                        </select>
-                      </template>
-                      <template x-if="field.input !== 'select'">
-                        <input :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" />
-                      </template>
-                      <small x-text="field.description"></small>
-                    </label>
+              <template x-if="selectedFeatureCapability === 'textToSpeech'">
+                <label class="form-field">
+                  <span>Voice for this feature</span>
+                  <input placeholder="Use provider default" type="text" :value="featureVoiceOverride() ?? ''" @input="writeFeatureVoiceOverride($event.target.value)" />
+                  <small x-text="featureVoiceOverride() === null ? 'The provider default voice is used.' : 'This voice is used instead of the provider default.'"></small>
+                </label>
+              </template>
+              <template x-for="field in featurePrimaryFields(selectedFeatureCapability)" :key="field.key">
+                <label class="form-field">
+                  <span x-text="field.label"></span>
+                  <template x-if="field.input === 'boolean'">
+                    <select :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value === 'true')">
+                      <option value="true">True</option>
+                      <option value="false">False</option>
+                    </select>
                   </template>
-                </div>
+                  <template x-if="field.input === 'select'">
+                    <select @change="writeFieldDraft(field, $event.target.value)">
+                      <template x-for="option in field.options" :key="String(option.value)"><option :selected="String(option.value) === String(drafts[field.key])" :value="String(option.value)" x-text="option.label"></option></template>
+                    </select>
+                  </template>
+                  <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'">
+                    <input :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" />
+                  </template>
+                  <small x-text="field.description"></small>
+                </label>
               </template>
             </div>
-            <template x-if="selectedFeatureCapability === 'textToSpeech'">
-              <label class="form-field settings-feature-voice">
-                <span>Voice for this feature</span>
-                <input placeholder="Use provider default" type="text" :value="featureVoiceOverride() ?? ''" @input="writeFeatureVoiceOverride($event.target.value)" />
-                <small x-text="featureVoiceOverride() === null ? 'The provider default voice is used.' : 'This voice is used instead of the provider default.'"></small>
-              </label>
-            </template>
             <template x-if="selectedFeatureCapability === 'embedding'">
               <div class="settings-input-format-library settings-feature-input-format-library">
                 <template x-if="selectedEmbeddingInputFormat() !== null">
@@ -442,7 +444,6 @@
                     <template x-if="field.input === 'select'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :selected="String(option.value) === String(drafts[field.key])" :value="String(option.value)" x-text="option.label"></option></template></select></template>
                     <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input class="form-control" :id="`setting-${field.key}`" :max="field.max" :min="field.min" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
                     <span class="setting-unit" x-show="field.unit !== null" x-text="field.unit"></span>
-                    <button class="text-button" type="button" :disabled="fieldResetDisabled(field)" @click="resetField(field)">Reset</button>
                   </div>
                 </div>
               </template>
@@ -718,19 +719,11 @@
                           </template>
                         </select>
                       </label>
-                      <div class="form-field settings-provider-override-field" x-show="!providerUsesDeviceAuth()">
-                        <span class="settings-provider-field-heading">
-                          <label :for="`provider-${selectedProviderId}-${entry.capability}-base-url`">URL for this feature</label>
-                          <button
-                            class="text-button"
-                            type="button"
-                            x-show="providerCapabilityBaseUrl(entry.capability) !== null"
-                            @click="clearProviderCapabilityBaseUrl(entry.capability)"
-                          >Clear override</button>
-                        </span>
+                      <label class="form-field" x-show="!providerUsesDeviceAuth()">
+                        <span>URL for this feature</span>
                         <input :id="`provider-${selectedProviderId}-${entry.capability}-base-url`" placeholder="Use the provider base URL" type="url" :value="providerCapabilityBaseUrl(entry.capability) ?? ''" @input="writeProviderCapabilityBaseUrl(entry.capability, $event.target.value)" />
                         <small x-text="providerCapabilityBaseUrl(entry.capability) === null ? 'Uses the provider URL.' : 'Uses this URL instead of the provider URL for this feature.'"></small>
-                      </div>
+                      </label>
                     </div>
                   </section>
                 </div>
@@ -834,7 +827,6 @@
                         <template x-if="field.input === 'select' &amp;&amp; field.key !== 'doclingPipeline'"><select class="form-control" :id="`setting-${field.key}`" :value="String(drafts[field.key])" @change="writeFieldDraft(field, $event.target.value)"><template x-for="option in field.options" :key="String(option.value)"><option :selected="String(option.value) === String(drafts[field.key])" :value="String(option.value)" x-text="option.label"></option></template></select></template>
                         <template x-if="field.input !== 'boolean' &amp;&amp; field.input !== 'select'"><input class="form-control" :autocomplete="field.sensitive ? 'new-password' : 'off'" :data-1p-ignore="field.sensitive ? 'true' : null" :data-bwignore="field.sensitive ? 'true' : null" :data-lpignore="field.sensitive ? 'true' : null" :id="`setting-${field.key}`" :max="field.max" :min="field.min" :name="`setting-${field.key}`" :placeholder="field.sensitive &amp;&amp; field.configured ? 'Configured' : ''" :step="field.step" :type="field.input" :value="String(drafts[field.key])" @input="writeFieldDraft(field, $event.target.value)" /></template>
                         <span class="setting-unit" x-show="field.unit !== null" x-text="field.unit"></span>
-                        <button class="text-button" type="button" :disabled="fieldResetDisabled(field)" @click="resetField(field)">Reset to default</button>
                       </div>
                       <small class="settings-runtime-credential-note" x-show="fieldCredentialMessageVisible(field)">A credential is configured. Enter a new value to replace it.</small>
                     </div>

@@ -2160,7 +2160,7 @@ describe("answer generation", () => {
     );
     expect(previews.at(-1)).toEqual({
       citations: [{
-        citationNumber: null,
+        citationNumber: 1,
         key: citationKey,
         pageNumbers: [3],
         sourceFile: "/tmp/report.pdf",

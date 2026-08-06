@@ -575,14 +575,6 @@
   padding-left: 30px;
 }
 
-.settings-feature-primary-fields {
-  display: grid;
-  min-width: 0;
-  grid-column: 1 / -1;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
 .settings-feature-url {
   min-height: 0;
   padding: 0;
@@ -630,11 +622,6 @@
   min-height: 32px;
   padding: 0 10px;
   font-size: 11px;
-}
-
-.settings-feature-voice {
-  max-width: calc(50% - 7px);
-  margin-left: 30px;
 }
 
 .settings-resolved-result {
@@ -1240,20 +1227,6 @@
   gap: 12px;
 }
 
-.settings-provider-field-heading {
-  display: flex;
-  min-height: 24px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.settings-provider-field-heading .text-button {
-  padding: 0;
-  font-size: 10px;
-  white-space: nowrap;
-}
-
 .settings-provider-editor > .settings-feature-footer {
   position: sticky;
   z-index: 3;
@@ -1743,7 +1716,6 @@
 
   .application-feature-settings,
   .settings-feature-form-grid,
-  .settings-feature-primary-fields,
   .settings-feature-health,
   .provider-form-grid,
   .settings-feature-workspace,
@@ -1879,8 +1851,7 @@
   .settings-credential-warning,
   .settings-embedding-space-impact,
   .settings-embedding-space-reindex,
-  .settings-resolved-result,
-  .settings-feature-voice {
+  .settings-resolved-result {
     max-width: none;
     margin-left: 0;
     padding-left: 0;

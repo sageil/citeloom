@@ -108,7 +108,10 @@ export function decodePartialAnswerContentSnapshot(
   );
   const findings = Reflect.get(answer, "findings");
   if (!Array.isArray(findings)) {
-    return { citations: [...citationsByKey.values()], statements };
+    return {
+      citations: createNumberedPartialCitations(citationCatalog, citationsByKey),
+      statements,
+    };
   }
   for (const finding of findings) {
     const content = readPartialFindingContent(finding);
@@ -126,7 +129,32 @@ export function decodePartialAnswerContentSnapshot(
       section: "key-points",
     });
   }
-  return { citations: [...citationsByKey.values()], statements };
+  return {
+    citations: createNumberedPartialCitations(citationCatalog, citationsByKey),
+    statements,
+  };
+}
+
+function createNumberedPartialCitations(
+  citationCatalog: AnswerContentCitationCatalog,
+  citationsByKey: ReadonlyMap<string, AnswerContentCitationPreview>,
+): AnswerContentCitationPreview[] {
+  const citations: AnswerContentCitationPreview[] = [];
+  const emittedCitationKeys = new Set<string>();
+  for (const citation of citationCatalog.values()) {
+    if (
+      !citationsByKey.has(citation.key)
+      || emittedCitationKeys.has(citation.key)
+    ) {
+      continue;
+    }
+    emittedCitationKeys.add(citation.key);
+    citations.push({
+      ...citation,
+      citationNumber: citations.length + 1,
+    });
+  }
+  return citations;
 }
 
 function appendPartialAnswerTopics(

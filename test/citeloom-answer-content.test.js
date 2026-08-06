@@ -11,6 +11,46 @@ import {
 import { registerPage } from "../web/assets/scripts/citeloom-ask.js";
 
 describe("CiteLoom answer content updates", () => {
+  it("shows question titles only for historical answers", () => {
+    let createPage;
+    registerPage({
+      data(_name, factory) {
+        createPage = factory;
+      },
+    });
+    if (createPage === undefined) {
+      throw new Error("Ask page registration did not provide a page factory.");
+    }
+    const page = createPage();
+    page.presentHistoricalAnswer({
+      answerDocument: {
+        citations: [],
+        content: "A historical answer.",
+        schemaVersion: 1,
+        statements: [],
+      },
+      sources: [],
+    });
+
+    expect(page.historicalAnswerVisible).toBe(true);
+
+    page.clearAnswerPresentation();
+    page.applyStreamedAnswerUpdate(readAnswerContentUpdate({
+      citations: [],
+      statementCount: 1,
+      statements: [{
+        citationKeys: [],
+        content: "A new streamed answer.",
+        index: 0,
+        mode: "replace",
+        presentation: "paragraph",
+        section: "answer",
+      }],
+    }));
+
+    expect(page.historicalAnswerVisible).toBe(false);
+  });
+
   it("applies citation metadata without redrawing streamed statement content", () => {
     const initial = readAnswerContentUpdate({
       citations: [],
