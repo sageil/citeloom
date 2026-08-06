@@ -115,18 +115,8 @@ export interface FallbackGeneratedAnswerResult extends AnswerResult {
   sources: [];
 }
 
-export interface EmptyRetrievalAnswerResult extends AnswerResult {
-  claims: [];
-  matchedDocuments: [];
-  outcome: "fallback";
-  reason: "empty-retrieval";
-  runDetails: null;
-  sources: [];
-}
-
 export type GeneratedAnswerResult =
   | AnsweredGeneratedAnswerResult
-  | EmptyRetrievalAnswerResult
   | FallbackGeneratedAnswerResult;
 
 export function attachAdvisoryClaimChecks(
@@ -362,9 +352,6 @@ async function generateAnswer(
   prompt: AnswerGenerationPrompt,
   receiveAnswerContent: (content: AnswerContentSnapshot) => void,
 ): Promise<GeneratedAnswerResult> {
-  if (retrieved.length === 0) {
-    return createEmptyRetrievalAnswer();
-  }
   const processingQuestion = createProcessingQuestion(question);
   const startedAt = performance.now();
   const stage = runTelemetry.startStage({
@@ -1258,26 +1245,6 @@ function buildAnswerRequestEvidence(
     evidenceSha256: item.provenance.evidenceSha256,
     elementId: item.element.id,
     retrievalWindowId: item.provenance.retrievalWindowId,
-  };
-}
-
-export function createEmptyRetrievalAnswer(): EmptyRetrievalAnswerResult {
-  return createRetrievalFallback("empty-retrieval");
-}
-
-function createRetrievalFallback(
-  reason: EmptyRetrievalAnswerResult["reason"],
-): EmptyRetrievalAnswerResult {
-  const answerDocument = createUncitedAnswerDocument();
-  return {
-    answer: renderPublishedAnswerMarkdown(answerDocument),
-    answerDocument,
-    claims: [],
-    matchedDocuments: [],
-    outcome: "fallback",
-    reason,
-    runDetails: null,
-    sources: [],
   };
 }
 

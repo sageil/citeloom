@@ -10,7 +10,6 @@ import {
 } from "../answers/stream.js";
 import { createPendingAnswerClaimChecks } from "../answers/claim-verification.js";
 import {
-  createEmptyRetrievalAnswer,
   streamAnswerQuestion,
   type GeneratedAnswerResult,
 } from "../answers/inference.js";
@@ -211,26 +210,21 @@ export async function answerChatMessageWithRuntime(
       "retrieving",
       "generating",
     );
-    let result: ChatGeneratedResponse;
-    if (prepared.retrieved.length === 0) {
-      result = createEmptyRetrievalAnswer();
-    } else {
-      reportProgress("Generating a grounded chat response");
-      result = await streamAnswerQuestion(
-        chatModels,
-        accepted.userMessage.content,
-        prepared.retrieved,
-        chatScheduler,
-        lease.signal,
-        prepared.generationSettings.answer,
-        runTelemetry,
-        {
-          conversationTurns: memory.conversationTurns,
-          prompt: CHAT_GENERATION_PROMPT,
-          receiveAnswerContent: publishAnswerContent,
-        },
-      );
-    }
+    reportProgress("Generating a chat response");
+    const result: ChatGeneratedResponse = await streamAnswerQuestion(
+      chatModels,
+      accepted.userMessage.content,
+      prepared.retrieved,
+      chatScheduler,
+      lease.signal,
+      prepared.generationSettings.answer,
+      runTelemetry,
+      {
+        conversationTurns: memory.conversationTurns,
+        prompt: CHAT_GENERATION_PROMPT,
+        receiveAnswerContent: publishAnswerContent,
+      },
+    );
     publishAnswerContent(
       createPublishedAnswerContentSnapshot(result.answerDocument),
     );

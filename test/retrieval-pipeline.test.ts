@@ -188,11 +188,11 @@ describe("atomic structured answer publication", () => {
     const answerModel = buildAnswerModel({
       answer: {
         content: "Unsupported statement.",
+        findings: [{
+          content: "Revenue decreased.",
+          evidenceRefs: ["EVID_B", "EVID_A"],
+        }],
       },
-      findings: [{
-        content: "Revenue decreased.",
-        evidenceRefs: ["EVID_B", "EVID_A"],
-      }],
     });
     const stream = buildWriter();
 
@@ -341,14 +341,14 @@ describe("atomic structured answer publication", () => {
     const draft = {
       answer: {
         content: "The reports describe opposite revenue changes.",
-      },
-      findings: [{
+        findings: [{
           content: "Revenue increased.",
           evidenceRefs: ["EVID_A"],
         }, {
           content: "Revenue decreased.",
           evidenceRefs: ["EVID_B"],
         }],
+      },
     };
     const stream = buildWriter();
 
@@ -384,11 +384,13 @@ describe("atomic structured answer publication", () => {
 
   it("rejects an invalid model draft without persistence or publication", async () => {
     const answerModel = buildAnswerModel({
-      answer: { content: "Revenue increased." },
-      findings: [{
+      answer: {
         content: "Revenue increased.",
-        evidenceRefs: ["EVID_B"],
-      }],
+        findings: [{
+          content: "Revenue increased.",
+          evidenceRefs: ["EVID_B"],
+        }],
+      },
     });
     const verifier = new FakeHhemClient();
     const stream = buildWriter();
@@ -626,8 +628,8 @@ function buildAnsweredDraft() {
   return {
     answer: {
       content: "Revenue increased.",
+      findings: [],
     },
-    findings: [],
   };
 }
 
@@ -635,11 +637,11 @@ function buildVerifiableAnsweredDraft(evidenceRefs: string[]) {
   return {
     answer: {
       content: "The report describes a revenue change.",
+      findings: [{
+        content: "Revenue increased.",
+        evidenceRefs,
+      }],
     },
-    findings: [{
-      content: "Revenue increased.",
-      evidenceRefs,
-    }],
   };
 }
 

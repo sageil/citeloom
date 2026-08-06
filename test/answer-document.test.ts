@@ -28,7 +28,7 @@ describe("answer draft boundary", () => {
 
     expect(schema).toMatchObject({
       additionalProperties: false,
-      required: ["answer", "findings"],
+      required: ["answer"],
       type: "object",
     });
     expect(schema).not.toHaveProperty("oneOf");
@@ -38,6 +38,26 @@ describe("answer draft boundary", () => {
     expect(schemaText).toContain("EVID_B");
     expect(schemaText).not.toContain("presentation");
     expect(schemaText).not.toContain('"section"');
+  });
+
+  it("allows only an uncited response when no evidence was retrieved", () => {
+    const schema = createAnswerModelResponseSchema([]);
+
+    expect(schema.safeParse({
+      answer: {
+        content: "Hello! How can I help you today?",
+        findings: [],
+      },
+    }).success).toBe(true);
+    expect(schema.safeParse({
+      answer: {
+        content: "The policy applies.",
+        findings: [{
+          content: "The policy applies.",
+          evidenceRefs: ["EVID_A"],
+        }],
+      },
+    }).success).toBe(false);
   });
 
   it("decodes valid cited and uncited drafts", () => {
@@ -61,11 +81,11 @@ describe("answer draft boundary", () => {
     const draft = decodeAnswerModelResponse({
       answer: {
         content: "Revenue increased.",
+        findings: [{
+          content: "The reported revenue was higher than before.",
+          evidenceRefs: ["EVID_A"],
+        }],
       },
-      findings: [{
-        content: "The reported revenue was higher than before.",
-        evidenceRefs: ["EVID_A"],
-      }],
     }, createEvidenceReferences(1));
 
     expect(draft).toEqual({
@@ -89,11 +109,11 @@ describe("answer draft boundary", () => {
     const draft = decodeAnswerModelResponse({
       answer: {
         content: "A supported cause is configuration failure.",
+        findings: [{
+          content: "The evidence identifies configuration failure.",
+          evidenceRefs: ["EVID_A"],
+        }],
       },
-      findings: [{
-        content: "The evidence identifies configuration failure.",
-        evidenceRefs: ["EVID_A"],
-      }],
     }, createEvidenceReferences(1));
 
     expect(draft).toMatchObject({
@@ -123,8 +143,8 @@ describe("answer draft boundary", () => {
       const draft = decodeAnswerModelResponse({
         answer: {
           content: `The service supports ${deploymentModes.length} deployment modes.`,
+          findings: statements,
         },
-        findings: statements,
       }, evidenceRefs);
 
       expect(draft).toMatchObject({
@@ -144,14 +164,14 @@ describe("answer draft boundary", () => {
     const draft = decodeAnswerModelResponse({
       answer: {
         content: "The first mechanism blocks the receptor.",
-      },
-      findings: [{
+        findings: [{
           content: "The first mechanism blocks the receptor.",
           evidenceRefs: ["EVID_A"],
-      }, {
+        }, {
           content: "The second mechanism blocks the proton pump.",
           evidenceRefs: ["EVID_B"],
-      }],
+        }],
+      },
     }, createEvidenceReferences(2));
 
     expect(draft).toMatchObject({
@@ -164,14 +184,18 @@ describe("answer draft boundary", () => {
     });
   });
 
-  it("normalizes an uncited model response into the domain draft", () => {
+  it.each([
+    ["greeting", "Hello! How can I help?"],
+    ["clarification", "Which policy are you referring to?"],
+    ["evidence limitation", "The supplied source material does not identify the requested information."],
+  ])("normalizes an uncited %s into the domain draft", (_kind, content) => {
     expect(decodeAnswerModelResponse({
       answer: {
-        content: "The supplied source material does not identify the requested information.",
+        content,
+        findings: [],
       },
-      findings: [],
     }, createEvidenceReferences(2))).toEqual({
-      content: "The supplied source material does not identify the requested information.",
+      content,
       status: "uncited",
     });
   });
@@ -180,11 +204,11 @@ describe("answer draft boundary", () => {
     const value = {
       answer: {
         content: "Revenue was reported by both sources. [1, 2]",
+        findings: [
+          { content: "Revenue increased [EVID_A].", evidenceRefs: ["EVID_A"] },
+          { content: "Revenue [EVID_B] decreased.", evidenceRefs: ["EVID_B"] },
+        ],
       },
-      findings: [
-        { content: "Revenue increased [EVID_A].", evidenceRefs: ["EVID_A"] },
-        { content: "Revenue [EVID_B] decreased.", evidenceRefs: ["EVID_B"] },
-      ],
     };
 
     expect(decodeAnswerModelResponse(value, createEvidenceReferences(2))).toEqual({
@@ -449,25 +473,25 @@ describe("answer draft boundary", () => {
     const value = {
       answer: {
         content: "Revenue increased [1].",
+        findings: [
+          {
+            content: "",
+            evidenceRefs: ["EVID_A"],
+          },
+          {
+            content: "  \n  ",
+            evidenceRefs: ["EVID_A"],
+          },
+          {
+            content: "**Model formatting**",
+            evidenceRefs: ["EVID_A"],
+          },
+          {
+            content: "[1]",
+            evidenceRefs: ["EVID_A"],
+          },
+        ],
       },
-      findings: [
-        {
-          content: "",
-          evidenceRefs: ["EVID_A"],
-        },
-        {
-          content: "  \n  ",
-          evidenceRefs: ["EVID_A"],
-        },
-        {
-          content: "**Model formatting**",
-          evidenceRefs: ["EVID_A"],
-        },
-        {
-          content: "[1]",
-          evidenceRefs: ["EVID_A"],
-        },
-      ],
     };
     const draft = decodeAnswerModelResponse(value, createEvidenceReferences(1));
     if (draft.status !== "answered") {
@@ -506,8 +530,8 @@ describe("answer draft boundary", () => {
       }],
       answer: {
         content: "Revenue was reported.",
+        findings: [],
       },
-      findings: [],
     };
     expect(() => decodeAnswerModelResponse(value, createEvidenceReferences(2)))
       .toThrow("contains fields that are not allowed");
@@ -744,11 +768,13 @@ function buildAnswerModelResponse(
   evidenceRefs: string[] = ["EVID_A"],
 ) {
   return {
-    answer: { content },
-    findings: [{
-      content: "The report supports the answer.",
-      evidenceRefs,
-    }],
+    answer: {
+      content,
+      findings: [{
+        content: "The report supports the answer.",
+        evidenceRefs,
+      }],
+    },
   };
 }
 

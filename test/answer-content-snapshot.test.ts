@@ -78,11 +78,11 @@ describe("answer content snapshots", () => {
       answer: {
         content: "The report describes one change.",
         evidenceRefs: ["EVID_A"],
+        findings: [{
+          content: "Revenue increased.",
+          evidenceRefs: ["EVID_A"],
+        }],
       },
-      findings: [{
-        content: "Revenue increased.",
-        evidenceRefs: ["EVID_A"],
-      }],
     }, catalog);
 
     expect(snapshot?.statements.map((statement) => statement.section)).toEqual([

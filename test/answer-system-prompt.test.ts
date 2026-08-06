@@ -58,15 +58,36 @@ describe("answer system prompt", () => {
     }
   });
 
-  it("keeps clarification and conversation behavior out of Ask", () => {
+  it("supports Ask greetings and clarifications without Chat context", () => {
     const prompt = createAnswerSystemPrompt();
 
-    expect(prompt).not.toContain("CLARIFICATION");
+    expect(prompt).toContain("REQUEST MODE");
+    expect(prompt).toContain(
+      "Examples include \"Hi\", \"Hello\", \"Hey\", \"Howdy\"",
+    );
+    expect(prompt).toContain(
+      "these examples are not an exhaustive list",
+    );
+    expect(prompt).toContain(
+      "A message remains an information request when it begins with a greeting",
+    );
+    expect(prompt).toContain("Return answer.findings as an empty array.");
+    expect(prompt).toContain(
+      "If the request is clear but the supplied evidence cannot answer it, do not ask for clarification.",
+    );
     expect(prompt).not.toContain("\nCONVERSATION\n");
+    expect(prompt).not.toContain("selected conversation context");
     expect(prompt).not.toContain("answer.source_refs");
     expect(prompt).not.toContain("SOURCE_1");
     expect(prompt).not.toContain("answer.evidenceRefs");
-    expect(prompt).toContain("findings[].evidenceRefs");
+    expect(prompt).toContain("answer.findings[].evidenceRefs");
     expect(prompt).toContain("PARTIAL-ANSWER EXAMPLE");
+    expect(prompt).toContain(
+      'Question: "Hello, can you identify the improvements in Measure Alpha and Measure Beta?"',
+    );
+    expect(prompt).toContain("GREETING EXAMPLE");
+    expect(prompt).toContain("Hello! How can I help you today?");
+    expect(prompt).toContain("CLARIFICATION EXAMPLE");
+    expect(prompt).toContain("Could you clarify which policy you are referring to?");
   });
 });

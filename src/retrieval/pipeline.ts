@@ -19,7 +19,6 @@ import {
   attachAdvisoryClaimChecks,
   AnswerOutputTokenLimitError,
   answerQuestion,
-  createEmptyRetrievalAnswer,
   InvalidAnswerDraftError,
   streamAnswerQuestion,
   UnexpectedAnswerFinishReasonError,
@@ -220,11 +219,7 @@ export async function askIndexedDocuments(
       runTelemetry,
       "interactive-answer",
     );
-    if (prepared.retrieved.length === 0) {
-      await runTelemetry.finish("success");
-      return createEmptyRetrievalAnswer();
-    }
-    reportProgress("Generating an answer from the retrieved multimodal context");
+    reportProgress("Generating an answer");
     let result = await answerQuestion(
       prepared.models,
       questionInput.processing,
@@ -855,22 +850,17 @@ export async function writeStreamedAnswer(
   try {
     abortSignal.throwIfAborted();
     const prepared = await prepare(runTelemetry);
-    let result: GeneratedAnswerResult;
-    if (prepared.retrieved.length === 0) {
-      result = createEmptyRetrievalAnswer();
-    } else {
-      reportProgress("Generating an answer from the retrieved multimodal context");
-      result = await streamAnswerQuestion(
-        prepared.models,
-        questionInput.processing,
-        prepared.retrieved,
-        prepared.answerScheduler,
-        abortSignal,
-        prepared.generationSettings.answer,
-        runTelemetry,
-        { receiveAnswerContent },
-      );
-    }
+    reportProgress("Generating an answer");
+    const result = await streamAnswerQuestion(
+      prepared.models,
+      questionInput.processing,
+      prepared.retrieved,
+      prepared.answerScheduler,
+      abortSignal,
+      prepared.generationSettings.answer,
+      runTelemetry,
+      { receiveAnswerContent },
+    );
     receiveAnswerContent(
       createPublishedAnswerContentSnapshot(result.answerDocument),
     );

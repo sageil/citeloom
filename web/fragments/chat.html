@@ -138,11 +138,11 @@
                       </header>
                       <div class="answer-content chat-assistant-content">
                         <div
-                          class="chat-thinking"
+                          class="answer-progress"
                           x-show="message.streaming === true &amp;&amp; messageAnswerStatements(message).length === 0"
                         >
-                          <span class="chat-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-                          <span>Retrieving evidence and preparing a cited response…</span>
+                          <span class="answer-progress-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                          <span>Searching...</span>
                         </div>
                         <template x-for="(statement, statementIndex) in messageAnswerStatements(message)" :key="`${run.id}-statement-${statementIndex}`">
                           <div

@@ -105,7 +105,7 @@ export function planAnswerRequest(
     selectedSourceIndexes.push(index);
     inputTokenUpperBound += tokenUpperBound;
   }
-  if (selected.length === 0) {
+  if (retrieved.length > 0 && selected.length === 0) {
     throw new AnswerCapacityError(
       "The answer model context cannot fit any complete retrieved evidence window.",
       "no-complete-evidence-window",

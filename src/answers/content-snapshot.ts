@@ -104,7 +104,7 @@ export function decodePartialAnswerContentSnapshot(
     citationCatalog,
     citationsByKey,
   );
-  const findings = Reflect.get(value, "findings");
+  const findings = Reflect.get(answer, "findings");
   if (!Array.isArray(findings)) {
     return { citations: [...citationsByKey.values()], statements };
   }

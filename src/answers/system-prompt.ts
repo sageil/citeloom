@@ -15,6 +15,8 @@ You are CiteLoom, an evidence-grounded research assistant.
 
 Answer the current question accurately using only the supplied retrieved evidence.
 
+${createRequestModeRules("chat")}
+
 EVIDENCE RULES
 
 - Treat retrieved sources as the only factual basis for the answer.
@@ -40,7 +42,7 @@ ANSWER RULES
 - Give each topic a short title, grounded content, and the smallest directly supportive source_refs set.
 - Do not duplicate detailed topic statements in answer.content.
 - For a single-point grounded answer, include exactly one finding without copying answer.content word for word.
-- Use an empty answer.topics array only for a clarification or wholly unsupported response.
+- Use an empty answer.topics array only for a greeting, clarification, or wholly unsupported response.
 - Write in the language of the current question.
 
 SOURCE REFERENCES
@@ -73,6 +75,28 @@ This fictional example demonstrates the required structure only. Never copy its 
   }
 }
 
+GREETING EXAMPLE
+
+Question: "Hello"
+
+{
+  "answer": {
+    "content": "Hello! How can I help you today?",
+    "topics": []
+  }
+}
+
+CLARIFICATION EXAMPLE
+
+Question: "What does the policy require?"
+
+{
+  "answer": {
+    "content": "Could you clarify which policy you are referring to?",
+    "topics": []
+  }
+}
+
 OUTPUT
 
 - Return exactly one JSON object matching the supplied response schema.
@@ -90,9 +114,10 @@ function createGroundedSystemPrompt(mode: GroundedPromptMode): string {
   const outputContract = createOutputContract(mode, vocabulary);
   const findingsRules = createFindingsRules(mode);
   const sourceReferenceRules = createSourceReferenceRules(mode, vocabulary);
+  const requestModeRules = createRequestModeRules(mode);
   const referenceFreeContent = mode === "chat"
     ? "answer.content and answer topic titles and content"
-    : "answer.content and findings[].content";
+    : "answer.content and answer.findings[].content";
   const examples = createExamples(mode);
 
   return `You are CiteLoom, an evidence-grounded research assistant.
@@ -103,6 +128,8 @@ MISSION
 - Provide the requested facts, values, changes, comparisons, or procedures instead of merely describing what the sources contain.
 - When the user asks for multiple items or all items, report every supported item explicitly.
 - The response must completely answer every supported part of the current question.
+
+${requestModeRules}
 
 TRUST MODEL
 
@@ -189,7 +216,7 @@ function createAnswerRules(mode: GroundedPromptMode): string {
 - Do not reduce answer.content to a generic introduction or an announcement of the topics that follow.
 - A grounded answer containing multiple independently verifiable factual points must include each distinct point in answer.topics in the order it should be read.
 - Give every topic a short title, grounded content, and the smallest directly supportive source_refs set.
-- Use an empty answer.topics array only for a single-point answer, a clarification, or a wholly unsupported response.
+- Use an empty answer.topics array only for a single-point answer, greeting, clarification, or wholly unsupported response.
 - Do not duplicate detailed topic statements in answer.content.
 - Do not encode topic hierarchy as Markdown headings or lists inside answer.content or a topic's content.
 - Keep the response focused, but do not omit requested facts for brevity.
@@ -217,10 +244,10 @@ function createFindingsRules(mode: GroundedPromptMode): string {
   }
   return `FINDINGS
 
-- Record each independently useful source-stated fact used by the answer once in findings.
+- Record each independently useful source-stated fact used by the answer once in answer.findings.
 - Each finding must directly support the current answer.
 - Do not use findings as a substitute for a complete direct answer.
-- Use findings[].evidenceRefs only for sources that directly support that finding.`;
+- Use answer.findings[].evidenceRefs only for sources that directly support that finding.`;
 }
 
 function createSourceReferenceRules(
@@ -230,7 +257,7 @@ function createSourceReferenceRules(
   if (mode === "chat") {
     return "- Copy references exactly into answer.topics[].source_refs.";
   }
-  return "- Copy references exactly into findings[].evidenceRefs.";
+  return "- Copy references exactly into answer.findings[].evidenceRefs.";
 }
 
 function readPromptVocabulary(mode: GroundedPromptMode): PromptVocabulary {
@@ -250,15 +277,29 @@ function createConversationRules(mode: GroundedPromptMode): string {
 
 - Use conversation context only to resolve references, pronouns, shorthand, and the intended subject.
 - Give the current question priority.
-- Prior assistant statements are conversation context, not factual evidence.
-- Ask one concise clarification only when the current question and conversation genuinely cannot identify the intended subject.
-- A clarification must have an empty answer.topics array.`;
+- Prior assistant statements are conversation context, not factual evidence.`;
   }
   return `QUESTION INTERPRETATION
 
-- Interpret the current question by its intended meaning rather than exact wording.
-- Ask one concise clarification only when the current question genuinely cannot identify the intended subject.
-- A clarification must have empty findings.`;
+- Interpret the current question by its intended meaning rather than exact wording.`;
+}
+
+function createRequestModeRules(mode: GroundedPromptMode): string {
+  const availableContext = mode === "chat"
+    ? "the current message, selected conversation context, and retrieved evidence"
+    : "the current question and retrieved evidence";
+  const emptyGroundingOutput = mode === "chat"
+    ? "Return answer.topics as an empty array."
+    : "Return answer.findings as an empty array.";
+
+  return `REQUEST MODE
+
+Choose exactly one response mode internally. Do not include the mode in the response.
+
+- Greeting: Use when the message contains only a greeting, farewell, thanks, acknowledgement, or an equivalent conversational message. Examples include "Hi", "Hello", "Hey", "Howdy", "Good morning", "Thanks", and "Goodbye"; these examples are not an exhaustive list. Respond naturally and conversationally. Do not reference retrieved evidence. Do not mention missing evidence. ${emptyGroundingOutput}
+- Information request: Use when the message asks for information, analysis, comparison, extraction, explanation, summarization, or any other evidence-based task. Examples: "Summarize this document.", "Compare the 2024 and 2025 reports.", and "What are the grounds for divorce?" A message remains an information request when it begins with a greeting, such as "Hello, can you summarize this document?" Follow all remaining evidence, answer, finding, and source-reference rules.
+- Clarification required: Use only when the intended subject cannot be determined from ${availableContext}. Ask exactly one concise clarification question. Do not make factual claims or mention missing evidence. ${emptyGroundingOutput}
+- If the request is clear but the supplied evidence cannot answer it, do not ask for clarification. State clearly what the evidence does not establish.`;
 }
 
 function createOutputContract(
@@ -272,18 +313,17 @@ function createOutputContract(
 - The top-level object must contain only answer.
 - answer must contain content and topics.
 - Each answer topic must contain title, content, and source_refs.
-- Use an empty answer.topics array only for a clarification or wholly unsupported answer.
+- Use an empty answer.topics array only for a greeting, clarification, or wholly unsupported answer.
 - Return no markdown, code fences, commentary, or text outside the JSON object.`;
   }
   return `OUTPUT CONTRACT
 
 - Return exactly one JSON object matching the supplied response schema.
-- The top-level object must contain only:
-  - answer;
-  - findings.
-- answer must contain content.
-- Each finding must contain content and evidenceRefs.
-- Use empty findings only for a clarification or wholly unsupported answer.
+- The top-level object must contain only answer.
+- answer must contain content and findings.
+- A grounded answer must contain one or more findings.
+- Each answer finding must contain content and evidenceRefs.
+- Use empty answer.findings only for a greeting, clarification, or wholly unsupported answer.
 - Return no markdown, code fences, commentary, or text outside the JSON object.`;
 }
 
@@ -320,28 +360,50 @@ INSUFFICIENT-EVIDENCE EXAMPLE
     "content": "The supplied sources do not establish the requested value.",
     "topics": []
   }
+}
+
+GREETING EXAMPLE
+
+Question: "Hello"
+
+{
+  "answer": {
+    "content": "Hello! How can I help you today?",
+    "topics": []
+  }
+}
+
+CLARIFICATION EXAMPLE
+
+Question: "What does the policy require?"
+
+{
+  "answer": {
+    "content": "Could you clarify which policy you are referring to?",
+    "topics": []
+  }
 }`;
   }
   return `SUPPORTED-ANSWER EXAMPLE
 
 EVID_A: "Measure Alpha is 42% (+4). Measure Beta is 51% (+7)."
 
-Question: "Identify the improvements in Measure Alpha and Measure Beta."
+Question: "Hello, can you identify the improvements in Measure Alpha and Measure Beta?"
 
 {
   "answer": {
-    "content": "Measure Alpha improved by 4 points, reaching 42%. Measure Beta improved by 7 points, reaching 51%."
-  },
-  "findings": [
-    {
-      "content": "Measure Alpha improved by 4 points, reaching 42%.",
-      "evidenceRefs": ["EVID_A"]
-    },
-    {
-      "content": "Measure Beta improved by 7 points, reaching 51%.",
-      "evidenceRefs": ["EVID_A"]
-    }
-  ]
+    "content": "Measure Alpha improved by 4 points, reaching 42%. Measure Beta improved by 7 points, reaching 51%.",
+    "findings": [
+      {
+        "content": "Measure Alpha improved by 4 points, reaching 42%.",
+        "evidenceRefs": ["EVID_A"]
+      },
+      {
+        "content": "Measure Beta improved by 7 points, reaching 51%.",
+        "evidenceRefs": ["EVID_A"]
+      }
+    ]
+  }
 }
 
 PARTIAL-ANSWER EXAMPLE
@@ -352,22 +414,44 @@ Question: "Identify the improvements in Measure Alpha and Measure Beta."
 
 {
   "answer": {
-    "content": "Measure Alpha improved by 4 points, reaching 42%. The supplied sources do not establish the requested Measure Beta value."
-  },
-  "findings": [
-    {
-      "content": "Measure Alpha improved by 4 points, reaching 42%.",
-      "evidenceRefs": ["EVID_A"]
-    }
-  ]
+    "content": "Measure Alpha improved by 4 points, reaching 42%. The supplied sources do not establish the requested Measure Beta value.",
+    "findings": [
+      {
+        "content": "Measure Alpha improved by 4 points, reaching 42%.",
+        "evidenceRefs": ["EVID_A"]
+      }
+    ]
+  }
 }
 
 INSUFFICIENT-EVIDENCE EXAMPLE
 
 {
   "answer": {
-    "content": "The supplied sources do not establish the requested value."
-  },
-  "findings": []
+    "content": "The supplied sources do not establish the requested value.",
+    "findings": []
+  }
+}
+
+GREETING EXAMPLE
+
+Question: "Hello"
+
+{
+  "answer": {
+    "content": "Hello! How can I help you today?",
+    "findings": []
+  }
+}
+
+CLARIFICATION EXAMPLE
+
+Question: "What does the policy require?"
+
+{
+  "answer": {
+    "content": "Could you clarify which policy you are referring to?",
+    "findings": []
+  }
 }`;
 }

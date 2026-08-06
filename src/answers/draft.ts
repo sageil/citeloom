@@ -71,13 +71,13 @@ interface AnswerModelStatement {
   evidenceRefs: EvidenceReference[];
 }
 
-interface AnswerModelDirectAnswer {
+interface AnswerModelAnswer {
   content: string;
+  findings: AnswerModelStatement[];
 }
 
 interface AnswerModelResponse {
-  answer: AnswerModelDirectAnswer;
-  findings: AnswerModelStatement[];
+  answer: AnswerModelAnswer;
 }
 
 interface AnswerSchemaParts {
@@ -111,8 +111,8 @@ export class AnswerDraftDecodeError extends Error {
 }
 
 export function createEvidenceReferences(count: number): EvidenceReference[] {
-  if (!Number.isInteger(count) || count < 1) {
-    throw new Error("Answer evidence requires at least one retrieved element.");
+  if (!Number.isInteger(count) || count < 0) {
+    throw new Error("Answer evidence count must be a non-negative integer.");
   }
   const references: EvidenceReference[] = [];
   for (let index = 0; index < count; index += 1) {
@@ -134,23 +134,58 @@ export function createAnswerDraftSchema(
 export function createAnswerModelResponseSchema(
   allowedEvidenceRefs: readonly EvidenceReference[],
 ): z.ZodType<AnswerModelResponse> {
+  const uncitedAnswerSchema: z.ZodType<AnswerModelAnswer> = z.object({
+    content: answerModelContentSchema.describe(
+      "A natural greeting, one concise clarification question, or a clear explanation of what the supplied evidence does not establish.",
+    ),
+    findings: z.tuple([]).describe(
+      "An empty array because this response makes no grounded factual claims.",
+    ),
+  }).strict();
+  if (allowedEvidenceRefs.length === 0) {
+    return createUncitedAnswerModelResponseSchema(uncitedAnswerSchema);
+  }
   const evidenceReferenceSchema = createEvidenceReferenceSchema(
     allowedEvidenceRefs,
   );
   const evidenceReferencesSchema = z.array(evidenceReferenceSchema).min(1);
-  const answerSchema: z.ZodType<AnswerModelDirectAnswer> = z.object({
-    content: answerModelContentSchema,
-  }).strict();
   const statementSchema: z.ZodType<AnswerModelStatement> = z.object({
-    content: answerModelContentSchema,
-    evidenceRefs: evidenceReferencesSchema,
+    content: answerModelContentSchema.describe(
+      "One independently useful source-stated fact that directly supports the answer.",
+    ),
+    evidenceRefs: evidenceReferencesSchema.describe(
+      "The smallest set of retrieved evidence references that directly supports this finding.",
+    ),
+  }).strict();
+  const groundedAnswerSchema: z.ZodType<AnswerModelAnswer> = z.object({
+    content: answerModelContentSchema.describe(
+      "A complete, coherent answer synthesized from the supplied evidence.",
+    ),
+    findings: z.array(statementSchema).min(1).describe(
+      "One or more cited findings containing the independently verifiable facts used by the answer.",
+    ),
   }).strict();
   return z.object({
-    answer: answerSchema,
-    findings: z.array(statementSchema),
+    answer: z.union([groundedAnswerSchema, uncitedAnswerSchema]),
   }).strict().superRefine((response, context) => {
     const hasDirectAnswer = hasAnswerText(response.answer.content);
     if (!hasDirectAnswer) {
+      context.addIssue({
+        code: "custom",
+        message: "A direct answer must contain plain-text content.",
+        path: ["answer", "content"],
+      });
+    }
+  });
+}
+
+function createUncitedAnswerModelResponseSchema(
+  answerSchema: z.ZodType<AnswerModelAnswer>,
+): z.ZodType<AnswerModelResponse> {
+  return z.object({
+    answer: answerSchema,
+  }).strict().superRefine((response, context) => {
+    if (!hasAnswerText(response.answer.content)) {
       context.addIssue({
         code: "custom",
         message: "A direct answer must contain plain-text content.",
@@ -339,14 +374,14 @@ export function decodeAnswerModelResponse(
       allowedEvidenceRefs,
     );
   }
-  if (modelResult.data.findings.length === 0) {
+  if (modelResult.data.answer.findings.length === 0) {
     const content = readNormalizedModelText(modelResult.data.answer.content);
     if (content === null) {
       throw new AnswerDraftDecodeError(
         "Invalid answer model response: an uncited response requires content.",
         "invalid-content",
         [{
-          message: "An uncited response must explain what the source material does not establish.",
+          message: "An uncited response must contain a greeting, clarification question, or evidence limitation.",
           path: "answer.content",
         }],
         0,
@@ -369,7 +404,7 @@ export function decodeAnswerModelResponse(
     );
   }
   const normalizedFindings: AnswerModelStatement[] = [];
-  for (const finding of normalized.findings) {
+  for (const finding of normalized.answer.findings) {
     const content = readNormalizedModelText(finding.content);
     if (content === null) {
       continue;
@@ -385,7 +420,7 @@ export function decodeAnswerModelResponse(
       "invalid-content",
       [{
         message: "A grounded response must contain at least one valid finding.",
-        path: "findings",
+        path: "answer.findings",
       }],
       0,
     );
@@ -604,8 +639,19 @@ function countUnknownAnswerPointReferences(
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return 0;
   }
-  const evidenceRefs = (value as { evidenceRefs?: unknown }).evidenceRefs;
-  return countUnknownReferenceValues(evidenceRefs, allowedEvidenceRefs);
+  const answer = value as {
+    evidenceRefs?: unknown;
+    findings?: unknown;
+  };
+  let count = countUnknownReferenceValues(
+    answer.evidenceRefs,
+    allowedEvidenceRefs,
+  );
+  count += countUnknownStatementReferences(
+    answer.findings,
+    allowedEvidenceRefs,
+  );
+  return count;
 }
 
 function countUnknownStatementReferences(

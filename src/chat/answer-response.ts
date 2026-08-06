@@ -32,13 +32,26 @@ export const CHAT_ANSWER_RESPONSE: AnswerResponseContract = {
   createSchema: createChatAnswerModelResponseSchema,
   decode: decodeChatAnswerModelResponse,
   description:
-    "A Chat response containing either a comprehensive grounded answer with required topics and source references or an uncited clarification question.",
+    "A Chat response containing either a comprehensive grounded answer with required topics and source references or an uncited greeting, clarification question, or evidence limitation.",
   name: "chat_answer",
 };
 
 function createChatAnswerModelResponseSchema(
   allowedEvidenceRefs: readonly EvidenceReference[],
 ): z.ZodType<unknown> {
+  const uncitedAnswerPoint: z.ZodType<ChatAnswerPoint> = z.object({
+    content: z.string().trim().min(1).describe(
+      "A greeting, clarification question, or explanation of what the supplied evidence does not establish.",
+    ),
+    topics: z.tuple([]).describe(
+      "An empty array because this response makes no grounded factual claims.",
+    ),
+  }).strict();
+  if (allowedEvidenceRefs.length === 0) {
+    return z.object({
+      answer: uncitedAnswerPoint,
+    }).strict();
+  }
   const sourceReference = createSourceReferenceSchema(allowedEvidenceRefs);
   const answerTopic: z.ZodType<ChatAnswerTopic> = z.object({
     content: z.string().trim().min(1).describe(
@@ -57,14 +70,6 @@ function createChatAnswerModelResponseSchema(
     ),
     topics: z.array(answerTopic).min(1).describe(
       "One or more ordered findings that contain the independently verifiable details of the grounded answer.",
-    ),
-  }).strict();
-  const uncitedAnswerPoint: z.ZodType<ChatAnswerPoint> = z.object({
-    content: z.string().trim().min(1).describe(
-      "A clarification question or explanation of what the supplied evidence does not establish.",
-    ),
-    topics: z.tuple([]).describe(
-      "An empty array because this response makes no grounded factual claims.",
     ),
   }).strict();
   return z.object({

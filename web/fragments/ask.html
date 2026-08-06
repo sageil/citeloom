@@ -535,7 +535,11 @@
               x-show="hasAnswerContent()"
               x-text="answerQuestionTitle()"
             ></h1>
-            <div class="answer-loading-header" x-cloak x-show="hasAnswerContent()">
+            <div
+              class="answer-loading-header"
+              x-cloak
+              x-show="hasAnswerContent() || (answer === null && operation === 'answer')"
+            >
               <div class="answer-toolbar">
                 <span
                   class="answer-verification-summary"
@@ -582,11 +586,18 @@
                   <span>Export</span>
                 </a>
                 <span
+                  class="answer-progress"
+                  x-cloak
+                  x-show="answer === null && operation === 'answer' && !hasAnswerContent()"
+                >
+                  <span class="answer-progress-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                  <span>Searching...</span>
+                </span>
+                <span
                   class="answer-loading-badge"
                   x-cloak
-                  x-show="answer === null && operation === 'answer'"
-                  x-text="hasAnswerContent() ? 'Writing' : 'Preparing'"
-                ></span>
+                  x-show="answer === null && operation === 'answer' && hasAnswerContent()"
+                >Writing</span>
                 <span
                   class="answer-partial-badge"
                   x-cloak
@@ -714,10 +725,6 @@
                 </section>
               </template>
             </div>
-
-            <p class="uncited-context-note" x-cloak x-show="answer.sources.length === 0 && answer.matchedDocuments.length > 0">
-              No retrieved source directly supported a cited claim in this answer.
-            </p>
 
             <details
               class="answer-run-details retrieved-context-details"

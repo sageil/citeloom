@@ -12,6 +12,24 @@ import {
 import type { RetrievedElement } from "../src/retrieval/document-retrieval.js";
 
 describe("answer request context budgeting", () => {
+  it("reserves output capacity when no evidence was retrieved", () => {
+    const budget = planAnswerRequest(
+      buildTestModelCapabilities(120),
+      {
+        maximumOutputTokens: 30,
+        minimumOutputTokens: 10,
+        providerSafetyMarginTokens: 10,
+      },
+      [{ text: "system question metadata schema", type: "text" }],
+      [],
+      [],
+    );
+
+    expect(budget.decisions).toEqual([]);
+    expect(budget.selected).toEqual([]);
+    expect(budget.outputBudgetTokens).toBe(30);
+  });
+
   it("accounts for fixed prompt, complete evidence, output, and safety reserve", () => {
     const retrieved = [
       buildRetrievedElement("a", "b"),
