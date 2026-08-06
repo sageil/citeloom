@@ -46,6 +46,8 @@ export type PresentedAnswerCitation = Omit<
         renderMode: "grid" | "text";
       };
     });
+  key: string;
+  preview: false;
 };
 
 export function aggregateCitationStatus(

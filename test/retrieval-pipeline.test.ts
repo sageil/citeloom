@@ -128,7 +128,21 @@ describe("atomic structured answer publication", () => {
       stream.writer,
     );
 
-    expect(events).toEqual(["content", "verify", "persist", "publish"]);
+    expect(events).toEqual([
+      "content",
+      "content",
+      "verify",
+      "persist",
+      "publish",
+    ]);
+    const contentUpdates = readChunks(stream.chunks, "data-answer-content");
+    expect(contentUpdates).toHaveLength(2);
+    expect(contentUpdates[0]?.data.citations).toEqual([
+      expect.objectContaining({ citationNumber: null }),
+    ]);
+    expect(contentUpdates[1]?.data.citations).toEqual([
+      expect.objectContaining({ citationNumber: 1 }),
+    ]);
     const answers = readChunks(stream.chunks, "data-answer");
     expect(answers).toHaveLength(1);
     expect(answers[0]?.data).toMatchObject({

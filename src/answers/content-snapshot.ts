@@ -12,6 +12,7 @@ import { formatAnswerTopicContent } from "./topic-content.js";
 import type { RetrievedElement } from "../retrieval/document-retrieval.js";
 
 export interface AnswerContentCitationPreview {
+  citationNumber: number | null;
   key: string;
   pageNumbers: number[];
   sourceFile: string;
@@ -52,6 +53,7 @@ export function createAnswerContentCitationCatalog(
       throw new Error(`Answer preview evidence reference ${evidenceRef} is duplicated.`);
     }
     catalog.set(evidenceRef, {
+      citationNumber: null,
       key: createAnswerContentCitationKey(
         item.documentVersionId,
         item.element.documentId,
@@ -231,6 +233,7 @@ export function createPublishedAnswerContentSnapshot(
     );
     citationKeyById.set(citation.id, key);
     citations.push({
+      citationNumber: citation.citationNumber,
       key,
       pageNumbers: [...citation.pageNumbers],
       sourceFile: citation.sourceFile,

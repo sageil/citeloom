@@ -3,6 +3,7 @@ import {
   readEnum,
   readNonEmptyString,
   readNonNegativeInteger,
+  readNullablePositiveInteger,
   readPlainObject,
   readPositiveInteger,
 } from "./citeloom-boundaries.js";
@@ -112,6 +113,10 @@ export function readAnswerContentUpdate(value) {
     }
     availableCitationKeys.add(key);
     citations.push({
+      citationNumber: readNullablePositiveInteger(
+        citation.citationNumber,
+        `${label} number`,
+      ),
       key,
       pageNumbers,
       sourceFile: readNonEmptyString(citation.sourceFile, `${label} source file`),
@@ -221,7 +226,7 @@ export function applyAnswerContentUpdate(content, update) {
     }
   }
   const citations = update.citations.map((citation) => ({
-    citationNumber: null,
+    citationNumber: citation.citationNumber,
     key: citation.key,
     pageNumbers: [...citation.pageNumbers],
     preview: true,
@@ -232,15 +237,21 @@ export function applyAnswerContentUpdate(content, update) {
 
 export function createAnswerContentFromDocument(document) {
   const citationKeyById = new Map();
+  const citations = [];
   for (const citation of document.citations) {
-    citationKeyById.set(
-      citation.id,
-      createAnswerCitationKey(
-        citation.documentVersionId,
-        citation.documentId,
-        citation.elementId,
-      ),
+    const key = createAnswerCitationKey(
+      citation.documentVersionId,
+      citation.documentId,
+      citation.elementId,
     );
+    citationKeyById.set(citation.id, key);
+    citations.push({
+      citationNumber: citation.citationNumber,
+      key,
+      pageNumbers: [...citation.pageNumbers],
+      preview: true,
+      sourceFile: citation.sourceFile,
+    });
   }
   const statements = [{
     citationIds: [],
@@ -274,20 +285,103 @@ export function createAnswerContentFromDocument(document) {
       verificationIndex: statementIndex,
     });
   }
-  return { citations: [], statements };
+  return { citations, statements };
 }
 
-export function buildAnswerContentSections(content, citations) {
-  const citationsById = new Map();
-  for (const citation of citations) {
-    citationsById.set(citation.id, citation);
+export function linkAnswerContentCitations(content, sources) {
+  const sourcesByKey = new Map();
+  for (const source of sources) {
+    if (sourcesByKey.has(source.key)) {
+      throw new Error(`Completed answer citation ${source.key} is duplicated.`);
+    }
+    sourcesByKey.set(source.key, source);
+  }
+  const linkedSources = [];
+  for (const citation of content.citations) {
+    const source = sourcesByKey.get(citation.key);
+    if (source === undefined) {
+      throw new Error(`Completed answer citation ${citation.key} is unavailable.`);
+    }
+    linkedSources.push({ citation, source });
+  }
+  for (const { citation, source } of linkedSources) {
+    Object.assign(citation, source, {
+      key: citation.key,
+      preview: false,
+    });
+  }
+}
+
+export function linkAnswerContentVerification(content, sections, document) {
+  const expectedStatementCount = document.statements.length + 1;
+  if (content.statements.length !== expectedStatementCount) {
+    throw new Error("The streamed and completed answer statements do not match.");
+  }
+  const answerStatement = content.statements[0];
+  if (
+    answerStatement === undefined
+    || answerStatement.content !== document.content
+    || answerStatement.section !== "answer"
+  ) {
+    throw new Error("The streamed and completed direct answers do not match.");
+  }
+  for (let index = 0; index < document.statements.length; index += 1) {
+    const streamedStatement = content.statements[index + 1];
+    const completedStatement = document.statements[index];
+    if (
+      streamedStatement === undefined
+      || completedStatement === undefined
+      || streamedStatement.content !== completedStatement.content
+      || streamedStatement.presentation !== completedStatement.presentation
+      || streamedStatement.section !== completedStatement.section
+    ) {
+      throw new Error("The streamed and completed answer findings do not match.");
+    }
+  }
+  const presentationStatementsByKey = new Map();
+  for (const section of sections) {
+    for (const block of section.blocks) {
+      for (const statement of block.statements) {
+        presentationStatementsByKey.set(statement.key, statement);
+      }
+    }
+  }
+  const presentationStatements = [];
+  for (let index = 0; index < document.statements.length; index += 1) {
+    const completedStatement = document.statements[index];
+    if (completedStatement === undefined) {
+      throw new Error("The completed answer finding is unavailable.");
+    }
+    const key = `${completedStatement.section}-${index + 1}`;
+    const presentationStatement = presentationStatementsByKey.get(key);
+    if (presentationStatement === undefined) {
+      throw new Error("The rendered and completed answer findings do not match.");
+    }
+    presentationStatements.push(presentationStatement);
+  }
+  for (let index = 0; index < document.statements.length; index += 1) {
+    const streamedStatement = content.statements[index + 1];
+    const presentationStatement = presentationStatements[index];
+    if (streamedStatement !== undefined) {
+      streamedStatement.verificationIndex = index;
+    }
+    if (presentationStatement !== undefined) {
+      presentationStatement.verificationIndex = index;
+    }
+  }
+}
+
+export function buildAnswerContentSections(content) {
+  const citationsByKey = new Map();
+  for (const citation of content.citations) {
+    citationsByKey.set(citation.key, citation);
   }
   const sections = [];
   for (const sectionKey of answerSections) {
     const statements = buildSectionStatements(
       content,
       sectionKey,
-      citationsById,
+      citationsByKey,
     );
     if (statements.length === 0) {
       continue;
@@ -301,7 +395,7 @@ export function buildAnswerContentSections(content, citations) {
   return sections;
 }
 
-function buildSectionStatements(content, sectionKey, citationsById) {
+function buildSectionStatements(content, sectionKey, citationsByKey) {
   const statements = [];
   for (let index = 0; index < content.statements.length; index += 1) {
     const statement = content.statements[index];
@@ -309,8 +403,8 @@ function buildSectionStatements(content, sectionKey, citationsById) {
       continue;
     }
     const citations = [];
-    for (const citationId of statement.citationIds) {
-      const citation = citationsById.get(citationId);
+    for (const citationKey of statement.citationKeys) {
+      const citation = citationsByKey.get(citationKey);
       if (citation !== undefined) {
         citations.push(citation);
       }

@@ -9,11 +9,13 @@ describe("answer content snapshots", () => {
   it("streams Chat topics with stable, deduplicated citation previews", () => {
     const catalog: AnswerContentCitationCatalog = new Map([
       ["SOURCE_1", {
+        citationNumber: null,
         key: "citation-1",
         pageNumbers: [2],
         sourceFile: "first.pdf",
       }],
       ["SOURCE_2", {
+        citationNumber: null,
         key: "citation-2",
         pageNumbers: [5],
         sourceFile: "second.pdf",
@@ -38,10 +40,12 @@ describe("answer content snapshots", () => {
 
     expect(snapshot).toEqual({
       citations: [{
+        citationNumber: null,
         key: "citation-1",
         pageNumbers: [2],
         sourceFile: "first.pdf",
       }, {
+        citationNumber: null,
         key: "citation-2",
         pageNumbers: [5],
         sourceFile: "second.pdf",
@@ -68,6 +72,7 @@ describe("answer content snapshots", () => {
   it("keeps Ask findings compatible with the shared preview decoder", () => {
     const catalog: AnswerContentCitationCatalog = new Map([
       ["EVID_A", {
+        citationNumber: null,
         key: "citation-1",
         pageNumbers: [2],
         sourceFile: "first.pdf",

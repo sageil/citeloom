@@ -19,6 +19,9 @@ describe("ask answer presentation", () => {
     expect(fragment).toContain("section.key !== 'answer'");
     expect(fragment).toContain("block.statements[0].citations");
     expect(fragment).toContain("block.kind === 'bullets'");
+    expect(fragment).toContain(':key="citation.key"');
+    expect(fragment).toContain(':disabled="citation.preview === true"');
+    expect(fragment).not.toContain(':key="citation.id"');
   });
 
   it("uses the research notebook workspace for Ask", async () => {

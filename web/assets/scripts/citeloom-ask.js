@@ -14,8 +14,11 @@ import {
 import {
   applyAnswerContentUpdate,
   buildAnswerContentSections,
+  createAnswerCitationKey,
   createAnswerContentFromDocument,
   createEmptyAnswerContent,
+  linkAnswerContentCitations,
+  linkAnswerContentVerification,
   readAnswerContentUpdate,
 } from "./citeloom-answer-content.js";
 import { requestAnswerSpeech } from "./citeloom-answer-speech.js";
@@ -196,8 +199,25 @@ export function readAnswerPresentation(value) {
   const answerDocument = readAskAnswerDocument(value);
   return {
     answerDocument,
-    sources: buildCitationPresentations(answerDocument.citations),
+    sources: buildAnswerSources(answerDocument.citations),
   };
+}
+
+function buildAnswerSources(citations) {
+  const presentations = buildCitationPresentations(citations);
+  const sources = [];
+  for (const presentation of presentations) {
+    sources.push({
+      ...presentation,
+      key: createAnswerCitationKey(
+        presentation.documentVersionId,
+        presentation.documentId,
+        presentation.elementId,
+      ),
+      preview: false,
+    });
+  }
+  return sources;
 }
 
 function readClaim(value, label) {
@@ -649,6 +669,7 @@ function readEvidenceInspectorViewport() {
 export function registerPage(alpine) {
   alpine.data("citeloomAskPage", () => ({
     answer: null,
+    answerContentSections: [],
     streamedAnswerContent: createEmptyAnswerContent(),
     availableTagFacets: [],
     citationAbortController: null,
@@ -844,6 +865,43 @@ export function registerPage(alpine) {
       }
     },
 
+    clearAnswerPresentation() {
+      this.answer = null;
+      this.streamedAnswerContent = createEmptyAnswerContent();
+      this.answerContentSections = [];
+    },
+
+    presentHistoricalAnswer(answer) {
+      if (answer === null) {
+        this.clearAnswerPresentation();
+        return;
+      }
+      const content = createAnswerContentFromDocument(answer.answerDocument);
+      linkAnswerContentCitations(content, answer.sources);
+      this.answer = answer;
+      this.streamedAnswerContent = content;
+      this.answerContentSections = buildAnswerContentSections(content);
+    },
+
+    applyStreamedAnswerUpdate(update) {
+      const content = applyAnswerContentUpdate(
+        this.streamedAnswerContent,
+        update,
+      );
+      this.streamedAnswerContent = content;
+      this.answerContentSections = buildAnswerContentSections(content);
+    },
+
+    completeStreamedAnswer(answer) {
+      linkAnswerContentVerification(
+        this.streamedAnswerContent,
+        this.answerContentSections,
+        answer.answerDocument,
+      );
+      linkAnswerContentCitations(this.streamedAnswerContent, answer.sources);
+      this.answer = answer;
+    },
+
     async selectResearchThread(threadId) {
       if (this.operation === "answer") {
         this.stopRequest();
@@ -851,7 +909,7 @@ export function registerPage(alpine) {
       this.threadId = threadId;
       this.thread = null;
       this.turnId = "";
-      this.answer = null;
+      this.clearAnswerPresentation();
       this.requestError = "";
       this.closeEvidenceInspector();
       this.resetSpeechAudio();
@@ -861,7 +919,11 @@ export function registerPage(alpine) {
       await this.loadResearchThread(threadId);
     },
 
-    async loadResearchThread(threadId, preferredTurnId = "") {
+    async loadResearchThread(
+      threadId,
+      preferredTurnId = "",
+      preserveRenderedAnswer = false,
+    ) {
       try {
         const encodedThreadId = encodeURIComponent(threadId);
         const response = await fetch(`/api/research/threads/${encodedThreadId}`, {
@@ -884,7 +946,13 @@ export function registerPage(alpine) {
           }) ?? latestTurn;
         }
         this.turnId = nextTurn?.id ?? "";
-        this.answer = nextTurn === null ? null : buildHistoricalAnswer(nextTurn);
+        const nextAnswer = nextTurn === null
+          ? null
+          : buildHistoricalAnswer(nextTurn);
+        const currentTurnId = this.answer?.turn.turnId ?? "";
+        if (!preserveRenderedAnswer || currentTurnId !== this.turnId) {
+          this.presentHistoricalAnswer(nextAnswer);
+        }
         this.feedback = { answer: 0, citation: 0, retrieval: 0 };
         this.feedbackCounts = {
           answer: { negative: 0, positive: 0 },
@@ -908,7 +976,9 @@ export function registerPage(alpine) {
       const turn = this.thread?.turns.find((candidate) => {
         return candidate.id === turnId;
       }) ?? null;
-      this.answer = turn === null ? null : buildHistoricalAnswer(turn);
+      this.presentHistoricalAnswer(
+        turn === null ? null : buildHistoricalAnswer(turn),
+      );
       this.feedback = { answer: 0, citation: 0, retrieval: 0 };
       this.feedbackCounts = {
         answer: { negative: 0, positive: 0 },
@@ -972,7 +1042,9 @@ export function registerPage(alpine) {
       this.threadId = thread.id;
       const latestTurn = thread.turns.at(-1) ?? null;
       this.turnId = latestTurn?.id ?? "";
-      this.answer = latestTurn === null ? null : buildHistoricalAnswer(latestTurn);
+      this.presentHistoricalAnswer(
+        latestTurn === null ? null : buildHistoricalAnswer(latestTurn),
+      );
       await this.loadResearchThreads();
       return thread;
     },
@@ -1022,7 +1094,7 @@ export function registerPage(alpine) {
         this.thread = null;
         this.threadId = "";
         this.turnId = "";
-        this.answer = null;
+        this.clearAnswerPresentation();
         this.deleteThreadConfirmationOpen = false;
         await this.loadResearchThreads();
       } catch (error) {
@@ -1204,8 +1276,7 @@ export function registerPage(alpine) {
       this.requestAbortController = controller;
       this.operation = "answer";
       this.requestError = "";
-      this.answer = null;
-      this.streamedAnswerContent = createEmptyAnswerContent();
+      this.clearAnswerPresentation();
       this.closeEvidenceInspector();
       this.resetSpeechAudio();
       try {
@@ -1230,21 +1301,22 @@ export function registerPage(alpine) {
           response,
           (answer) => {
             if (!controller.signal.aborted) {
-              this.answer = answer;
+              this.completeStreamedAnswer(answer);
             }
           },
           (update) => {
             if (!controller.signal.aborted && this.answer === null) {
-              this.streamedAnswerContent = applyAnswerContentUpdate(
-                this.streamedAnswerContent,
-                update,
-              );
+              this.applyStreamedAnswerUpdate(update);
             }
           },
         );
         const completedTurnId = this.answer?.turn.turnId ?? "";
         if (!controller.signal.aborted) {
-          await this.loadResearchThread(answeringThreadId, completedTurnId);
+          await this.loadResearchThread(
+            answeringThreadId,
+            completedTurnId,
+            true,
+          );
         }
       } catch (error) {
         if (!controller.signal.aborted) {
@@ -1425,6 +1497,9 @@ export function registerPage(alpine) {
     },
 
     async inspectCitation(source) {
+      if (source.preview === true) {
+        return;
+      }
       this.citationAbortController?.abort();
       const controller = new AbortController();
       this.citationAbortController = controller;
@@ -1873,13 +1948,7 @@ export function registerPage(alpine) {
     },
 
     answerSections() {
-      let content = this.streamedAnswerContent;
-      let sources = [];
-      if (this.answer !== null) {
-        content = createAnswerContentFromDocument(this.answer.answerDocument);
-        sources = this.answer.sources;
-      }
-      return buildAnswerContentSections(content, sources);
+      return this.answerContentSections;
     },
 
     hasAnswerContent() {
@@ -2053,13 +2122,6 @@ export function registerPage(alpine) {
         return "What would you like to compare across these documents?";
       }
       return "What are the main findings across these documents?";
-    },
-
-    questionInputHint() {
-      if (this.mode === "ask" && this.speechToTextEnabled) {
-        return "Hold Option on Mac or Alt on Windows and Linux to dictate. Press Command or Control + Enter to submit.";
-      }
-      return "Press Command or Control + Enter to submit.";
     },
 
     submitLabel() {
@@ -2250,6 +2312,14 @@ export function registerPage(alpine) {
     },
 
     citationLabel(citation) {
+      if (citation.preview === true) {
+        const number = citation.citationNumber ?? "pending";
+        const location = this.documentLocationLabel(
+          citation.sourceFile,
+          citation.pageNumbers,
+        );
+        return `Citation ${number}, source identified from ${this.basename(citation.sourceFile)}, ${location}. The evidence link will be available when the answer is complete.`;
+      }
       const status = this.claimStatusLabel(
         this.answerCitationStatus(citation.citationNumber),
       );

@@ -193,6 +193,7 @@ function createAnswerContentUpdate(
   }
   return {
     citations: current.citations.map((citation) => ({
+      citationNumber: citation.citationNumber,
       key: citation.key,
       pageNumbers: [...citation.pageNumbers],
       sourceFile: citation.sourceFile,
@@ -229,6 +230,7 @@ function citationsMatch(
       previousCitation === undefined
       || currentCitation === undefined
       || previousCitation.key !== currentCitation.key
+      || previousCitation.citationNumber !== currentCitation.citationNumber
       || previousCitation.sourceFile !== currentCitation.sourceFile
       || !numberArraysMatch(
         previousCitation.pageNumbers,
