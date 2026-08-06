@@ -33,6 +33,9 @@ import {
   createStoredRetrievalWindowPolicyFingerprint,
   storedRetrievalWindowPolicySchema,
 } from "../window-policy.js";
+import {
+  ensureActiveRetrievalSpacePartitions,
+} from "./active-projection-partitions.js";
 
 export const RETRIEVAL_WRITE_BATCH_SIZE = 500;
 
@@ -180,6 +183,7 @@ export async function ensureEmbeddingSpace(
         `Embedding space ${space.id} is already registered with different settings.`,
       );
     }
+    await ensureActiveRetrievalSpacePartitions(database, space);
     return;
   }
 

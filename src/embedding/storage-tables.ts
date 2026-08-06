@@ -1,4 +1,9 @@
 import {
+  activeRetrievalChunks384,
+  activeRetrievalChunks768,
+  activeRetrievalChunks1024,
+  activeRetrievalChunks1536,
+  activeRetrievalChunks2048,
   chatMessageEmbeddings384,
   chatMessageEmbeddings768,
   chatMessageEmbeddings1024,
@@ -23,6 +28,13 @@ export type RetrievalVectorTable =
   | typeof retrievalChunks1536
   | typeof retrievalChunks2048;
 
+export type ActiveRetrievalVectorTable =
+  | typeof activeRetrievalChunks384
+  | typeof activeRetrievalChunks768
+  | typeof activeRetrievalChunks1024
+  | typeof activeRetrievalChunks1536
+  | typeof activeRetrievalChunks2048;
+
 export type ChatMessageEmbeddingTable =
   | typeof chatMessageEmbeddings384
   | typeof chatMessageEmbeddings768
@@ -31,28 +43,34 @@ export type ChatMessageEmbeddingTable =
   | typeof chatMessageEmbeddings2048;
 
 interface EmbeddingStorageSpecification {
+  activeRetrievalTable: ActiveRetrievalVectorTable;
   chatMessageTable: ChatMessageEmbeddingTable;
   retrievalTable: RetrievalVectorTable;
 }
 
 const EMBEDDING_STORAGE_SPECIFICATIONS = {
   [EMBEDDING_DIMENSIONS.DIMENSION_384]: {
+    activeRetrievalTable: activeRetrievalChunks384,
     chatMessageTable: chatMessageEmbeddings384,
     retrievalTable: retrievalChunks384,
   },
   [EMBEDDING_DIMENSIONS.DIMENSION_768]: {
+    activeRetrievalTable: activeRetrievalChunks768,
     chatMessageTable: chatMessageEmbeddings768,
     retrievalTable: retrievalChunks768,
   },
   [EMBEDDING_DIMENSIONS.DIMENSION_1024]: {
+    activeRetrievalTable: activeRetrievalChunks1024,
     chatMessageTable: chatMessageEmbeddings1024,
     retrievalTable: retrievalChunks1024,
   },
   [EMBEDDING_DIMENSIONS.DIMENSION_1536]: {
+    activeRetrievalTable: activeRetrievalChunks1536,
     chatMessageTable: chatMessageEmbeddings1536,
     retrievalTable: retrievalChunks1536,
   },
   [EMBEDDING_DIMENSIONS.DIMENSION_2048]: {
+    activeRetrievalTable: activeRetrievalChunks2048,
     chatMessageTable: chatMessageEmbeddings2048,
     retrievalTable: retrievalChunks2048,
   },
@@ -61,6 +79,12 @@ const EMBEDDING_STORAGE_SPECIFICATIONS = {
 export const RETRIEVAL_VECTOR_TABLES: readonly RetrievalVectorTable[] =
   SUPPORTED_EMBEDDING_DIMENSIONS.map((dimensions) => {
     return EMBEDDING_STORAGE_SPECIFICATIONS[dimensions].retrievalTable;
+  });
+
+export const ACTIVE_RETRIEVAL_VECTOR_TABLES:
+readonly ActiveRetrievalVectorTable[] =
+  SUPPORTED_EMBEDDING_DIMENSIONS.map((dimensions) => {
+    return EMBEDDING_STORAGE_SPECIFICATIONS[dimensions].activeRetrievalTable;
   });
 
 export const CHAT_MESSAGE_EMBEDDING_TABLES: readonly ChatMessageEmbeddingTable[] =
@@ -78,6 +102,12 @@ export function readRetrievalVectorTable(
   dimensions: EmbeddingDimensions,
 ): RetrievalVectorTable {
   return readEmbeddingStorageSpecification(dimensions).retrievalTable;
+}
+
+export function readActiveRetrievalVectorTable(
+  dimensions: EmbeddingDimensions,
+): ActiveRetrievalVectorTable {
+  return readEmbeddingStorageSpecification(dimensions).activeRetrievalTable;
 }
 
 export function readChatMessageEmbeddingTable(

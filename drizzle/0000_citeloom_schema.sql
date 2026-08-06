@@ -1014,6 +1014,126 @@ CREATE TABLE "workspaces" (
 	CONSTRAINT "workspaces_slug_check" CHECK ("workspaces"."slug" ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')
 );
 --> statement-breakpoint
+CREATE TABLE "active_retrieval_chunks_1024" (
+	"document_id" varchar(64) NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"generation_id" uuid NOT NULL,
+	"representation_id" varchar(76) NOT NULL,
+	"source_file" text NOT NULL,
+	"embedding" vector(1024) NOT NULL,
+	CONSTRAINT "active_retrieval_chunks_1024_embedding_space_id_generation_id_representation_id_pk" PRIMARY KEY("embedding_space_id","generation_id","representation_id")
+) PARTITION BY LIST ("embedding_space_id");
+--> statement-breakpoint
+CREATE TABLE "active_retrieval_chunks_1536" (
+	"document_id" varchar(64) NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"generation_id" uuid NOT NULL,
+	"representation_id" varchar(76) NOT NULL,
+	"source_file" text NOT NULL,
+	"embedding" vector(1536) NOT NULL,
+	CONSTRAINT "active_retrieval_chunks_1536_embedding_space_id_generation_id_representation_id_pk" PRIMARY KEY("embedding_space_id","generation_id","representation_id")
+) PARTITION BY LIST ("embedding_space_id");
+--> statement-breakpoint
+CREATE TABLE "active_retrieval_chunks_2048" (
+	"document_id" varchar(64) NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"generation_id" uuid NOT NULL,
+	"representation_id" varchar(76) NOT NULL,
+	"source_file" text NOT NULL,
+	"embedding" halfvec(2048) NOT NULL,
+	CONSTRAINT "active_retrieval_chunks_2048_embedding_space_id_generation_id_representation_id_pk" PRIMARY KEY("embedding_space_id","generation_id","representation_id")
+) PARTITION BY LIST ("embedding_space_id");
+--> statement-breakpoint
+CREATE TABLE "active_retrieval_chunks_384" (
+	"document_id" varchar(64) NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"generation_id" uuid NOT NULL,
+	"representation_id" varchar(76) NOT NULL,
+	"source_file" text NOT NULL,
+	"embedding" vector(384) NOT NULL,
+	CONSTRAINT "active_retrieval_chunks_384_embedding_space_id_generation_id_representation_id_pk" PRIMARY KEY("embedding_space_id","generation_id","representation_id")
+) PARTITION BY LIST ("embedding_space_id");
+--> statement-breakpoint
+CREATE TABLE "active_retrieval_chunks" (
+	"document_id" varchar(64) NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"generation_id" uuid NOT NULL,
+	"representation_id" varchar(76) NOT NULL,
+	"source_file" text NOT NULL,
+	"embedding" vector(768) NOT NULL,
+	CONSTRAINT "active_retrieval_chunks_embedding_space_id_generation_id_representation_id_pk" PRIMARY KEY("embedding_space_id","generation_id","representation_id")
+) PARTITION BY LIST ("embedding_space_id");
+--> statement-breakpoint
+CREATE TABLE "active_retrieval_evidence" (
+	"document_id" varchar(64) NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"evidence_content" text NOT NULL,
+	"evidence_id" varchar(76) NOT NULL,
+	"generation_id" uuid NOT NULL,
+	"kind" "element_kind" NOT NULL,
+	"next_retrieval_id" varchar(64),
+	"page_number" integer,
+	"parent_id" varchar(64) NOT NULL,
+	"previous_retrieval_id" varchar(64),
+	"source_file" text NOT NULL,
+	CONSTRAINT "active_retrieval_evidence_embedding_space_id_generation_id_evidence_id_pk" PRIMARY KEY("embedding_space_id","generation_id","evidence_id")
+) PARTITION BY LIST ("embedding_space_id");
+--> statement-breakpoint
+CREATE TABLE "active_retrieval_lexical_chunks" (
+	"content" text NOT NULL,
+	"document_id" varchar(64) NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"generation_id" uuid NOT NULL,
+	"representation_id" varchar(76) NOT NULL,
+	"source_file" text NOT NULL,
+	CONSTRAINT "active_retrieval_lexical_chunks_embedding_space_id_generation_id_representation_id_pk" PRIMARY KEY("embedding_space_id","generation_id","representation_id")
+) PARTITION BY LIST ("embedding_space_id");
+--> statement-breakpoint
+CREATE TABLE "active_retrieval_routes" (
+	"document_id" varchar(64) NOT NULL,
+	"embedding_space_id" text NOT NULL,
+	"generation_id" uuid NOT NULL,
+	"representation_id" varchar(76) NOT NULL,
+	"source_file" text NOT NULL,
+	"evidence_id" varchar(76),
+	"evidence_mode" varchar(24) NOT NULL,
+	"kind" "element_kind" NOT NULL,
+	"parent_id" varchar(64) NOT NULL,
+	"representation_content" text NOT NULL,
+	"representation_type" varchar(32) NOT NULL,
+	CONSTRAINT "active_retrieval_routes_embedding_space_id_generation_id_representation_id_pk" PRIMARY KEY("embedding_space_id","generation_id","representation_id"),
+	CONSTRAINT "active_retrieval_routes_evidence_check" CHECK ((
+        "active_retrieval_routes"."evidence_mode" = 'direct'
+        AND "active_retrieval_routes"."evidence_id" IS NOT NULL
+      ) OR (
+        "active_retrieval_routes"."evidence_mode" = 'parent-exact'
+        AND "active_retrieval_routes"."evidence_id" IS NULL
+      ))
+) PARTITION BY LIST ("embedding_space_id");
+--> statement-breakpoint
+ALTER TABLE "active_retrieval_chunks_1024" ADD CONSTRAINT "active_retrieval_chunks_1024_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_chunks_1536" ADD CONSTRAINT "active_retrieval_chunks_1536_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_chunks_2048" ADD CONSTRAINT "active_retrieval_chunks_2048_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_chunks_384" ADD CONSTRAINT "active_retrieval_chunks_384_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_chunks" ADD CONSTRAINT "active_retrieval_chunks_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_evidence" ADD CONSTRAINT "active_retrieval_evidence_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_lexical_chunks" ADD CONSTRAINT "active_retrieval_lexical_chunks_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_routes" ADD CONSTRAINT "active_retrieval_routes_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "active_retrieval_chunks_1024_scope_idx" ON "active_retrieval_chunks_1024" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
+CREATE INDEX "active_retrieval_chunks_1024_hnsw_idx" ON "active_retrieval_chunks_1024" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "active_retrieval_chunks_1536_scope_idx" ON "active_retrieval_chunks_1536" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
+CREATE INDEX "active_retrieval_chunks_1536_hnsw_idx" ON "active_retrieval_chunks_1536" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "active_retrieval_chunks_2048_scope_idx" ON "active_retrieval_chunks_2048" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
+CREATE INDEX "active_retrieval_chunks_2048_hnsw_idx" ON "active_retrieval_chunks_2048" USING hnsw ("embedding" halfvec_cosine_ops);--> statement-breakpoint
+CREATE INDEX "active_retrieval_chunks_384_scope_idx" ON "active_retrieval_chunks_384" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
+CREATE INDEX "active_retrieval_chunks_384_hnsw_idx" ON "active_retrieval_chunks_384" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "active_retrieval_chunks_scope_idx" ON "active_retrieval_chunks" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
+CREATE INDEX "active_retrieval_chunks_hnsw_idx" ON "active_retrieval_chunks" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "active_retrieval_evidence_scope_idx" ON "active_retrieval_evidence" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
+CREATE INDEX "active_retrieval_evidence_parent_idx" ON "active_retrieval_evidence" USING btree ("embedding_space_id","generation_id","parent_id");--> statement-breakpoint
+CREATE INDEX "active_retrieval_lexical_scope_idx" ON "active_retrieval_lexical_chunks" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
+CREATE INDEX "active_retrieval_lexical_bm25_idx" ON "active_retrieval_lexical_chunks" USING bm25 ("content") WITH (text_config=english);--> statement-breakpoint
+CREATE INDEX "active_retrieval_routes_scope_idx" ON "active_retrieval_routes" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
 ALTER TABLE "chat_citation_records" ADD CONSTRAINT "chat_citation_records_assistant_message_id_chat_messages_id_fk" FOREIGN KEY ("assistant_message_id") REFERENCES "public"."chat_messages"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "chat_citation_records" ADD CONSTRAINT "chat_citation_records_document_version_id_chat_evidence_documents_document_version_id_fk" FOREIGN KEY ("document_version_id") REFERENCES "public"."chat_evidence_documents"("document_version_id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "chat_conversations" ADD CONSTRAINT "chat_conversations_owner_membership_fk" FOREIGN KEY ("workspace_id","owner_user_id") REFERENCES "public"."workspace_memberships"("workspace_id","user_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1166,6 +1286,84 @@ CREATE INDEX "user_setup_tokens_expiry_idx" ON "user_setup_tokens" USING btree (
 CREATE UNIQUE INDEX "users_username_normalized_idx" ON "users" USING btree ("username_normalized");--> statement-breakpoint
 CREATE INDEX "workspace_memberships_user_idx" ON "workspace_memberships" USING btree ("user_id","workspace_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "workspaces_slug_idx" ON "workspaces" USING btree ("slug");--> statement-breakpoint
+
+CREATE OR REPLACE FUNCTION "protect_retrieval_generation_rows"()
+RETURNS trigger AS $retrieval_generation_immutability$
+DECLARE
+  generation_completed boolean;
+  generation_document_id varchar(64);
+  generation_embedding_space_id text;
+  generation_source_file text;
+BEGIN
+  IF TG_OP = 'UPDATE' THEN
+    RAISE EXCEPTION 'Canonical retrieval rows are immutable.';
+  END IF;
+  SELECT
+    manifest."completed",
+    manifest."document_id",
+    manifest."embedding_space_id",
+    job."source_file"
+  INTO
+    generation_completed,
+    generation_document_id,
+    generation_embedding_space_id,
+    generation_source_file
+  FROM "ingestion_embedding_manifests" manifest
+  INNER JOIN "ingestion_jobs" job
+    ON job."generation_id" = manifest."generation_id"
+  WHERE manifest."generation_id" = NEW."generation_id";
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Retrieval generation % has no manifest.', NEW."generation_id";
+  END IF;
+  IF generation_completed THEN
+    RAISE EXCEPTION 'Retrieval generation % is sealed.', NEW."generation_id";
+  END IF;
+  IF NEW."document_id" <> generation_document_id
+    OR NEW."embedding_space_id" <> generation_embedding_space_id
+    OR NEW."source_file" <> generation_source_file THEN
+    RAISE EXCEPTION 'Retrieval row does not match generation %.', NEW."generation_id";
+  END IF;
+  RETURN NEW;
+END
+$retrieval_generation_immutability$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION "protect_completed_retrieval_manifest"()
+RETURNS trigger AS $retrieval_manifest_completion$
+BEGIN
+  IF OLD."completed" AND NEW IS DISTINCT FROM OLD THEN
+    RAISE EXCEPTION 'Completed retrieval generation % is immutable.', OLD."generation_id";
+  END IF;
+  RETURN NEW;
+END
+$retrieval_manifest_completion$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "retrieval_chunks_384_generation_immutable"
+BEFORE INSERT OR UPDATE ON "retrieval_chunks_384"
+FOR EACH ROW EXECUTE FUNCTION "protect_retrieval_generation_rows"();
+
+CREATE TRIGGER "retrieval_chunks_generation_immutable"
+BEFORE INSERT OR UPDATE ON "retrieval_chunks"
+FOR EACH ROW EXECUTE FUNCTION "protect_retrieval_generation_rows"();
+
+CREATE TRIGGER "retrieval_chunks_1024_generation_immutable"
+BEFORE INSERT OR UPDATE ON "retrieval_chunks_1024"
+FOR EACH ROW EXECUTE FUNCTION "protect_retrieval_generation_rows"();
+
+CREATE TRIGGER "retrieval_chunks_1536_generation_immutable"
+BEFORE INSERT OR UPDATE ON "retrieval_chunks_1536"
+FOR EACH ROW EXECUTE FUNCTION "protect_retrieval_generation_rows"();
+
+CREATE TRIGGER "retrieval_chunks_2048_generation_immutable"
+BEFORE INSERT OR UPDATE ON "retrieval_chunks_2048"
+FOR EACH ROW EXECUTE FUNCTION "protect_retrieval_generation_rows"();
+
+CREATE TRIGGER "retrieval_lexical_chunks_generation_immutable"
+BEFORE INSERT OR UPDATE ON "retrieval_lexical_chunks"
+FOR EACH ROW EXECUTE FUNCTION "protect_retrieval_generation_rows"();
+
+CREATE TRIGGER "ingestion_embedding_manifests_completion_immutable"
+BEFORE UPDATE ON "ingestion_embedding_manifests"
+FOR EACH ROW EXECUTE FUNCTION "protect_completed_retrieval_manifest"();
 
 CREATE OR REPLACE FUNCTION "publish_application_revision"() RETURNS trigger AS $$
 DECLARE

@@ -3,12 +3,15 @@ import { readFileSync } from "node:fs";
 export type SqlQueryName =
   | "browse-document-catalog"
   | "match-keyword-documents"
+  | "retrieve-indexed-lexical-candidates"
   | "retrieve-keyword-discovery"
   | "retrieve-lexical-candidates";
 
 const queryFiles: Record<SqlQueryName, string> = {
   "browse-document-catalog": "browse-document-catalog.sql",
   "match-keyword-documents": "match-keyword-documents.sql",
+  "retrieve-indexed-lexical-candidates":
+    "retrieve-indexed-lexical-candidates.sql",
   "retrieve-keyword-discovery": "retrieve-keyword-discovery.sql",
   "retrieve-lexical-candidates": "retrieve-lexical-candidates.sql",
 };

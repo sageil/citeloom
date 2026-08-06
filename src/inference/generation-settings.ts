@@ -63,6 +63,12 @@ function compareResolvedTargets(
   if (left.documentId > right.documentId) {
     return 1;
   }
+  if (left.generationId < right.generationId) {
+    return -1;
+  }
+  if (left.generationId > right.generationId) {
+    return 1;
+  }
   return left.sourceFile.localeCompare(right.sourceFile);
 }
 

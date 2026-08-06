@@ -1,29 +1,17 @@
-WITH "query_scope" AS MATERIALIZED (
-  SELECT "document_id", "generation_id", "source_file"
-  FROM unnest(
-    $3::varchar[],
-    $4::uuid[],
-    $5::text[]
-  ) AS "scope_target"("document_id", "generation_id", "source_file")
-),
-"candidates" AS MATERIALIZED (
+WITH "candidates" AS MATERIALIZED (
   SELECT
-    -(chunks."content" <@> to_bm25query($1, 'retrieval_lexical_chunks_content_bm25_idx')) AS "bm25Score",
+    -(chunks."content" <@> to_bm25query($1, 'active_retrieval_lexical_bm25_idx')) AS "bm25Score",
     chunks."document_id",
     chunks."embedding_space_id",
     chunks."generation_id",
-    chunks."id" AS "representation_id",
+    chunks."representation_id",
     chunks."source_file"
-  FROM "retrieval_lexical_chunks" AS chunks
-  INNER JOIN "query_scope" AS scope
-    ON scope."document_id" = chunks."document_id"
-    AND scope."generation_id" = chunks."generation_id"
-    AND scope."source_file" = chunks."source_file"
+  FROM "active_retrieval_lexical_chunks" AS chunks
   WHERE chunks."embedding_space_id" = $2
   ORDER BY
-    chunks."content" <@> to_bm25query($1, 'retrieval_lexical_chunks_content_bm25_idx'),
-    chunks."id" ASC
-  LIMIT $6
+    chunks."content" <@> to_bm25query($1, 'active_retrieval_lexical_bm25_idx'),
+    chunks."representation_id" ASC
+  LIMIT $3
 )
 SELECT
   candidates."bm25Score",
@@ -63,23 +51,29 @@ LEFT JOIN LATERAL (
   SELECT
     evidence."evidence_content",
     evidence."evidence_id"
-  FROM "retrieval_lexical_chunks" AS exact_chunks
+  FROM "active_retrieval_lexical_chunks" AS exact_chunks
+  INNER JOIN "active_retrieval_routes" AS exact_routes
+    ON exact_routes."document_id" = exact_chunks."document_id"
+    AND exact_routes."embedding_space_id" = exact_chunks."embedding_space_id"
+    AND exact_routes."generation_id" = exact_chunks."generation_id"
+    AND exact_routes."representation_id" = exact_chunks."representation_id"
+    AND exact_routes."source_file" = exact_chunks."source_file"
   INNER JOIN "active_retrieval_evidence" AS evidence
-    ON evidence."document_id" = exact_chunks."document_id"
-    AND evidence."embedding_space_id" = exact_chunks."embedding_space_id"
-    AND evidence."generation_id" = exact_chunks."generation_id"
-    AND evidence."evidence_id" = exact_chunks."id"
-    AND evidence."source_file" = exact_chunks."source_file"
+    ON evidence."document_id" = exact_routes."document_id"
+    AND evidence."embedding_space_id" = exact_routes."embedding_space_id"
+    AND evidence."generation_id" = exact_routes."generation_id"
+    AND evidence."evidence_id" = exact_routes."evidence_id"
+    AND evidence."source_file" = exact_routes."source_file"
   WHERE routes."evidence_mode" = 'parent-exact'
-    AND exact_chunks."representation_type" = 'exact-window'
-    AND exact_chunks."document_id" = routes."document_id"
-    AND exact_chunks."embedding_space_id" = routes."embedding_space_id"
-    AND exact_chunks."generation_id" = routes."generation_id"
-    AND exact_chunks."parent_id" = routes."parent_id"
-    AND exact_chunks."source_file" = routes."source_file"
+    AND exact_routes."representation_type" = 'exact-window'
+    AND exact_routes."document_id" = routes."document_id"
+    AND exact_routes."embedding_space_id" = routes."embedding_space_id"
+    AND exact_routes."generation_id" = routes."generation_id"
+    AND exact_routes."parent_id" = routes."parent_id"
+    AND exact_routes."source_file" = routes."source_file"
   ORDER BY
-    exact_chunks."content" <@> to_bm25query($1, 'retrieval_lexical_chunks_content_bm25_idx'),
-    exact_chunks."id" ASC
+    exact_chunks."content" <@> to_bm25query($1, 'active_retrieval_lexical_bm25_idx'),
+    exact_chunks."representation_id" ASC
   LIMIT 1
 ) AS exact_evidence ON TRUE
 WHERE (

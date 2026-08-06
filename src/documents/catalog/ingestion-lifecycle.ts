@@ -45,16 +45,17 @@ import {
   indexedDocumentSpaces,
   ingestionEmbeddingManifests,
   ingestionJobs,
-  retrievalLexicalChunks,
   retrievalDescriptionArtifacts,
-  retrievalTocArtifacts,
   sourceElements,
 } from "../../database/schema.js";
-import { RETRIEVAL_VECTOR_TABLES } from "../../embedding/storage-tables.js";
 import {
   deleteRetrievalGenerationRows,
   validateEmbeddingGenerationForPublication,
 } from "../../retrieval/indexing/index-store.js";
+import {
+  deleteActiveRetrievalProjection,
+  synchronizeActiveRetrievalProjection,
+} from "../../retrieval/indexing/active-projection-store.js";
 import type { DocumentFormat } from "../format.js";
 import { validateDocumentTocForPublication } from "../../retrieval/toc/store.js";
 
@@ -311,6 +312,14 @@ export class CatalogIngestionLifecycle {
         indexedAt,
         versionId,
       );
+      await synchronizeActiveRetrievalProjection(transaction, {
+        documentId: job.documentId,
+        elementSetId: requireElementSetId(job),
+        embeddingSpaceId: job.embeddingSpaceId,
+        generationId: job.generationId,
+        sourceFile: job.sourceFile,
+        totalElements: job.totalElements,
+      });
       await synchronizeIndexedDocumentSpace(transaction, job, indexedAt);
       await deleteOrphanedTemporaryArtifacts(
         transaction,
@@ -669,10 +678,42 @@ async function reconcileUploadedContentDuplicates(
     return [];
   }
 
-  const mergedTags = [...canonical.indexed.tags];
+  const spaceRows = await transaction
+    .select()
+    .from(indexedDocumentSpaces)
+    .where(eq(indexedDocumentSpaces.documentId, documentId));
+  const spacesBySource = new Map<string, typeof spaceRows>();
+  for (const space of spaceRows) {
+    const sourceSpaces = spacesBySource.get(space.sourceFile) ?? [];
+    sourceSpaces.push(space);
+    spacesBySource.set(space.sourceFile, sourceSpaces);
+  }
+  const canonicalSpaceIds = new Set(
+    (spacesBySource.get(canonical.sourceFile) ?? []).map((space) => (
+      space.embeddingSpaceId
+    )),
+  );
+  const reconcilableDuplicates: UploadedDocumentCandidate[] = [];
   for (let index = 1; index < duplicates.length; index += 1) {
     const duplicate = duplicates[index];
-    if (duplicate?.indexed !== null && duplicate?.indexed !== undefined) {
+    if (duplicate?.indexed === null || duplicate?.indexed === undefined) {
+      continue;
+    }
+    const duplicateSpaces = spacesBySource.get(duplicate.sourceFile) ?? [];
+    const isCoveredByCanonical = duplicateSpaces.every((space) => (
+      canonicalSpaceIds.has(space.embeddingSpaceId)
+    ));
+    if (isCoveredByCanonical) {
+      reconcilableDuplicates.push(duplicate);
+    }
+  }
+  if (reconcilableDuplicates.length === 0) {
+    return [];
+  }
+
+  const mergedTags = [...canonical.indexed.tags];
+  for (const duplicate of reconcilableDuplicates) {
+    if (duplicate.indexed !== null) {
       mergedTags.push(...duplicate.indexed.tags);
     }
   }
@@ -682,51 +723,15 @@ async function reconcileUploadedContentDuplicates(
     .set({ tags: normalizedTags })
     .where(eq(indexedDocuments.sourceFile, canonical.sourceFile));
 
-  let nextVersion = await readLatestDocumentVersion(
-    transaction,
-    canonical.sourceFile,
-  );
   const reconciledSourceFiles: string[] = [];
-  for (let index = 1; index < duplicates.length; index += 1) {
-    const duplicate = duplicates[index];
-    if (duplicate?.indexed === null || duplicate?.indexed === undefined) {
-      continue;
-    }
-    const versions = await transaction
-      .select({ id: documentVersions.id })
-      .from(documentVersions)
-      .where(eq(documentVersions.sourceFile, duplicate.sourceFile))
-      .orderBy(asc(documentVersions.version));
-    for (const version of versions) {
-      nextVersion += 1;
-      await transaction
-        .update(documentVersions)
-        .set({ sourceFile: canonical.sourceFile, version: nextVersion })
-        .where(eq(documentVersions.id, version.id));
-    }
-
-    await synchronizeRetrievalSourceFile(
-      transaction,
-      documentId,
-      duplicate.sourceFile,
-      canonical.sourceFile,
-    );
-
-    const spaces = await transaction
-      .select()
-      .from(indexedDocumentSpaces)
-      .where(eq(indexedDocumentSpaces.sourceFile, duplicate.sourceFile));
+  for (const duplicate of reconcilableDuplicates) {
+    const spaces = spacesBySource.get(duplicate.sourceFile) ?? [];
     for (const space of spaces) {
-      await transaction
-        .insert(indexedDocumentSpaces)
-        .values({
-          documentId: space.documentId,
-          embeddingSpaceId: space.embeddingSpaceId,
-          generationId: space.generationId,
-          indexedAt: space.indexedAt,
-          sourceFile: canonical.sourceFile,
-        })
-        .onConflictDoNothing();
+      await deleteActiveRetrievalProjection(transaction, {
+        documentId: space.documentId,
+        embeddingSpaceId: space.embeddingSpaceId,
+        sourceFile: space.sourceFile,
+      });
     }
     await transaction
       .delete(indexedDocumentSpaces)
@@ -737,55 +742,6 @@ async function reconcileUploadedContentDuplicates(
     reconciledSourceFiles.push(duplicate.sourceFile);
   }
   return reconciledSourceFiles;
-}
-
-async function synchronizeRetrievalSourceFile(
-  transaction: CatalogIngestionTransaction,
-  documentId: string,
-  previousSourceFile: string,
-  canonicalSourceFile: string,
-): Promise<void> {
-  for (const table of RETRIEVAL_VECTOR_TABLES) {
-    const condition = and(
-      eq(table.documentId, documentId),
-      eq(table.sourceFile, previousSourceFile),
-    );
-    await transaction
-      .update(table)
-      .set({ sourceFile: canonicalSourceFile })
-      .where(condition);
-  }
-
-  const lexicalCondition = and(
-    eq(retrievalLexicalChunks.documentId, documentId),
-    eq(retrievalLexicalChunks.sourceFile, previousSourceFile),
-  );
-  await transaction
-    .update(retrievalLexicalChunks)
-    .set({ sourceFile: canonicalSourceFile })
-    .where(lexicalCondition);
-
-  const tocCondition = and(
-    eq(retrievalTocArtifacts.documentId, documentId),
-    eq(retrievalTocArtifacts.sourceFile, previousSourceFile),
-  );
-  await transaction
-    .update(retrievalTocArtifacts)
-    .set({ sourceFile: canonicalSourceFile })
-    .where(tocCondition);
-}
-
-async function readLatestDocumentVersion(
-  transaction: CatalogIngestionTransaction,
-  sourceFile: string,
-): Promise<number> {
-  const rows = await transaction
-    .select({ version: documentVersions.version })
-    .from(documentVersions)
-    .where(eq(documentVersions.sourceFile, sourceFile))
-    .orderBy(desc(documentVersions.version))
-    .limit(1);
-  return rows[0]?.version ?? 0;
 }
 
 const PUBLICATION_CLEANUP_BATCH_SIZE = 500;

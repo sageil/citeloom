@@ -23,22 +23,41 @@ const retrieval: RetrievalConfig = {
   topK: 10,
 };
 
+const generationA = "00000000-0000-4000-8000-000000000001";
+const generationB = "00000000-0000-4000-8000-000000000002";
+
 describe("turn generation settings", () => {
   it("derives stable operation-specific seeds independent of scope order", () => {
     const first = createTurnGenerationSettings(
       retrieval,
       "  What   changed? ",
       [
-        { documentId: "document-b", sourceFile: "/documents/b.pdf" },
-        { documentId: "document-a", sourceFile: "/documents/a.pdf" },
+        {
+          documentId: "document-b",
+          generationId: generationB,
+          sourceFile: "/documents/b.pdf",
+        },
+        {
+          documentId: "document-a",
+          generationId: generationA,
+          sourceFile: "/documents/a.pdf",
+        },
       ],
     );
     const second = createTurnGenerationSettings(
       retrieval,
       "What changed?",
       [
-        { documentId: "document-a", sourceFile: "/documents/a.pdf" },
-        { documentId: "document-b", sourceFile: "/documents/b.pdf" },
+        {
+          documentId: "document-a",
+          generationId: generationA,
+          sourceFile: "/documents/a.pdf",
+        },
+        {
+          documentId: "document-b",
+          generationId: generationB,
+          sourceFile: "/documents/b.pdf",
+        },
       ],
     );
 
@@ -55,7 +74,11 @@ describe("turn generation settings", () => {
         queryExpansionTemperature: 0.4,
       },
       "What changed?",
-      [{ documentId: "document-a", sourceFile: "/documents/a.pdf" }],
+      [{
+        documentId: "document-a",
+        generationId: generationA,
+        sourceFile: "/documents/a.pdf",
+      }],
     );
 
     expect(settings).toEqual({

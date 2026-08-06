@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import type { TaskScheduler } from "../../shared/concurrency.js";
@@ -10,7 +11,10 @@ import type {
   RetrievalMode,
 } from "../../config/index.js";
 import type { CiteLoomDatabase, SqlQueryExecutor } from "../../database/client.js";
-import { indexedDocuments } from "../../database/schema.js";
+import {
+  indexedDocuments,
+  indexedDocumentSpaces,
+} from "../../database/schema.js";
 import {
   selectNonOverlappingCandidatesWithTrace,
   selectTopCandidates,
@@ -36,8 +40,15 @@ import type {
 } from "../ranking/candidate-selection.js";
 import { readEmbedding } from "./index-store.js";
 import { matchesResolvedQueryScope } from "./query-scope-filter.js";
-import { queryDenseCandidates } from "./vector-query-store.js";
 import {
+  queryDenseCandidates,
+} from "./vector-query-store.js";
+import {
+  CandidateBudgetSearch,
+  type RetrievalSearchStrategy,
+} from "./candidate-budget-search.js";
+import {
+  createActiveProjectionKey,
   queryDenseEvidenceCandidates,
   readActiveRetrievalWindows,
 } from "./vector-query-store.js";
@@ -58,6 +69,7 @@ import {
 } from "../discovery/model.js";
 import type { SourceDocumentStore } from "../../documents/storage/source-document-store.js";
 import {
+  createResolvedQueryScopeTargetKey,
   splitResolvedQueryScopeTargets,
   type ResolvedQueryScopeTarget,
 } from "../../domain/query-scope.js";
@@ -81,6 +93,7 @@ export type {
 } from "./query-types.js";
 
 const passiveAbortSignal = new AbortController().signal;
+const RETRIEVAL_STATEMENT_TIMEOUT_MS = 30_000;
 const retrievalIdentifierSchema = z.string().regex(
   /^[a-f0-9]{64}(?:-description)?$/u,
 );
@@ -89,6 +102,7 @@ const denseRetrievalRowBase = {
   documentId: contentIdSchema,
   evidenceContent: z.string().min(1),
   evidenceRetrievalId: retrievalIdentifierSchema,
+  generationId: z.uuid(),
   parentId: contentIdSchema,
   representationContent: z.string().min(1),
   representationId: retrievalIdentifierSchema,
@@ -116,6 +130,7 @@ const lexicalRetrievalRowBase = {
   documentId: contentIdSchema,
   evidenceContent: z.string().min(1),
   evidenceRetrievalId: retrievalIdentifierSchema,
+  generationId: z.uuid(),
   parentId: contentIdSchema,
   representationContent: z.string().min(1),
   representationId: retrievalIdentifierSchema,
@@ -349,6 +364,7 @@ export async function retrieveRelevantElementsWithScores(
       database,
       space,
       selected,
+      scopeTargets,
     );
     runTelemetry.setHydratedContextCount(contextualized.length);
     return {
@@ -418,6 +434,7 @@ export async function retrieveRelevantElementsWithScores(
       database,
       space,
       reranked.retrieved,
+      scopeTargets,
     );
     return {
       rerankerModelId: reranker.model.modelId,
@@ -437,6 +454,7 @@ async function addAdjacentRetrievalContext(
   database: CiteLoomDatabase,
   space: EmbeddingSpaceConfig,
   retrieved: readonly RetrievedElement[],
+  scopeTargets: ResolvedQueryScopeTarget[],
 ): Promise<RetrievedElement[]> {
   const retrievalIds: string[] = [];
   for (const item of retrieved) {
@@ -445,9 +463,18 @@ async function addAdjacentRetrievalContext(
   const primaryRows = await readActiveRetrievalWindows(
     database,
     space,
+    scopeTargets,
     retrievalIds,
   );
-  const primaryById = new Map(primaryRows.map((row) => [row.id, row]));
+  const primaryByKey = new Map(primaryRows.map((row) => [
+    createActiveProjectionKey(
+      row.documentId,
+      row.generationId,
+      row.id,
+      row.sourceFile,
+    ),
+    row,
+  ]));
   const neighborIds = new Set<string>();
   for (const row of primaryRows) {
     if (row.previousRetrievalId !== null) {
@@ -460,14 +487,59 @@ async function addAdjacentRetrievalContext(
   const neighborRows = await readActiveRetrievalWindows(
     database,
     space,
+    scopeTargets,
     [...neighborIds],
   );
-  const neighborById = new Map(neighborRows.map((row) => [row.id, row]));
-  const selectedIds = new Set(retrievalIds);
+  const neighborByKey = new Map(neighborRows.map((row) => [
+    createActiveProjectionKey(
+      row.documentId,
+      row.generationId,
+      row.id,
+      row.sourceFile,
+    ),
+    row,
+  ]));
+  const targetByDocument = new Map<string, ResolvedQueryScopeTarget>();
+  for (const target of scopeTargets) {
+    targetByDocument.set(
+      createDiscoveryDocumentKey(target.documentId, target.sourceFile),
+      target,
+    );
+  }
+  const selectedKeys = new Set<string>();
+  for (const item of retrieved) {
+    const target = targetByDocument.get(createDiscoveryDocumentKey(
+      item.element.documentId,
+      item.element.sourceFile,
+    ));
+    if (target === undefined) {
+      continue;
+    }
+    selectedKeys.add(createActiveProjectionKey(
+      target.documentId,
+      target.generationId,
+      item.provenance.retrievalWindowId,
+      target.sourceFile,
+    ));
+  }
   const contextualized: RetrievedElement[] = [];
   for (const item of retrieved) {
     const retrievalId = item.provenance.retrievalWindowId;
-    const primary = primaryById.get(retrievalId);
+    const target = targetByDocument.get(createDiscoveryDocumentKey(
+      item.element.documentId,
+      item.element.sourceFile,
+    ));
+    if (target === undefined) {
+      contextualized.push(item);
+      continue;
+    }
+    const primaryKey = createActiveProjectionKey(
+      target.documentId,
+      target.generationId,
+      retrievalId,
+      target.sourceFile,
+    );
+    const primary = primaryByKey.get(primaryKey);
     if (primary === undefined) {
       contextualized.push(item);
       continue;
@@ -477,9 +549,16 @@ async function addAdjacentRetrievalContext(
     const contextWindowIds: string[] = [];
     if (
       primary.previousRetrievalId !== null
-      && !selectedIds.has(primary.previousRetrievalId)
     ) {
-      const previous = neighborById.get(primary.previousRetrievalId);
+      const previousKey = createActiveProjectionKey(
+        target.documentId,
+        target.generationId,
+        primary.previousRetrievalId,
+        target.sourceFile,
+      );
+      const previous = selectedKeys.has(previousKey)
+        ? undefined
+        : neighborByKey.get(previousKey);
       if (previous !== undefined) {
         preceding = readPrecedingContext(
           previous.evidenceContent,
@@ -493,9 +572,16 @@ async function addAdjacentRetrievalContext(
     contextWindowIds.push(retrievalId);
     if (
       primary.nextRetrievalId !== null
-      && !selectedIds.has(primary.nextRetrievalId)
     ) {
-      const next = neighborById.get(primary.nextRetrievalId);
+      const nextKey = createActiveProjectionKey(
+        target.documentId,
+        target.generationId,
+        primary.nextRetrievalId,
+        target.sourceFile,
+      );
+      const next = selectedKeys.has(nextKey)
+        ? undefined
+        : neighborByKey.get(nextKey);
       if (next !== undefined) {
         following = readFollowingContext(
           next.evidenceContent,
@@ -625,6 +711,7 @@ export async function queryRetrievalCandidateRankings(
       query,
       config,
       scopeTargets,
+      abortSignal,
       runTelemetry,
     ).then(decodeRetrievalCandidateRankings);
     pendingResults.push(pendingResult);
@@ -749,11 +836,23 @@ async function loadRetrievalCandidatesWithMetadata(
     return { candidates: [], retrieved: [] };
   }
   const candidateTargets: ResolvedQueryScopeTarget[] = [];
+  const scopeTargetsByDocument = new Map<string, ResolvedQueryScopeTarget>();
+  for (const target of scopeTargets) {
+    const targetKey = createDiscoveryDocumentKey(
+      target.documentId,
+      target.sourceFile,
+    );
+    scopeTargetsByDocument.set(targetKey, target);
+  }
   for (const candidate of scopedCandidates) {
-    candidateTargets.push({
-      documentId: candidate.documentId,
-      sourceFile: candidate.sourceFile,
-    });
+    const candidateKey = createDiscoveryDocumentKey(
+      candidate.documentId,
+      candidate.sourceFile,
+    );
+    const target = scopeTargetsByDocument.get(candidateKey);
+    if (target !== undefined) {
+      candidateTargets.push(target);
+    }
   }
   const versionRows = await database
     .select({
@@ -762,9 +861,17 @@ async function loadRetrievalCandidatesWithMetadata(
       versionId: indexedDocuments.versionId,
     })
     .from(indexedDocuments)
+    .innerJoin(
+      indexedDocumentSpaces,
+      and(
+        eq(indexedDocumentSpaces.documentId, indexedDocuments.documentId),
+        eq(indexedDocumentSpaces.sourceFile, indexedDocuments.sourceFile),
+      ),
+    )
     .where(matchesResolvedQueryScope(
-      indexedDocuments.documentId,
-      indexedDocuments.sourceFile,
+      indexedDocumentSpaces.documentId,
+      indexedDocumentSpaces.generationId,
+      indexedDocumentSpaces.sourceFile,
       candidateTargets,
     ));
   const versionIds = new Map<string, string>();
@@ -938,6 +1045,7 @@ export async function retrieveKeywordDiscoveryPage(
     query,
     embeddingSpaceId,
     scopeColumns.documentIds,
+    scopeColumns.generationIds,
     scopeColumns.sourceFiles,
     pageSize,
     offset,
@@ -998,6 +1106,7 @@ export async function readKeywordMatchingDocumentKeys(
     query,
     embeddingSpaceId,
     scopeColumns.documentIds,
+    scopeColumns.generationIds,
     scopeColumns.sourceFiles,
   ]);
   const targetKeys = buildResolvedScopeTargetKeys(scopeTargets);
@@ -1051,6 +1160,7 @@ async function queryRetrievalCandidates(
   query: RetrievalQuery,
   config: RetrievalConfig,
   scopeTargets: ResolvedQueryScopeTarget[],
+  abortSignal: AbortSignal,
   runTelemetry: RunTelemetry,
 ): Promise<RetrievalCandidateRows> {
   let denseRowsPromise: Promise<DenseCandidate[]> = Promise.resolve([]);
@@ -1071,12 +1181,18 @@ async function queryRetrievalCandidates(
     denseRowsPromise = runCandidateQueryStage(
       denseStage,
       scopeTargets.length,
-      () => queryDenseRepresentationCandidates(
+      () => runRetrievalDatabaseOperation(
+        queryExecutor,
         database,
-        space,
-        normalizedEmbedding,
-        config.candidateK,
-        scopeTargets,
+        abortSignal,
+        (operationDatabase) => queryDenseRepresentationCandidates(
+          operationDatabase,
+          space,
+          normalizedEmbedding,
+          config.candidateK,
+          scopeTargets,
+          abortSignal,
+        ),
       ),
     );
   }
@@ -1097,6 +1213,7 @@ async function queryRetrievalCandidates(
         query.text,
         scopeTargets,
         config.candidateK,
+        abortSignal,
       ),
     );
   }
@@ -1105,6 +1222,22 @@ async function queryRetrievalCandidates(
     lexicalRowsPromise,
   ]);
   return { dense, lexical };
+}
+
+function runRetrievalDatabaseOperation<Result>(
+  queryExecutor: SqlQueryExecutor,
+  database: CiteLoomDatabase,
+  abortSignal: AbortSignal,
+  operation: (operationDatabase: CiteLoomDatabase) => Promise<Result>,
+): Promise<Result> {
+  if (queryExecutor.withDatabase === undefined) {
+    abortSignal.throwIfAborted();
+    return operation(database);
+  }
+  return queryExecutor.withDatabase(operation, {
+    abortSignal,
+    statementTimeoutMs: RETRIEVAL_STATEMENT_TIMEOUT_MS,
+  });
 }
 
 async function runCandidateQueryStage<
@@ -1200,19 +1333,47 @@ async function queryDenseRepresentationCandidates(
   embedding: number[],
   candidateK: number,
   scopeTargets: ResolvedQueryScopeTarget[],
+  abortSignal: AbortSignal,
 ): Promise<DenseCandidate[]> {
-  const rawRows = await queryDenseCandidates(
-    database,
-    space,
-    embedding,
-    candidateK,
-    scopeTargets,
-  );
-  const rows = decodeRows(
-    denseRetrievalRowSchema,
-    rawRows,
-    "dense retrieval",
-  );
+  const search = new CandidateBudgetSearch(candidateK, scopeTargets.length);
+  while (true) {
+    abortSignal.throwIfAborted();
+    const rawRows = await queryDenseCandidates(
+      database,
+      space,
+      embedding,
+      search.rawLimit,
+      scopeTargets,
+      search.strategy,
+    );
+    abortSignal.throwIfAborted();
+    const decodedRows = decodeRows(
+      denseRetrievalRowSchema,
+      rawRows,
+      "dense retrieval",
+    );
+    const rows = filterRowsToResolvedScope(decodedRows, scopeTargets);
+    const candidates = await buildDenseRepresentationCandidates(
+      database,
+      space,
+      embedding,
+      scopeTargets,
+      rows,
+    );
+    const selected = selectStrongestRepresentations(candidates, candidateK);
+    if (!search.advance(rawRows.length, selected.length)) {
+      return selected;
+    }
+  }
+}
+
+async function buildDenseRepresentationCandidates(
+  database: CiteLoomDatabase,
+  space: EmbeddingSpaceConfig,
+  embedding: number[],
+  scopeTargets: ResolvedQueryScopeTarget[],
+  rows: DenseRetrievalRow[],
+): Promise<DenseCandidate[]> {
   const descriptionMetadata: DescriptionDenseRetrievalRow[] = [];
   for (const row of rows) {
     if (row.representationType !== "exact-window") {
@@ -1251,7 +1412,7 @@ async function queryDenseRepresentationCandidates(
       sourceFile: row.sourceFile,
     });
   }
-  return selectStrongestRepresentations(candidates, candidateK);
+  return candidates;
 }
 
 async function queryLexicalRepresentationCandidates(
@@ -1260,42 +1421,107 @@ async function queryLexicalRepresentationCandidates(
   question: string,
   scopeTargets: ResolvedQueryScopeTarget[],
   candidateK: number,
+  abortSignal: AbortSignal,
 ): Promise<LexicalCandidate[]> {
-  const scopeColumns = splitResolvedQueryScopeTargets(scopeTargets);
-  const rawRows = await queryExecutor.execute(
-    "retrieve-lexical-candidates",
-    [
-      question,
+  const search = new CandidateBudgetSearch(candidateK, scopeTargets.length);
+  while (true) {
+    abortSignal.throwIfAborted();
+    const rawRows = await queryLexicalCandidateBatch(
+      queryExecutor,
       space.id,
-      scopeColumns.documentIds,
-      scopeColumns.sourceFiles,
-      candidateK,
-    ],
-  );
-  const rows = decodeRows(
-    lexicalRetrievalRowSchema,
-    rawRows,
-    "lexical retrieval",
-  );
-  const candidates: LexicalCandidate[] = [];
-  for (const row of rows) {
-    if (row.bm25Score <= 0) {
-      continue;
+      question,
+      scopeTargets,
+      search.rawLimit,
+      search.strategy,
+      abortSignal,
+    );
+    abortSignal.throwIfAborted();
+    const decodedRows = decodeRows(
+      lexicalRetrievalRowSchema,
+      rawRows,
+      "lexical retrieval",
+    );
+    const rows = filterRowsToResolvedScope(decodedRows, scopeTargets);
+    const candidates: LexicalCandidate[] = [];
+    for (const row of rows) {
+      if (row.bm25Score <= 0) {
+        continue;
+      }
+      const representation = row.representationType === "exact-window"
+        ? buildExactRepresentation(row)
+        : buildDescriptionCandidateRepresentation(row);
+      candidates.push({
+        bm25Score: row.bm25Score,
+        documentId: row.documentId,
+        evidenceContent: row.evidenceContent,
+        evidenceRetrievalId: row.evidenceRetrievalId,
+        parentId: row.parentId,
+        representation,
+        sourceFile: row.sourceFile,
+      });
     }
-    const representation = row.representationType === "exact-window"
-      ? buildExactRepresentation(row)
-      : buildDescriptionCandidateRepresentation(row);
-    candidates.push({
-      bm25Score: row.bm25Score,
-      documentId: row.documentId,
-      evidenceContent: row.evidenceContent,
-      evidenceRetrievalId: row.evidenceRetrievalId,
-      parentId: row.parentId,
-      representation,
-      sourceFile: row.sourceFile,
+    const selected = selectStrongestRepresentations(candidates, candidateK);
+    if (!search.advance(rawRows.length, selected.length)) {
+      return selected;
+    }
+  }
+}
+
+function queryLexicalCandidateBatch(
+  queryExecutor: SqlQueryExecutor,
+  embeddingSpaceId: string,
+  question: string,
+  scopeTargets: ResolvedQueryScopeTarget[],
+  rawLimit: number,
+  strategy: RetrievalSearchStrategy,
+  abortSignal: AbortSignal,
+): Promise<unknown[]> {
+  if (strategy === "indexed") {
+    return queryExecutor.execute("retrieve-indexed-lexical-candidates", [
+      question,
+      embeddingSpaceId,
+      rawLimit,
+    ], {
+      abortSignal,
+      statementTimeoutMs: RETRIEVAL_STATEMENT_TIMEOUT_MS,
     });
   }
-  return selectStrongestRepresentations(candidates, candidateK);
+  const scopeColumns = splitResolvedQueryScopeTargets(scopeTargets);
+  return queryExecutor.execute("retrieve-lexical-candidates", [
+    question,
+    embeddingSpaceId,
+    scopeColumns.documentIds,
+    scopeColumns.generationIds,
+    scopeColumns.sourceFiles,
+    rawLimit,
+  ], {
+    abortSignal,
+    statementTimeoutMs: RETRIEVAL_STATEMENT_TIMEOUT_MS,
+  });
+}
+
+function filterRowsToResolvedScope<
+  Row extends {
+    documentId: string;
+    generationId: string;
+    sourceFile: string;
+  },
+>(
+  rows: readonly Row[],
+  scopeTargets: readonly ResolvedQueryScopeTarget[],
+): Row[] {
+  const scopeIdentities = new Set<string>();
+  for (const target of scopeTargets) {
+    scopeIdentities.add(createResolvedQueryScopeTargetKey(target));
+  }
+  const scopedRows: Row[] = [];
+  for (const row of rows) {
+    const identity = createResolvedQueryScopeTargetKey(row);
+    if (scopeIdentities.has(identity)) {
+      scopedRows.push(row);
+    }
+  }
+  return scopedRows;
 }
 
 function buildExactRepresentation(row: {

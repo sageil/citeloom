@@ -10,12 +10,24 @@ export type QueryScope =
 
 export interface ResolvedQueryScopeTarget {
   documentId: string;
+  generationId: string;
   sourceFile: string;
 }
 
 export interface ResolvedQueryScopeColumns {
   documentIds: string[];
+  generationIds: string[];
   sourceFiles: string[];
+}
+
+export function createResolvedQueryScopeTargetKey(
+  target: ResolvedQueryScopeTarget,
+): string {
+  return [
+    target.documentId,
+    target.generationId,
+    target.sourceFile,
+  ].join("\0");
 }
 
 export function listResolvedQueryDocumentIds(
@@ -32,22 +44,20 @@ export function splitResolvedQueryScopeTargets(
   targets: readonly ResolvedQueryScopeTarget[],
 ): ResolvedQueryScopeColumns {
   const documentIds: string[] = [];
+  const generationIds: string[] = [];
   const sourceFiles: string[] = [];
-  const sourceFilesByDocument = new Map<string, Set<string>>();
+  const targetKeys = new Set<string>();
   for (const target of targets) {
-    let documentSourceFiles = sourceFilesByDocument.get(target.documentId);
-    if (documentSourceFiles === undefined) {
-      documentSourceFiles = new Set<string>();
-      sourceFilesByDocument.set(target.documentId, documentSourceFiles);
-    }
-    if (documentSourceFiles.has(target.sourceFile)) {
+    const targetKey = createResolvedQueryScopeTargetKey(target);
+    if (targetKeys.has(targetKey)) {
       continue;
     }
-    documentSourceFiles.add(target.sourceFile);
+    targetKeys.add(targetKey);
     documentIds.push(target.documentId);
+    generationIds.push(target.generationId);
     sourceFiles.push(target.sourceFile);
   }
-  return { documentIds, sourceFiles };
+  return { documentIds, generationIds, sourceFiles };
 }
 
 export const queryScopeSchema: z.ZodType<QueryScope> = z.discriminatedUnion(

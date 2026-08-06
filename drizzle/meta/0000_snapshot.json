@@ -1,9 +1,1000 @@
 {
-  "id": "90e2ae7b-0992-453e-a69c-e1d662906626",
+  "id": "cea3a48c-c790-48f1-80e7-8396e0577880",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
+    "public.active_retrieval_chunks_1024": {
+      "name": "active_retrieval_chunks_1024",
+      "schema": "",
+      "columns": {
+        "document_id": {
+          "name": "document_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_space_id": {
+          "name": "embedding_space_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation_id": {
+          "name": "generation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "representation_id": {
+          "name": "representation_id",
+          "type": "varchar(76)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_file": {
+          "name": "source_file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(1024)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "active_retrieval_chunks_1024_scope_idx": {
+          "name": "active_retrieval_chunks_1024_scope_idx",
+          "columns": [
+            {
+              "expression": "embedding_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "document_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "active_retrieval_chunks_1024_hnsw_idx": {
+          "name": "active_retrieval_chunks_1024_hnsw_idx",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "active_retrieval_chunks_1024_embedding_space_id_embedding_spaces_id_fk": {
+          "name": "active_retrieval_chunks_1024_embedding_space_id_embedding_spaces_id_fk",
+          "tableFrom": "active_retrieval_chunks_1024",
+          "tableTo": "embedding_spaces",
+          "columnsFrom": [
+            "embedding_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "active_retrieval_chunks_1024_embedding_space_id_generation_id_representation_id_pk": {
+          "name": "active_retrieval_chunks_1024_embedding_space_id_generation_id_representation_id_pk",
+          "columns": [
+            "embedding_space_id",
+            "generation_id",
+            "representation_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.active_retrieval_chunks_1536": {
+      "name": "active_retrieval_chunks_1536",
+      "schema": "",
+      "columns": {
+        "document_id": {
+          "name": "document_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_space_id": {
+          "name": "embedding_space_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation_id": {
+          "name": "generation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "representation_id": {
+          "name": "representation_id",
+          "type": "varchar(76)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_file": {
+          "name": "source_file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(1536)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "active_retrieval_chunks_1536_scope_idx": {
+          "name": "active_retrieval_chunks_1536_scope_idx",
+          "columns": [
+            {
+              "expression": "embedding_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "document_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "active_retrieval_chunks_1536_hnsw_idx": {
+          "name": "active_retrieval_chunks_1536_hnsw_idx",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "active_retrieval_chunks_1536_embedding_space_id_embedding_spaces_id_fk": {
+          "name": "active_retrieval_chunks_1536_embedding_space_id_embedding_spaces_id_fk",
+          "tableFrom": "active_retrieval_chunks_1536",
+          "tableTo": "embedding_spaces",
+          "columnsFrom": [
+            "embedding_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "active_retrieval_chunks_1536_embedding_space_id_generation_id_representation_id_pk": {
+          "name": "active_retrieval_chunks_1536_embedding_space_id_generation_id_representation_id_pk",
+          "columns": [
+            "embedding_space_id",
+            "generation_id",
+            "representation_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.active_retrieval_chunks_2048": {
+      "name": "active_retrieval_chunks_2048",
+      "schema": "",
+      "columns": {
+        "document_id": {
+          "name": "document_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_space_id": {
+          "name": "embedding_space_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation_id": {
+          "name": "generation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "representation_id": {
+          "name": "representation_id",
+          "type": "varchar(76)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_file": {
+          "name": "source_file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "halfvec(2048)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "active_retrieval_chunks_2048_scope_idx": {
+          "name": "active_retrieval_chunks_2048_scope_idx",
+          "columns": [
+            {
+              "expression": "embedding_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "document_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "active_retrieval_chunks_2048_hnsw_idx": {
+          "name": "active_retrieval_chunks_2048_hnsw_idx",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "halfvec_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "active_retrieval_chunks_2048_embedding_space_id_embedding_spaces_id_fk": {
+          "name": "active_retrieval_chunks_2048_embedding_space_id_embedding_spaces_id_fk",
+          "tableFrom": "active_retrieval_chunks_2048",
+          "tableTo": "embedding_spaces",
+          "columnsFrom": [
+            "embedding_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "active_retrieval_chunks_2048_embedding_space_id_generation_id_representation_id_pk": {
+          "name": "active_retrieval_chunks_2048_embedding_space_id_generation_id_representation_id_pk",
+          "columns": [
+            "embedding_space_id",
+            "generation_id",
+            "representation_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.active_retrieval_chunks_384": {
+      "name": "active_retrieval_chunks_384",
+      "schema": "",
+      "columns": {
+        "document_id": {
+          "name": "document_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_space_id": {
+          "name": "embedding_space_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation_id": {
+          "name": "generation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "representation_id": {
+          "name": "representation_id",
+          "type": "varchar(76)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_file": {
+          "name": "source_file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(384)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "active_retrieval_chunks_384_scope_idx": {
+          "name": "active_retrieval_chunks_384_scope_idx",
+          "columns": [
+            {
+              "expression": "embedding_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "document_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "active_retrieval_chunks_384_hnsw_idx": {
+          "name": "active_retrieval_chunks_384_hnsw_idx",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "active_retrieval_chunks_384_embedding_space_id_embedding_spaces_id_fk": {
+          "name": "active_retrieval_chunks_384_embedding_space_id_embedding_spaces_id_fk",
+          "tableFrom": "active_retrieval_chunks_384",
+          "tableTo": "embedding_spaces",
+          "columnsFrom": [
+            "embedding_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "active_retrieval_chunks_384_embedding_space_id_generation_id_representation_id_pk": {
+          "name": "active_retrieval_chunks_384_embedding_space_id_generation_id_representation_id_pk",
+          "columns": [
+            "embedding_space_id",
+            "generation_id",
+            "representation_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.active_retrieval_chunks": {
+      "name": "active_retrieval_chunks",
+      "schema": "",
+      "columns": {
+        "document_id": {
+          "name": "document_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_space_id": {
+          "name": "embedding_space_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation_id": {
+          "name": "generation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "representation_id": {
+          "name": "representation_id",
+          "type": "varchar(76)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_file": {
+          "name": "source_file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(768)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "active_retrieval_chunks_scope_idx": {
+          "name": "active_retrieval_chunks_scope_idx",
+          "columns": [
+            {
+              "expression": "embedding_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "document_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "active_retrieval_chunks_hnsw_idx": {
+          "name": "active_retrieval_chunks_hnsw_idx",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "active_retrieval_chunks_embedding_space_id_embedding_spaces_id_fk": {
+          "name": "active_retrieval_chunks_embedding_space_id_embedding_spaces_id_fk",
+          "tableFrom": "active_retrieval_chunks",
+          "tableTo": "embedding_spaces",
+          "columnsFrom": [
+            "embedding_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "active_retrieval_chunks_embedding_space_id_generation_id_representation_id_pk": {
+          "name": "active_retrieval_chunks_embedding_space_id_generation_id_representation_id_pk",
+          "columns": [
+            "embedding_space_id",
+            "generation_id",
+            "representation_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.active_retrieval_evidence": {
+      "name": "active_retrieval_evidence",
+      "schema": "",
+      "columns": {
+        "document_id": {
+          "name": "document_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_space_id": {
+          "name": "embedding_space_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evidence_content": {
+          "name": "evidence_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evidence_id": {
+          "name": "evidence_id",
+          "type": "varchar(76)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation_id": {
+          "name": "generation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "element_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "next_retrieval_id": {
+          "name": "next_retrieval_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "page_number": {
+          "name": "page_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "previous_retrieval_id": {
+          "name": "previous_retrieval_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_file": {
+          "name": "source_file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "active_retrieval_evidence_scope_idx": {
+          "name": "active_retrieval_evidence_scope_idx",
+          "columns": [
+            {
+              "expression": "embedding_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "document_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "active_retrieval_evidence_parent_idx": {
+          "name": "active_retrieval_evidence_parent_idx",
+          "columns": [
+            {
+              "expression": "embedding_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "parent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "active_retrieval_evidence_embedding_space_id_embedding_spaces_id_fk": {
+          "name": "active_retrieval_evidence_embedding_space_id_embedding_spaces_id_fk",
+          "tableFrom": "active_retrieval_evidence",
+          "tableTo": "embedding_spaces",
+          "columnsFrom": [
+            "embedding_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "active_retrieval_evidence_embedding_space_id_generation_id_evidence_id_pk": {
+          "name": "active_retrieval_evidence_embedding_space_id_generation_id_evidence_id_pk",
+          "columns": [
+            "embedding_space_id",
+            "generation_id",
+            "evidence_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.active_retrieval_lexical_chunks": {
+      "name": "active_retrieval_lexical_chunks",
+      "schema": "",
+      "columns": {
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_space_id": {
+          "name": "embedding_space_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation_id": {
+          "name": "generation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "representation_id": {
+          "name": "representation_id",
+          "type": "varchar(76)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_file": {
+          "name": "source_file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "active_retrieval_lexical_scope_idx": {
+          "name": "active_retrieval_lexical_scope_idx",
+          "columns": [
+            {
+              "expression": "embedding_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "document_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "active_retrieval_lexical_bm25_idx": {
+          "name": "active_retrieval_lexical_bm25_idx",
+          "columns": [
+            {
+              "expression": "content",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "bm25",
+          "with": {
+            "text_config": "english"
+          }
+        }
+      },
+      "foreignKeys": {
+        "active_retrieval_lexical_chunks_embedding_space_id_embedding_spaces_id_fk": {
+          "name": "active_retrieval_lexical_chunks_embedding_space_id_embedding_spaces_id_fk",
+          "tableFrom": "active_retrieval_lexical_chunks",
+          "tableTo": "embedding_spaces",
+          "columnsFrom": [
+            "embedding_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "active_retrieval_lexical_chunks_embedding_space_id_generation_id_representation_id_pk": {
+          "name": "active_retrieval_lexical_chunks_embedding_space_id_generation_id_representation_id_pk",
+          "columns": [
+            "embedding_space_id",
+            "generation_id",
+            "representation_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.active_retrieval_routes": {
+      "name": "active_retrieval_routes",
+      "schema": "",
+      "columns": {
+        "document_id": {
+          "name": "document_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_space_id": {
+          "name": "embedding_space_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation_id": {
+          "name": "generation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "representation_id": {
+          "name": "representation_id",
+          "type": "varchar(76)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_file": {
+          "name": "source_file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evidence_id": {
+          "name": "evidence_id",
+          "type": "varchar(76)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "evidence_mode": {
+          "name": "evidence_mode",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "element_kind",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "representation_content": {
+          "name": "representation_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "representation_type": {
+          "name": "representation_type",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "active_retrieval_routes_scope_idx": {
+          "name": "active_retrieval_routes_scope_idx",
+          "columns": [
+            {
+              "expression": "embedding_space_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "generation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "document_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "active_retrieval_routes_embedding_space_id_embedding_spaces_id_fk": {
+          "name": "active_retrieval_routes_embedding_space_id_embedding_spaces_id_fk",
+          "tableFrom": "active_retrieval_routes",
+          "tableTo": "embedding_spaces",
+          "columnsFrom": [
+            "embedding_space_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "active_retrieval_routes_embedding_space_id_generation_id_representation_id_pk": {
+          "name": "active_retrieval_routes_embedding_space_id_generation_id_representation_id_pk",
+          "columns": [
+            "embedding_space_id",
+            "generation_id",
+            "representation_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "active_retrieval_routes_evidence_check": {
+          "name": "active_retrieval_routes_evidence_check",
+          "value": "(\n        \"active_retrieval_routes\".\"evidence_mode\" = 'direct'\n        AND \"active_retrieval_routes\".\"evidence_id\" IS NOT NULL\n      ) OR (\n        \"active_retrieval_routes\".\"evidence_mode\" = 'parent-exact'\n        AND \"active_retrieval_routes\".\"evidence_id\" IS NULL\n      )"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.application_error_events": {
       "name": "application_error_events",
       "schema": "",

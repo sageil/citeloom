@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { resolveDocumentQueryScope } from "../src/documents/catalog/query-scope.js";
 import type { IndexedDocument } from "../src/documents/catalog/model.js";
 
+const generationId = "00000000-0000-4000-8000-000000000001";
+
 describe("document query scope", () => {
   it("returns every unique available source for an all-documents scope", () => {
     const documents = [
@@ -16,8 +18,8 @@ describe("document query scope", () => {
       "embedding-space",
       documents,
     )).toEqual([
-      { documentId: "a", sourceFile: "/documents/a.pdf" },
-      { documentId: "b", sourceFile: "/documents/b.pdf" },
+      { documentId: "a", generationId, sourceFile: "/documents/a.pdf" },
+      { documentId: "b", generationId, sourceFile: "/documents/b.pdf" },
     ]);
   });
 
@@ -32,8 +34,8 @@ describe("document query scope", () => {
       "embedding-space",
       documents,
     )).toEqual([
-      { documentId: "b", sourceFile: "/documents/b.pdf" },
-      { documentId: "a", sourceFile: "/documents/a.pdf" },
+      { documentId: "b", generationId, sourceFile: "/documents/b.pdf" },
+      { documentId: "a", generationId, sourceFile: "/documents/a.pdf" },
     ]);
   });
 
@@ -61,8 +63,8 @@ describe("document query scope", () => {
       "embedding-space",
       documents,
     )).toEqual([
-      { documentId: "b", sourceFile: "/documents/b.pdf" },
-      { documentId: "a", sourceFile: "/documents/a.pdf" },
+      { documentId: "b", generationId, sourceFile: "/documents/b.pdf" },
+      { documentId: "a", generationId, sourceFile: "/documents/a.pdf" },
     ]);
   });
 
@@ -88,8 +90,8 @@ describe("document query scope", () => {
       "embedding-space",
       documents,
     )).toEqual([
-      { documentId: "a", sourceFile: "/documents/a.pdf" },
-      { documentId: "b", sourceFile: "/documents/b.pdf" },
+      { documentId: "a", generationId, sourceFile: "/documents/a.pdf" },
+      { documentId: "b", generationId, sourceFile: "/documents/b.pdf" },
     ]);
   });
 
@@ -121,7 +123,7 @@ function buildDocument(
   return {
     documentId,
     elementSetId: `${documentId}-elements`,
-    generationId: "00000000-0000-4000-8000-000000000001",
+    generationId,
     images: 0,
     indexedAt: "2026-08-04T00:00:00.000Z",
     pageCount: 1,

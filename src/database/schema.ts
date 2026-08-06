@@ -2002,6 +2002,256 @@ function createRetrievalMetadataColumns() {
   };
 }
 
+function createActiveRetrievalIdentityColumns() {
+  return {
+    documentId: varchar("document_id", { length: 64 }).notNull(),
+    embeddingSpaceId: text("embedding_space_id")
+      .notNull()
+      .references(() => embeddingSpaces.id, { onDelete: "cascade" }),
+    generationId: uuid("generation_id").notNull(),
+    representationId: varchar("representation_id", { length: 76 }).notNull(),
+    sourceFile: text("source_file").notNull(),
+  };
+}
+
+export const activeRetrievalChunks384 = pgTable(
+  "active_retrieval_chunks_384",
+  {
+    ...createActiveRetrievalIdentityColumns(),
+    embedding: vector("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_384,
+    }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.embeddingSpaceId,
+        table.generationId,
+        table.representationId,
+      ],
+    }),
+    index("active_retrieval_chunks_384_scope_idx").on(
+      table.embeddingSpaceId,
+      table.generationId,
+      table.documentId,
+    ),
+    index("active_retrieval_chunks_384_hnsw_idx")
+      .using("hnsw", table.embedding.op("vector_cosine_ops")),
+  ],
+);
+
+export const activeRetrievalChunks768 = pgTable(
+  "active_retrieval_chunks",
+  {
+    ...createActiveRetrievalIdentityColumns(),
+    embedding: vector("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_768,
+    }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.embeddingSpaceId,
+        table.generationId,
+        table.representationId,
+      ],
+    }),
+    index("active_retrieval_chunks_scope_idx").on(
+      table.embeddingSpaceId,
+      table.generationId,
+      table.documentId,
+    ),
+    index("active_retrieval_chunks_hnsw_idx")
+      .using("hnsw", table.embedding.op("vector_cosine_ops")),
+  ],
+);
+
+export const activeRetrievalChunks1024 = pgTable(
+  "active_retrieval_chunks_1024",
+  {
+    ...createActiveRetrievalIdentityColumns(),
+    embedding: vector("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_1024,
+    }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.embeddingSpaceId,
+        table.generationId,
+        table.representationId,
+      ],
+    }),
+    index("active_retrieval_chunks_1024_scope_idx").on(
+      table.embeddingSpaceId,
+      table.generationId,
+      table.documentId,
+    ),
+    index("active_retrieval_chunks_1024_hnsw_idx")
+      .using("hnsw", table.embedding.op("vector_cosine_ops")),
+  ],
+);
+
+export const activeRetrievalChunks1536 = pgTable(
+  "active_retrieval_chunks_1536",
+  {
+    ...createActiveRetrievalIdentityColumns(),
+    embedding: vector("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_1536,
+    }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.embeddingSpaceId,
+        table.generationId,
+        table.representationId,
+      ],
+    }),
+    index("active_retrieval_chunks_1536_scope_idx").on(
+      table.embeddingSpaceId,
+      table.generationId,
+      table.documentId,
+    ),
+    index("active_retrieval_chunks_1536_hnsw_idx")
+      .using("hnsw", table.embedding.op("vector_cosine_ops")),
+  ],
+);
+
+export const activeRetrievalChunks2048 = pgTable(
+  "active_retrieval_chunks_2048",
+  {
+    ...createActiveRetrievalIdentityColumns(),
+    embedding: halfvec("embedding", {
+      dimensions: EMBEDDING_DIMENSIONS.DIMENSION_2048,
+    }).notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.embeddingSpaceId,
+        table.generationId,
+        table.representationId,
+      ],
+    }),
+    index("active_retrieval_chunks_2048_scope_idx").on(
+      table.embeddingSpaceId,
+      table.generationId,
+      table.documentId,
+    ),
+    index("active_retrieval_chunks_2048_hnsw_idx")
+      .using("hnsw", table.embedding.op("halfvec_cosine_ops")),
+  ],
+);
+
+export const activeRetrievalLexicalChunks = pgTable(
+  "active_retrieval_lexical_chunks",
+  {
+    content: text("content").notNull(),
+    ...createActiveRetrievalIdentityColumns(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.embeddingSpaceId,
+        table.generationId,
+        table.representationId,
+      ],
+    }),
+    index("active_retrieval_lexical_scope_idx").on(
+      table.embeddingSpaceId,
+      table.generationId,
+      table.documentId,
+    ),
+    index("active_retrieval_lexical_bm25_idx")
+      .using("bm25", table.content)
+      .with({ text_config: "english" }),
+  ],
+);
+
+export const activeRetrievalRoutes = pgTable(
+  "active_retrieval_routes",
+  {
+    ...createActiveRetrievalIdentityColumns(),
+    evidenceId: varchar("evidence_id", { length: 76 }),
+    evidenceMode: varchar("evidence_mode", { length: 24 })
+      .$type<"direct" | "parent-exact">()
+      .notNull(),
+    kind: elementKind("kind").notNull(),
+    parentId: varchar("parent_id", { length: 64 }).notNull(),
+    representationContent: text("representation_content").notNull(),
+    representationType: varchar("representation_type", { length: 32 })
+      .$type<
+        | "exact-window"
+        | "image-description"
+        | "table-description"
+      >()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.embeddingSpaceId,
+        table.generationId,
+        table.representationId,
+      ],
+    }),
+    index("active_retrieval_routes_scope_idx").on(
+      table.embeddingSpaceId,
+      table.generationId,
+      table.documentId,
+    ),
+    check(
+      "active_retrieval_routes_evidence_check",
+      sql`(
+        ${table.evidenceMode} = 'direct'
+        AND ${table.evidenceId} IS NOT NULL
+      ) OR (
+        ${table.evidenceMode} = 'parent-exact'
+        AND ${table.evidenceId} IS NULL
+      )`,
+    ),
+  ],
+);
+
+export const activeRetrievalEvidence = pgTable(
+  "active_retrieval_evidence",
+  {
+    documentId: varchar("document_id", { length: 64 }).notNull(),
+    embeddingSpaceId: text("embedding_space_id")
+      .notNull()
+      .references(() => embeddingSpaces.id, { onDelete: "cascade" }),
+    evidenceContent: text("evidence_content").notNull(),
+    evidenceId: varchar("evidence_id", { length: 76 }).notNull(),
+    generationId: uuid("generation_id").notNull(),
+    kind: elementKind("kind").notNull(),
+    nextRetrievalId: varchar("next_retrieval_id", { length: 64 }),
+    pageNumber: integer("page_number"),
+    parentId: varchar("parent_id", { length: 64 }).notNull(),
+    previousRetrievalId: varchar("previous_retrieval_id", { length: 64 }),
+    sourceFile: text("source_file").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [
+        table.embeddingSpaceId,
+        table.generationId,
+        table.evidenceId,
+      ],
+    }),
+    index("active_retrieval_evidence_scope_idx").on(
+      table.embeddingSpaceId,
+      table.generationId,
+      table.documentId,
+    ),
+    index("active_retrieval_evidence_parent_idx").on(
+      table.embeddingSpaceId,
+      table.generationId,
+      table.parentId,
+    ),
+  ],
+);
+
 export const retrievalChunks384 = pgTable(
   "retrieval_chunks_384",
   {

@@ -85,6 +85,7 @@ export async function inspectLiveEvaluationCorpus(
     documentsById.set(document.documentId, document);
     scopeTargets.push({
       documentId: document.documentId,
+      generationId: document.generationId,
       sourceFile: document.sourceFile,
     });
 

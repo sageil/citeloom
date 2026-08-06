@@ -11,6 +11,7 @@ import {
 
 export function matchesResolvedQueryScope(
   documentId: AnyColumn,
+  generationId: AnyColumn,
   sourceFile: AnyColumn,
   scopeTargets: readonly ResolvedQueryScopeTarget[],
 ): SQL {
@@ -19,9 +20,11 @@ export function matchesResolvedQueryScope(
     SELECT 1
     FROM unnest(
       ${sql.param(columns.documentIds)}::varchar[],
+      ${sql.param(columns.generationIds)}::uuid[],
       ${sql.param(columns.sourceFiles)}::text[]
-    ) AS "query_scope"("document_id", "source_file")
+    ) AS "query_scope"("document_id", "generation_id", "source_file")
     WHERE "query_scope"."document_id" = ${documentId}
+      AND "query_scope"."generation_id" = ${generationId}
       AND "query_scope"."source_file" = ${sourceFile}
   )`;
 }

@@ -114,6 +114,7 @@ function uniqueScopeTargets(
     sourceFiles.add(document.sourceFile);
     targets.push({
       documentId: document.documentId,
+      generationId: document.generationId,
       sourceFile: document.sourceFile,
     });
   }

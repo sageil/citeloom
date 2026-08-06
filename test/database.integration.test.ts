@@ -3,7 +3,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 
-import { and, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
+import {
+  and,
+  cosineDistance,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  ne,
+  sql,
+} from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MockRerankingModelV4 } from "ai/test";
 
@@ -69,6 +78,9 @@ import {
   type RunningIngestionJob,
 } from "../src/documents/catalog/index.js";
 import { readDocumentFormat } from "../src/documents/format.js";
+import type {
+  ResolvedQueryScopeTarget,
+} from "../src/domain/query-scope.js";
 import {
   queueDocumentReindex,
 } from "../src/ingestion/service.js";
@@ -91,6 +103,7 @@ import {
 import { applyDatabaseBootstrap } from "../src/database/administrator-bootstrap.js";
 import {
   applicationSettings,
+  activeRetrievalLexicalChunks,
   applicationRevisions,
   applicationErrorEvents,
   citationRecords,
@@ -135,6 +148,9 @@ import {
   workerHeartbeats,
 } from "../src/database/schema.js";
 import {
+  readActiveRetrievalVectorTable,
+} from "../src/embedding/storage-tables.js";
+import {
   OpenAICodexCredentialStore,
   OpenAICodexProviderInUseError,
 } from "../src/providers/openai-codex-credentials.js";
@@ -170,6 +186,12 @@ import {
   queryRetrievalCandidateRankings,
   rankRetrievalCandidates,
 } from "../src/retrieval/indexing/query-store.js";
+import {
+  synchronizeActiveRetrievalProjection,
+} from "../src/retrieval/indexing/active-projection-store.js";
+import {
+  ensureActiveRetrievalSpacePartitions,
+} from "../src/retrieval/indexing/active-projection-partitions.js";
 import {
   createRetrievalWindows,
 } from "../src/retrieval/windows.js";
@@ -389,6 +411,51 @@ beforeEach(async () => {
   await session.database.update(applicationRevisions).set({ revision: 0n });
 });
 
+describe("PostgreSQL query execution", () => {
+  it("cancels, rolls back, and recovers an in-flight PostgreSQL query", async () => {
+    const withDatabase = session.query.withDatabase;
+    if (withDatabase === undefined) {
+      throw new Error("The PostgreSQL query executor cannot run database operations.");
+    }
+    const abortController = new AbortController();
+    const startedAt = performance.now();
+    const pendingQuery = withDatabase(
+      async (database) => {
+        await database.transaction(async (transaction) => {
+          await transaction
+            .update(applicationRevisions)
+            .set({ revision: 99n })
+            .where(eq(applicationRevisions.channel, "catalog"));
+          await transaction.execute(sql`SELECT pg_sleep(10)`);
+        });
+      },
+      {
+        abortSignal: abortController.signal,
+        statementTimeoutMs: 5_000,
+      },
+    );
+    const abortTimer = setTimeout(() => {
+      abortController.abort();
+    }, 50);
+
+    try {
+      await expect(pendingQuery).rejects.toMatchObject({ name: "AbortError" });
+    } finally {
+      clearTimeout(abortTimer);
+    }
+
+    expect(performance.now() - startedAt).toBeLessThan(3_000);
+    await expect(session.database
+      .select({ revision: applicationRevisions.revision })
+      .from(applicationRevisions)
+      .where(eq(applicationRevisions.channel, "catalog")))
+      .resolves.toEqual([{ revision: 0n }]);
+    await expect(
+      session.database.execute(sql`SELECT 1 AS value`),
+    ).resolves.toBeDefined();
+  });
+});
+
 describe("PostgreSQL ingestion controls", () => {
   it("removes a canceled job and its unreferenced source content", async () => {
     const sourceFile = "/documents/canceled.pdf";
@@ -464,6 +531,7 @@ describe("PostgreSQL ingestion controls", () => {
       fileExtension: ".pdf",
       generationId: randomUUID(),
       mediaType: "application/pdf",
+      nextAttemptAt: new Date(0),
       sourceFile,
       uploadedByUserId: uploaderId,
     });
@@ -1057,6 +1125,48 @@ async function writeTestElementSet(
     elements,
   );
   return elementSet.id;
+}
+
+interface TestRetrievalGenerationInput {
+  documentId: string;
+  elementSetId: string;
+  generationId: string;
+  sourceFile: string;
+  space: EmbeddingSpaceConfig;
+  totalElements: number;
+}
+
+async function withOpenTestRetrievalGeneration<Result>(
+  database: typeof session.database,
+  input: TestRetrievalGenerationInput,
+  operation: () => Promise<Result>,
+): Promise<Result> {
+  const format = readDocumentFormat(input.sourceFile);
+  await database.insert(ingestionJobs).values({
+    documentId: input.documentId,
+    elementSetId: input.elementSetId,
+    embeddingSpaceId: input.space.id,
+    fileExtension: format.extension,
+    generationId: input.generationId,
+    mediaType: format.mediaType,
+    phase: "normalized",
+    sourceFile: input.sourceFile,
+    textChunks: input.totalElements,
+    totalElements: input.totalElements,
+  });
+  await beginEmbeddingGeneration(database, input.space, {
+    documentId: input.documentId,
+    elementSetId: input.elementSetId,
+    generationId: input.generationId,
+    totalElements: input.totalElements,
+  });
+  try {
+    return await operation();
+  } finally {
+    await database
+      .delete(ingestionJobs)
+      .where(eq(ingestionJobs.generationId, input.generationId));
+  }
 }
 
 async function writeTestPublicationArtifacts(
@@ -2921,16 +3031,14 @@ afterAll(async () => {
 });
 
 describe("PostgreSQL document catalog", () => {
-  it("rewrites retrieval paths when duplicate uploads are reconciled", async () => {
+  it("preserves immutable retrieval generations when duplicate uploads are reconciled", async () => {
     const documentId = "d".repeat(64);
     const elementId = "e".repeat(64);
     const canonicalSource = "/documents/uploads/first/document.pdf";
     const duplicateSource = "/documents/uploads/second/document.pdf";
     const canonicalVersionId = "00000000-0000-4000-8000-000000000201";
     const duplicateVersionId = "00000000-0000-4000-8000-000000000202";
-    await session.database
-      .insert(embeddingSpaces)
-      .values(buildEmbeddingSpaceRow(space768));
+    await ensureEmbeddingSpace(session.database, space768);
     const elementSetId = await writeTestElementSet(
       documentId,
       canonicalSource,
@@ -3012,13 +3120,32 @@ describe("PostgreSQL document catalog", () => {
       representationType: "exact-window" as const,
       sourceFile: duplicateSource,
     };
-    await session.database.insert(retrievalChunks768).values({
-      ...retrievalMetadata,
-      embedding: buildEmbedding(768, 1),
-    });
-    await session.database.insert(retrievalLexicalChunks).values({
-      ...retrievalMetadata,
-      content: "Robert is the subject.",
+    await withOpenTestRetrievalGeneration(session.database, {
+      documentId,
+      elementSetId,
+      generationId: duplicateGenerationId,
+      sourceFile: duplicateSource,
+      space: space768,
+      totalElements: 1,
+    }, async () => {
+      await session.database.insert(retrievalChunks768).values({
+        ...retrievalMetadata,
+        embedding: buildEmbedding(768, 1),
+      });
+      await session.database.insert(retrievalLexicalChunks).values({
+        ...retrievalMetadata,
+        content: "Robert is the subject.",
+      });
+      await session.database.transaction(async (transaction) => {
+        await synchronizeActiveRetrievalProjection(transaction, {
+          documentId,
+          elementSetId,
+          embeddingSpaceId: space768.id,
+          generationId: duplicateGenerationId,
+          sourceFile: duplicateSource,
+          totalElements: 1,
+        });
+      });
     });
 
     const catalog = new DocumentCatalog(session.database);
@@ -3033,8 +3160,16 @@ describe("PostgreSQL document catalog", () => {
     const lexicalRows = await session.database
       .select({ sourceFile: retrievalLexicalChunks.sourceFile })
       .from(retrievalLexicalChunks);
-    expect(vectorRows).toEqual([{ sourceFile: canonicalSource }]);
-    expect(lexicalRows).toEqual([{ sourceFile: canonicalSource }]);
+    const activeLexicalRows = await session.database
+      .select({ sourceFile: activeRetrievalLexicalChunks.sourceFile })
+      .from(activeRetrievalLexicalChunks)
+      .where(eq(
+        activeRetrievalLexicalChunks.generationId,
+        duplicateGenerationId,
+      ));
+    expect(vectorRows).toEqual([{ sourceFile: duplicateSource }]);
+    expect(lexicalRows).toEqual([{ sourceFile: duplicateSource }]);
+    expect(activeLexicalRows).toEqual([]);
   });
 
   it("browses a bounded catalog with server-side filters and facets", async () => {
@@ -3318,19 +3453,31 @@ describe("PostgreSQL document catalog", () => {
     expect(promotion.indexed.pageCount).toBe(12);
     expect(
       await catalog.resolveQueryScope({ kind: "all" }, space768.id),
-    ).toEqual([{ documentId, sourceFile }]);
+    ).toEqual([{
+      documentId,
+      generationId: promotion.indexed.generationId,
+      sourceFile,
+    }]);
     expect(
       await catalog.resolveQueryScope(
         { kind: "tags", tags: ["FINANCE"] },
         space768.id,
       ),
-    ).toEqual([{ documentId, sourceFile }]);
+    ).toEqual([{
+      documentId,
+      generationId: promotion.indexed.generationId,
+      sourceFile,
+    }]);
     expect(
       await catalog.resolveQueryScope(
         { kind: "sourceFiles", sourceFiles: [sourceFile] },
         space768.id,
       ),
-    ).toEqual([{ documentId, sourceFile }]);
+    ).toEqual([{
+      documentId,
+      generationId: promotion.indexed.generationId,
+      sourceFile,
+    }]);
     await expect(
       catalog.resolveQueryScope({ kind: "all" }, space384.id),
     ).rejects.toThrow(
@@ -4530,7 +4677,10 @@ describe("PostgreSQL document catalog", () => {
     });
     await writeTestPublicationArtifacts(sourceFile, space768);
     await catalog.completeIndexing(sourceFile, activeOwnerId);
-    await catalog.promoteJob(sourceFile, activeOwnerId);
+    const activePublication = await catalog.promoteJob(
+      sourceFile,
+      activeOwnerId,
+    );
 
     await prepareTestIngestion(catalog,
       sourceFile,
@@ -4554,7 +4704,11 @@ describe("PostgreSQL document catalog", () => {
 
     expect(
       await catalog.resolveQueryScope({ kind: "all" }, space768.id),
-    ).toEqual([{ documentId: activeDocumentId, sourceFile }]);
+    ).toEqual([{
+      documentId: activeDocumentId,
+      generationId: activePublication.indexed.generationId,
+      sourceFile,
+    }]);
     expect((await catalog.listEntries())[0]).toMatchObject({
       activeDocumentId,
       documentId: replacementDocumentId,
@@ -4590,6 +4744,10 @@ describe("PostgreSQL document catalog", () => {
     });
     await writeTestPublicationArtifacts(sourceFile, space768);
     await catalog.completeIndexing(sourceFile, ownerId);
+    const indexedJob = await catalog.getJob(sourceFile);
+    if (indexedJob === null) {
+      throw new Error("Worker-once fixture lost its indexed job.");
+    }
     expect(await catalog.releaseJob(sourceFile, ownerId)).toBe(true);
 
     await runIngestionWorker(config, { once: true });
@@ -4597,7 +4755,11 @@ describe("PostgreSQL document catalog", () => {
     expect(await catalog.getJob(sourceFile)).toBeNull();
     expect(
       await catalog.resolveQueryScope({ kind: "all" }, space768.id),
-    ).toEqual([{ documentId, sourceFile }]);
+    ).toEqual([{
+      documentId,
+      generationId: indexedJob.generationId,
+      sourceFile,
+    }]);
   });
 });
 
@@ -4757,7 +4919,7 @@ describe("PostgreSQL generation publication", () => {
         rrfK: 60,
         topK: 10,
       },
-      [{ documentId, sourceFile }],
+      [{ documentId, generationId: normalizedJob.generationId, sourceFile }],
       new AbortController().signal,
     );
     expect(rankings.dense[0]).toEqual(expect.arrayContaining([
@@ -4788,7 +4950,7 @@ describe("PostgreSQL generation publication", () => {
         rrfK: 60,
         topK: 10,
       },
-      [{ documentId, sourceFile }],
+      [{ documentId, generationId: normalizedJob.generationId, sourceFile }],
       new AbortController().signal,
     );
     expect(lexicalRankings.lexical[0]).toEqual(expect.arrayContaining([
@@ -4819,7 +4981,7 @@ describe("PostgreSQL generation publication", () => {
         rrfK: 60,
         topK: 10,
       },
-      [{ documentId, sourceFile }],
+      [{ documentId, generationId: normalizedJob.generationId, sourceFile }],
       new AbortController().signal,
     );
     expect(imageLexicalRankings.lexical[0]).toEqual(expect.arrayContaining([
@@ -5739,6 +5901,7 @@ describe("pgvector retrieval", () => {
       randomUUID(),
       randomUUID(),
     ];
+    const elementSetIds: string[] = [];
     for (let index = 0; index < documentIds.length; index += 1) {
       const documentId = documentIds[index];
       const sourceFile = sourceFiles[index];
@@ -5756,6 +5919,7 @@ describe("pgvector retrieval", () => {
         documentId,
         sourceFile,
       );
+      elementSetIds.push(elementSetId);
       await session.database.insert(documentVersions).values({
         ...buildTestDocumentFormatRow(sourceFile),
         documentId,
@@ -5796,15 +5960,22 @@ describe("pgvector retrieval", () => {
       await session.database
         .insert(embeddingSpaces)
         .values(buildEmbeddingSpaceRow(space));
+      await ensureActiveRetrievalSpacePartitions(
+        session.database,
+        space,
+      );
+      const retrievalGenerationIds = documentIds.map(() => randomUUID());
       const indexedSpaceValues: Array<
         typeof indexedDocumentSpaces.$inferInsert
       > = [];
       for (let index = 0; index < documentIds.length; index += 1) {
         const documentId = documentIds[index];
         const sourceFile = sourceFiles[index];
-        const generationId = generationIds[index];
+        const elementSetId = elementSetIds[index];
+        const generationId = retrievalGenerationIds[index];
         if (
           documentId === undefined
+          || elementSetId === undefined
           || sourceFile === undefined
           || generationId === undefined
         ) {
@@ -5812,6 +5983,25 @@ describe("pgvector retrieval", () => {
             `Incomplete structural tie space at index ${index}.`,
           );
         }
+        await session.database.insert(ingestionJobs).values({
+          documentId,
+          elementSetId,
+          embeddingSpaceId: space.id,
+          fileExtension: ".pdf",
+          generationId,
+          mediaType: "application/pdf",
+          phase: "normalized",
+          sourceFile,
+          state: "pending",
+          textChunks: 1,
+          totalElements: 1,
+        });
+        await beginEmbeddingGeneration(session.database, space, {
+          documentId,
+          elementSetId,
+          generationId,
+          totalElements: 1,
+        });
         indexedSpaceValues.push({
           documentId,
           embeddingSpaceId: space.id,
@@ -5825,7 +6015,7 @@ describe("pgvector retrieval", () => {
       const vectorRows = buildStructuralTieVectorRows(
         space,
         documentIds,
-        generationIds,
+        retrievalGenerationIds,
         sourceFiles,
       );
       if (space.dimensions === 384) {
@@ -5853,6 +6043,31 @@ describe("pgvector retrieval", () => {
         content: "deterministicfixturetoken",
       }));
       await session.database.insert(retrievalLexicalChunks).values(lexicalRows);
+      for (let index = 0; index < documentIds.length; index += 1) {
+        const documentId = documentIds[index];
+        const generationId = retrievalGenerationIds[index];
+        const sourceFile = sourceFiles[index];
+        if (
+          documentId === undefined
+          || generationId === undefined
+          || sourceFile === undefined
+        ) {
+          throw new Error(
+            `Incomplete structural projection at index ${index}.`,
+          );
+        }
+        await session.database.transaction(async (transaction) => {
+          await synchronizeActiveRetrievalProjection(transaction, {
+            documentId,
+            elementSetId: randomUUID(),
+            embeddingSpaceId: space.id,
+            generationId,
+            sourceFile,
+            totalElements: 1,
+          });
+        });
+      }
+      await expectIndexedTopKPlans(space);
 
       const rankings = await queryRetrievalCandidateRankings(
         session.database,
@@ -5875,7 +6090,11 @@ describe("pgvector retrieval", () => {
           rrfK: 60,
           topK: 5,
         },
-        buildResolvedScopeTargets(documentIds, sourceFiles),
+        buildResolvedScopeTargets(
+          documentIds,
+          retrievalGenerationIds,
+          sourceFiles,
+        ),
         new AbortController().signal,
       );
       const dense = rankings.dense[0];
@@ -5895,6 +6114,9 @@ describe("pgvector retrieval", () => {
         fused: fused.map((candidate) => candidate.retrievalId),
         lexical: lexical.map((candidate) => candidate.evidenceRetrievalId),
       });
+      await session.database
+        .delete(ingestionJobs)
+        .where(inArray(ingestionJobs.generationId, retrievalGenerationIds));
     }
 
     const expectedDense = [
@@ -5929,51 +6151,21 @@ describe("pgvector retrieval", () => {
     expect(observedRankings).toEqual(expectedRankings);
   });
 
-  it("excludes retrieval rows that do not reference an active source path", async () => {
+  it("rejects retrieval rows that do not match their generation source", async () => {
     const documentStore = new SourceDocumentStore(session.database);
     const documentId = "9".repeat(64);
     const element = buildTextElement(documentId, "8".repeat(64));
     const activeSource = "/documents/uploads/active/document.pdf";
     const staleSource = "/documents/uploads/retired/document.pdf";
-    const versionId = "00000000-0000-4000-8000-000000000203";
     element.sourceFile = activeSource;
+    await ensureTestSourceMetadata(documentId);
     await documentStore.writeMany([element]);
     const elementSet = await documentStore.writeElementSet(
       documentId,
       [element],
     );
     const generationId = randomUUID();
-    await session.database
-      .insert(embeddingSpaces)
-      .values(buildEmbeddingSpaceRow(space768));
-    await ensureTestSourceMetadata(documentId);
-    await session.database.insert(documentVersions).values({
-      ...buildTestDocumentFormatRow(activeSource),
-      documentId,
-      elementSetId: elementSet.id,
-      generationId,
-      id: versionId,
-      images: 0,
-      pageCount: 1,
-      sourceFile: activeSource,
-      tables: 0,
-      textChunks: 1,
-      totalElements: 1,
-      version: 2,
-    });
-    await session.database.insert(indexedDocuments).values({
-      documentId,
-      elementSetId: elementSet.id,
-      generationId,
-      sourceFile: activeSource,
-      versionId,
-    });
-    await session.database.insert(indexedDocumentSpaces).values({
-      documentId,
-      embeddingSpaceId: space768.id,
-      generationId,
-      sourceFile: activeSource,
-    });
+    await ensureEmbeddingSpace(session.database, space768);
     const retrievalMetadata = {
       documentId,
       embeddingSpaceId: space768.id,
@@ -5986,40 +6178,23 @@ describe("pgvector retrieval", () => {
       representationType: "exact-window" as const,
       sourceFile: staleSource,
     };
-    await session.database.insert(retrievalChunks768).values({
-      ...retrievalMetadata,
-      embedding: buildEmbedding(768, 1),
+    await expect(withOpenTestRetrievalGeneration(session.database, {
+      documentId,
+      elementSetId: elementSet.id,
+      generationId,
+      sourceFile: activeSource,
+      space: space768,
+      totalElements: 1,
+    }, async () => {
+      await session.database.insert(retrievalChunks768).values({
+        ...retrievalMetadata,
+        embedding: buildEmbedding(768, 1),
+      });
+    })).rejects.toMatchObject({
+      cause: expect.objectContaining({
+        message: `Retrieval row does not match generation ${generationId}.`,
+      }),
     });
-    await session.database.insert(retrievalLexicalChunks).values({
-      ...retrievalMetadata,
-      content: "Robert is the subject.",
-    });
-
-    const results = await retrieveRelevantElements(
-      session.database,
-      session.query,
-      documentStore,
-      space768,
-      "Who is Robert?",
-      [{ embedding: buildEmbedding(768, 1), text: "Who is Robert?" }],
-      {
-        answerTemperature: 0,
-        candidateK: 5,
-        chatTemperature: 0,
-        fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
-        generationSeedMode: "stable",
-        mode: "hybrid",
-        queryExpansions: 0,
-        queryExpansionTemperature: 0,
-        reranker: null,
-        rrfK: 60,
-        topK: 5,
-      },
-      [{ documentId, sourceFile: activeSource }],
-      null,
-    );
-
-    expect(results).toEqual([]);
   });
 
   it("paginates keyword discovery by document and retains the total", async () => {
@@ -6038,11 +6213,13 @@ describe("pgvector retrieval", () => {
       mortgageElement,
     ]);
     await ensureEmbeddingSpace(session.database, space768);
+    const loanGenerationId = randomUUID();
+    const mortgageGenerationId = randomUUID();
     await indexTestElements(
       session.database,
       space768,
       loanDocumentId,
-      randomUUID(),
+      loanGenerationId,
       [],
       [buildEmbedding(768, 1), buildEmbedding(768, 0.8)],
       [firstLoanElement, secondLoanElement],
@@ -6051,7 +6228,7 @@ describe("pgvector retrieval", () => {
       session.database,
       space768,
       mortgageDocumentId,
-      randomUUID(),
+      mortgageGenerationId,
       [],
       [buildEmbedding(768, 0.6)],
       [mortgageElement],
@@ -6065,10 +6242,12 @@ describe("pgvector retrieval", () => {
       [
         {
           documentId: loanDocumentId,
+          generationId: loanGenerationId,
           sourceFile: firstLoanElement.sourceFile,
         },
         {
           documentId: mortgageDocumentId,
+          generationId: mortgageGenerationId,
           sourceFile: mortgageElement.sourceFile,
         },
       ],
@@ -6084,10 +6263,12 @@ describe("pgvector retrieval", () => {
       [
         {
           documentId: loanDocumentId,
+          generationId: loanGenerationId,
           sourceFile: firstLoanElement.sourceFile,
         },
         {
           documentId: mortgageDocumentId,
+          generationId: mortgageGenerationId,
           sourceFile: mortgageElement.sourceFile,
         },
       ],
@@ -6102,10 +6283,12 @@ describe("pgvector retrieval", () => {
       [
         {
           documentId: loanDocumentId,
+          generationId: loanGenerationId,
           sourceFile: firstLoanElement.sourceFile,
         },
         {
           documentId: mortgageDocumentId,
+          generationId: mortgageGenerationId,
           sourceFile: mortgageElement.sourceFile,
         },
       ],
@@ -6254,7 +6437,11 @@ describe("pgvector retrieval", () => {
         rrfK: 60,
         topK: 5,
       },
-      [{ documentId: firstDocumentId, sourceFile: firstElement.sourceFile }],
+      [{
+        documentId: firstDocumentId,
+        generationId: firstGenerationId,
+        sourceFile: firstElement.sourceFile,
+      }],
       new AbortController().signal,
     );
     expect([
@@ -6284,7 +6471,11 @@ describe("pgvector retrieval", () => {
         rrfK: 60,
         topK: 5,
       },
-      [{ documentId: firstDocumentId, sourceFile: firstElement.sourceFile }],
+      [{
+        documentId: firstDocumentId,
+        generationId: firstGenerationId,
+        sourceFile: firstElement.sourceFile,
+      }],
       null,
     );
     expect(results).toHaveLength(1);
@@ -6319,7 +6510,11 @@ describe("pgvector retrieval", () => {
         rrfK: 60,
         topK: 5,
       },
-      [{ documentId: firstDocumentId, sourceFile: firstElement.sourceFile }],
+      [{
+        documentId: firstDocumentId,
+        generationId: first384GenerationId,
+        sourceFile: firstElement.sourceFile,
+      }],
       null,
     );
     expect(results384[0]?.evidenceContent).toBe(firstElement.content);
@@ -6345,8 +6540,16 @@ describe("pgvector retrieval", () => {
         topK: 5,
       },
       [
-        { documentId: firstDocumentId, sourceFile: firstElement.sourceFile },
-        { documentId: secondDocumentId, sourceFile: secondElement.sourceFile },
+        {
+          documentId: firstDocumentId,
+          generationId: firstGenerationId,
+          sourceFile: firstElement.sourceFile,
+        },
+        {
+          documentId: secondDocumentId,
+          generationId: secondGenerationId,
+          sourceFile: secondElement.sourceFile,
+        },
       ],
       null,
     );
@@ -6373,8 +6576,16 @@ describe("pgvector retrieval", () => {
         topK: 5,
       },
       [
-        { documentId: firstDocumentId, sourceFile: firstElement.sourceFile },
-        { documentId: secondDocumentId, sourceFile: secondElement.sourceFile },
+        {
+          documentId: firstDocumentId,
+          generationId: firstGenerationId,
+          sourceFile: firstElement.sourceFile,
+        },
+        {
+          documentId: secondDocumentId,
+          generationId: secondGenerationId,
+          sourceFile: secondElement.sourceFile,
+        },
       ],
       null,
     );
@@ -6402,8 +6613,16 @@ describe("pgvector retrieval", () => {
         topK: 5,
       },
       [
-        { documentId: firstDocumentId, sourceFile: firstElement.sourceFile },
-        { documentId: secondDocumentId, sourceFile: secondElement.sourceFile },
+        {
+          documentId: firstDocumentId,
+          generationId: firstGenerationId,
+          sourceFile: firstElement.sourceFile,
+        },
+        {
+          documentId: secondDocumentId,
+          generationId: secondGenerationId,
+          sourceFile: secondElement.sourceFile,
+        },
       ],
       null,
     );
@@ -6467,8 +6686,16 @@ describe("pgvector retrieval", () => {
           topK: 5,
         },
         [
-          { documentId: firstDocumentId, sourceFile: firstElement.sourceFile },
-          { documentId: secondDocumentId, sourceFile: secondElement.sourceFile },
+          {
+            documentId: firstDocumentId,
+            generationId: firstGenerationId,
+            sourceFile: firstElement.sourceFile,
+          },
+          {
+            documentId: secondDocumentId,
+            generationId: secondGenerationId,
+            sourceFile: secondElement.sourceFile,
+          },
         ],
         resolvedReranker,
         rerankingScheduler,
@@ -6633,65 +6860,70 @@ async function stageTestRetrievalRepresentations(
     generationId,
     totalElements,
   };
-  await database.insert(ingestionJobs).values({
+  await withOpenTestRetrievalGeneration(database, {
     documentId,
     elementSetId,
-    embeddingSpaceId: space.id,
-    fileExtension: ".pdf",
     generationId,
-    mediaType: "application/pdf",
-    phase: "normalized",
-    sourceFile: `${sourceFile}#staging-${generationId}`,
-    state: "pending",
-    textChunks: totalElements,
-    totalElements,
-  });
-  await beginEmbeddingGeneration(database, space, input);
-  await stageRetrievalRepresentationBatch(
-    database,
+    sourceFile,
     space,
-    input,
-    0,
     totalElements,
-    representations,
-    embeddings,
-  );
+  }, async () => {
+    await stageRetrievalRepresentationBatch(
+      database,
+      space,
+      input,
+      0,
+      totalElements,
+      representations,
+      embeddings,
+    );
 
-  const previousRows = await database
-    .select({ generationId: indexedDocumentSpaces.generationId })
-    .from(indexedDocumentSpaces)
-    .where(and(
-      eq(indexedDocumentSpaces.sourceFile, sourceFile),
-      eq(indexedDocumentSpaces.embeddingSpaceId, space.id),
-    ))
-    .limit(1);
-  await database
-    .insert(indexedDocumentSpaces)
-    .values({
-      documentId,
-      embeddingSpaceId: space.id,
-      generationId,
-      sourceFile,
-    })
-    .onConflictDoUpdate({
-      set: { documentId, generationId },
-      target: [
-        indexedDocumentSpaces.sourceFile,
-        indexedDocumentSpaces.embeddingSpaceId,
-      ],
-    });
-  const previousGenerationId = previousRows[0]?.generationId;
-  if (
-    previousGenerationId !== undefined
-    && previousGenerationId !== generationId
-  ) {
     await database.transaction(async (transaction) => {
-      await deleteRetrievalGenerationRows(
-        transaction,
-        previousGenerationId,
-      );
+      const previousRows = await transaction
+        .select({ generationId: indexedDocumentSpaces.generationId })
+        .from(indexedDocumentSpaces)
+        .where(and(
+          eq(indexedDocumentSpaces.sourceFile, sourceFile),
+          eq(indexedDocumentSpaces.embeddingSpaceId, space.id),
+        ))
+        .limit(1);
+      if (representations.length > 0) {
+        await synchronizeActiveRetrievalProjection(transaction, {
+          documentId,
+          elementSetId,
+          embeddingSpaceId: space.id,
+          generationId,
+          sourceFile,
+          totalElements,
+        });
+      }
+      await transaction
+        .insert(indexedDocumentSpaces)
+        .values({
+          documentId,
+          embeddingSpaceId: space.id,
+          generationId,
+          sourceFile,
+        })
+        .onConflictDoUpdate({
+          set: { documentId, generationId },
+          target: [
+            indexedDocumentSpaces.sourceFile,
+            indexedDocumentSpaces.embeddingSpaceId,
+          ],
+        });
+      const previousGenerationId = previousRows[0]?.generationId;
+      if (
+        previousGenerationId !== undefined
+        && previousGenerationId !== generationId
+      ) {
+        await deleteRetrievalGenerationRows(
+          transaction,
+          previousGenerationId,
+        );
+      }
     });
-  }
+  });
 }
 
 function buildTestRepresentationEmbeddings(
@@ -6738,6 +6970,69 @@ function buildEmbedding(dimensions: number, firstValue: number): number[] {
   return embedding;
 }
 
+async function expectIndexedTopKPlans(
+  space: EmbeddingSpaceConfig,
+): Promise<void> {
+  const vectorTable = readActiveRetrievalVectorTable(space.dimensions);
+  const embedding = buildEmbedding(space.dimensions, 1);
+  const distance = cosineDistance(vectorTable.embedding, embedding);
+  const plans = await session.database.transaction(async (transaction) => {
+    await transaction.execute(sql`SET LOCAL enable_seqscan = off`);
+    await transaction.execute(sql`SET LOCAL enable_sort = off`);
+    const denseResult = await transaction.execute(sql`
+      EXPLAIN (ANALYZE, COSTS OFF, BUFFERS)
+      SELECT ${vectorTable.representationId}
+      FROM ${vectorTable}
+      WHERE ${vectorTable.embeddingSpaceId} = ${space.id}
+      ORDER BY ${distance}
+      LIMIT 5
+    `);
+    const lexicalResult = await transaction.execute(sql`
+      EXPLAIN (ANALYZE, COSTS OFF, BUFFERS)
+      SELECT ${activeRetrievalLexicalChunks.representationId}
+      FROM ${activeRetrievalLexicalChunks}
+      WHERE ${activeRetrievalLexicalChunks.embeddingSpaceId} = ${space.id}
+      ORDER BY ${activeRetrievalLexicalChunks.content}
+        <@> to_bm25query(
+          'deterministicfixturetoken',
+          'active_retrieval_lexical_bm25_idx'
+        )
+      LIMIT 5
+    `);
+    return {
+      dense: readExplainPlan(denseResult.rows),
+      lexical: readExplainPlan(lexicalResult.rows),
+    };
+  });
+  expect(plans.dense).toContain("_embedding_idx");
+  expect(plans.dense).toContain("Order By");
+  expect(plans.dense).not.toContain("indexed_document_spaces");
+  expect(plans.dense).not.toContain("Append");
+  expect(plans.lexical).toContain("_content_idx");
+  expect(plans.lexical).toContain("Order By");
+  expect(plans.lexical).not.toContain("indexed_document_spaces");
+  expect(plans.lexical).not.toContain("Append");
+}
+
+function readExplainPlan(value: unknown): string {
+  if (!Array.isArray(value)) {
+    throw new Error("PostgreSQL EXPLAIN did not return rows.");
+  }
+  const lines: string[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const row = value[index];
+    if (typeof row !== "object" || row === null) {
+      throw new Error(`PostgreSQL EXPLAIN row ${index + 1} is invalid.`);
+    }
+    const line = (row as { "QUERY PLAN"?: unknown })["QUERY PLAN"];
+    if (typeof line !== "string") {
+      throw new Error(`PostgreSQL EXPLAIN row ${index + 1} has no plan text.`);
+    }
+    lines.push(line);
+  }
+  return lines.join("\n");
+}
+
 function buildTestApplicationError(sourceFile: string, message: string) {
   const reporter = new ApplicationErrorReporter(session.database);
   return reporter.prepare(new Error(message), {
@@ -6754,19 +7049,28 @@ function buildTestApplicationError(sourceFile: string, message: string) {
 
 function buildResolvedScopeTargets(
   documentIds: readonly string[],
+  generationIds: readonly string[],
   sourceFiles: readonly string[],
-): Array<{ documentId: string; sourceFile: string }> {
-  if (documentIds.length !== sourceFiles.length) {
+): ResolvedQueryScopeTarget[] {
+  if (
+    documentIds.length !== generationIds.length
+    || documentIds.length !== sourceFiles.length
+  ) {
     throw new Error("Resolved scope fixture columns must have equal lengths.");
   }
-  const targets: Array<{ documentId: string; sourceFile: string }> = [];
+  const targets: ResolvedQueryScopeTarget[] = [];
   for (let index = 0; index < documentIds.length; index += 1) {
     const documentId = documentIds[index];
+    const generationId = generationIds[index];
     const sourceFile = sourceFiles[index];
-    if (documentId === undefined || sourceFile === undefined) {
+    if (
+      documentId === undefined
+      || generationId === undefined
+      || sourceFile === undefined
+    ) {
       throw new Error(`Incomplete resolved scope fixture at index ${index}.`);
     }
-    targets.push({ documentId, sourceFile });
+    targets.push({ documentId, generationId, sourceFile });
   }
   return targets;
 }
@@ -7457,13 +7761,27 @@ async function insertRetentionRows(spaceId: string): Promise<void> {
   const embedding = Array.from({ length: 384 }, (_, index) => (
     index === 0 ? 1 : 0
   ));
-  await session.database.insert(retrievalChunks384).values({
-    ...metadata,
-    embedding,
-  });
-  await session.database.insert(retrievalLexicalChunks).values({
-    ...metadata,
-    content: "Retention test content.",
+  const space: EmbeddingSpaceConfig = {
+    ...space384,
+    id: spaceId,
+    model: "retention-test-model",
+  };
+  await withOpenTestRetrievalGeneration(session.database, {
+    documentId,
+    elementSetId,
+    generationId,
+    sourceFile,
+    space,
+    totalElements: 1,
+  }, async () => {
+    await session.database.insert(retrievalChunks384).values({
+      ...metadata,
+      embedding,
+    });
+    await session.database.insert(retrievalLexicalChunks).values({
+      ...metadata,
+      content: "Retention test content.",
+    });
   });
 }
 

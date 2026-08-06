@@ -291,6 +291,7 @@ export async function prepareAnswerThresholdCalibration(
       if (document.sourceFile.includes(negativePathSegment)) {
         negativeScopeTargets.push({
           documentId: document.documentId,
+          generationId: document.generationId,
           sourceFile: document.sourceFile,
         });
       }

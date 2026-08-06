@@ -74,7 +74,10 @@ export class CatalogDocumentStore {
     embeddingSpaceId: string,
   ): Promise<IndexedDocument[]> {
     const rows = await this.database
-      .select({ document: indexedDocuments })
+      .select({
+        document: indexedDocuments,
+        generationId: indexedDocumentSpaces.generationId,
+      })
       .from(indexedDocuments)
       .innerJoin(
         indexedDocumentSpaces,
@@ -86,7 +89,8 @@ export class CatalogDocumentStore {
       .where(eq(indexedDocumentSpaces.embeddingSpaceId, embeddingSpaceId));
     const documents: IndexedDocument[] = [];
     for (const row of rows) {
-      documents.push(decodeIndexedDocument(row.document));
+      const document = decodeIndexedDocument(row.document);
+      documents.push({ ...document, generationId: row.generationId });
     }
     return documents;
   }
