@@ -47,10 +47,6 @@ const serviceRowSchema = z.object({
   state: z.enum(["active", "unavailable", "draining"]),
   verificationConfigFingerprint: fingerprintSchema.nullable(),
 });
-const constraintValidationRowSchema = z.object({
-  validated: z.boolean(),
-});
-
 export type DoclingServiceVerification =
   | {
       config: DoclingServiceInstanceConfig;
@@ -172,7 +168,6 @@ export class DoclingServiceStore {
           currentTime,
         );
       }
-      await validateCheckpointServiceConstraint(transaction);
     });
   }
 
@@ -292,7 +287,6 @@ export class DoclingServiceStore {
         assignedSlots,
         currentTime,
       );
-      await validateCheckpointServiceConstraint(transaction);
       return {
         activeServiceCount: counts.activeServiceCount,
         unavailableServiceCount: counts.unavailableServiceCount,
@@ -1109,30 +1103,6 @@ function createAssignment(
 async function lockRegistry(database: CiteLoomDatabase): Promise<void> {
   await database.execute(sql`
     SELECT pg_advisory_xact_lock(hashtext(${REGISTRY_LOCK_KEY}))
-  `);
-}
-
-async function validateCheckpointServiceConstraint(
-  database: CiteLoomDatabase,
-): Promise<void> {
-  const result = await database.execute(sql`
-    SELECT "convalidated" AS "validated"
-    FROM "pg_constraint"
-    WHERE "conname" = 'docling_task_checkpoints_service_instance_check'
-      AND "conrelid" = 'docling_task_checkpoints'::regclass
-  `);
-  const decoded = constraintValidationRowSchema.safeParse(result.rows[0]);
-  if (!decoded.success) {
-    throw new Error(
-      "Docling checkpoint service constraint is missing or invalid. Apply all database migrations before starting ingestion.",
-    );
-  }
-  if (decoded.data.validated) {
-    return;
-  }
-  await database.execute(sql`
-    ALTER TABLE docling_task_checkpoints
-    VALIDATE CONSTRAINT docling_task_checkpoints_service_instance_check
   `);
 }
 

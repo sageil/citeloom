@@ -220,7 +220,7 @@
 .access-security-summary > .access-secondary-button {
   border-color: rgba(34, 211, 238, 0.58);
   background: rgba(6, 182, 212, 0.05);
-  color: #67e8f9;
+  color: var(--cyan-bright);
 }
 
 .access-primary-button:disabled,
@@ -634,7 +634,7 @@
 }
 
 .access-user-actions button:hover {
-  background: rgba(248, 113, 113, 0.08);
+  background: var(--danger-subtle);
 }
 
 .access-user-actions button:first-child,
@@ -646,11 +646,11 @@
 .access-user-actions button:first-child:focus-visible,
 .access-user-actions button:nth-child(2):hover,
 .access-user-actions button:nth-child(2):focus-visible {
-  background: rgba(6, 182, 212, 0.08);
+  background: var(--cyan-subtle);
 }
 
 .access-user-actions button:focus-visible {
-  background: rgba(248, 113, 113, 0.08);
+  background: var(--danger-subtle);
   outline: none;
 }
 
@@ -729,13 +729,13 @@
 .access-danger-button {
   border: 1px solid rgba(248, 113, 113, 0.72);
   background: rgba(248, 113, 113, 0.04);
-  color: #fca5a5;
+  color: var(--danger-soft);
   font-weight: inherit;
   white-space: nowrap;
 }
 
 .access-danger-button:hover:not(:disabled) {
-  border-color: #f87171;
+  border-color: var(--danger);
   background: rgba(248, 113, 113, 0.11);
   color: #fee2e2;
 }

@@ -7,6 +7,7 @@ import {
   decodeAnswerDraft,
   decodeAnswerModelResponse,
 } from "../src/answers/draft.js";
+import type { AnswerDraftStatement } from "../src/answers/draft.js";
 import type { RetrievedElement } from "../src/retrieval/document-retrieval.js";
 import {
   compileAnswerDraft,
@@ -60,18 +61,25 @@ describe("answer draft boundary", () => {
     const draft = decodeAnswerModelResponse({
       answer: {
         content: "Revenue increased.",
-        evidenceRefs: ["EVID_A"],
       },
-      findings: [],
+      findings: [{
+        content: "The reported revenue was higher than before.",
+        evidenceRefs: ["EVID_A"],
+      }],
     }, createEvidenceReferences(1));
 
     expect(draft).toEqual({
       conflictGroups: [],
       statements: [{
         content: "Revenue increased.",
-        evidenceRefs: ["EVID_A"],
+        evidenceRefs: [],
         presentation: "paragraph",
         section: "answer",
+      }, {
+        content: "The reported revenue was higher than before.",
+        evidenceRefs: ["EVID_A"],
+        presentation: "bullet",
+        section: "key-points",
       }],
       status: "answered",
     });
@@ -81,15 +89,20 @@ describe("answer draft boundary", () => {
     const draft = decodeAnswerModelResponse({
       answer: {
         content: "A supported cause is configuration failure.",
-        evidenceRefs: ["EVID_A"],
       },
-      findings: [],
+      findings: [{
+        content: "The evidence identifies configuration failure.",
+        evidenceRefs: ["EVID_A"],
+      }],
     }, createEvidenceReferences(1));
 
     expect(draft).toMatchObject({
       statements: [{
         presentation: "paragraph",
         section: "answer",
+      }, {
+        presentation: "bullet",
+        section: "key-points",
       }],
       status: "answered",
     });
@@ -107,19 +120,17 @@ describe("answer draft boundary", () => {
         content: `The service supports a ${mode} deployment.`,
         evidenceRefs: [evidenceRefs[index]],
       }));
-      const answer = statements[0];
-      if (answer === undefined) {
-        throw new Error("Expected an answer fixture.");
-      }
       const draft = decodeAnswerModelResponse({
-        answer,
-        findings: statements.slice(1),
+        answer: {
+          content: `The service supports ${deploymentModes.length} deployment modes.`,
+        },
+        findings: statements,
       }, evidenceRefs);
 
       expect(draft).toMatchObject({
         statements: [
           { presentation: "paragraph", section: "answer" },
-          ...deploymentModes.slice(1).map(() => ({
+          ...deploymentModes.map(() => ({
             presentation: "bullet",
             section: "key-points",
           })),
@@ -133,9 +144,11 @@ describe("answer draft boundary", () => {
     const draft = decodeAnswerModelResponse({
       answer: {
         content: "The first mechanism blocks the receptor.",
-        evidenceRefs: ["EVID_A"],
       },
       findings: [{
+          content: "The first mechanism blocks the receptor.",
+          evidenceRefs: ["EVID_A"],
+      }, {
           content: "The second mechanism blocks the proton pump.",
           evidenceRefs: ["EVID_B"],
       }],
@@ -144,6 +157,7 @@ describe("answer draft boundary", () => {
     expect(draft).toMatchObject({
       statements: [
         { presentation: "paragraph", section: "answer" },
+        { presentation: "bullet", section: "key-points" },
         { presentation: "bullet", section: "key-points" },
       ],
       status: "answered",
@@ -154,7 +168,6 @@ describe("answer draft boundary", () => {
     expect(decodeAnswerModelResponse({
       answer: {
         content: "The supplied source material does not identify the requested information.",
-        evidenceRefs: [],
       },
       findings: [],
     }, createEvidenceReferences(2))).toEqual({
@@ -167,7 +180,6 @@ describe("answer draft boundary", () => {
     const value = {
       answer: {
         content: "Revenue was reported by both sources. [1, 2]",
-        evidenceRefs: ["EVID_A", "EVID_B"],
       },
       findings: [
         { content: "Revenue increased [EVID_A].", evidenceRefs: ["EVID_A"] },
@@ -178,7 +190,7 @@ describe("answer draft boundary", () => {
     expect(decodeAnswerModelResponse(value, createEvidenceReferences(2))).toEqual({
       statements: [{
         content: "Revenue was reported by both sources.",
-        evidenceRefs: ["EVID_A", "EVID_B"],
+        evidenceRefs: [],
         presentation: "paragraph",
         section: "answer",
       }, {
@@ -359,13 +371,18 @@ describe("answer draft boundary", () => {
 
   it("accepts complete long, numerous, and broadly sourced statements", () => {
     const evidenceRefs = createEvidenceReferences(12);
-    const statements = [];
+    const statements: AnswerDraftStatement[] = [{
+      content: `${"a".repeat(1_000)} 0`,
+      evidenceRefs: [],
+      presentation: "paragraph",
+      section: "answer",
+    }];
     for (let index = 0; index < 65; index += 1) {
       statements.push({
         content: `${"a".repeat(1_000)} ${index}`,
         evidenceRefs,
-        presentation: "paragraph",
-        section: "answer",
+        presentation: "bullet",
+        section: "key-points",
       });
     }
     const draft = decodeAnswerDraft(
@@ -376,8 +393,9 @@ describe("answer draft boundary", () => {
     if (draft.status !== "answered") {
       throw new Error("Expected an answered draft.");
     }
-    expect(draft.statements).toHaveLength(65);
-    expect(draft.statements[0]?.evidenceRefs).toEqual(evidenceRefs);
+    expect(draft.statements).toHaveLength(66);
+    expect(draft.statements[0]?.evidenceRefs).toEqual([]);
+    expect(draft.statements[1]?.evidenceRefs).toEqual(evidenceRefs);
 
     const retrieved: RetrievedElement[] = [];
     for (let index = 0; index < 12; index += 1) {
@@ -397,7 +415,7 @@ describe("answer draft boundary", () => {
     const document = compileAnswerDraft(draft, retrieved);
     expect(document).not.toHaveProperty("status");
     expect(document.content).toBe(`${"a".repeat(1_000)} 0`);
-    expect(document.statements).toHaveLength(64);
+    expect(document.statements).toHaveLength(65);
     expect(document.citations).toHaveLength(12);
   });
 
@@ -424,14 +442,13 @@ describe("answer draft boundary", () => {
     if (draft.status !== "answered") {
       throw new Error("Expected an answered draft.");
     }
-    expect(draft.statements[0]?.evidenceRefs).toEqual(["EVID_B", "EVID_A"]);
+    expect(draft.statements[1]?.evidenceRefs).toEqual(["EVID_B", "EVID_A"]);
   });
 
   it("omits only statements emptied by model-text normalization", () => {
     const value = {
       answer: {
         content: "Revenue increased [1].",
-        evidenceRefs: ["EVID_A"],
       },
       findings: [
         {
@@ -459,7 +476,7 @@ describe("answer draft boundary", () => {
     expect(draft.statements).toEqual([
       {
         content: "Revenue increased.",
-        evidenceRefs: ["EVID_A"],
+        evidenceRefs: [],
         presentation: "paragraph",
         section: "answer",
       },
@@ -489,7 +506,6 @@ describe("answer draft boundary", () => {
       }],
       answer: {
         content: "Revenue was reported.",
-        evidenceRefs: ["EVID_A"],
       },
       findings: [],
     };
@@ -505,12 +521,12 @@ describe("published answer compilation", () => {
       buildRetrievedElement("c", "d", 7),
     ];
     const draft = buildAnsweredDraft(["EVID_B", "EVID_A"]);
-    draft.statements.push({
+    draft.statements[1] = {
       content: "Revenue increased by 12 percent.",
       evidenceRefs: ["EVID_B", "EVID_A"],
       presentation: "bullet",
       section: "key-points",
-    });
+    };
     const document = compileAnswerDraft(
       decodeAnswerDraft(draft, createEvidenceReferences(retrieved.length)),
       retrieved,
@@ -540,14 +556,14 @@ describe("published answer compilation", () => {
       conflictGroups: [],
       statements: [{
         content: "Part II says revenue increased by 10% (estimated) [estimate].",
-        evidenceRefs: ["EVID_A"],
+        evidenceRefs: [],
         presentation: "paragraph",
         section: "answer",
       }, {
         content: "The estimate remains limited.",
         evidenceRefs: ["EVID_A"],
-        presentation: "paragraph",
-        section: "answer",
+        presentation: "bullet",
+        section: "key-points",
       }],
       status: "answered",
     }, createEvidenceReferences(1));
@@ -559,10 +575,13 @@ describe("published answer compilation", () => {
     expect(renderPublishedAnswerMarkdown(document)).toBe([
       "Part II says revenue increased by 10% \\(estimated\\) \\[estimate\\]\\.",
       "",
-      "The estimate remains limited\\. [1]",
+      "## Key points",
+      "",
+      "- The estimate remains limited\\. [1]",
     ].join("\n"));
     expect(renderPublishedAnswerSpeech(document)).toBe([
       "Part 2 says revenue increased by 10% (estimated) [estimate].",
+      "Key points.",
       "The estimate remains limited.",
     ].join("\n"));
   });
@@ -572,7 +591,7 @@ describe("published answer compilation", () => {
       conflictGroups: [],
       statements: [{
         content: "The report identifies a supported revenue change.",
-        evidenceRefs: ["EVID_A"],
+        evidenceRefs: [],
         presentation: "paragraph",
         section: "answer",
       }, {
@@ -617,7 +636,7 @@ describe("published answer compilation", () => {
       }],
       statements: [{
         content: "Revenue was reported for 2025.",
-        evidenceRefs: ["EVID_A"],
+        evidenceRefs: [],
         presentation: "paragraph",
         section: "answer",
       }],
@@ -655,7 +674,7 @@ describe("published answer compilation", () => {
       ]),
       statements: [{
         content: "The sources report conflicting revenue directions.",
-        evidenceRefs: ["EVID_A", "EVID_B"],
+        evidenceRefs: [],
         presentation: "paragraph",
         section: "answer",
       }],
@@ -689,9 +708,14 @@ function buildAnsweredDraft(evidenceRefs: string[]) {
     conflictGroups: [],
     statements: [{
       content: "Revenue increased.",
-      evidenceRefs,
+      evidenceRefs: [],
       presentation: "paragraph",
       section: "answer",
+    }, {
+      content: "The report records an increase in revenue.",
+      evidenceRefs,
+      presentation: "bullet",
+      section: "key-points",
     }],
     status: "answered",
   };
@@ -702,9 +726,14 @@ function buildDraftWithContent(content: string) {
     conflictGroups: [],
     statements: [{
       content,
-      evidenceRefs: ["EVID_A"],
+      evidenceRefs: [],
       presentation: "paragraph",
       section: "answer",
+    }, {
+      content: "The report supports the answer.",
+      evidenceRefs: ["EVID_A"],
+      presentation: "bullet",
+      section: "key-points",
     }],
     status: "answered",
   };
@@ -715,8 +744,11 @@ function buildAnswerModelResponse(
   evidenceRefs: string[] = ["EVID_A"],
 ) {
   return {
-    answer: { content, evidenceRefs },
-    findings: [],
+    answer: { content },
+    findings: [{
+      content: "The report supports the answer.",
+      evidenceRefs,
+    }],
   };
 }
 

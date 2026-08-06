@@ -55,11 +55,11 @@
 .error-reports-purge {
   border-color: rgba(248, 113, 113, 0.62);
   background: rgba(248, 113, 113, 0.05);
-  color: #fca5a5;
+  color: var(--danger-soft);
 }
 
 .error-reports-purge:hover:not(:disabled) {
-  border-color: #f87171;
+  border-color: var(--danger);
   background: rgba(248, 113, 113, 0.12);
   color: #fee2e2;
 }
@@ -70,7 +70,7 @@
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: rgba(11, 16, 32, 0.72);
+  background: var(--surface-translucent);
 }
 
 .error-area-filter {
@@ -140,7 +140,7 @@
   padding: 36px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(11, 16, 32, 0.72);
+  background: var(--surface-translucent);
   color: var(--muted);
 }
 

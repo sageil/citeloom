@@ -88,7 +88,14 @@ export function compileAnswerDraft(
     throw new AnswerDraftSourceError("The answer draft has no direct answer content.");
   }
   const referencedEvidence = new Set<EvidenceReference>();
-  for (const prepared of preparedStatements) {
+  for (let index = 0; index < preparedStatements.length; index += 1) {
+    if (index === directAnswerIndex) {
+      continue;
+    }
+    const prepared = preparedStatements[index];
+    if (prepared === undefined) {
+      continue;
+    }
     for (const evidenceRef of prepared.evidenceRefs) {
       referencedEvidence.add(evidenceRef);
     }

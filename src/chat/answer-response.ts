@@ -15,7 +15,6 @@ import { formatAnswerTopicContent } from "../answers/topic-content.js";
 
 interface ChatAnswerPoint {
   content: string;
-  source_refs: EvidenceReference[];
   topics: ChatAnswerTopic[];
 }
 
@@ -56,9 +55,6 @@ function createChatAnswerModelResponseSchema(
     content: z.string().trim().min(1).describe(
       "The substantive grounded answer content, including synthesis and qualifications that do not belong to one topic.",
     ),
-    source_refs: z.array(sourceReference).min(1).describe(
-      "The smallest set of sources that directly supports the overall grounded answer.",
-    ),
     topics: z.array(answerTopic).min(1).describe(
       "One or more ordered findings that contain the independently verifiable details of the grounded answer.",
     ),
@@ -66,9 +62,6 @@ function createChatAnswerModelResponseSchema(
   const uncitedAnswerPoint: z.ZodType<ChatAnswerPoint> = z.object({
     content: z.string().trim().min(1).describe(
       "A clarification question or explanation of what the supplied evidence does not establish.",
-    ),
-    source_refs: z.tuple([]).describe(
-      "An empty array because this response makes no grounded factual claims.",
     ),
     topics: z.tuple([]).describe(
       "An empty array because this response makes no grounded factual claims.",
@@ -94,7 +87,7 @@ function decodeChatAnswerModelResponse(
     );
   }
   const response = result.data as ChatAnswerModelResponse;
-  if (response.answer.source_refs.length === 0) {
+  if (response.answer.topics.length === 0) {
     return {
       draft: {
         content: normalizeAnswerModelText(response.answer.content),
@@ -138,7 +131,7 @@ function createAnswerStatement(
 ): AnswerDraftStatement {
   return {
     content: normalizeAnswerModelText(answer.content),
-    evidenceRefs: normalizeSourceReferences(answer.source_refs),
+    evidenceRefs: [],
     presentation: "paragraph",
     section: "answer",
   };

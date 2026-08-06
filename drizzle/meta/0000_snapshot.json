@@ -2886,7 +2886,7 @@
           "name": "service_instance_id",
           "type": "varchar(100)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "source_file": {
           "name": "source_file",
@@ -2948,10 +2948,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "docling_task_checkpoints_service_instance_check": {
-          "name": "docling_task_checkpoints_service_instance_check",
-          "value": "\"docling_task_checkpoints\".\"service_instance_id\" IS NOT NULL"
-        },
         "docling_task_checkpoints_request_key_check": {
           "name": "docling_task_checkpoints_request_key_check",
           "value": "length(trim(\"docling_task_checkpoints\".\"request_key\")) > 0"
@@ -3479,13 +3475,13 @@
           "name": "input_format_hash",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "input_format_name": {
           "name": "input_format_name",
           "type": "varchar(100)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "model": {
           "name": "model",
@@ -3639,31 +3635,31 @@
           "name": "input_format_document_template",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "input_format_hash": {
           "name": "input_format_hash",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "input_format_id": {
           "name": "input_format_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "input_format_query_template": {
           "name": "input_format_query_template",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "input_format_schema_version": {
           "name": "input_format_schema_version",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "model": {
           "name": "model",
@@ -3716,7 +3712,7 @@
         },
         "embedding_spaces_input_format_snapshot_valid": {
           "name": "embedding_spaces_input_format_snapshot_valid",
-          "value": "(\n          \"embedding_spaces\".\"input_format_document_template\" IS NULL\n          AND \"embedding_spaces\".\"input_format_hash\" IS NULL\n          AND \"embedding_spaces\".\"input_format_id\" IS NULL\n          AND \"embedding_spaces\".\"input_format_query_template\" IS NULL\n          AND \"embedding_spaces\".\"input_format_schema_version\" IS NULL\n        ) OR (\n          \"embedding_spaces\".\"input_format_document_template\" IS NOT NULL\n          AND \"embedding_spaces\".\"input_format_hash\" ~ '^[a-f0-9]{64}$'\n          AND \"embedding_spaces\".\"input_format_id\" IS NOT NULL\n          AND \"embedding_spaces\".\"input_format_query_template\" IS NOT NULL\n          AND \"embedding_spaces\".\"input_format_schema_version\" > 0\n        )"
+          "value": "\"embedding_spaces\".\"input_format_hash\" ~ '^[a-f0-9]{64}$'\n        AND \"embedding_spaces\".\"input_format_schema_version\" > 0"
         }
       },
       "isRLSEnabled": false
@@ -5366,11 +5362,11 @@
           "primaryKey": true,
           "notNull": true
         },
-        "no_answer_content": {
-          "name": "no_answer_content",
+        "answer_content": {
+          "name": "answer_content",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "question": {
           "name": "question",
@@ -5395,7 +5391,7 @@
           "name": "retrieval_trace",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "run_configuration": {
           "name": "run_configuration",
@@ -5489,9 +5485,9 @@
           "name": "research_turns_answer_schema_version_check",
           "value": "\"research_turns\".\"answer_schema_version\" = 1"
         },
-        "research_turns_no_answer_content_check": {
-          "name": "research_turns_no_answer_content_check",
-          "value": "\"research_turns\".\"no_answer_content\" IS NULL OR length(trim(\"research_turns\".\"no_answer_content\")) > 0"
+        "research_turns_answer_content_check": {
+          "name": "research_turns_answer_content_check",
+          "value": "length(trim(\"research_turns\".\"answer_content\")) > 0"
         }
       },
       "isRLSEnabled": false
@@ -6887,12 +6883,6 @@
         },
         "retrieval_sufficiency_score": {
           "name": "retrieval_sufficiency_score",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "retrieval_sufficiency_threshold": {
-          "name": "retrieval_sufficiency_threshold",
           "type": "double precision",
           "primaryKey": false,
           "notNull": false

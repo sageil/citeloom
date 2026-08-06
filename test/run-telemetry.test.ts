@@ -335,7 +335,6 @@ describe("run telemetry", () => {
         outcome: "not-assessed",
         reason: "ranking-only",
         strongestScore: 0.01,
-        threshold: null,
       },
       scopeSize: 12,
       streamDurationMs: 70,

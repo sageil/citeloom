@@ -421,12 +421,11 @@ CREATE TABLE "docling_service_instances" (
 CREATE TABLE "docling_task_checkpoints" (
 	"deadline_at" timestamp with time zone NOT NULL,
 	"request_key" varchar(128) NOT NULL,
-	"service_instance_id" varchar(100),
+	"service_instance_id" varchar(100) NOT NULL,
 	"source_file" text NOT NULL,
 	"submitted_at" timestamp with time zone NOT NULL,
 	"task_id" text NOT NULL,
 	CONSTRAINT "docling_task_checkpoints_source_file_request_key_pk" PRIMARY KEY("source_file","request_key"),
-	CONSTRAINT "docling_task_checkpoints_service_instance_check" CHECK ("docling_task_checkpoints"."service_instance_id" IS NOT NULL),
 	CONSTRAINT "docling_task_checkpoints_request_key_check" CHECK (length(trim("docling_task_checkpoints"."request_key")) > 0),
 	CONSTRAINT "docling_task_checkpoints_task_id_check" CHECK (length(trim("docling_task_checkpoints"."task_id")) > 0),
 	CONSTRAINT "docling_task_checkpoints_deadline_check" CHECK ("docling_task_checkpoints"."deadline_at" > "docling_task_checkpoints"."submitted_at")
@@ -505,8 +504,8 @@ CREATE TABLE "embedding_space_gc_spaces" (
 	"disposition" varchar(16) NOT NULL,
 	"error_message" text,
 	"estimated_bytes" bigint NOT NULL,
-	"input_format_hash" varchar(64),
-	"input_format_name" varchar(100),
+	"input_format_hash" varchar(64) NOT NULL,
+	"input_format_name" varchar(100) NOT NULL,
 	"model" text NOT NULL,
 	"profile" text NOT NULL,
 	"protection_detail" text,
@@ -528,29 +527,18 @@ CREATE TABLE "embedding_spaces" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"dimensions" integer NOT NULL,
 	"id" text PRIMARY KEY NOT NULL,
-	"input_format_document_template" text,
-	"input_format_hash" varchar(64),
-	"input_format_id" uuid,
-	"input_format_query_template" text,
-	"input_format_schema_version" integer,
+	"input_format_document_template" text NOT NULL,
+	"input_format_hash" varchar(64) NOT NULL,
+	"input_format_id" uuid NOT NULL,
+	"input_format_query_template" text NOT NULL,
+	"input_format_schema_version" integer NOT NULL,
 	"model" text NOT NULL,
 	"profile" text NOT NULL,
 	"retrieval_window_policy" jsonb NOT NULL,
 	"retrieval_window_policy_fingerprint" varchar(64) NOT NULL,
 	CONSTRAINT "embedding_spaces_retrieval_window_policy_fingerprint_valid" CHECK ("embedding_spaces"."retrieval_window_policy_fingerprint" ~ '^[a-f0-9]{64}$'),
-	CONSTRAINT "embedding_spaces_input_format_snapshot_valid" CHECK ((
-          "embedding_spaces"."input_format_document_template" IS NULL
-          AND "embedding_spaces"."input_format_hash" IS NULL
-          AND "embedding_spaces"."input_format_id" IS NULL
-          AND "embedding_spaces"."input_format_query_template" IS NULL
-          AND "embedding_spaces"."input_format_schema_version" IS NULL
-        ) OR (
-          "embedding_spaces"."input_format_document_template" IS NOT NULL
-          AND "embedding_spaces"."input_format_hash" ~ '^[a-f0-9]{64}$'
-          AND "embedding_spaces"."input_format_id" IS NOT NULL
-          AND "embedding_spaces"."input_format_query_template" IS NOT NULL
-          AND "embedding_spaces"."input_format_schema_version" > 0
-        ))
+	CONSTRAINT "embedding_spaces_input_format_snapshot_valid" CHECK ("embedding_spaces"."input_format_hash" ~ '^[a-f0-9]{64}$'
+        AND "embedding_spaces"."input_format_schema_version" > 0)
 );
 --> statement-breakpoint
 CREATE TABLE "indexed_document_spaces" (
@@ -744,18 +732,18 @@ CREATE TABLE "research_turns" (
 	"answer_schema_version" integer NOT NULL,
 	"completed_at" timestamp with time zone NOT NULL,
 	"id" uuid PRIMARY KEY NOT NULL,
-	"no_answer_content" text,
+	"answer_content" text NOT NULL,
 	"question" text NOT NULL,
 	"output_state" "research_output_state" NOT NULL,
 	"retrieved_context" jsonb NOT NULL,
-	"retrieval_trace" jsonb,
+	"retrieval_trace" jsonb NOT NULL,
 	"run_configuration" jsonb NOT NULL,
 	"run_id" uuid NOT NULL,
 	"scope" jsonb NOT NULL,
 	"sequence" integer NOT NULL,
 	"thread_id" uuid NOT NULL,
 	CONSTRAINT "research_turns_answer_schema_version_check" CHECK ("research_turns"."answer_schema_version" = 1),
-	CONSTRAINT "research_turns_no_answer_content_check" CHECK ("research_turns"."no_answer_content" IS NULL OR length(trim("research_turns"."no_answer_content")) > 0)
+	CONSTRAINT "research_turns_answer_content_check" CHECK (length(trim("research_turns"."answer_content")) > 0)
 );
 --> statement-breakpoint
 CREATE TABLE "retrieval_chunks" (
@@ -930,7 +918,6 @@ CREATE TABLE "telemetry_runs" (
 	"retrieval_sufficiency_outcome" text,
 	"retrieval_sufficiency_reason" text,
 	"retrieval_sufficiency_score" double precision,
-	"retrieval_sufficiency_threshold" double precision,
 	"retrieval_mode" text NOT NULL,
 	"scope_size" integer,
 	"settings_version" integer NOT NULL,
@@ -1532,5 +1519,4 @@ ON "embedding_spaces";
 CREATE TRIGGER "embedding_spaces_require_active_input_format"
 BEFORE INSERT OR UPDATE OF "input_format_id" ON "embedding_spaces"
 FOR EACH ROW
-WHEN (NEW."input_format_id" IS NOT NULL)
 EXECUTE FUNCTION "require_active_embedding_space_input_format"();

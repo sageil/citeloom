@@ -105,7 +105,7 @@
   height: 230px;
   place-self: center;
   place-items: center;
-  color: #67e8f9;
+  color: var(--cyan-bright);
   transform: translateY(-12px);
 }
 
@@ -256,15 +256,15 @@
 }
 
 .login-checkbox-control input:checked {
-  border-color: #67e8f9;
-  background: #67e8f9;
+  border-color: var(--cyan-bright);
+  background: var(--cyan-bright);
 }
 
 .login-link-button {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #67e8f9;
+  color: var(--cyan-bright);
   font-size: inherit;
 }
 
@@ -280,7 +280,7 @@
 .login-submit {
   min-height: 68px;
   margin-top: 7px;
-  border: 1px solid #67e8f9;
+  border: 1px solid var(--cyan-bright);
   border-radius: 8px;
   background: rgba(11, 16, 32, 0.42);
   color: var(--text);
@@ -289,7 +289,7 @@
 }
 
 .login-error {
-  color: var(--danger, #fca5a5);
+  color: var(--danger, var(--danger-soft));
   font-size: 0.875rem;
   margin: 0;
 }
@@ -328,7 +328,7 @@
 .login-assurance-icon {
   width: 27px;
   height: 27px;
-  color: #67e8f9;
+  color: var(--cyan-bright);
 }
 
 .login-assurance-divider {

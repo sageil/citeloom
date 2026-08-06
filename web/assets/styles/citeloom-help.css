@@ -62,7 +62,7 @@
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(11, 16, 32, 0.72);
+  background: var(--surface-translucent);
   color: var(--muted);
   text-decoration: none;
 }

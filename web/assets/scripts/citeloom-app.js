@@ -776,12 +776,12 @@ function registerShell(alpine) {
 
     get showTaskLaunchpad() {
       return this.activeView === "overview"
-        || this.activeView === "documents"
-        || this.activeView === "ask";
+        || this.activeView === "documents";
     },
 
     get showWorkflowProgress() {
       return this.activeView !== "overview"
+        && this.activeView !== "ask"
         && this.activeView !== "chat"
         && this.activeView !== "login"
         && this.workflow.visible;

@@ -1,6 +1,6 @@
 :root {
-  color: #f8fafc;
-  background: #060914;
+  color: var(--text);
+  background: var(--background);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -9,16 +9,25 @@
   --surface: #0b1020;
   --surface-raised: #111827;
   --surface-soft: #131b2e;
+  --surface-translucent: rgba(11, 16, 32, 0.72);
+  --surface-opaque: rgba(11, 16, 32, 0.88);
   --border: rgba(148, 163, 184, 0.18);
   --border-strong: rgba(148, 163, 184, 0.34);
   --text: #f8fafc;
+  --text-soft: #e2e8f0;
   --muted: #94a3b8;
   --blue: #2563eb;
   --cyan: #06b6d4;
+  --cyan-bright: #67e8f9;
+  --cyan-subtle: rgba(6, 182, 212, 0.08);
+  --cyan-border: rgba(6, 182, 212, 0.3);
   --purple: #8b5cf6;
   --success: #34d399;
   --warning: #fbbf24;
   --danger: #f87171;
+  --danger-soft: #fca5a5;
+  --danger-pale: #fecaca;
+  --danger-subtle: rgba(248, 113, 113, 0.08);
 }
 * {
   box-sizing: border-box;
@@ -132,18 +141,18 @@ textarea:focus-visible,
 .button.primary {
   border-color: rgba(34, 211, 238, 0.58);
   background: rgba(6, 182, 212, 0.06);
-  color: #67e8f9;
+  color: var(--cyan-bright);
 }
 
 .button:hover:not(:disabled),
 .icon-button:hover:not(:disabled) {
   border-color: rgba(103, 232, 249, 0.68);
-  background: rgba(6, 182, 212, 0.08);
+  background: var(--cyan-subtle);
   color: var(--text);
 }
 
 .button.primary:hover:not(:disabled) {
-  border-color: #67e8f9;
+  border-color: var(--cyan-bright);
   background: rgba(6, 182, 212, 0.13);
   color: #cffafe;
   box-shadow: inset 0 0 0 1px rgba(103, 232, 249, 0.08);
@@ -181,7 +190,7 @@ textarea:focus-visible,
 
 .text-action:hover,
 .inline-help:hover {
-  color: #67e8f9;
+  color: var(--cyan-bright);
   text-decoration-color: currentColor;
 }
 
@@ -193,7 +202,7 @@ textarea:focus-visible,
   padding: 3px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(11, 16, 32, 0.88);
+  background: var(--surface-opaque);
 }
 
 .segmented-control > button {
@@ -494,7 +503,7 @@ h3 {
 
 .notice.error {
   border-color: rgba(248, 113, 113, 0.34);
-  background: rgba(248, 113, 113, 0.08);
+  background: var(--danger-subtle);
   color: #fee2e2;
 }
 
@@ -518,7 +527,7 @@ h3 {
 .status-message.error {
   border-color: rgba(248, 113, 113, 0.35);
   background: rgba(127, 29, 29, 0.16);
-  color: #fecaca;
+  color: var(--danger-pale);
 }
 
 .status-message.success {
@@ -596,7 +605,7 @@ h3 {
   padding: 24px;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: rgba(11, 16, 32, 0.88);
+  background: var(--surface-opaque);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
 }
 
@@ -874,18 +883,13 @@ textarea.form-control {
 
 .field-error {
   margin: 12px 0 0;
-  color: #fecaca;
+  color: var(--danger-pale);
   font-size: 12px;
 }
 
 .submit-button {
   width: 100%;
   margin-top: 18px;
-}
-
-.service-list {
-  margin-top: 22px;
-  border-top: 1px solid var(--border);
 }
 
 .status-row {
@@ -1195,7 +1199,6 @@ textarea.form-control {
   }
 
   .workspace-unavailable-actions,
-  .answer-speech-audio,
   .question-selection-dialog > footer,
   .discovery-selection-bar {
     align-items: stretch;
@@ -1251,14 +1254,6 @@ textarea.form-control {
   .question-composer,
   .answer-panel {
     padding: 18px;
-  }
-
-  .answer-speech-audio audio {
-    width: 100%;
-  }
-
-  .answer-speech-audio .text-action {
-    align-self: flex-start;
   }
 
   .question-mode-switch {

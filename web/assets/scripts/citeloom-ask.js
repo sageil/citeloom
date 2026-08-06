@@ -104,125 +104,6 @@ export function formatClaimStatusLabel(status) {
     : "Verifier uncertain";
 }
 
-function startVerificationFieldAnimation(canvas) {
-  if (!(canvas instanceof HTMLCanvasElement)) {
-    throw new Error("The answer loading canvas is unavailable.");
-  }
-  const context = canvas.getContext("2d");
-  if (context === null) {
-    throw new Error("The answer loading canvas could not be initialized.");
-  }
-
-  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  let animationFrame = null;
-  let width = 1;
-  let height = 1;
-  let colors = readVerificationFieldColors(canvas);
-
-  const resize = () => {
-    const bounds = canvas.getBoundingClientRect();
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
-    width = Math.max(1, bounds.width);
-    height = Math.max(1, bounds.height);
-    canvas.width = Math.round(width * ratio);
-    canvas.height = Math.round(height * ratio);
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    colors = readVerificationFieldColors(canvas);
-  };
-
-  const render = (time = 0) => {
-    if (!canvas.isConnected) {
-      if (animationFrame !== null) {
-        window.cancelAnimationFrame(animationFrame);
-      }
-      observer.disconnect();
-      reducedMotion.removeEventListener("change", renderStaticFrame);
-      return;
-    }
-    drawVerificationField(
-      context,
-      width,
-      height,
-      colors,
-      reducedMotion.matches ? 0.28 : (time % 6_000) / 6_000,
-    );
-    if (!reducedMotion.matches) {
-      animationFrame = window.requestAnimationFrame(render);
-    }
-  };
-
-  const renderStaticFrame = () => {
-    if (animationFrame !== null) {
-      window.cancelAnimationFrame(animationFrame);
-      animationFrame = null;
-    }
-    render(1_680);
-  };
-  const observer = new ResizeObserver(() => {
-    resize();
-    renderStaticFrame();
-  });
-  observer.observe(canvas);
-  reducedMotion.addEventListener("change", renderStaticFrame);
-  resize();
-  render(performance.now());
-}
-
-function readVerificationFieldColors(canvas) {
-  const styles = getComputedStyle(canvas);
-  return {
-    cyan: styles.getPropertyValue("--cyan").trim(),
-    muted: styles.getPropertyValue("--muted").trim(),
-    purple: styles.getPropertyValue("--purple").trim(),
-    text: styles.getPropertyValue("--text").trim(),
-  };
-}
-
-function drawVerificationField(context, width, height, colors, phase) {
-  context.clearRect(0, 0, width, height);
-  const columns = Math.max(20, Math.floor(width / 22));
-  const rows = 12;
-  const focusX = width * 0.64;
-  const focusY = height * 0.48;
-  const horizontalStep = width * 0.92 / (columns - 1);
-  const verticalStep = height * 0.72 / (rows - 1);
-
-  for (let row = 0; row < rows; row += 1) {
-    for (let column = 0; column < columns; column += 1) {
-      const baseX = width * 0.04 + column * horizontalStep;
-      const baseY = height * 0.12 + row * verticalStep;
-      const distance = Math.hypot(baseX - focusX, baseY - focusY);
-      const ripple = Math.sin(distance * 0.035 - phase * Math.PI * 4) * 16;
-      const drift = Math.sin(column * 0.45 + phase * Math.PI * 2) * 8;
-      const y = baseY + ripple + drift;
-      const verified = (row * 7 + column * 3) % 29 === 0;
-      context.globalAlpha = verified ? 0.9 : 0.13 + (row % 4) * 0.035;
-      context.fillStyle = verified ? colors.text : colors.cyan;
-      context.beginPath();
-      context.arc(baseX, y, verified ? 3.2 : 1.5, 0, Math.PI * 2);
-      context.fill();
-    }
-  }
-
-  for (let index = 0; index < 3; index += 1) {
-    const progress = (phase * 1.7 + index / 3) % 1;
-    context.beginPath();
-    context.arc(
-      focusX,
-      focusY,
-      progress * Math.min(width, height) * 0.34,
-      0,
-      Math.PI * 2,
-    );
-    context.globalAlpha = (1 - progress) * 0.28;
-    context.strokeStyle = colors.cyan;
-    context.lineWidth = 1;
-    context.stroke();
-  }
-
-  context.globalAlpha = 1;
-}
-
 function readStringArray(value, label) {
   const values = readArray(value, label);
   const result = [];
@@ -1603,6 +1484,9 @@ export function registerPage(alpine) {
     },
 
     citationInspectorStyle() {
+      if (this.mode === "ask") {
+        return {};
+      }
       if (this.citationInspectorSize === null) {
         return {};
       }
@@ -2202,10 +2086,6 @@ export function registerPage(alpine) {
       return `The question is being embedded and answered by ${this.inferenceRuntimeName}.`;
     },
 
-    startAnswerLoadingAnimation(canvas) {
-      startVerificationFieldAnimation(canvas);
-    },
-
     emptyAnswerDescription(documentCount) {
       if (documentCount > 0) {
         const label = documentCount === 1 ? "document" : "documents";
@@ -2219,6 +2099,137 @@ export function registerPage(alpine) {
         return "unverified";
       }
       return aggregateCitationStatus(this.answer.claims, citationNumber);
+    },
+
+    answerQuestionTitle() {
+      const turn = this.thread?.turns.find((candidate) => {
+        return candidate.id === this.turnId;
+      });
+      if (turn !== undefined) {
+        return turn.question;
+      }
+      const question = this.question.trim();
+      return question === "" ? "Answer" : question;
+    },
+
+    askScopeLabel() {
+      if (this.questionDocuments.length > 0) {
+        const count = this.questionDocuments.length;
+        return `${count} selected ${count === 1 ? "document" : "documents"}`;
+      }
+      if (this.scopeKind === "tag") {
+        const count = this.selectedTags.length;
+        return count === 0
+          ? "Choose tags"
+          : `${count} ${count === 1 ? "tag" : "tags"}`;
+      }
+      return "All documents";
+    },
+
+    citationNavigatorTitle(source) {
+      return source.sectionPath.at(-1) ?? this.basename(source.sourceFile);
+    },
+
+    citationNavigatorStatusLabel(citationNumber) {
+      const status = this.answerCitationStatus(citationNumber);
+      if (status === "supported") {
+        return "Verified";
+      }
+      if (status === "partially-supported" || status === "unsupported") {
+        return "Review";
+      }
+      return "Checking";
+    },
+
+    answerVerificationState() {
+      if (this.answer === null || this.answer.claims.length === 0) {
+        return "unavailable";
+      }
+      let hasPendingCheck = false;
+      let hasUnverifiedClaim = false;
+      for (const claim of this.answer.claims) {
+        if (
+          claim.status === "unsupported"
+          || claim.status === "partially-supported"
+        ) {
+          return "review";
+        }
+        if (claim.status !== "unverified") {
+          continue;
+        }
+        if (claim.rationale === "Automated evidence verification is pending.") {
+          hasPendingCheck = true;
+        } else {
+          hasUnverifiedClaim = true;
+        }
+      }
+      if (hasPendingCheck) {
+        return "checking";
+      }
+      if (hasUnverifiedClaim) {
+        return "unavailable";
+      }
+      return "verified";
+    },
+
+    answerVerificationLabel() {
+      const state = this.answerVerificationState();
+      if (state === "verified") {
+        return "Verified";
+      }
+      if (state === "review") {
+        return "Review evidence";
+      }
+      if (state === "checking") {
+        return "Checking evidence";
+      }
+      return "Verification unavailable";
+    },
+
+    answerStatementClaim(statement) {
+      if (this.answer === null || statement.verificationIndex === null) {
+        return null;
+      }
+      return this.answer.claims[statement.verificationIndex] ?? null;
+    },
+
+    answerStatementStatus(statement) {
+      const claim = this.answerStatementClaim(statement);
+      return claim === null ? "unverified" : claim.status;
+    },
+
+    answerStatementStatusLabel(statement) {
+      const claim = this.answerStatementClaim(statement);
+      if (claim === null) {
+        return this.answer === null ? "Checking evidence" : "Not verified";
+      }
+      if (
+        claim.status === "unverified"
+        && claim.rationale === "Automated evidence verification is pending."
+      ) {
+        return "Checking evidence";
+      }
+      if (claim.status === "supported") {
+        return "Verified";
+      }
+      if (
+        claim.status === "partially-supported"
+        || claim.status === "unsupported"
+      ) {
+        return "Review evidence";
+      }
+      return "Not verified";
+    },
+
+    answerStatementVerificationDescription(statement) {
+      const claim = this.answerStatementClaim(statement);
+      if (claim !== null) {
+        return claim.rationale;
+      }
+      if (this.answer === null) {
+        return "Evidence verification is in progress.";
+      }
+      return "No evidence verification result is available for this finding.";
     },
 
     selectedCitationStatus() {

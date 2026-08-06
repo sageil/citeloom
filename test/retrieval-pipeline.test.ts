@@ -188,7 +188,6 @@ describe("atomic structured answer publication", () => {
     const answerModel = buildAnswerModel({
       answer: {
         content: "Unsupported statement.",
-        evidenceRefs: ["EVID_A"],
       },
       findings: [{
         content: "Revenue decreased.",
@@ -342,7 +341,6 @@ describe("atomic structured answer publication", () => {
     const draft = {
       answer: {
         content: "The reports describe opposite revenue changes.",
-        evidenceRefs: ["EVID_A", "EVID_B"],
       },
       findings: [{
           content: "Revenue increased.",
@@ -385,7 +383,13 @@ describe("atomic structured answer publication", () => {
   });
 
   it("rejects an invalid model draft without persistence or publication", async () => {
-    const answerModel = buildAnswerModel(buildAnsweredDraft(["EVID_B"]));
+    const answerModel = buildAnswerModel({
+      answer: { content: "Revenue increased." },
+      findings: [{
+        content: "Revenue increased.",
+        evidenceRefs: ["EVID_B"],
+      }],
+    });
     const verifier = new FakeHhemClient();
     const stream = buildWriter();
 
@@ -430,7 +434,7 @@ describe("atomic structured answer publication", () => {
 
     await runStreamedAnswer(
       buildPrepared(
-        buildAnswerModel(buildAnsweredDraft(["EVID_A", "EVID_B"])),
+        buildAnswerModel(buildAnsweredDraft()),
         verifier,
         [buildTextRetrieved(), buildContradictingTextRetrieved()],
       ),
@@ -479,7 +483,7 @@ describe("atomic structured answer publication", () => {
     const answerModel = new MockLanguageModelV4({
       doGenerate: async () => {
         controller.abort(new Error("cancelled"));
-        return buildTextGeneration(JSON.stringify(buildAnsweredDraft(["EVID_A"])));
+        return buildTextGeneration(JSON.stringify(buildAnsweredDraft()));
       },
     });
     const stream = buildWriter();
@@ -502,7 +506,7 @@ describe("atomic structured answer publication", () => {
 
     await expect(runStreamedAnswer(
       buildPrepared(
-        buildAnswerModel(buildAnsweredDraft(["EVID_A"])),
+        buildAnswerModel(buildAnsweredDraft()),
         new FakeHhemClient(),
       ),
       stream.writer,
@@ -523,7 +527,7 @@ describe("atomic structured answer publication", () => {
 
     await expect(runStreamedAnswer(
       buildPrepared(
-        buildAnswerModel(buildAnsweredDraft(["EVID_A"])),
+        buildAnswerModel(buildAnsweredDraft()),
         new FakeHhemClient(),
       ),
       stream.writer,
@@ -618,11 +622,10 @@ function buildAnswerModel(draft: unknown): MockLanguageModelV4 {
   });
 }
 
-function buildAnsweredDraft(evidenceRefs: string[]) {
+function buildAnsweredDraft() {
   return {
     answer: {
       content: "Revenue increased.",
-      evidenceRefs,
     },
     findings: [],
   };
@@ -632,7 +635,6 @@ function buildVerifiableAnsweredDraft(evidenceRefs: string[]) {
   return {
     answer: {
       content: "The report describes a revenue change.",
-      evidenceRefs,
     },
     findings: [{
       content: "Revenue increased.",

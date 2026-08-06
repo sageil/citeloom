@@ -494,14 +494,13 @@ export const embeddingSpaces = pgTable(
       .defaultNow(),
     dimensions: integer("dimensions").notNull(),
     id: text("id").primaryKey(),
-    inputFormatDocumentTemplate: text("input_format_document_template"),
-    inputFormatHash: varchar("input_format_hash", { length: 64 }),
-    inputFormatId: uuid("input_format_id").references(
-      () => embeddingInputFormats.id,
-      { onDelete: "restrict" },
-    ),
-    inputFormatQueryTemplate: text("input_format_query_template"),
-    inputFormatSchemaVersion: integer("input_format_schema_version"),
+    inputFormatDocumentTemplate: text("input_format_document_template").notNull(),
+    inputFormatHash: varchar("input_format_hash", { length: 64 }).notNull(),
+    inputFormatId: uuid("input_format_id")
+      .notNull()
+      .references(() => embeddingInputFormats.id, { onDelete: "restrict" }),
+    inputFormatQueryTemplate: text("input_format_query_template").notNull(),
+    inputFormatSchemaVersion: integer("input_format_schema_version").notNull(),
     model: text("model").notNull(),
     inputFormatName: text("profile").notNull(),
     retrievalWindowPolicy: jsonb("retrieval_window_policy")
@@ -519,19 +518,8 @@ export const embeddingSpaces = pgTable(
     ),
     check(
       "embedding_spaces_input_format_snapshot_valid",
-      sql`(
-          ${table.inputFormatDocumentTemplate} IS NULL
-          AND ${table.inputFormatHash} IS NULL
-          AND ${table.inputFormatId} IS NULL
-          AND ${table.inputFormatQueryTemplate} IS NULL
-          AND ${table.inputFormatSchemaVersion} IS NULL
-        ) OR (
-          ${table.inputFormatDocumentTemplate} IS NOT NULL
-          AND ${table.inputFormatHash} ~ '^[a-f0-9]{64}$'
-          AND ${table.inputFormatId} IS NOT NULL
-          AND ${table.inputFormatQueryTemplate} IS NOT NULL
-          AND ${table.inputFormatSchemaVersion} > 0
-        )`,
+      sql`${table.inputFormatHash} ~ '^[a-f0-9]{64}$'
+        AND ${table.inputFormatSchemaVersion} > 0`,
     ),
   ],
 );
@@ -572,8 +560,8 @@ export const embeddingSpaceGcSpaces = pgTable(
     disposition: varchar("disposition", { length: 16 }).notNull(),
     errorMessage: text("error_message"),
     estimatedBytes: bigint("estimated_bytes", { mode: "bigint" }).notNull(),
-    inputFormatHash: varchar("input_format_hash", { length: 64 }),
-    inputFormatName: varchar("input_format_name", { length: 100 }),
+    inputFormatHash: varchar("input_format_hash", { length: 64 }).notNull(),
+    inputFormatName: varchar("input_format_name", { length: 100 }).notNull(),
     model: text("model").notNull(),
     legacyProfile: text("profile").notNull(),
     protectionDetail: text("protection_detail"),
@@ -1553,11 +1541,13 @@ export const researchTurns = pgTable(
     completedAt: timestamp("completed_at", { mode: "date", withTimezone: true })
       .notNull(),
     id: uuid("id").primaryKey(),
-    uncitedAnswerContent: text("no_answer_content"),
+    answerContent: text("answer_content").notNull(),
     question: text("question").notNull(),
     outputState: researchOutputState("output_state").notNull(),
     retrievedContext: jsonb("retrieved_context").$type<MatchedDocument[]>().notNull(),
-    retrievalTrace: jsonb("retrieval_trace").$type<StoredResearchRetrievalTrace>(),
+    retrievalTrace: jsonb("retrieval_trace")
+      .$type<StoredResearchRetrievalTrace>()
+      .notNull(),
     runConfiguration: jsonb("run_configuration")
       .$type<ResearchRunConfiguration>()
       .notNull(),
@@ -1574,8 +1564,8 @@ export const researchTurns = pgTable(
       sql`${table.answerSchemaVersion} = 1`,
     ),
     check(
-      "research_turns_no_answer_content_check",
-      sql`${table.uncitedAnswerContent} IS NULL OR length(trim(${table.uncitedAnswerContent})) > 0`,
+      "research_turns_answer_content_check",
+      sql`length(trim(${table.answerContent})) > 0`,
     ),
     uniqueIndex("research_turns_thread_sequence_idx").on(
       table.threadId,
@@ -1763,6 +1753,7 @@ export const doclingTaskCheckpoints = pgTable(
       .notNull(),
     requestKey: varchar("request_key", { length: 128 }).notNull(),
     serviceInstanceId: varchar("service_instance_id", { length: 100 })
+      .notNull()
       .references(() => doclingServiceInstances.id, { onDelete: "restrict" }),
     sourceFile: text("source_file")
       .notNull()
@@ -1773,10 +1764,6 @@ export const doclingTaskCheckpoints = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.sourceFile, table.requestKey] }),
-    check(
-      "docling_task_checkpoints_service_instance_check",
-      sql`${table.serviceInstanceId} IS NOT NULL`,
-    ),
     check(
       "docling_task_checkpoints_request_key_check",
       sql`length(trim(${table.requestKey})) > 0`,
@@ -2262,9 +2249,6 @@ export const telemetryRuns = pgTable(
     retrievalSufficiencyOutcome: text("retrieval_sufficiency_outcome"),
     retrievalSufficiencyReason: text("retrieval_sufficiency_reason"),
     retrievalSufficiencyScore: doublePrecision("retrieval_sufficiency_score"),
-    retrievalSufficiencyThreshold: doublePrecision(
-      "retrieval_sufficiency_threshold",
-    ),
     retrievalMode: text("retrieval_mode").notNull(),
     scopeSize: integer("scope_size"),
     settingsVersion: integer("settings_version").notNull(),

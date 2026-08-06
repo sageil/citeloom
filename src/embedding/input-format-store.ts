@@ -30,7 +30,7 @@ const embeddingInputFormatRowSchema = z.object({
 }).strict();
 const embeddingInputFormatSpaceCountRowSchema = z.object({
   embeddingSpaceCount: z.number().int().nonnegative(),
-  inputFormatId: z.uuid().nullable(),
+  inputFormatId: z.uuid(),
 }).strict();
 
 export interface EmbeddingInputFormatRecord
@@ -118,7 +118,7 @@ export class EmbeddingInputFormatStore {
     const counts = new Map<string, number>();
     for (const row of rows) {
       const result = embeddingInputFormatSpaceCountRowSchema.safeParse(row);
-      if (!result.success || result.data.inputFormatId === null) {
+      if (!result.success) {
         throw new Error(
           "Embedding space input-format usage is invalid.",
         );

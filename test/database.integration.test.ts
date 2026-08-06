@@ -2543,6 +2543,7 @@ describe("PostgreSQL research records", () => {
     const directTurnId = "00000000-0000-4000-8000-000000000119";
     await expect(session.database.transaction(async (transaction) => {
       await transaction.insert(researchTurns).values({
+        answerContent: "Can an invalid anchor bypass the store?",
         answerSchemaVersion: 1,
         completedAt: new Date("2026-07-25T15:10:00.000Z"),
         id: directTurnId,
@@ -2623,9 +2624,14 @@ describe("PostgreSQL research records", () => {
         },
       }],
     });
-    expect(
-      (await session.database.select().from(researchTurns))[0]?.outputState,
-    ).toBe("published");
+    const storedTurn = (await session.database.select().from(researchTurns))[0];
+    expect(storedTurn).toMatchObject({
+      answerContent: uncitedAnswerContent,
+      outputState: "published",
+    });
+    expect(storedTurn?.retrievalTrace).toMatchObject({
+      version: 3,
+    });
 
     await expect(session.database
       .update(researchTurns)
@@ -2670,6 +2676,7 @@ describe("PostgreSQL research records", () => {
     const unpublishedTurnId = "00000000-0000-4000-8000-000000000122";
     await expect(session.database.transaction(async (transaction) => {
       await transaction.insert(researchTurns).values({
+        answerContent: "Can a building turn be committed?",
         answerSchemaVersion: 1,
         completedAt: new Date("2026-07-25T15:04:00.000Z"),
         id: unpublishedTurnId,
@@ -2699,6 +2706,7 @@ describe("PostgreSQL research records", () => {
 
     await expect(session.database.transaction(async (transaction) => {
       await transaction.insert(researchTurns).values({
+        answerContent: "Can incomplete output be published?",
         answerSchemaVersion: 1,
         completedAt: new Date("2026-07-25T15:05:00.000Z"),
         id: turnId,

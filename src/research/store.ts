@@ -318,7 +318,7 @@ const turnRowSchema = z.object({
   answerSchemaVersion: z.literal(1),
   completedAt: z.date(),
   id: z.uuid(),
-  uncitedAnswerContent: z.string().trim().min(1).nullable(),
+  answerContent: z.string().trim().min(1),
   outputState: z.literal("published"),
   question: z.string().min(1),
   retrievedContext: z.array(z.object({
@@ -326,7 +326,7 @@ const turnRowSchema = z.object({
     retrievedElementCount: z.number().int().positive(),
     sourceFile: z.string().min(1),
   }).strict()),
-  retrievalTrace: storedRetrievalTraceSchema.nullable(),
+  retrievalTrace: storedRetrievalTraceSchema,
   runConfiguration: runConfigurationSchema,
   runId: z.uuid(),
   scope: queryScopeSchema,
@@ -539,7 +539,7 @@ export class ResearchStore {
         answerSchemaVersion: normalized.answerDocument.schemaVersion,
         completedAt: normalized.completedAt,
         id: turnId,
-        uncitedAnswerContent: normalized.answerDocument.content,
+        answerContent: normalized.answerDocument.content,
         outputState: "building",
         question: normalized.question,
         retrievedContext: [...normalized.retrievedContext],
@@ -1569,23 +1569,20 @@ function buildPersistedTurnOutput(
     publishedCitations.push(citation);
   }
   let answerDocument: PublishedAnswerDocument;
-  if (turn.uncitedAnswerContent === null) {
-    throw new Error(`Turn ${turn.id} has no persisted answer content.`);
-  }
   if (publishedCitations.length === 0) {
     if (published.statements.length > 0) {
       throw new Error(`Uncited turn ${turn.id} contains cited findings.`);
     }
     answerDocument = decodePublishedAnswerDocument({
       citations: [],
-      content: turn.uncitedAnswerContent,
+      content: turn.answerContent,
       schemaVersion: turn.answerSchemaVersion,
       statements: [],
     });
   } else {
     answerDocument = decodePublishedAnswerDocument({
       citations: publishedCitations,
-      content: turn.uncitedAnswerContent,
+      content: turn.answerContent,
       schemaVersion: turn.answerSchemaVersion,
       statements: published.statements,
     });

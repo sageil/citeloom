@@ -167,7 +167,7 @@
   padding: 24px;
   overflow: visible;
   background:
-    radial-gradient(circle at top left, rgba(6, 182, 212, 0.08), transparent 42%),
+    radial-gradient(circle at top left, var(--cyan-subtle), transparent 42%),
     rgba(10, 16, 31, 0.98);
   font-family: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
   animation: citeloom-confirmation-enter 140ms ease-out;
@@ -226,14 +226,14 @@
 .citeloom-confirmation-danger {
   border-color: rgba(248, 113, 113, 0.72);
   background: rgba(248, 113, 113, 0.06);
-  color: #fca5a5;
+  color: var(--danger-soft);
 }
 
 .citeloom-confirmation-danger:hover:not(:disabled) {
-  border-color: #f87171;
+  border-color: var(--danger);
   background: rgba(248, 113, 113, 0.13);
   color: #fee2e2;
-  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.08);
+  box-shadow: inset 0 0 0 1px var(--danger-subtle);
 }
 
 @keyframes citeloom-confirmation-enter {
@@ -287,7 +287,7 @@
 }
 
 .answer-content {
-  color: #e2e8f0;
+  color: var(--text-soft);
   font-size: 14px;
   line-height: 1.72;
   overflow-wrap: anywhere;

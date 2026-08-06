@@ -41,7 +41,7 @@
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: rgba(11, 16, 32, 0.72);
+  background: var(--surface-translucent);
 }
 
 .system-health-diagnostics {
@@ -226,7 +226,7 @@
   border: 1px solid rgba(6, 182, 212, 0.28);
   border-radius: 50%;
   color: var(--cyan);
-  background: rgba(6, 182, 212, 0.08);
+  background: var(--cyan-subtle);
   place-items: center;
 }
 
@@ -251,7 +251,7 @@
 }
 
 .diagnostics-readiness-option small {
-  color: #34d399;
+  color: var(--success);
   font-size: 10px;
 }
 
@@ -412,7 +412,7 @@
   padding: 14px;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: rgba(11, 16, 32, 0.72);
+  background: var(--surface-translucent);
 }
 
 .system-health-telemetry > p {
@@ -508,7 +508,7 @@
   padding: 15px 16px 8px;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: rgba(11, 16, 32, 0.72);
+  background: var(--surface-translucent);
 }
 
 .system-health-detail-list {

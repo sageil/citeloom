@@ -71,8 +71,12 @@ interface AnswerModelStatement {
   evidenceRefs: EvidenceReference[];
 }
 
+interface AnswerModelDirectAnswer {
+  content: string;
+}
+
 interface AnswerModelResponse {
-  answer: AnswerModelStatement;
+  answer: AnswerModelDirectAnswer;
   findings: AnswerModelStatement[];
 }
 
@@ -134,41 +138,22 @@ export function createAnswerModelResponseSchema(
     allowedEvidenceRefs,
   );
   const evidenceReferencesSchema = z.array(evidenceReferenceSchema).min(1);
-  const answerSchema: z.ZodType<AnswerModelStatement> = z.object({
+  const answerSchema: z.ZodType<AnswerModelDirectAnswer> = z.object({
     content: answerModelContentSchema,
-    evidenceRefs: z.array(evidenceReferenceSchema),
   }).strict();
   const statementSchema: z.ZodType<AnswerModelStatement> = z.object({
     content: answerModelContentSchema,
     evidenceRefs: evidenceReferencesSchema,
-  });
+  }).strict();
   return z.object({
     answer: answerSchema,
     findings: z.array(statementSchema),
   }).strict().superRefine((response, context) => {
     const hasDirectAnswer = hasAnswerText(response.answer.content);
-    const hasAnswerEvidence = response.answer.evidenceRefs.length > 0;
-    if (!hasAnswerEvidence) {
-      if (response.findings.length > 0) {
-        context.addIssue({
-          code: "custom",
-          message: "A response without answer evidence must not contain findings.",
-          path: ["findings"],
-        });
-      }
-      if (!hasDirectAnswer) {
-        context.addIssue({
-          code: "custom",
-          message: "An uncited response must explain what the source material does not establish.",
-          path: ["answer", "content"],
-        });
-      }
-      return;
-    }
     if (!hasDirectAnswer) {
       context.addIssue({
         code: "custom",
-        message: "A cited direct answer must contain plain-text content.",
+        message: "A direct answer must contain plain-text content.",
         path: ["answer", "content"],
       });
     }
@@ -225,16 +210,34 @@ function buildAnswerSchemaParts(
   const evidenceReferenceSchema = createEvidenceReferenceSchema(
     allowedEvidenceRefs,
   );
-  const evidenceReferencesSchema = z.array(evidenceReferenceSchema).min(1);
+  const evidenceReferencesSchema = z.array(evidenceReferenceSchema);
   const statementSchema: z.ZodType<AnswerDraftStatement> = z.object({
     content: modelContentSchema,
     evidenceRefs: evidenceReferencesSchema,
     presentation: statementFields.presentation,
     section: statementFields.section,
-  }).strict();
+  }).strict().superRefine((statement, context) => {
+    const directAnswer = statement.section === "answer"
+      && statement.presentation === "paragraph";
+    if (directAnswer && statement.evidenceRefs.length > 0) {
+      context.addIssue({
+        code: "custom",
+        message: "A direct answer must not contain evidence references.",
+        path: ["evidenceRefs"],
+      });
+    }
+    if (!directAnswer && statement.evidenceRefs.length === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "A finding must contain at least one evidence reference.",
+        path: ["evidenceRefs"],
+      });
+    }
+  });
+  const requiredEvidenceReferencesSchema = evidenceReferencesSchema.min(1);
   return {
     conflictGroups: buildAnswerConflictGroupsSchema(
-      evidenceReferencesSchema,
+      requiredEvidenceReferencesSchema,
       modelContentSchema,
     ),
     statements: z.array(statementSchema),
@@ -336,7 +339,7 @@ export function decodeAnswerModelResponse(
       allowedEvidenceRefs,
     );
   }
-  if (modelResult.data.answer.evidenceRefs.length === 0) {
+  if (modelResult.data.findings.length === 0) {
     const content = readNormalizedModelText(modelResult.data.answer.content);
     if (content === null) {
       throw new AnswerDraftDecodeError(
@@ -376,9 +379,20 @@ export function decodeAnswerModelResponse(
       evidenceRefs: uniqueEvidenceReferences(finding.evidenceRefs),
     });
   }
+  if (normalizedFindings.length === 0) {
+    throw new AnswerDraftDecodeError(
+      "Invalid answer model response: no valid finding remained.",
+      "invalid-content",
+      [{
+        message: "A grounded response must contain at least one valid finding.",
+        path: "findings",
+      }],
+      0,
+    );
+  }
   const statements: AnswerDraftStatement[] = [{
     content: answerContent,
-    evidenceRefs: uniqueEvidenceReferences(normalized.answer.evidenceRefs),
+    evidenceRefs: [],
     presentation: "paragraph",
     section: "answer",
   }];

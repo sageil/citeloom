@@ -1,5 +1,6 @@
 <section
   class="feature-page ask-feature-page"
+  :class="{ 'ask-mode': mode === 'ask', 'discovery-mode': mode === 'discover' }"
   aria-label="Ask page"
   x-data="citeloomAskPage"
   x-init="initialize()"
@@ -10,30 +11,89 @@
     id="ask"
     aria-label="Ask questions or find sources"
   >
-    <div
-      class="segmented-control question-mode-switch"
-      role="group"
-      aria-label="Choose Ask or Find Sources"
-    >
-      <button
-        type="button"
-        :aria-pressed="mode === 'ask'"
-        :class="{ active: mode === 'ask' }"
-        @click="changeMode('ask')"
-      >Ask a question</button>
-      <button
-        type="button"
-        :aria-pressed="mode === 'discover'"
-        :class="{ active: mode === 'discover' }"
-        @click="changeMode('discover')"
-      >Find sources</button>
-    </div>
+    <aside class="ask-control-rail">
+      <div
+        class="segmented-control question-mode-switch"
+        role="group"
+        aria-label="Choose Ask or Find Sources"
+      >
+        <button
+          type="button"
+          :aria-pressed="mode === 'ask'"
+          :class="{ active: mode === 'ask' }"
+          @click="changeMode('ask')"
+        >Ask a question</button>
+        <button
+          type="button"
+          :aria-pressed="mode === 'discover'"
+          :class="{ active: mode === 'discover' }"
+          @click="changeMode('discover')"
+        >Find sources</button>
+      </div>
 
-    <div
-      class="research-thread-bar"
-      x-cloak
-      x-show="mode === 'ask'"
-    >
+      <div
+        class="research-thread-bar"
+        x-cloak
+        x-show="mode === 'ask'"
+      >
+      <div class="research-context-heading">
+        <strong>Research context</strong>
+      </div>
+      <div class="research-thread-actions">
+        <label>
+          New thread title
+          <input
+            class="form-control"
+            maxlength="500"
+            placeholder="Research topic"
+            type="text"
+            x-model="newThreadTitle"
+            @keydown.enter.prevent="createThread()"
+          />
+        </label>
+        <button
+          class="button primary"
+          type="button"
+          :disabled="creatingThread || operation === 'answer'"
+          @click="createThread()"
+          x-text="creatingThread ? 'Creating...' : 'Create thread'"
+        ></button>
+        <details
+          class="research-thread-menu"
+          x-cloak
+          x-show="thread !== null"
+        >
+          <summary>
+            <span>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+              </svg>
+              <span>Thread actions</span>
+            </span>
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+            </svg>
+          </summary>
+          <div>
+            <div
+              class="research-thread-exports"
+              aria-label="Research thread exports"
+              x-cloak
+              x-show="thread !== null && thread.turns.length > 0"
+            >
+              <a :href="threadExportUrl('markdown')">Markdown export</a>
+              <a :href="threadExportUrl('json')">JSON export</a>
+              <a :href="threadExportUrl('citations')">Citation report</a>
+            </div>
+            <button
+              class="text-action danger"
+              type="button"
+              :disabled="operation === 'answer'"
+              @click="deleteThreadConfirmationOpen = true"
+            >Delete thread</button>
+          </div>
+        </details>
+      </div>
       <label>
         Research thread
         <select
@@ -51,70 +111,83 @@
           </template>
         </select>
       </label>
-      <label>
-        Thread title (optional)
-        <input
-          class="form-control"
-          maxlength="500"
-          placeholder="Default"
-          type="text"
-          x-model="newThreadTitle"
-          @keydown.enter.prevent="createThread()"
-        />
-      </label>
-      <button
-        class="button primary"
-        type="button"
-        :disabled="creatingThread || operation === 'answer'"
-        @click="createThread()"
-        x-text="creatingThread ? 'Selecting...' : 'Use thread'"
-      ></button>
-
-      <label x-cloak x-show="thread !== null && thread.turns.length > 0">
-        Historical turn
-        <select
-          class="form-control"
-          x-model="turnId"
-          :disabled="operation === 'answer'"
-          @change="selectHistoricalTurn($event.target.value)"
+      <div class="ask-rail-scope">
+        <span class="ask-rail-field-label">Search scope</span>
+        <template x-if="questionDocuments.length === 0">
+          <select
+            aria-label="Search scope"
+            x-model="scopeKind"
+            @change="changeScope($event.target.value)"
+          >
+            <option value="all">All documents</option>
+            <option value="tag" :disabled="availableTagFacets.length === 0">Tags</option>
+          </select>
+        </template>
+        <template x-if="questionDocuments.length > 0">
+          <div class="ask-rail-selected-scope">
+            <span x-text="askScopeLabel()"></span>
+            <button
+              class="text-action"
+              type="button"
+              @click="openQuestionSelection(); navigateToView('documents')"
+            >Edit</button>
+          </div>
+        </template>
+        <details
+          class="ask-rail-tag-picker"
+          x-cloak
+          x-show="questionDocuments.length === 0 && scopeKind === 'tag'"
         >
-          <template x-for="turn in thread?.turns ?? []" :key="turn.id">
-            <option
-              :value="turn.id"
-              x-text="`Turn ${turn.sequence}: ${turn.question}`"
-            ></option>
-          </template>
-        </select>
-      </label>
-
-      <div
-        class="research-thread-exports"
-        aria-label="Research thread actions"
-        x-cloak
-        x-show="thread !== null"
-      >
-        <a
-          x-cloak
-          x-show="thread !== null && thread.turns.length > 0"
-          :href="threadExportUrl('markdown')"
-        >Markdown export</a>
-        <a
-          x-cloak
-          x-show="thread !== null && thread.turns.length > 0"
-          :href="threadExportUrl('json')"
-        >JSON export</a>
-        <a
-          x-cloak
-          x-show="thread !== null && thread.turns.length > 0"
-          :href="threadExportUrl('citations')"
-        >Citation report</a>
-        <button
-          class="text-action danger"
-          type="button"
-          :disabled="operation === 'answer'"
-          @click="deleteThreadConfirmationOpen = true"
-        >Delete thread</button>
+          <summary>
+            <span x-text="askScopeLabel()"></span>
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+            </svg>
+          </summary>
+          <div>
+            <template x-for="facet in availableTagFacets" :key="facet.tag">
+              <label>
+                <input
+                  type="checkbox"
+                  :checked="isTagSelected(facet.tag)"
+                  @change="toggleTagSelection(facet.tag)"
+                />
+                <span x-text="facet.tag"></span>
+                <small x-text="facet.count"></small>
+              </label>
+            </template>
+          </div>
+        </details>
       </div>
+      <details
+        class="research-history"
+        x-cloak
+        x-show="thread !== null && thread.turns.length > 0"
+      >
+        <summary>
+          <span>
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use>
+            </svg>
+            <span x-text="`History · ${thread?.turns.length ?? 0} ${(thread?.turns.length ?? 0) === 1 ? 'question' : 'questions'}`"></span>
+          </span>
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+          </svg>
+        </summary>
+        <div class="research-history-list">
+          <template x-for="turn in [...(thread?.turns ?? [])].reverse()" :key="turn.id">
+            <button
+              type="button"
+              :class="{ active: turn.id === turnId }"
+              :disabled="operation === 'answer'"
+              @click="selectHistoricalTurn(turn.id)"
+            >
+              <span x-text="turn.question"></span>
+            </button>
+          </template>
+        </div>
+      </details>
       <div
         class="research-thread-confirmation danger"
         x-cloak
@@ -134,7 +207,8 @@
           <button class="button danger" type="button" :disabled="deletingThread || operation === 'answer'" @click="deleteThread()" x-text="deletingThread ? 'Deleting…' : 'Delete thread'"></button>
         </div>
       </div>
-    </div>
+      </div>
+    </aside>
 
     <p
       class="field-error ask-workspace-error"
@@ -147,7 +221,7 @@
     <div class="question-layout">
       <div class="panel question-composer">
         <template x-if="questionDocuments.length > 0">
-          <div>
+          <div class="composer-scope-controls" x-cloak x-show="mode === 'discover'">
             <div class="form-field">
               <span class="form-field-heading">
                 <label for="question-search-scope-selected">Search scope</label>
@@ -184,7 +258,7 @@
         </template>
 
         <template x-if="questionDocuments.length === 0">
-          <div>
+          <div class="composer-scope-controls" x-cloak x-show="mode === 'discover'">
             <div class="form-field">
               <span class="form-field-heading">
                 <label for="question-search-scope">Search scope</label>
@@ -322,20 +396,20 @@
         </template>
 
         <div class="form-field question-field">
-          <label for="question-input" x-text="mode === 'ask' ? 'Question' : 'Topic or keywords'"></label>
+          <label for="question-input" x-cloak x-show="mode === 'discover'">Topic or keywords</label>
           <textarea
             id="question-input"
             :class="{ 'compact-textarea': mode === 'discover' }"
             :maxlength="mode === 'ask' ? 8000 : 500"
-            :placeholder="questionPlaceholder(questionDocuments.length)"
-            :rows="mode === 'ask' ? 6 : 3"
+            :placeholder="mode === 'ask' ? 'What\'s on your mind?' : questionPlaceholder(questionDocuments.length)"
+            :rows="mode === 'ask' ? 1 : 3"
             x-model="question"
             x-ref="questionInput"
             @keydown.meta.enter.prevent="handleSubmitShortcut(questionDocuments)"
             @keydown.ctrl.enter.prevent="handleSubmitShortcut(questionDocuments)"
           ></textarea>
           <div class="question-input-actions">
-            <span id="question-input-hint" x-text="questionInputHint()"></span>
+            <span id="question-input-hint" x-cloak x-show="mode === 'discover'" x-text="questionInputHint()"></span>
             <div
               class="speech-input"
               aria-label="Voice input controls"
@@ -380,6 +454,12 @@
                 x-text="speechStatus"
               ></p>
             </div>
+            <span class="ask-composer-scope-chip" x-cloak x-show="mode === 'ask'">
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-database"></use>
+              </svg>
+              <span x-text="askScopeLabel()"></span>
+            </span>
           </div>
         </div>
 
@@ -414,13 +494,15 @@
         <button
           class="text-action mode-text-action"
           type="button"
+          x-cloak
+          x-show="mode === 'discover'"
           @click="changeMode(mode === 'ask' ? 'discover' : 'ask')"
           x-text="mode === 'ask' ? 'Find sources instead' : 'Ask a question instead'"
         ></button>
       </div>
 
       <div class="ask-result-column">
-        <template x-if="mode === 'ask' && answer === null && operation !== 'answer'">
+        <template x-if="mode === 'ask' && answer === null && operation !== 'answer' && !hasAnswerContent()">
           <div class="panel empty-state answer-panel empty-answer">
             <svg aria-hidden="true" class="citeloom-icon ask-empty-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
@@ -440,42 +522,85 @@
           </div>
         </template>
 
-        <template x-if="mode === 'ask' && (answer !== null || operation === 'answer')">
+        <template x-if="mode === 'ask' && (answer !== null || operation === 'answer' || hasAnswerContent())">
           <div
             class="panel answer-panel"
-            :class="{ 'answer-panel-loading': answer === null }"
-            :aria-busy="answer === null"
+            :class="{ 'answer-panel-loading': answer === null && operation === 'answer' }"
+            :aria-busy="answer === null && operation === 'answer'"
             aria-live="polite"
           >
-            <div class="answer-loading-header">
-              <div class="answer-loading-intro">
-                <div class="answer-heading">
+            <h1
+              class="answer-question-title"
+              x-cloak
+              x-show="hasAnswerContent()"
+              x-text="answerQuestionTitle()"
+            ></h1>
+            <div class="answer-loading-header" x-cloak x-show="hasAnswerContent()">
+              <div class="answer-toolbar">
+                <span
+                  class="answer-verification-summary"
+                  :class="`answer-verification-${answerVerificationState()}`"
+                  x-cloak
+                  x-show="answer !== null"
+                >
                   <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                    <use href="./assets/images/citeloom-icons.svg#citeloom-brain"></use>
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-shield-check"></use>
                   </svg>
-                  <span>Local answer</span>
+                  <span x-text="answerVerificationLabel()"></span>
+                </span>
+                <div class="answer-toolbar-speech" x-cloak x-show="answer !== null && textToSpeechEnabled">
+                  <button
+                    class="text-action"
+                    type="button"
+                    x-show="speechAudioUrl === ''"
+                    :disabled="speechAudioLoading"
+                    @click="loadAnswerSpeech()"
+                  >
+                    <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon" :class="{ spin: speechAudioLoading }">
+                      <use :href="speechAudioLoading ? './assets/images/citeloom-icons.svg#citeloom-refresh' : './assets/images/citeloom-icons.svg#citeloom-speaker'"></use>
+                    </svg>
+                    <span x-text="speechAudioLoading ? 'Preparing' : 'Listen'"></span>
+                  </button>
+                  <audio
+                    aria-label="Spoken answer audio"
+                    controls
+                    preload="metadata"
+                    x-cloak
+                    x-show="speechAudioUrl !== ''"
+                    :src="speechAudioUrl"
+                  ></audio>
                 </div>
+                <a
+                  class="text-action answer-export-action"
+                  x-cloak
+                  x-show="answer !== null && thread !== null"
+                  :href="threadExportUrl('markdown')"
+                >
+                  <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-external"></use>
+                  </svg>
+                  <span>Export</span>
+                </a>
+                <span
+                  class="answer-loading-badge"
+                  x-cloak
+                  x-show="answer === null && operation === 'answer'"
+                  x-text="hasAnswerContent() ? 'Writing' : 'Preparing'"
+                ></span>
+                <span
+                  class="answer-partial-badge"
+                  x-cloak
+                  x-show="answer === null && operation !== 'answer' && hasAnswerContent()"
+                >Incomplete answer</span>
               </div>
-              <span
-                class="answer-loading-badge"
-                x-cloak
-                x-show="answer === null"
-                x-text="hasAnswerContent() ? 'Writing' : 'Preparing'"
-              ></span>
-            </div>
-
-            <div class="answer-loading-visual" x-show="!hasAnswerContent()">
-              <canvas
-                aria-label="A living evidence field ripples while relevant source material is prepared."
-                class="answer-loading-field"
-                role="img"
-                x-init="startAnswerLoadingAnimation($el)"
-              ></canvas>
             </div>
 
             <div class="answer-content answer-copy" x-cloak x-show="hasAnswerContent()">
               <template x-for="section in answerSections()" :key="section.key">
-                <section class="answer-document-section">
+                <section
+                  class="answer-document-section"
+                  :class="`answer-document-section-${section.key}`"
+                >
                   <h2 x-cloak x-show="section.title !== null" x-text="section.title"></h2>
                   <template x-for="block in section.blocks" :key="block.key">
                     <div>
@@ -495,6 +620,19 @@
                               </template>
                             </span>
                           </template>
+                          <span
+                            class="answer-finding-verification"
+                            :class="`answer-finding-verification-${answerStatementStatus(block.statements[0])}`"
+                            :aria-label="answerStatementStatusLabel(block.statements[0])"
+                            :title="answerStatementVerificationDescription(block.statements[0])"
+                            role="img"
+                            x-cloak
+                            x-show="section.key === 'key-points'"
+                          >
+                            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                              <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+                            </svg>
+                          </span>
                         </div>
                       </template>
                       <template x-if="block.kind === 'bullets'">
@@ -513,6 +651,17 @@
                                   ></button>
                                 </template>
                               </span>
+                              <span
+                                class="answer-finding-verification"
+                                :class="`answer-finding-verification-${answerStatementStatus(statement)}`"
+                                :aria-label="answerStatementStatusLabel(statement)"
+                                :title="answerStatementVerificationDescription(statement)"
+                                role="img"
+                              >
+                                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                                  <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+                                </svg>
+                              </span>
                             </li>
                           </template>
                         </ul>
@@ -522,48 +671,11 @@
                 </section>
               </template>
             </div>
-            <p class="answer-loading-status visually-hidden" role="status" x-show="answer === null" x-text="answerLoadingStatus()"></p>
+            <p class="answer-loading-status visually-hidden" role="status" x-show="operation === 'answer'" x-text="answerLoadingStatus()"></p>
 
             <template x-if="answer !== null">
               <div class="answer-publication-details">
-                <section
-                  class="answer-speech-player"
-                  x-cloak
-                  x-show="textToSpeechEnabled"
-                >
-              <div class="answer-speech-heading">
-                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                  <use href="./assets/images/citeloom-icons.svg#citeloom-speaker"></use>
-                </svg>
-                <div>
-                  <strong>Listen to this answer</strong>
-                  <span x-text="textToSpeechPreloadEnabled ? 'Audio is prepared in the background by the configured speech model.' : 'Audio is generated on demand by the configured speech model.'"></span>
-                </div>
-              </div>
-              <button
-                class="button secondary answer-speech-action"
-                type="button"
-                x-cloak
-                x-show="speechAudioUrl === ''"
-                :disabled="speechAudioLoading"
-                @click="loadAnswerSpeech()"
-              >
-                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon" :class="{ spin: speechAudioLoading }">
-                  <use :href="speechAudioLoading ? './assets/images/citeloom-icons.svg#citeloom-refresh' : './assets/images/citeloom-icons.svg#citeloom-speaker'"></use>
-                </svg>
-                <span x-text="speechAudioLoading ? 'Preparing audio' : 'Listen to answer'"></span>
-              </button>
-              <div class="answer-speech-audio" x-cloak x-show="speechAudioUrl !== ''">
-                <audio aria-label="Spoken answer audio" controls preload="metadata" :src="speechAudioUrl"></audio>
-                <button class="text-action" type="button" @click="loadAnswerSpeech()">
-                  <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                    <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
-                  </svg>
-                  <span>Regenerate</span>
-                </button>
-              </div>
-              <p class="answer-speech-error" role="alert" x-cloak x-show="speechAudioError !== ''" x-text="speechAudioError"></p>
-                </section>
+                <p class="answer-speech-error" role="alert" x-cloak x-show="speechAudioError !== ''" x-text="speechAudioError"></p>
 
             <div class="no-context-action" x-cloak x-show="answer.matchedDocuments.length === 0">
               <p>No relevant source material was available for this answer.</p>
@@ -650,44 +762,6 @@
               </div>
             </details>
 
-            <section
-              class="claim-checks"
-              aria-label="Advisory Hughes Hallucination Evaluation Model evidence checks"
-              x-cloak
-              x-show="answer.claims.length > 0"
-            >
-              <h3>Evidence support check</h3>
-              <p>The Hughes Hallucination Evaluation Model (HHEM) checks whether each answer claim is supported by its cited evidence. Its results are advisory and do not change the answer or citations. Review the original evidence before relying on a claim.</p>
-              <ul>
-                <template x-for="claim in answer.claims" :key="claim.id">
-                  <li>
-                    <div class="claim-check-heading">
-                      <span
-                        class="claim-status"
-                        :class="claim.status"
-                        x-text="claimStatusLabel(claim.status, claim.rationale)"
-                      ></span>
-                      <span class="claim-citation-links">
-                        <template x-for="citationNumber in claim.citationNumbers" :key="citationNumber">
-                          <button
-                            class="claim-citation-link"
-                            type="button"
-                            @click="inspectCitationNumber(citationNumber)"
-                            x-text="`Citation ${citationNumber}`"
-                          ></button>
-                        </template>
-                      </span>
-                    </div>
-                    <strong x-text="claim.claim"></strong>
-                    <details class="claim-verification-details">
-                      <summary>Verification details</summary>
-                      <p x-text="claim.rationale"></p>
-                    </details>
-                  </li>
-                </template>
-              </ul>
-            </section>
-
             <div class="answer-feedback-grid">
               <div class="research-feedback">
                 <span>Was the source material relevant?</span>
@@ -742,14 +816,6 @@
                 <span>Source discovery</span>
               </div>
               <span class="answer-loading-badge">Searching</span>
-            </div>
-            <div class="answer-loading-visual">
-              <canvas
-                aria-label="A living evidence field ripples while indexed sources are searched."
-                class="answer-loading-field"
-                role="img"
-                x-init="startAnswerLoadingAnimation($el)"
-              ></canvas>
             </div>
             <p class="answer-loading-status visually-hidden" role="status" x-text="discoveryStatus"></p>
           </div>
@@ -900,10 +966,90 @@
     :style="citationInspectorStyle()"
     tabindex="-1"
     x-cloak
-    x-show="selectedCitation !== null"
+    x-show="mode === 'ask' || selectedCitation !== null"
     @keydown.escape="closeEvidenceInspector()"
   >
-    <div class="evidence-inspector-content">
+    <div class="ask-citation-navigator" x-cloak x-show="mode === 'ask'">
+      <header>
+        <h2 x-text="`Sources (${answer?.sources.length ?? 0})`"></h2>
+      </header>
+      <div
+        class="ask-citation-empty"
+        x-cloak
+        x-show="answer === null || answer.sources.length === 0"
+      >
+        <svg aria-hidden="true" class="citeloom-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+        </svg>
+        <strong>Sources will appear here</strong>
+        <p>Citations become available as the answer is completed.</p>
+      </div>
+      <div
+        class="ask-citation-list"
+        x-cloak
+        x-show="answer !== null && answer.sources.length > 0"
+      >
+        <template x-for="source in answer?.sources ?? []" :key="source.id">
+          <button
+            type="button"
+            :class="{ selected: selectedCitation?.id === source.id }"
+            @click="inspectCitation(source)"
+          >
+            <span class="ask-citation-number" x-text="source.citationNumber"></span>
+            <span class="ask-citation-copy">
+              <strong x-text="citationNavigatorTitle(source)"></strong>
+              <small x-text="documentLocationLabel(source.sourceFile, source.pageNumbers)"></small>
+            </span>
+            <span
+              class="ask-citation-status"
+              :class="`ask-citation-status-${answerCitationStatus(source.citationNumber)}`"
+            >
+              <span x-text="citationNavigatorStatusLabel(source.citationNumber)"></span>
+              <svg aria-hidden="true" class="citeloom-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+              </svg>
+            </span>
+          </button>
+        </template>
+      </div>
+      <section
+        class="ask-exact-evidence"
+        x-cloak
+        x-show="selectedCitation !== null"
+      >
+        <header>
+          <h3>Exact evidence</h3>
+          <span x-text="selectedCitationSummary()"></span>
+        </header>
+        <p class="field-error" role="alert" x-cloak x-show="citationError !== ''" x-text="citationError"></p>
+        <p class="ask-citation-loading" x-cloak x-show="citationLoading">Refreshing evidence...</p>
+        <template x-if="inspectedCitation !== null">
+          <div>
+            <template x-if="inspectedCitation.evidence.kind === 'image'">
+              <img :alt="`Citation ${inspectedCitation.citationNumber} evidence`" :src="citationImageUrl()" />
+            </template>
+            <template x-if="inspectedCitation.evidence.kind !== 'image'">
+              <blockquote x-text="citationEvidenceText()"></blockquote>
+            </template>
+            <a
+              class="ask-inspect-source"
+              rel="noopener noreferrer"
+              target="_blank"
+              :href="citationFileUrl()"
+            >
+              <span>Inspect source</span>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-external"></use>
+              </svg>
+            </a>
+          </div>
+        </template>
+      </section>
+    </div>
+    <div
+      class="evidence-inspector-content"
+      x-show="mode !== 'ask'"
+    >
       <header>
         <div>
           <span class="claim-status" :class="selectedCitationStatus()" x-text="claimStatusLabel(selectedCitationStatus())"></span>
@@ -929,6 +1075,13 @@
           </button>
         </div>
       </header>
+      <div class="evidence-inspector-empty" x-cloak x-show="selectedCitation === null">
+        <svg aria-hidden="true" class="citeloom-icon">
+          <use href="./assets/images/citeloom-icons.svg#citeloom-quotes"></use>
+        </svg>
+        <strong>Select a citation</strong>
+        <p>Choose a citation in a finding to inspect its exact retained evidence.</p>
+      </div>
       <p class="field-error" role="alert" x-cloak x-show="citationError !== ''" x-text="citationError"></p>
       <p x-cloak x-show="citationLoading">Loading immutable evidence record...</p>
       <template x-if="inspectedCitation !== null">

@@ -512,7 +512,6 @@ describe("createInferenceModelRegistry", () => {
               text: JSON.stringify({
                 answer: {
                   content: "The source material does not identify the requested information.",
-                  evidenceRefs: [],
                 },
                 findings: [],
               }),
@@ -576,7 +575,6 @@ describe("createInferenceModelRegistry", () => {
     expect(answer.output).toEqual({
       answer: {
         content: "The source material does not identify the requested information.",
-        evidenceRefs: [],
       },
       findings: [],
     });
@@ -588,11 +586,13 @@ describe("createInferenceModelRegistry", () => {
         response_format: {
           json_schema: {
             properties: {
-              answer: {
-                properties: {
-                  evidenceRefs: {
-                    items: {
-                      enum: ["EVID_A"],
+              findings: {
+                items: {
+                  properties: {
+                    evidenceRefs: {
+                      items: {
+                        enum: ["EVID_A"],
+                      },
                     },
                   },
                 },
@@ -716,7 +716,6 @@ describe("createInferenceModelRegistry", () => {
             content: JSON.stringify({
               answer: {
                 content: "The source material does not identify the requested information.",
-                evidenceRefs: [],
               },
               findings: [],
             }),
@@ -768,7 +767,6 @@ describe("createInferenceModelRegistry", () => {
     expect(result.output).toEqual({
       answer: {
         content: "The source material does not identify the requested information.",
-        evidenceRefs: [],
       },
       findings: [],
     });
@@ -799,7 +797,6 @@ describe("createInferenceModelRegistry", () => {
     const responseValue = {
       answer: {
         content: "The source material does not identify the requested information.",
-        evidenceRefs: [],
       },
       findings: [],
     };
@@ -1005,7 +1002,7 @@ describe("createInferenceModelRegistry", () => {
       return Promise.resolve(createOpenAIChatStreamResponse([
         '{"answer":{"content":"Revenue',
         ' increased',
-        '.","evidenceRefs":["EVID_A"]},"findings":[]}',
+        '."},"findings":[{"content":"Revenue increased.","evidenceRefs":["EVID_A"]}]}',
       ]));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -1063,9 +1060,11 @@ describe("createInferenceModelRegistry", () => {
         JSON.stringify({
           answer: {
             content: "Revenue increased.",
-            evidenceRefs: [evidenceReference],
           },
-          findings: [],
+          findings: [{
+            content: "The report records increased revenue.",
+            evidenceRefs: [evidenceReference],
+          }],
         }),
       ]));
     });
@@ -1128,7 +1127,6 @@ describe("createInferenceModelRegistry", () => {
           content: JSON.stringify({
             answer: {
               content: "The source material does not identify the requested information.",
-              evidenceRefs: [],
             },
             findings: [],
           }),
@@ -1172,7 +1170,6 @@ describe("createInferenceModelRegistry", () => {
     expect(result.output).toEqual({
       answer: {
         content: "The source material does not identify the requested information.",
-        evidenceRefs: [],
       },
       findings: [],
     });
@@ -1181,11 +1178,13 @@ describe("createInferenceModelRegistry", () => {
       format: {
         additionalProperties: false,
         properties: {
-          answer: {
-            properties: {
-              evidenceRefs: {
-                items: {
-                  enum: ["EVID_A"],
+          findings: {
+            items: {
+              properties: {
+                evidenceRefs: {
+                  items: {
+                    enum: ["EVID_A"],
+                  },
                 },
               },
             },
@@ -1550,13 +1549,10 @@ describe("answer generation", () => {
   const generationSettings = { seed: 42, temperature: 0 };
   it("requests a strict structured draft and compiles server-owned citations", async () => {
     const answerModel = new MockLanguageModelV4({
-      doGenerate: buildTextGeneration(JSON.stringify({
-        answer: {
-          content: "Revenue increased.",
-          evidenceRefs: ["EVID_A"],
-        },
-        findings: [],
-      }), "stop"),
+      doGenerate: buildTextGeneration(
+        JSON.stringify(buildAnsweredDraft("Revenue increased.", ["EVID_A"])),
+        "stop",
+      ),
       modelId: "answer-model:answer",
     });
 
@@ -1572,7 +1568,9 @@ describe("answer generation", () => {
     expect(result.answerDocument).toMatchObject({
       content: "Revenue increased.",
       schemaVersion: 1,
-      statements: [],
+      statements: [expect.objectContaining({
+        section: "key-points",
+      })],
     });
     expect(result.sources).toEqual([
       expect.objectContaining({
@@ -1595,13 +1593,10 @@ describe("answer generation", () => {
 
   it("does not request correction for missing presentation metadata", async () => {
     const answerModel = new MockLanguageModelV4({
-      doGenerate: buildTextGeneration(JSON.stringify({
-        answer: {
-          content: "Revenue increased.",
-          evidenceRefs: ["EVID_A"],
-        },
-        findings: [],
-      }), "stop"),
+      doGenerate: buildTextGeneration(
+        JSON.stringify(buildAnsweredDraft("Revenue increased.", ["EVID_A"])),
+        "stop",
+      ),
       modelId: "answer-model:answer",
     });
 
@@ -1616,18 +1611,18 @@ describe("answer generation", () => {
     expect(result.outcome).toBe("answered");
     expect(answerModel.doGenerateCalls).toHaveLength(1);
     expect(result.answerDocument.content).toBe("Revenue increased.");
-    expect(result.answerDocument.statements).toEqual([]);
+    expect(result.answerDocument.statements).toHaveLength(1);
   });
 
   it("owns direct-answer presentation for a causal question", async () => {
     const answerModel = new MockLanguageModelV4({
-      doGenerate: buildTextGeneration(JSON.stringify({
-        answer: {
-          content: "A configuration failure stopped the service.",
-          evidenceRefs: ["EVID_A"],
-        },
-        findings: [],
-      }), "stop"),
+      doGenerate: buildTextGeneration(
+        JSON.stringify(buildAnsweredDraft(
+          "A configuration failure stopped the service.",
+          ["EVID_A"],
+        )),
+        "stop",
+      ),
       modelId: "answer-model:answer",
     });
 
@@ -1644,8 +1639,8 @@ describe("answer generation", () => {
     expect(result.answerDocument.content).toBe(
       "A configuration failure stopped the service.",
     );
-    expect(result.answerDocument.statements).toEqual([]);
-    expect(result.answer).not.toContain("## Key points");
+    expect(result.answerDocument.statements).toHaveLength(1);
+    expect(result.answer).toContain("## Key points");
   });
 
   it("sends every budget-selected source for a document-specific question", async () => {
@@ -1846,7 +1841,6 @@ describe("answer generation", () => {
     const answerModel = buildAnswerModel({
       answer: {
         content: "The source material does not identify the requested information.",
-        evidenceRefs: [],
       },
       findings: [],
     });
@@ -1915,7 +1909,7 @@ describe("answer generation", () => {
       "/tmp/personal-information-protection-and-electronic-documents-act.pdf",
     );
     expect(repairPrompt).toContain("CORRECTION REQUEST:");
-    expect(repairPrompt).toContain("answer.evidenceRefs[0]");
+    expect(repairPrompt).toContain("findings[0].evidenceRefs[0]");
     expect(repairPrompt).toContain("EVID_A, EVID_B");
     expect(repairPrompt).toContain("Invalid evidence reference.");
     expect(repairPrompt).toContain("Preserve all supported answer content");
@@ -1941,7 +1935,7 @@ describe("answer generation", () => {
         expect.objectContaining({
           correctionOutcome: "succeeded",
           failureCategory: "unknown-evidence-reference",
-          invalidFieldPaths: ["answer.evidenceRefs[0]"],
+          invalidFieldPaths: ["findings[0].evidenceRefs[0]"],
           phase: "initial",
           responseSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
           unknownReferenceCount: 1,
@@ -1970,13 +1964,10 @@ describe("answer generation", () => {
       { length: 2_000 },
       (_value, index) => `supported-fact-${index}`,
     ).join(" ");
-    const answerModel = buildAnswerModel({
-      answer: {
-        content: longContent,
-        evidenceRefs: ["EVID_A"],
-      },
-      findings: [],
-    });
+    const answerModel = buildAnswerModel(buildAnsweredDraft(
+      longContent,
+      ["EVID_A"],
+    ));
 
     const result = await answerQuestion(
       buildModelRegistry(answerModel),
@@ -1998,13 +1989,10 @@ describe("answer generation", () => {
     "different time periods",
     "a qualification and additional detail",
   ])("publishes compatible %s as ordinary evidence", async (content) => {
-    const answerModel = buildAnswerModel({
-      answer: {
-        content: `The sources describe ${content}.`,
-        evidenceRefs: ["EVID_A"],
-      },
-      findings: [],
-    });
+    const answerModel = buildAnswerModel(buildAnsweredDraft(
+      `The sources describe ${content}.`,
+      ["EVID_A"],
+    ));
 
     const result = await answerQuestion(
       buildModelRegistry(answerModel),
@@ -2017,7 +2005,7 @@ describe("answer generation", () => {
     expect(result.outcome).toBe("answered");
     expect(result.answer).not.toContain("Conflicting evidence");
     expect(result.answerDocument.content).toBe(`The sources describe ${content}.`);
-    expect(result.answerDocument.statements).toEqual([]);
+    expect(result.answerDocument.statements).toHaveLength(1);
   });
 
   it("accepts an uncited structured response as a fallback", async () => {
@@ -2026,7 +2014,6 @@ describe("answer generation", () => {
         JSON.stringify({
           answer: {
             content: "The source material does not identify the requested information.",
-            evidenceRefs: [],
           },
           findings: [],
         }),
@@ -2063,9 +2050,11 @@ describe("answer generation", () => {
         JSON.stringify({
           answer: {
             content: "Revenue increased.",
-            evidenceRefs: ["EVID_B"],
           },
-          findings: [],
+          findings: [{
+            content: "The report records increased revenue.",
+            evidenceRefs: ["EVID_B"],
+          }],
         }),
         "stop",
       ),
@@ -2082,13 +2071,10 @@ describe("answer generation", () => {
   });
 
   it("publishes an answer after removing model citation decoration", async () => {
-    const answerModel = buildAnswerModel({
-      answer: {
-        content: "Revenue increased [1].",
-        evidenceRefs: ["EVID_A"],
-      },
-      findings: [],
-    });
+    const answerModel = buildAnswerModel(buildAnsweredDraft(
+      "Revenue increased [1].",
+      ["EVID_A"],
+    ));
 
     const result = await answerQuestion(
       buildModelRegistry(answerModel),
@@ -2100,17 +2086,14 @@ describe("answer generation", () => {
 
     expect(result.outcome).toBe("answered");
     expect(result.answerDocument.content).toBe("Revenue increased.");
-    expect(result.answer).toBe("Revenue increased\\.");
+    expect(result.answer.split("\n")[0]).toBe("Revenue increased\\.");
   });
 
   it("normalizes model citation decoration in the streamed answer path", async () => {
-    const answerModel = buildAnswerModel({
-      answer: {
-        content: "Treatment options include phenobarbital [1].",
-        evidenceRefs: ["EVID_A"],
-      },
-      findings: [],
-    });
+    const answerModel = buildAnswerModel(buildAnsweredDraft(
+      "Treatment options include phenobarbital [1].",
+      ["EVID_A"],
+    ));
 
     const result = await streamAnswerQuestion(
       buildModelRegistry(answerModel),
@@ -2130,7 +2113,6 @@ describe("answer generation", () => {
     const answerModel = buildAnswerModel({
       answer: {
         content: "Zardev sold the riparian lots.",
-        evidenceRefs: ["EVID_A"],
       },
       findings: [{
         content: "The submerged lots were treated as accessories.",
@@ -2180,7 +2162,6 @@ describe("answer generation", () => {
     const answerModel = buildAnswerModel({
       answer: {
         content: "The report describes one supported change.",
-        evidenceRefs: ["EVID_A"],
       },
       findings: [{
         content: "Revenue increased by 12 percent.",
@@ -2208,9 +2189,11 @@ describe("answer generation", () => {
     const answerModel = buildAnswerModel({
       answer: {
         content: "Revenue increased. [2]",
-        evidenceRefs: ["EVID_A"],
       },
-      findings: [],
+      findings: [{
+        content: "The report records increased revenue.",
+        evidenceRefs: ["EVID_A"],
+      }],
     });
 
     const result = await answerQuestion(
@@ -2233,7 +2216,7 @@ describe("answer generation", () => {
     const answerModel = new MockLanguageModelV4({
       doGenerate: buildTextGeneration(
         JSON.stringify({
-          answer: { content: "Unsupported.", evidenceRefs: [] },
+          answer: { content: "Unsupported." },
           findings: [],
         }),
         "stop",
@@ -2271,7 +2254,7 @@ describe("answer generation", () => {
     const answerModel = new MockLanguageModelV4({
       doGenerate: buildTextGeneration(
         JSON.stringify({
-          answer: { content: "Unsupported.", evidenceRefs: [] },
+          answer: { content: "Unsupported." },
           findings: [],
         }),
         "content-filter",
@@ -2326,8 +2309,11 @@ function buildAnsweredDraft(
   evidenceRefs: string[],
 ): unknown {
   return {
-    answer: { content, evidenceRefs },
-    findings: [],
+    answer: { content },
+    findings: [{
+      content: "The retrieved evidence supports the answer.",
+      evidenceRefs,
+    }],
   };
 }
 

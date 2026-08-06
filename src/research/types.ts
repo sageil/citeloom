@@ -208,7 +208,7 @@ export interface ResearchTurn {
   question: string;
   reproducibility: ResearchReproducibility;
   retrievedContext: MatchedDocument[];
-  retrievalTrace: StoredResearchRetrievalTrace | null;
+  retrievalTrace: StoredResearchRetrievalTrace;
   runConfiguration: ResearchRunConfiguration;
   runId: string;
   scope: QueryScope;

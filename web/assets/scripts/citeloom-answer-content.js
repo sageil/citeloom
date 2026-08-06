@@ -321,6 +321,7 @@ function buildSectionStatements(content, sectionKey, citationsById) {
       contentHtml: renderAnswerMarkdown(statement.content),
       key: `${sectionKey}-${index}`,
       presentation: statement.presentation,
+      verificationIndex: statement.verificationIndex,
     });
   }
   return statements;

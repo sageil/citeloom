@@ -217,6 +217,7 @@ function validatePublishedDocumentReferences(
     citationIds.add(citation.id);
     citationNumbers.add(citation.citationNumber);
   }
+  const referencedCitationIds = new Set<string>();
   let previousSectionIndex = -1;
   for (let statementIndex = 0; statementIndex < document.statements.length; statementIndex += 1) {
     const statement = document.statements[statementIndex];
@@ -253,6 +254,17 @@ function validatePublishedDocumentReferences(
         });
       }
       statementCitationIds.add(citationId);
+      referencedCitationIds.add(citationId);
+    }
+  }
+  for (let index = 0; index < document.citations.length; index += 1) {
+    const citation = document.citations[index];
+    if (citation !== undefined && !referencedCitationIds.has(citation.id)) {
+      context.addIssue({
+        code: "custom",
+        message: `Citation ${citation.id} is not referenced by a statement.`,
+        path: ["citations", index, "id"],
+      });
     }
   }
 }

@@ -225,7 +225,6 @@ export class DatabaseRunTelemetrySink implements RunTelemetrySink {
         retrievalSufficiencyOutcome: rerankerRanking?.outcome ?? null,
         retrievalSufficiencyReason: rerankerRanking?.reason ?? null,
         retrievalSufficiencyScore: rerankerRanking?.strongestScore ?? null,
-        retrievalSufficiencyThreshold: rerankerRanking?.threshold ?? null,
         scopeSize: record.scopeSize,
         streamDurationMs: record.streamDurationMs,
         timeToFirstTokenMs: record.timeToFirstTokenMs,

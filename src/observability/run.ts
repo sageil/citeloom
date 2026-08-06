@@ -44,7 +44,6 @@ export interface RerankerRankingTelemetry {
   outcome: "not-assessed";
   reason: "ranking-only";
   strongestScore: number;
-  threshold: null;
 }
 
 export interface ContextSelectionCandidateTelemetry {
@@ -537,7 +536,6 @@ export class RunTelemetryRecorder implements RunTelemetry {
       outcome: "not-assessed",
       reason: "ranking-only",
       strongestScore,
-      threshold: null,
     };
   }
 

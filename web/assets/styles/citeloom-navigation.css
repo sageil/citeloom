@@ -38,7 +38,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #e2e8f0;
+  color: var(--text-soft);
   font-family: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
   font-size: 14px;
   font-weight: 540;
@@ -138,7 +138,7 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #e2e8f0;
+  color: var(--text-soft);
   cursor: pointer;
   font: inherit;
   text-align: left;
@@ -266,7 +266,7 @@
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: rgba(11, 16, 32, 0.88);
+  background: var(--surface-opaque);
   color: var(--muted);
   text-align: left;
   transition: border-color 180ms ease, transform 180ms ease;

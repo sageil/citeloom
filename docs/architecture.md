@@ -276,8 +276,8 @@ Conversation memory can clarify a follow-up, but it cannot support a factual cla
 If document retrieval finds no relevant evidence, Chat publishes an uncited response instead of using model knowledge.
 An answered Chat response contains a substantive direct synthesis and may add ordered topics for distinct parts of a comprehensive response.
 The Chat model contract represents the direct synthesis separately from those topics and does not include a findings field.
-The model response carries exact request-local evidence references for the direct synthesis and each topic so the server can validate grounding before publication.
-The published direct synthesis does not retain citation links, while each published topic retains its validated citations.
+The model response keeps the direct synthesis free of evidence references and attaches exact request-local references only to each topic.
+The published direct synthesis does not contain citation links, while each published topic retains its validated citations.
 The model may cite only request-local evidence references, and the server resolves those references to stored source elements before publication.
 Chat sends only its topics to HHEM because they are the atomic supporting statements presented for verification.
 The direct synthesis is not an HHEM input.
