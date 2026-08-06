@@ -84,7 +84,7 @@ describe("retrieval telemetry", () => {
       },
     };
     const documentStore = {
-      readManyForRetrieval: async () => [{
+      readManyForRetrievalFrom: async () => [{
         content: "Relevant source content.",
         documentId,
         id: elementId,
@@ -102,13 +102,28 @@ describe("retrieval telemetry", () => {
       sourceFile: "/documents/source.pdf",
       versionId: "00000000-0000-4000-8000-000000000001",
     }];
+    const databaseSelections = [
+      [{ pointerCount: 1, representationCount: 1 }],
+      [{ representationCount: 1 }],
+      selectedRows,
+      selectedRows,
+    ];
+    let databaseSelectionIndex = 0;
+    const readNextDatabaseSelection = async (): Promise<unknown[]> => {
+      const rows = databaseSelections[databaseSelectionIndex];
+      if (rows === undefined) {
+        throw new Error("Retrieval issued an unexpected database selection.");
+      }
+      databaseSelectionIndex += 1;
+      return rows;
+    };
     const database = {
       select: () => ({
         from: () => ({
           innerJoin: () => ({
-            where: async () => selectedRows,
+            where: readNextDatabaseSelection,
           }),
-          where: async () => selectedRows,
+          where: readNextDatabaseSelection,
         }),
       }),
     } as unknown as CiteLoomDatabase;
@@ -138,6 +153,7 @@ describe("retrieval telemetry", () => {
     await telemetry.finish("success");
 
     expect(retrieved).toHaveLength(1);
+    expect(databaseSelectionIndex).toBe(databaseSelections.length);
     expect(sink.stages.map((stage) => stage.name)).toEqual([
       "lexical-retrieval",
       "fusion",

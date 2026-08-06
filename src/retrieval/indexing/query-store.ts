@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { and, eq } from "drizzle-orm";
+import { and, count, eq, sum } from "drizzle-orm";
 import { z } from "zod";
 
 import type { TaskScheduler } from "../../shared/concurrency.js";
@@ -45,12 +45,14 @@ import {
 } from "./vector-query-store.js";
 import {
   CandidateBudgetSearch,
+  type RetrievalScopeCardinality,
   type RetrievalSearchStrategy,
 } from "./candidate-budget-search.js";
 import {
   createActiveProjectionKey,
   queryDenseEvidenceCandidates,
   readActiveRetrievalWindows,
+  type ActiveRetrievalWindowRow,
 } from "./vector-query-store.js";
 import {
   createTelemetryStageResult,
@@ -192,6 +194,13 @@ interface RetrievalCandidateRows {
   lexical: LexicalCandidate[];
 }
 
+export class RetrievalScopeChangedError extends Error {
+  public constructor() {
+    super("The resolved retrieval scope changed before retrieval began.");
+    this.name = "RetrievalScopeChangedError";
+  }
+}
+
 export interface RetrievedElementsResult {
   rerankerModelId: string | null;
   retrieved: RetrievedElement[];
@@ -256,99 +265,30 @@ export async function retrieveRelevantElementsWithScores(
   if (queries.length === 0) {
     throw new Error("Retrieval requires at least one query.");
   }
-  const rankings = await queryRetrievalCandidateRankings(
-    database,
+  const snapshot = await runRetrievalTransaction(
     queryExecutor,
-    space,
-    queries,
-    config,
-    scopeTargets,
+    database,
     abortSignal,
-    runTelemetry,
-  );
-  const fusionStage = runTelemetry.startStage({
-    model: null,
-    name: "fusion",
-    retrievalMode: config.mode,
-  });
-  let rankedCandidates: FusedCandidate[];
-  try {
-    rankedCandidates = rankRetrievalCandidates(
-      config.mode,
-      rankings,
-      config.rrfK,
-      config.fusion,
-    );
-    if (
-      useDocumentToc
-      && retrievalModeUsesDense(config.mode)
-      && queries[0]?.embedding !== null
-      && queries[0]?.embedding !== undefined
-    ) {
-      const tocRanking = await createDocumentTocRanking(
-        database,
-        space,
-        config.mode,
-        queries[0].embedding,
-        rankedCandidates,
-        config.candidateK,
-        config.fusion,
-        abortSignal,
-        runTelemetry,
-      );
-      if (tocRanking !== null) {
-        rankedCandidates = rankRetrievalCandidates(
-          config.mode,
-          rankings,
-          config.rrfK,
-          config.fusion,
-          [tocRanking],
-        );
-      }
-    }
-    await fusionStage.finish(createTelemetryStageResult("success", {
-      inputCount: countRankedCandidates(rankings),
-      outputCount: rankedCandidates.length,
-    }));
-  } catch (error: unknown) {
-    await fusionStage.finish(createTelemetryStageResult("error", {
-      inputCount: countRankedCandidates(rankings),
-    }));
-    throw error;
-  }
-  const candidateSelection = selectNonOverlappingCandidatesWithTrace(
-    rankedCandidates,
-    config.candidateK,
-    "fused-order",
-  );
-  const candidatesToLoad = candidateSelection.selected;
-  runTelemetry.setCandidateCount(candidatesToLoad.length);
-  const hydrationStage = runTelemetry.startStage({
-    model: null,
-    name: "hydration",
-    retrievalMode: config.mode,
-  });
-  let retrieved: RetrievedElement[];
-  let hydratedCandidates: FusedCandidate[];
-  try {
-    const hydrated = await loadRetrievalCandidatesWithMetadata(
-      database,
+    (operationDatabase, operationQuery) => prepareRetrievalSnapshot(
+      operationDatabase,
+      operationQuery,
       documentStore,
-      candidatesToLoad,
+      space,
+      queries,
+      config,
       scopeTargets,
-    );
-    retrieved = hydrated.retrieved;
-    hydratedCandidates = hydrated.candidates;
-    await hydrationStage.finish(createTelemetryStageResult("success", {
-      inputCount: candidatesToLoad.length,
-      outputCount: retrieved.length,
-    }));
-  } catch (error: unknown) {
-    await hydrationStage.finish(createTelemetryStageResult("error", {
-      inputCount: candidatesToLoad.length,
-    }));
-    throw error;
-  }
+      abortSignal,
+      runTelemetry,
+      useDocumentToc,
+    ),
+  );
+  const {
+    adjacentContext,
+    candidateSelection,
+    hydratedCandidates,
+    rankings,
+    retrieved,
+  } = snapshot;
   const candidateBudget = buildCandidateBudgetTelemetry(
     rankings,
     queries,
@@ -360,11 +300,10 @@ export async function retrieveRelevantElementsWithScores(
   runTelemetry.recordCandidateBudget(candidateBudget);
   if (config.reranker === null) {
     const selected = selectTopRetrievedElements(retrieved, config.topK);
-    const contextualized = await addAdjacentRetrievalContext(
-      database,
-      space,
+    const contextualized = applyAdjacentRetrievalContext(
       selected,
       scopeTargets,
+      adjacentContext,
     );
     runTelemetry.setHydratedContextCount(contextualized.length);
     return {
@@ -430,11 +369,10 @@ export async function retrieveRelevantElementsWithScores(
       policy: answerContextSelectionConfig.policy,
       recovery: { attempted: false, result: "not-applicable" },
     });
-    const contextualized = await addAdjacentRetrievalContext(
-      database,
-      space,
+    const contextualized = applyAdjacentRetrievalContext(
       reranked.retrieved,
       scopeTargets,
+      adjacentContext,
     );
     return {
       rerankerModelId: reranker.model.modelId,
@@ -450,12 +388,146 @@ export async function retrieveRelevantElementsWithScores(
   }
 }
 
-async function addAdjacentRetrievalContext(
+interface PreparedRetrievalSnapshot {
+  adjacentContext: AdjacentRetrievalContextSnapshot;
+  candidateSelection: NonOverlappingCandidateSelection;
+  hydratedCandidates: FusedCandidate[];
+  rankings: RetrievalCandidateRankings;
+  retrieved: RetrievedElement[];
+}
+
+async function prepareRetrievalSnapshot(
+  database: CiteLoomDatabase,
+  queryExecutor: SqlQueryExecutor,
+  documentStore: SourceDocumentStore,
+  space: EmbeddingSpaceConfig,
+  queries: RetrievalQuery[],
+  config: RetrievalConfig,
+  scopeTargets: ResolvedQueryScopeTarget[],
+  abortSignal: AbortSignal,
+  runTelemetry: RunTelemetry,
+  useDocumentToc: boolean,
+): Promise<PreparedRetrievalSnapshot> {
+  const rankings = await queryRetrievalCandidateRankingsInSnapshot(
+    database,
+    queryExecutor,
+    space,
+    queries,
+    config,
+    scopeTargets,
+    abortSignal,
+    runTelemetry,
+  );
+  const fusionStage = runTelemetry.startStage({
+    model: null,
+    name: "fusion",
+    retrievalMode: config.mode,
+  });
+  let rankedCandidates: FusedCandidate[];
+  try {
+    rankedCandidates = rankRetrievalCandidates(
+      config.mode,
+      rankings,
+      config.rrfK,
+      config.fusion,
+    );
+    const primaryQuery = queries[0];
+    if (
+      useDocumentToc
+      && retrievalModeUsesDense(config.mode)
+      && primaryQuery?.embedding !== null
+      && primaryQuery?.embedding !== undefined
+    ) {
+      const tocRanking = await createDocumentTocRanking(
+        database,
+        space,
+        config.mode,
+        primaryQuery.embedding,
+        rankedCandidates,
+        config.candidateK,
+        config.fusion,
+        abortSignal,
+        runTelemetry,
+      );
+      if (tocRanking !== null) {
+        rankedCandidates = rankRetrievalCandidates(
+          config.mode,
+          rankings,
+          config.rrfK,
+          config.fusion,
+          [tocRanking],
+        );
+      }
+    }
+    await fusionStage.finish(createTelemetryStageResult("success", {
+      inputCount: countRankedCandidates(rankings),
+      outputCount: rankedCandidates.length,
+    }));
+  } catch (error: unknown) {
+    await fusionStage.finish(createTelemetryStageResult("error", {
+      inputCount: countRankedCandidates(rankings),
+    }));
+    throw error;
+  }
+  const candidateSelection = selectNonOverlappingCandidatesWithTrace(
+    rankedCandidates,
+    config.candidateK,
+    "fused-order",
+  );
+  const candidatesToLoad = candidateSelection.selected;
+  runTelemetry.setCandidateCount(candidatesToLoad.length);
+  const hydrationStage = runTelemetry.startStage({
+    model: null,
+    name: "hydration",
+    retrievalMode: config.mode,
+  });
+  let hydratedCandidates: FusedCandidate[];
+  let retrieved: RetrievedElement[];
+  try {
+    const hydrated = await loadRetrievalCandidatesWithMetadata(
+      database,
+      documentStore,
+      candidatesToLoad,
+      scopeTargets,
+    );
+    hydratedCandidates = hydrated.candidates;
+    retrieved = hydrated.retrieved;
+    await hydrationStage.finish(createTelemetryStageResult("success", {
+      inputCount: candidatesToLoad.length,
+      outputCount: retrieved.length,
+    }));
+  } catch (error: unknown) {
+    await hydrationStage.finish(createTelemetryStageResult("error", {
+      inputCount: candidatesToLoad.length,
+    }));
+    throw error;
+  }
+  const adjacentContext = await loadAdjacentRetrievalContext(
+    database,
+    space,
+    retrieved,
+    scopeTargets,
+  );
+  return {
+    adjacentContext,
+    candidateSelection,
+    hydratedCandidates,
+    rankings,
+    retrieved,
+  };
+}
+
+interface AdjacentRetrievalContextSnapshot {
+  neighborByKey: Map<string, ActiveRetrievalWindowRow>;
+  primaryByKey: Map<string, ActiveRetrievalWindowRow>;
+}
+
+async function loadAdjacentRetrievalContext(
   database: CiteLoomDatabase,
   space: EmbeddingSpaceConfig,
   retrieved: readonly RetrievedElement[],
   scopeTargets: ResolvedQueryScopeTarget[],
-): Promise<RetrievedElement[]> {
+): Promise<AdjacentRetrievalContextSnapshot> {
   const retrievalIds: string[] = [];
   for (const item of retrieved) {
     retrievalIds.push(item.provenance.retrievalWindowId);
@@ -499,6 +571,15 @@ async function addAdjacentRetrievalContext(
     ),
     row,
   ]));
+  return { neighborByKey, primaryByKey };
+}
+
+function applyAdjacentRetrievalContext(
+  retrieved: readonly RetrievedElement[],
+  scopeTargets: ResolvedQueryScopeTarget[],
+  snapshot: AdjacentRetrievalContextSnapshot,
+): RetrievedElement[] {
+  const { neighborByKey, primaryByKey } = snapshot;
   const targetByDocument = new Map<string, ResolvedQueryScopeTarget>();
   for (const target of scopeTargets) {
     targetByDocument.set(
@@ -698,25 +779,64 @@ export async function queryRetrievalCandidateRankings(
   abortSignal: AbortSignal,
   runTelemetry: RunTelemetry = noopRunTelemetry,
 ): Promise<RetrievalCandidateRankings> {
-  const pendingResults: Array<Promise<{
+  return runRetrievalTransaction(
+    queryExecutor,
+    database,
+    abortSignal,
+    (operationDatabase, operationQuery) => (
+      queryRetrievalCandidateRankingsInSnapshot(
+        operationDatabase,
+        operationQuery,
+        space,
+        queries,
+        config,
+        scopeTargets,
+        abortSignal,
+        runTelemetry,
+      )
+    ),
+  );
+}
+
+async function queryRetrievalCandidateRankingsInSnapshot(
+  database: CiteLoomDatabase,
+  queryExecutor: SqlQueryExecutor,
+  space: EmbeddingSpaceConfig,
+  queries: RetrievalQuery[],
+  config: RetrievalConfig,
+  scopeTargets: ResolvedQueryScopeTarget[],
+  abortSignal: AbortSignal,
+  runTelemetry: RunTelemetry,
+): Promise<RetrievalCandidateRankings> {
+  if (scopeTargets.length === 0) {
+    const dense = queries.map((): DenseCandidate[] => []);
+    const lexical = queries.map((): LexicalCandidate[] => []);
+    return { dense, lexical };
+  }
+  const cardinality = await readValidatedScopeCardinality(
+    database,
+    space.id,
+    scopeTargets,
+  );
+  const results: Array<{
     dense: DenseCandidate[];
     lexical: LexicalCandidate[];
-  }>> = [];
+  }> = [];
   for (const query of queries) {
     abortSignal.throwIfAborted();
-    const pendingResult = queryRetrievalCandidates(
+    const result = await queryRetrievalCandidates(
       database,
       queryExecutor,
       space,
       query,
       config,
       scopeTargets,
+      cardinality,
       abortSignal,
       runTelemetry,
-    ).then(decodeRetrievalCandidateRankings);
-    pendingResults.push(pendingResult);
+    );
+    results.push(decodeRetrievalCandidateRankings(result));
   }
-  const results = await Promise.all(pendingResults);
   const denseRankings: DenseCandidate[][] = [];
   const lexicalRankings: LexicalCandidate[][] = [];
   for (const result of results) {
@@ -892,7 +1012,10 @@ async function loadRetrievalCandidatesWithMetadata(
     activeCandidates.push({ candidate, versionId });
   }
   const parentIds = activeCandidates.map((entry) => entry.candidate.parentId);
-  const elements = await documentStore.readManyForRetrieval(parentIds);
+  const elements = await documentStore.readManyForRetrievalFrom(
+    database,
+    parentIds,
+  );
   const retrieved: RetrievedElement[] = [];
   for (let index = 0; index < activeCandidates.length; index += 1) {
     const activeCandidate = activeCandidates[index];
@@ -1145,6 +1268,82 @@ function buildResolvedScopeTargetKeys(
   return targetKeys;
 }
 
+async function readValidatedScopeCardinality(
+  database: CiteLoomDatabase,
+  embeddingSpaceId: string,
+  scopeTargets: readonly ResolvedQueryScopeTarget[],
+): Promise<RetrievalScopeCardinality> {
+  const scopeIdentities = new Set<string>();
+  for (const target of scopeTargets) {
+    scopeIdentities.add(createResolvedQueryScopeTargetKey(target));
+  }
+  if (scopeIdentities.size !== scopeTargets.length) {
+    throw new Error("Resolved retrieval scope contains duplicate identities.");
+  }
+  const scopedRows = await database
+    .select({
+      pointerCount: count(),
+      representationCount: sum(indexedDocumentSpaces.representationCount),
+    })
+    .from(indexedDocumentSpaces)
+    .where(and(
+      eq(indexedDocumentSpaces.embeddingSpaceId, embeddingSpaceId),
+      matchesResolvedQueryScope(
+        indexedDocumentSpaces.documentId,
+        indexedDocumentSpaces.generationId,
+        indexedDocumentSpaces.sourceFile,
+        scopeTargets,
+      ),
+    ));
+  const scoped = scopedRows[0];
+  const pointerCount = readNonnegativeDatabaseCount(
+    scoped?.pointerCount,
+    "resolved publication count",
+  );
+  if (pointerCount !== scopeTargets.length) {
+    throw new RetrievalScopeChangedError();
+  }
+  const scopedRepresentationCount = readNonnegativeDatabaseCount(
+    scoped?.representationCount,
+    "resolved representation count",
+  );
+  const totalRows = await database
+    .select({
+      representationCount: sum(indexedDocumentSpaces.representationCount),
+    })
+    .from(indexedDocumentSpaces)
+    .where(eq(indexedDocumentSpaces.embeddingSpaceId, embeddingSpaceId));
+  const totalRepresentationCount = readNonnegativeDatabaseCount(
+    totalRows[0]?.representationCount,
+    "total representation count",
+  );
+  if (
+    scopedRepresentationCount < 1
+    || totalRepresentationCount < scopedRepresentationCount
+  ) {
+    throw new RetrievalScopeChangedError();
+  }
+  return { scopedRepresentationCount, totalRepresentationCount };
+}
+
+function readNonnegativeDatabaseCount(
+  value: unknown,
+  label: string,
+): number {
+  const result = z.union([
+    z.number().int().nonnegative(),
+    z.string().regex(/^(0|[1-9][0-9]*)$/u),
+  ]).safeParse(value);
+  if (!result.success) {
+    throw new Error(`Invalid ${label}: ${result.error.message}`);
+  }
+  const countValue = Number(result.data);
+  if (!Number.isSafeInteger(countValue)) {
+    throw new Error(`${label} exceeds the safe integer range.`);
+  }
+  return countValue;
+}
+
 export function retrievalModeUsesDense(mode: RetrievalMode): boolean {
   return mode !== "bm25";
 }
@@ -1160,10 +1359,11 @@ async function queryRetrievalCandidates(
   query: RetrievalQuery,
   config: RetrievalConfig,
   scopeTargets: ResolvedQueryScopeTarget[],
+  cardinality: RetrievalScopeCardinality,
   abortSignal: AbortSignal,
   runTelemetry: RunTelemetry,
 ): Promise<RetrievalCandidateRows> {
-  let denseRowsPromise: Promise<DenseCandidate[]> = Promise.resolve([]);
+  let dense: DenseCandidate[] = [];
   if (retrievalModeUsesDense(config.mode)) {
     if (query.embedding === null) {
       throw new Error(`Retrieval mode ${config.mode} requires a query embedding.`);
@@ -1178,33 +1378,29 @@ async function queryRetrievalCandidates(
       name: "dense-retrieval",
       retrievalMode: config.mode,
     });
-    denseRowsPromise = runCandidateQueryStage(
+    dense = await runCandidateQueryStage(
       denseStage,
       scopeTargets.length,
-      () => runRetrievalDatabaseOperation(
-        queryExecutor,
+      () => queryDenseRepresentationCandidates(
         database,
+        space,
+        normalizedEmbedding,
+        config.candidateK,
+        scopeTargets,
+        cardinality,
         abortSignal,
-        (operationDatabase) => queryDenseRepresentationCandidates(
-          operationDatabase,
-          space,
-          normalizedEmbedding,
-          config.candidateK,
-          scopeTargets,
-          abortSignal,
-        ),
       ),
     );
   }
 
-  let lexicalRowsPromise: Promise<LexicalCandidate[]> = Promise.resolve([]);
+  let lexical: LexicalCandidate[] = [];
   if (retrievalModeUsesLexical(config.mode)) {
     const lexicalStage = runTelemetry.startStage({
       model: null,
       name: "lexical-retrieval",
       retrievalMode: config.mode,
     });
-    lexicalRowsPromise = runCandidateQueryStage(
+    lexical = await runCandidateQueryStage(
       lexicalStage,
       scopeTargets.length,
       () => queryLexicalRepresentationCandidates(
@@ -1213,28 +1409,28 @@ async function queryRetrievalCandidates(
         query.text,
         scopeTargets,
         config.candidateK,
+        cardinality,
         abortSignal,
       ),
     );
   }
-  const [dense, lexical] = await Promise.all([
-    denseRowsPromise,
-    lexicalRowsPromise,
-  ]);
   return { dense, lexical };
 }
 
-function runRetrievalDatabaseOperation<Result>(
+function runRetrievalTransaction<Result>(
   queryExecutor: SqlQueryExecutor,
   database: CiteLoomDatabase,
   abortSignal: AbortSignal,
-  operation: (operationDatabase: CiteLoomDatabase) => Promise<Result>,
+  operation: (
+    operationDatabase: CiteLoomDatabase,
+    operationQuery: SqlQueryExecutor,
+  ) => Promise<Result>,
 ): Promise<Result> {
-  if (queryExecutor.withDatabase === undefined) {
+  if (queryExecutor.withTransaction === undefined) {
     abortSignal.throwIfAborted();
-    return operation(database);
+    return operation(database, queryExecutor);
   }
-  return queryExecutor.withDatabase(operation, {
+  return queryExecutor.withTransaction(operation, {
     abortSignal,
     statementTimeoutMs: RETRIEVAL_STATEMENT_TIMEOUT_MS,
   });
@@ -1333,9 +1529,10 @@ async function queryDenseRepresentationCandidates(
   embedding: number[],
   candidateK: number,
   scopeTargets: ResolvedQueryScopeTarget[],
+  cardinality: RetrievalScopeCardinality,
   abortSignal: AbortSignal,
 ): Promise<DenseCandidate[]> {
-  const search = new CandidateBudgetSearch(candidateK, scopeTargets.length);
+  const search = new CandidateBudgetSearch(candidateK, cardinality);
   while (true) {
     abortSignal.throwIfAborted();
     const rawRows = await queryDenseCandidates(
@@ -1421,9 +1618,10 @@ async function queryLexicalRepresentationCandidates(
   question: string,
   scopeTargets: ResolvedQueryScopeTarget[],
   candidateK: number,
+  cardinality: RetrievalScopeCardinality,
   abortSignal: AbortSignal,
 ): Promise<LexicalCandidate[]> {
-  const search = new CandidateBudgetSearch(candidateK, scopeTargets.length);
+  const search = new CandidateBudgetSearch(candidateK, cardinality);
   while (true) {
     abortSignal.throwIfAborted();
     const rawRows = await queryLexicalCandidateBatch(

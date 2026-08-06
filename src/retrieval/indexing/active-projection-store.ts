@@ -1,11 +1,11 @@
-import { and, count, eq, notExists, or, sql } from "drizzle-orm";
-import type { AnyPgTable } from "drizzle-orm/pg-core";
+import { and, count, eq, ne, notExists, or, sql } from "drizzle-orm";
 
 import {
   activeRetrievalEvidence,
   activeRetrievalLexicalChunks,
   activeRetrievalRoutes,
   embeddingSpaces,
+  indexedDocumentSpaces,
   retrievalLexicalChunks,
 } from "../../database/schema.js";
 import {
@@ -13,7 +13,6 @@ import {
   type EmbeddingDimensions,
 } from "../../embedding/dimensions.js";
 import {
-  ACTIVE_RETRIEVAL_VECTOR_TABLES,
   readActiveRetrievalVectorTable,
   readRetrievalVectorTable,
 } from "../../embedding/storage-tables.js";
@@ -23,12 +22,7 @@ import type {
 } from "./index-store.js";
 
 interface ActiveProjectionInput extends PublishableEmbeddingGeneration {
-  sourceFile: string;
-}
-
-export interface ActiveProjectionIdentity {
-  documentId: string;
-  embeddingSpaceId: string;
+  indexedAt: Date;
   sourceFile: string;
 }
 
@@ -40,23 +34,25 @@ export async function synchronizeActiveRetrievalProjection(
     transaction,
     input.embeddingSpaceId,
   );
-  await deleteReplacedProjectionRows(transaction, input);
+  const representationCount = await readCanonicalRepresentationCount(
+    transaction,
+    input,
+  );
+  await replacePublicationAuthority(
+    transaction,
+    input,
+    representationCount,
+  );
   await insertActiveVectorRows(transaction, dimensions, input);
   await insertActiveLexicalRows(transaction, input);
   await insertActiveRouteRows(transaction, input);
   await insertActiveEvidenceRows(transaction, input);
-  await validateActiveProjection(transaction, dimensions, input);
-}
-
-export async function deleteActiveRetrievalProjection(
-  transaction: RetrievalTransaction,
-  identity: ActiveProjectionIdentity,
-): Promise<void> {
-  await deleteActiveProjectionRows(transaction, sql`
-    "document_id" = ${identity.documentId}
-    AND "embedding_space_id" = ${identity.embeddingSpaceId}
-    AND "source_file" = ${identity.sourceFile}
-  `);
+  await validateActiveProjection(
+    transaction,
+    dimensions,
+    input,
+    representationCount,
+  );
 }
 
 async function readProjectionDimensions(
@@ -74,32 +70,50 @@ async function readProjectionDimensions(
   );
 }
 
-async function deleteReplacedProjectionRows(
+async function readCanonicalRepresentationCount(
   transaction: RetrievalTransaction,
   input: ActiveProjectionInput,
-): Promise<void> {
-  await deleteActiveProjectionRows(transaction, sql`
-    "source_file" = ${input.sourceFile}
-    AND (
-      "document_id" <> ${input.documentId}
-      OR "embedding_space_id" = ${input.embeddingSpaceId}
-    )
-  `);
+): Promise<number> {
+  const rows = await transaction
+    .select({ value: count() })
+    .from(retrievalLexicalChunks)
+    .where(and(
+      eq(retrievalLexicalChunks.embeddingSpaceId, input.embeddingSpaceId),
+      eq(retrievalLexicalChunks.generationId, input.generationId),
+      eq(retrievalLexicalChunks.documentId, input.documentId),
+      eq(retrievalLexicalChunks.sourceFile, input.sourceFile),
+    ));
+  const representationCount = Number(rows[0]?.value ?? 0);
+  if (representationCount < 1) {
+    throw new Error(
+      `Retrieval generation ${input.generationId} has no canonical representations.`,
+    );
+  }
+  return representationCount;
 }
 
-async function deleteActiveProjectionRows(
+async function replacePublicationAuthority(
   transaction: RetrievalTransaction,
-  condition: ReturnType<typeof sql>,
+  input: ActiveProjectionInput,
+  representationCount: number,
 ): Promise<void> {
-  const tables: AnyPgTable[] = [
-    activeRetrievalRoutes,
-    activeRetrievalEvidence,
-    activeRetrievalLexicalChunks,
-    ...ACTIVE_RETRIEVAL_VECTOR_TABLES,
-  ];
-  for (const table of tables) {
-    await transaction.execute(sql`DELETE FROM ${table} WHERE ${condition}`);
-  }
+  await transaction
+    .delete(indexedDocumentSpaces)
+    .where(and(
+      eq(indexedDocumentSpaces.sourceFile, input.sourceFile),
+      or(
+        ne(indexedDocumentSpaces.documentId, input.documentId),
+        eq(indexedDocumentSpaces.embeddingSpaceId, input.embeddingSpaceId),
+      ),
+    ));
+  await transaction.insert(indexedDocumentSpaces).values({
+    documentId: input.documentId,
+    embeddingSpaceId: input.embeddingSpaceId,
+    generationId: input.generationId,
+    indexedAt: input.indexedAt,
+    representationCount,
+    sourceFile: input.sourceFile,
+  });
 }
 
 async function insertActiveVectorRows(
@@ -286,6 +300,7 @@ async function validateActiveProjection(
   transaction: RetrievalTransaction,
   dimensions: EmbeddingDimensions,
   input: ActiveProjectionInput,
+  expectedCount: number,
 ): Promise<void> {
   const routeConditions = and(
     eq(activeRetrievalRoutes.embeddingSpaceId, input.embeddingSpaceId),
@@ -319,19 +334,8 @@ async function validateActiveProjection(
       eq(activeRetrievalLexicalChunks.sourceFile, input.sourceFile),
     ));
   const lexicalCount = Number(lexicalRows[0]?.value ?? 0);
-  const expectedCountRows = await transaction
-    .select({ value: count() })
-    .from(retrievalLexicalChunks)
-    .where(and(
-      eq(retrievalLexicalChunks.embeddingSpaceId, input.embeddingSpaceId),
-      eq(retrievalLexicalChunks.generationId, input.generationId),
-      eq(retrievalLexicalChunks.documentId, input.documentId),
-      eq(retrievalLexicalChunks.sourceFile, input.sourceFile),
-    ));
-  const expectedCount = Number(expectedCountRows[0]?.value ?? 0);
   if (
-    expectedCount === 0
-    || routeCount !== expectedCount
+    routeCount !== expectedCount
     || vectorCount !== expectedCount
     || lexicalCount !== expectedCount
   ) {

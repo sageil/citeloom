@@ -16,9 +16,11 @@ import {
 } from "../../database/schema.js";
 import {
   embeddingDimensionsSchema,
+  readEmbeddingDimensions,
   type EmbeddingDimensions,
 } from "../dimensions.js";
 import { RETRIEVAL_VECTOR_TABLES } from "../storage-tables.js";
+import { dropActiveRetrievalSpacePartitions } from "../../retrieval/indexing/active-projection-partitions.js";
 import type {
   EmbeddingSpaceGcReport,
   EmbeddingSpaceGcSpaceRecord,
@@ -406,6 +408,7 @@ async function collectEmbeddingSpace(
       const spaceRows = await transaction
         .select({
           createdAt: embeddingSpaces.createdAt,
+          dimensions: embeddingSpaces.dimensions,
           id: embeddingSpaces.id,
         })
         .from(embeddingSpaces)
@@ -457,6 +460,15 @@ async function collectEmbeddingSpace(
       await transaction
         .delete(indexedDocumentSpaces)
         .where(eq(indexedDocumentSpaces.embeddingSpaceId, spaceId));
+      if (space !== undefined) {
+        await dropActiveRetrievalSpacePartitions(transaction, {
+          dimensions: readEmbeddingDimensions(
+            space.dimensions,
+            `Embedding space ${space.id} has invalid dimensions.`,
+          ),
+          id: space.id,
+        });
+      }
       await transaction
         .delete(embeddingSpaces)
         .where(eq(embeddingSpaces.id, spaceId));

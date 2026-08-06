@@ -14,6 +14,7 @@ export {
   retrieveKeywordDiscoveryPage,
   retrieveRelevantElements,
   retrieveRelevantElementsWithScores,
+  RetrievalScopeChangedError,
   retrievalModeUsesDense,
   type RetrievedElementsResult,
   type RetrievalQuery,

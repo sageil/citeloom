@@ -83,7 +83,9 @@ import {
 import {
   ensureEmbeddingSpace,
   retrieveRelevantElementsWithScores,
+  RetrievalScopeChangedError,
   retrievalModeUsesDense,
+  type RetrievedElementsResult,
   type RetrievalQuery,
 } from "./indexing/index.js";
 import { SourceDocumentStore } from "../documents/storage/source-document-store.js";
@@ -507,7 +509,7 @@ async function prepareRetrievalWithResources(
     throw error;
   }
   runTelemetry.setScopeSize(scopeTargets.length);
-  const generationSettings = createTurnGenerationSettings(
+  let generationSettings = createTurnGenerationSettings(
     config.retrieval,
     question.processing,
     scopeTargets,
@@ -558,7 +560,9 @@ async function prepareRetrievalWithResources(
   const retrievalConfig = options.applyReranking
     ? config.retrieval
     : { ...config.retrieval, reranker: null };
-  const retrieval = await retrieveRelevantElementsWithScores(
+  const runRetrievalAttempt = (
+    targets: ResolvedQueryScopeTarget[],
+  ) => retrieveRelevantElementsWithScores(
     databaseSession.database,
     databaseSession.query,
     documentStore,
@@ -566,13 +570,33 @@ async function prepareRetrievalWithResources(
     question.processing,
     queries,
     retrievalConfig,
-    scopeTargets,
+    targets,
     models.reranker,
     rerankingScheduler,
     abortSignal,
     runTelemetry,
     config.docling.tocEnabled && useDocumentToc,
   );
+  let retrieval: RetrievedElementsResult;
+  try {
+    retrieval = await runRetrievalAttempt(scopeTargets);
+  } catch (error: unknown) {
+    if (!(error instanceof RetrievalScopeChangedError)) {
+      throw error;
+    }
+    abortSignal.throwIfAborted();
+    scopeTargets = await catalog.resolveQueryScope(
+      scope,
+      config.embeddingSpace.id,
+    );
+    runTelemetry.setScopeSize(scopeTargets.length);
+    generationSettings = createTurnGenerationSettings(
+      config.retrieval,
+      question.processing,
+      scopeTargets,
+    );
+    retrieval = await runRetrievalAttempt(scopeTargets);
+  }
   abortSignal.throwIfAborted();
   if (
     retrieval.rerankerModelId !== null

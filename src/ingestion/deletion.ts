@@ -18,7 +18,6 @@ import {
   type SQL,
 } from "drizzle-orm";
 
-import type { ApplicationRuntime } from "../app/runtime.js";
 import type { SourceContentConfig } from "../config/index.js";
 import type { CiteLoomDatabase } from "../database/client.js";
 import {
@@ -54,6 +53,11 @@ export type FinalizeIngestionCancellationResult =
   | { kind: "pending" }
   | { error: string; kind: "cleanup-failed" }
   | { kind: "canceled" };
+
+export interface IndexedDocumentDeletionRuntime {
+  config: { sourceContent: SourceContentConfig };
+  database: CiteLoomDatabase;
+}
 
 const ABANDONED_UPLOAD_AGE_MS = 24 * 60 * 60 * 1_000;
 const uploadGroupNamePattern =
@@ -170,7 +174,7 @@ export async function reconcileIngestionCancellations(
 }
 
 export async function deleteIndexedDocumentWithRuntime(
-  runtime: ApplicationRuntime,
+  runtime: IndexedDocumentDeletionRuntime,
   request: ReindexDocumentRequest,
 ): Promise<DeleteIndexedDocumentResult> {
   const result = await runtime.database.transaction(async (transaction) => {
@@ -285,7 +289,7 @@ export async function deleteAbandonedUploadStaging(
 }
 
 type DeletionTransaction = Parameters<
-  Parameters<ApplicationRuntime["database"]["transaction"]>[0]
+  Parameters<CiteLoomDatabase["transaction"]>[0]
 >[0];
 
 async function deleteResearchQuestionsForSource(

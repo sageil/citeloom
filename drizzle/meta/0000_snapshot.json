@@ -1,5 +1,5 @@
 {
-  "id": "cea3a48c-c790-48f1-80e7-8396e0577880",
+  "id": "05408695-f25c-4880-baf4-fdd40bb6a9ad",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -100,6 +100,25 @@
           ],
           "columnsTo": [
             "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "active_retrieval_chunks_1024_publication_fk": {
+          "name": "active_retrieval_chunks_1024_publication_fk",
+          "tableFrom": "active_retrieval_chunks_1024",
+          "tableTo": "indexed_document_spaces",
+          "columnsFrom": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
+          ],
+          "columnsTo": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -219,6 +238,25 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "active_retrieval_chunks_1536_publication_fk": {
+          "name": "active_retrieval_chunks_1536_publication_fk",
+          "tableFrom": "active_retrieval_chunks_1536",
+          "tableTo": "indexed_document_spaces",
+          "columnsFrom": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
+          ],
+          "columnsTo": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -332,6 +370,25 @@
           ],
           "columnsTo": [
             "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "active_retrieval_chunks_2048_publication_fk": {
+          "name": "active_retrieval_chunks_2048_publication_fk",
+          "tableFrom": "active_retrieval_chunks_2048",
+          "tableTo": "indexed_document_spaces",
+          "columnsFrom": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
+          ],
+          "columnsTo": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -451,6 +508,25 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "active_retrieval_chunks_384_publication_fk": {
+          "name": "active_retrieval_chunks_384_publication_fk",
+          "tableFrom": "active_retrieval_chunks_384",
+          "tableTo": "indexed_document_spaces",
+          "columnsFrom": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
+          ],
+          "columnsTo": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -564,6 +640,25 @@
           ],
           "columnsTo": [
             "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "active_retrieval_chunks_publication_fk": {
+          "name": "active_retrieval_chunks_publication_fk",
+          "tableFrom": "active_retrieval_chunks",
+          "tableTo": "indexed_document_spaces",
+          "columnsFrom": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
+          ],
+          "columnsTo": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -725,6 +820,25 @@
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "active_retrieval_evidence_publication_fk": {
+          "name": "active_retrieval_evidence_publication_fk",
+          "tableFrom": "active_retrieval_evidence",
+          "tableTo": "indexed_document_spaces",
+          "columnsFrom": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
+          ],
+          "columnsTo": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -839,6 +953,25 @@
           ],
           "columnsTo": [
             "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "active_retrieval_lexical_publication_fk": {
+          "name": "active_retrieval_lexical_publication_fk",
+          "tableFrom": "active_retrieval_lexical_chunks",
+          "tableTo": "indexed_document_spaces",
+          "columnsFrom": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
+          ],
+          "columnsTo": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -970,6 +1103,25 @@
           ],
           "columnsTo": [
             "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "active_retrieval_routes_publication_fk": {
+          "name": "active_retrieval_routes_publication_fk",
+          "tableFrom": "active_retrieval_routes",
+          "tableTo": "indexed_document_spaces",
+          "columnsFrom": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
+          ],
+          "columnsTo": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -4737,6 +4889,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "representation_count": {
+          "name": "representation_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
         "source_file": {
           "name": "source_file",
           "type": "text",
@@ -4800,9 +4958,25 @@
           ]
         }
       },
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "indexed_document_spaces_projection_identity_unique": {
+          "name": "indexed_document_spaces_projection_identity_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "source_file",
+            "embedding_space_id",
+            "generation_id",
+            "document_id"
+          ]
+        }
+      },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "indexed_document_spaces_representation_count_check": {
+          "name": "indexed_document_spaces_representation_count_check",
+          "value": "\"indexed_document_spaces\".\"representation_count\" > 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.indexed_documents": {

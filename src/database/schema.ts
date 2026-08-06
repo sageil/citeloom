@@ -21,6 +21,7 @@ import {
   vector,
   varchar,
 } from "drizzle-orm/pg-core";
+import type { ExtraConfigColumn } from "drizzle-orm/pg-core";
 
 import type { StoredDoclingArtifact } from "../docling/protocol/index.js";
 import type {
@@ -678,10 +679,21 @@ export const indexedDocumentSpaces = pgTable(
       .notNull()
       .defaultNow(),
     generationId: uuid("generation_id").notNull(),
+    representationCount: integer("representation_count").notNull(),
     sourceFile: text("source_file").notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.sourceFile, table.embeddingSpaceId] }),
+    check(
+      "indexed_document_spaces_representation_count_check",
+      sql`${table.representationCount} > 0`,
+    ),
+    unique("indexed_document_spaces_projection_identity_unique").on(
+      table.sourceFile,
+      table.embeddingSpaceId,
+      table.generationId,
+      table.documentId,
+    ),
     index("indexed_document_spaces_document_id_idx").on(table.documentId),
     index("indexed_document_spaces_space_idx").on(table.embeddingSpaceId),
   ],
@@ -2014,6 +2026,34 @@ function createActiveRetrievalIdentityColumns() {
   };
 }
 
+interface ActiveProjectionAuthorityColumns {
+  documentId: ExtraConfigColumn;
+  embeddingSpaceId: ExtraConfigColumn;
+  generationId: ExtraConfigColumn;
+  sourceFile: ExtraConfigColumn;
+}
+
+function createActiveProjectionAuthorityForeignKey(
+  table: ActiveProjectionAuthorityColumns,
+  name: string,
+) {
+  return foreignKey({
+    columns: [
+      table.sourceFile,
+      table.embeddingSpaceId,
+      table.generationId,
+      table.documentId,
+    ],
+    foreignColumns: [
+      indexedDocumentSpaces.sourceFile,
+      indexedDocumentSpaces.embeddingSpaceId,
+      indexedDocumentSpaces.generationId,
+      indexedDocumentSpaces.documentId,
+    ],
+    name,
+  }).onDelete("cascade");
+}
+
 export const activeRetrievalChunks384 = pgTable(
   "active_retrieval_chunks_384",
   {
@@ -2023,6 +2063,10 @@ export const activeRetrievalChunks384 = pgTable(
     }).notNull(),
   },
   (table) => [
+    createActiveProjectionAuthorityForeignKey(
+      table,
+      "active_retrieval_chunks_384_publication_fk",
+    ),
     primaryKey({
       columns: [
         table.embeddingSpaceId,
@@ -2049,6 +2093,10 @@ export const activeRetrievalChunks768 = pgTable(
     }).notNull(),
   },
   (table) => [
+    createActiveProjectionAuthorityForeignKey(
+      table,
+      "active_retrieval_chunks_publication_fk",
+    ),
     primaryKey({
       columns: [
         table.embeddingSpaceId,
@@ -2075,6 +2123,10 @@ export const activeRetrievalChunks1024 = pgTable(
     }).notNull(),
   },
   (table) => [
+    createActiveProjectionAuthorityForeignKey(
+      table,
+      "active_retrieval_chunks_1024_publication_fk",
+    ),
     primaryKey({
       columns: [
         table.embeddingSpaceId,
@@ -2101,6 +2153,10 @@ export const activeRetrievalChunks1536 = pgTable(
     }).notNull(),
   },
   (table) => [
+    createActiveProjectionAuthorityForeignKey(
+      table,
+      "active_retrieval_chunks_1536_publication_fk",
+    ),
     primaryKey({
       columns: [
         table.embeddingSpaceId,
@@ -2127,6 +2183,10 @@ export const activeRetrievalChunks2048 = pgTable(
     }).notNull(),
   },
   (table) => [
+    createActiveProjectionAuthorityForeignKey(
+      table,
+      "active_retrieval_chunks_2048_publication_fk",
+    ),
     primaryKey({
       columns: [
         table.embeddingSpaceId,
@@ -2151,6 +2211,10 @@ export const activeRetrievalLexicalChunks = pgTable(
     ...createActiveRetrievalIdentityColumns(),
   },
   (table) => [
+    createActiveProjectionAuthorityForeignKey(
+      table,
+      "active_retrieval_lexical_publication_fk",
+    ),
     primaryKey({
       columns: [
         table.embeddingSpaceId,
@@ -2189,6 +2253,10 @@ export const activeRetrievalRoutes = pgTable(
       .notNull(),
   },
   (table) => [
+    createActiveProjectionAuthorityForeignKey(
+      table,
+      "active_retrieval_routes_publication_fk",
+    ),
     primaryKey({
       columns: [
         table.embeddingSpaceId,
@@ -2232,6 +2300,10 @@ export const activeRetrievalEvidence = pgTable(
     sourceFile: text("source_file").notNull(),
   },
   (table) => [
+    createActiveProjectionAuthorityForeignKey(
+      table,
+      "active_retrieval_evidence_publication_fk",
+    ),
     primaryKey({
       columns: [
         table.embeddingSpaceId,

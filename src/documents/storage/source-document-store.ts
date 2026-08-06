@@ -468,6 +468,14 @@ export class SourceDocumentStore {
     ids: string[],
     sourceFile?: string,
   ): Promise<RetrievalSourceElement[]> {
+    return this.readManyForRetrievalFrom(this.database, ids, sourceFile);
+  }
+
+  public async readManyForRetrievalFrom(
+    database: CiteLoomDatabase,
+    ids: string[],
+    sourceFile?: string,
+  ): Promise<RetrievalSourceElement[]> {
     if (ids.length === 0) {
       return [];
     }
@@ -479,7 +487,7 @@ export class SourceDocumentStore {
       start += INSERT_BATCH_SIZE
     ) {
       const batchIds = normalizedIds.slice(start, start + INSERT_BATCH_SIZE);
-      const rows = await this.database
+      const rows = await database
         .select({ element: sourceElements.element, id: sourceElements.id })
         .from(sourceElements)
         .where(inArray(sourceElements.id, batchIds));

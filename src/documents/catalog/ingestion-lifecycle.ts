@@ -8,7 +8,6 @@ import {
   eq,
   inArray,
   like,
-  ne,
   notExists,
   sql,
 } from "drizzle-orm";
@@ -53,7 +52,6 @@ import {
   validateEmbeddingGenerationForPublication,
 } from "../../retrieval/indexing/index-store.js";
 import {
-  deleteActiveRetrievalProjection,
   synchronizeActiveRetrievalProjection,
 } from "../../retrieval/indexing/active-projection-store.js";
 import type { DocumentFormat } from "../format.js";
@@ -317,10 +315,10 @@ export class CatalogIngestionLifecycle {
         elementSetId: requireElementSetId(job),
         embeddingSpaceId: job.embeddingSpaceId,
         generationId: job.generationId,
+        indexedAt,
         sourceFile: job.sourceFile,
         totalElements: job.totalElements,
       });
-      await synchronizeIndexedDocumentSpace(transaction, job, indexedAt);
       await deleteOrphanedTemporaryArtifacts(
         transaction,
         job.documentId,
@@ -725,14 +723,6 @@ async function reconcileUploadedContentDuplicates(
 
   const reconciledSourceFiles: string[] = [];
   for (const duplicate of reconcilableDuplicates) {
-    const spaces = spacesBySource.get(duplicate.sourceFile) ?? [];
-    for (const space of spaces) {
-      await deleteActiveRetrievalProjection(transaction, {
-        documentId: space.documentId,
-        embeddingSpaceId: space.embeddingSpaceId,
-        sourceFile: space.sourceFile,
-      });
-    }
     await transaction
       .delete(indexedDocumentSpaces)
       .where(eq(indexedDocumentSpaces.sourceFile, duplicate.sourceFile));
@@ -1042,38 +1032,6 @@ async function persistIndexedDocument(
     throw new Error(`Indexed document was not persisted: ${job.sourceFile}`);
   }
   return decodeIndexedDocument(row);
-}
-
-async function synchronizeIndexedDocumentSpace(
-  transaction: CatalogIngestionTransaction,
-  job: IngestionJob,
-  indexedAt: Date,
-): Promise<void> {
-  await transaction
-    .delete(indexedDocumentSpaces)
-    .where(
-      and(
-        eq(indexedDocumentSpaces.sourceFile, job.sourceFile),
-        ne(indexedDocumentSpaces.documentId, job.documentId),
-      ),
-    );
-  const values: typeof indexedDocumentSpaces.$inferInsert = {
-    documentId: job.documentId,
-    embeddingSpaceId: job.embeddingSpaceId,
-    generationId: job.generationId,
-    indexedAt,
-    sourceFile: job.sourceFile,
-  };
-  await transaction
-    .insert(indexedDocumentSpaces)
-    .values(values)
-    .onConflictDoUpdate({
-      set: values,
-      target: [
-        indexedDocumentSpaces.sourceFile,
-        indexedDocumentSpaces.embeddingSpaceId,
-      ],
-    });
 }
 
 function buildResetJob(

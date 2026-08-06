@@ -1,3 +1,5 @@
+import { getTableName } from "drizzle-orm";
+
 import {
   activeRetrievalChunks384,
   activeRetrievalChunks768,
@@ -108,6 +110,12 @@ export function readActiveRetrievalVectorTable(
   dimensions: EmbeddingDimensions,
 ): ActiveRetrievalVectorTable {
   return readEmbeddingStorageSpecification(dimensions).activeRetrievalTable;
+}
+
+export function readActiveRetrievalVectorTableName(
+  dimensions: EmbeddingDimensions,
+): string {
+  return getTableName(readActiveRetrievalVectorTable(dimensions));
 }
 
 export function readChatMessageEmbeddingTable(

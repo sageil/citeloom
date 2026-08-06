@@ -28,6 +28,7 @@ import { matchesResolvedQueryScope } from "./query-scope-filter.js";
 import type {
   RetrievalSearchStrategy,
 } from "./candidate-budget-search.js";
+import type { RetrievalTransaction } from "./index-store.js";
 
 export interface ActiveRetrievalWindowRow {
   documentId: string;
@@ -155,8 +156,7 @@ export function queryDenseEvidenceCandidates(
     return Promise.resolve([]);
   }
   const table = readActiveRetrievalVectorTable(space.dimensions);
-  return database.transaction(async (transaction) => {
-    await transaction.execute(sql`SET LOCAL enable_indexscan = off`);
+  return runExactVectorScan(database, async (transaction) => {
     const distance = cosineDistance(table.embedding, embedding);
     return transaction
       .select({
@@ -240,8 +240,7 @@ async function queryExactDenseCandidateKeys(
   topK: number,
   scopeTargets: ResolvedQueryScopeTarget[],
 ): Promise<DenseCandidateKey[]> {
-  return database.transaction(async (transaction) => {
-    await transaction.execute(sql`SET LOCAL enable_indexscan = off`);
+  return runExactVectorScan(database, async (transaction) => {
     const distance = cosineDistance(table.embedding, embedding);
     const rows = await transaction
       .select({
@@ -264,6 +263,29 @@ async function queryExactDenseCandidateKeys(
       .orderBy(distance, asc(table.id))
       .limit(topK);
     return decodeDenseCandidateKeys(rows);
+  });
+}
+
+async function runExactVectorScan<Result>(
+  database: CiteLoomDatabase,
+  operation: (transaction: RetrievalTransaction) => Promise<Result>,
+): Promise<Result> {
+  return database.transaction(async (transaction) => {
+    const settingResult = await transaction.execute(sql<{ value: string }>`
+      SELECT current_setting('enable_indexscan') AS "value"
+    `);
+    const previousSetting = settingResult.rows[0]?.value;
+    if (previousSetting !== "on" && previousSetting !== "off") {
+      throw new Error("PostgreSQL returned an invalid enable_indexscan setting.");
+    }
+    await transaction.execute(
+      sql`SELECT set_config('enable_indexscan', 'off', true)`,
+    );
+    const result = await operation(transaction);
+    await transaction.execute(
+      sql`SELECT set_config('enable_indexscan', ${previousSetting}, true)`,
+    );
+    return result;
   });
 }
 

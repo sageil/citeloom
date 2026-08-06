@@ -546,8 +546,11 @@ CREATE TABLE "indexed_document_spaces" (
 	"embedding_space_id" text NOT NULL,
 	"indexed_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"generation_id" uuid NOT NULL,
+	"representation_count" integer NOT NULL,
 	"source_file" text NOT NULL,
-	CONSTRAINT "indexed_document_spaces_source_file_embedding_space_id_pk" PRIMARY KEY("source_file","embedding_space_id")
+	CONSTRAINT "indexed_document_spaces_source_file_embedding_space_id_pk" PRIMARY KEY("source_file","embedding_space_id"),
+	CONSTRAINT "indexed_document_spaces_projection_identity_unique" UNIQUE("source_file","embedding_space_id","generation_id","document_id"),
+	CONSTRAINT "indexed_document_spaces_representation_count_check" CHECK ("indexed_document_spaces"."representation_count" > 0)
 );
 --> statement-breakpoint
 CREATE TABLE "indexed_documents" (
@@ -1112,13 +1115,21 @@ CREATE TABLE "active_retrieval_routes" (
 ) PARTITION BY LIST ("embedding_space_id");
 --> statement-breakpoint
 ALTER TABLE "active_retrieval_chunks_1024" ADD CONSTRAINT "active_retrieval_chunks_1024_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_chunks_1024" ADD CONSTRAINT "active_retrieval_chunks_1024_publication_fk" FOREIGN KEY ("source_file","embedding_space_id","generation_id","document_id") REFERENCES "public"."indexed_document_spaces"("source_file","embedding_space_id","generation_id","document_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "active_retrieval_chunks_1536" ADD CONSTRAINT "active_retrieval_chunks_1536_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_chunks_1536" ADD CONSTRAINT "active_retrieval_chunks_1536_publication_fk" FOREIGN KEY ("source_file","embedding_space_id","generation_id","document_id") REFERENCES "public"."indexed_document_spaces"("source_file","embedding_space_id","generation_id","document_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "active_retrieval_chunks_2048" ADD CONSTRAINT "active_retrieval_chunks_2048_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_chunks_2048" ADD CONSTRAINT "active_retrieval_chunks_2048_publication_fk" FOREIGN KEY ("source_file","embedding_space_id","generation_id","document_id") REFERENCES "public"."indexed_document_spaces"("source_file","embedding_space_id","generation_id","document_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "active_retrieval_chunks_384" ADD CONSTRAINT "active_retrieval_chunks_384_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_chunks_384" ADD CONSTRAINT "active_retrieval_chunks_384_publication_fk" FOREIGN KEY ("source_file","embedding_space_id","generation_id","document_id") REFERENCES "public"."indexed_document_spaces"("source_file","embedding_space_id","generation_id","document_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "active_retrieval_chunks" ADD CONSTRAINT "active_retrieval_chunks_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_chunks" ADD CONSTRAINT "active_retrieval_chunks_publication_fk" FOREIGN KEY ("source_file","embedding_space_id","generation_id","document_id") REFERENCES "public"."indexed_document_spaces"("source_file","embedding_space_id","generation_id","document_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "active_retrieval_evidence" ADD CONSTRAINT "active_retrieval_evidence_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_evidence" ADD CONSTRAINT "active_retrieval_evidence_publication_fk" FOREIGN KEY ("source_file","embedding_space_id","generation_id","document_id") REFERENCES "public"."indexed_document_spaces"("source_file","embedding_space_id","generation_id","document_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "active_retrieval_lexical_chunks" ADD CONSTRAINT "active_retrieval_lexical_chunks_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_lexical_chunks" ADD CONSTRAINT "active_retrieval_lexical_publication_fk" FOREIGN KEY ("source_file","embedding_space_id","generation_id","document_id") REFERENCES "public"."indexed_document_spaces"("source_file","embedding_space_id","generation_id","document_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "active_retrieval_routes" ADD CONSTRAINT "active_retrieval_routes_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "active_retrieval_routes" ADD CONSTRAINT "active_retrieval_routes_publication_fk" FOREIGN KEY ("source_file","embedding_space_id","generation_id","document_id") REFERENCES "public"."indexed_document_spaces"("source_file","embedding_space_id","generation_id","document_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "active_retrieval_chunks_1024_scope_idx" ON "active_retrieval_chunks_1024" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
 CREATE INDEX "active_retrieval_chunks_1024_hnsw_idx" ON "active_retrieval_chunks_1024" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
 CREATE INDEX "active_retrieval_chunks_1536_scope_idx" ON "active_retrieval_chunks_1536" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint

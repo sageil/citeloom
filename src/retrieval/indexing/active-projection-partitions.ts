@@ -5,21 +5,15 @@ import { sql } from "drizzle-orm";
 import type { EmbeddingSpaceConfig } from "../../config/index.js";
 import type { CiteLoomDatabase } from "../../database/client.js";
 import { embeddingSpaces } from "../../database/schema.js";
-import { EMBEDDING_DIMENSIONS } from "../../embedding/dimensions.js";
+import type { EmbeddingDimensions } from "../../embedding/dimensions.js";
+import { readActiveRetrievalVectorTableName } from "../../embedding/storage-tables.js";
+import type { RetrievalTransaction } from "./index-store.js";
 
 const SHARED_ACTIVE_PROJECTION_TABLES = [
   "active_retrieval_evidence",
   "active_retrieval_lexical_chunks",
   "active_retrieval_routes",
 ] as const;
-
-const ACTIVE_VECTOR_TABLE_BY_DIMENSIONS = {
-  [EMBEDDING_DIMENSIONS.DIMENSION_384]: "active_retrieval_chunks_384",
-  [EMBEDDING_DIMENSIONS.DIMENSION_768]: "active_retrieval_chunks",
-  [EMBEDDING_DIMENSIONS.DIMENSION_1024]: "active_retrieval_chunks_1024",
-  [EMBEDDING_DIMENSIONS.DIMENSION_1536]: "active_retrieval_chunks_1536",
-  [EMBEDDING_DIMENSIONS.DIMENSION_2048]: "active_retrieval_chunks_2048",
-} as const;
 
 export async function ensureActiveRetrievalSpacePartitions(
   database: CiteLoomDatabase,
@@ -39,7 +33,7 @@ export async function ensureActiveRetrievalSpacePartitions(
       throw new Error(`Cannot quote embedding space identifier ${space.id}.`);
     }
     const tableNames: string[] = [...SHARED_ACTIVE_PROJECTION_TABLES];
-    tableNames.push(ACTIVE_VECTOR_TABLE_BY_DIMENSIONS[space.dimensions]);
+    tableNames.push(readActiveRetrievalVectorTableName(space.dimensions));
     for (const tableName of tableNames) {
       const partitionName = createPartitionName(tableName, space.id);
       await transaction.execute(sql`
@@ -49,6 +43,23 @@ export async function ensureActiveRetrievalSpacePartitions(
       `);
     }
   });
+}
+
+export async function dropActiveRetrievalSpacePartitions(
+  transaction: RetrievalTransaction,
+  space: { dimensions: EmbeddingDimensions; id: string },
+): Promise<void> {
+  await transaction.execute(sql`
+    SELECT pg_advisory_xact_lock(hashtextextended(${space.id}, 0))
+  `);
+  const tableNames: string[] = [...SHARED_ACTIVE_PROJECTION_TABLES];
+  tableNames.push(readActiveRetrievalVectorTableName(space.dimensions));
+  for (const tableName of tableNames) {
+    const partitionName = createPartitionName(tableName, space.id);
+    await transaction.execute(
+      sql`DROP TABLE IF EXISTS ${sql.identifier(partitionName)}`,
+    );
+  }
 }
 
 export function createActiveRetrievalPartitionName(

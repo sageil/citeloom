@@ -28,6 +28,13 @@ export interface SqlQueryExecutor {
     operation: (database: CiteLoomDatabase) => Promise<Result>,
     options?: SqlQueryExecutionOptions,
   ) => Promise<Result>;
+  withTransaction?: <Result>(
+    operation: (
+      database: CiteLoomDatabase,
+      query: SqlQueryExecutor,
+    ) => Promise<Result>,
+    options?: SqlQueryExecutionOptions,
+  ) => Promise<Result>;
 }
 
 export interface SqlQueryExecutionOptions {
@@ -97,6 +104,54 @@ export async function openDatabase(
           },
         );
       },
+      withTransaction: async <Result>(
+        operation: (
+          operationDatabase: CiteLoomDatabase,
+          operationQuery: SqlQueryExecutor,
+        ) => Promise<Result>,
+        options: SqlQueryExecutionOptions = {},
+      ): Promise<Result> => {
+        return runCancelableDatabaseOperation(
+          pool,
+          cancellationPool,
+          options,
+          async (client) => {
+            const operationDatabase = drizzle(client, { schema });
+            const operationQuery = createClientQueryExecutor(client, options);
+            return operationDatabase.transaction(async (transaction) => {
+              return operation(
+                transaction as unknown as CiteLoomDatabase,
+                operationQuery,
+              );
+            }, {
+              accessMode: "read only",
+              isolationLevel: "repeatable read",
+            });
+          },
+        );
+      },
+    },
+  };
+}
+
+function createClientQueryExecutor(
+  client: PoolClient,
+  transactionOptions: SqlQueryExecutionOptions,
+): SqlQueryExecutor {
+  return {
+    execute: async (
+      name: SqlQueryName,
+      values: SqlQueryValue[],
+      options: SqlQueryExecutionOptions = {},
+    ): Promise<unknown[]> => {
+      transactionOptions.abortSignal?.throwIfAborted();
+      options.abortSignal?.throwIfAborted();
+      const result = await client.query({
+        name,
+        text: readSqlQuery(name),
+        values,
+      });
+      return result.rows;
     },
   };
 }
@@ -109,7 +164,7 @@ async function runCancelableDatabaseOperation<Result>(
 ): Promise<Result> {
   options.abortSignal?.throwIfAborted();
   const timeoutMs = readStatementTimeoutMs(options.statementTimeoutMs);
-  const client = await pool.connect();
+  const client = await acquirePoolClient(pool, options.abortSignal);
   let cancellation: Promise<unknown> | null = null;
   let backendPid: number | null = null;
   let destroyClient = false;
@@ -141,6 +196,7 @@ async function runCancelableDatabaseOperation<Result>(
           [`${timeoutMs}ms`],
         );
       }
+      options.abortSignal?.throwIfAborted();
       outcome = { kind: "success", value: await operation(client) };
     } catch (error: unknown) {
       try {
@@ -183,6 +239,54 @@ async function runCancelableDatabaseOperation<Result>(
     options.abortSignal?.removeEventListener("abort", cancel);
     client.release(destroyClient);
   }
+}
+
+function acquirePoolClient(
+  pool: Pool,
+  abortSignal: AbortSignal | undefined,
+): Promise<PoolClient> {
+  abortSignal?.throwIfAborted();
+  if (abortSignal === undefined) {
+    return pool.connect();
+  }
+  return new Promise<PoolClient>((resolve, reject) => {
+    let settled = false;
+    const rejectForAbort = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      abortSignal.removeEventListener("abort", rejectForAbort);
+      try {
+        abortSignal.throwIfAborted();
+      } catch (error: unknown) {
+        reject(error);
+      }
+    };
+    abortSignal.addEventListener("abort", rejectForAbort, { once: true });
+    if (abortSignal.aborted) {
+      rejectForAbort();
+    }
+    pool.connect().then(
+      (client) => {
+        if (settled) {
+          client.release();
+          return;
+        }
+        settled = true;
+        abortSignal.removeEventListener("abort", rejectForAbort);
+        resolve(client);
+      },
+      (error: unknown) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        abortSignal.removeEventListener("abort", rejectForAbort);
+        reject(error);
+      },
+    );
+  });
 }
 
 type DatabaseOperationOutcome<Result> =

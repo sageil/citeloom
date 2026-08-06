@@ -5,33 +5,50 @@ import {
 } from "../src/retrieval/indexing/candidate-budget-search.js";
 
 describe("candidate budget search", () => {
-  it("uses exact retrieval for narrow scopes and continues after duplicates", () => {
-    const search = new CandidateBudgetSearch(10, 2);
+  it("uses exact retrieval when the complete scope fits in the budget", () => {
+    const search = new CandidateBudgetSearch(10, {
+      scopedRepresentationCount: 8,
+      totalRepresentationCount: 2_000,
+    });
 
     expect(search.strategy).toBe("exact");
-    expect(search.rawLimit).toBe(10);
-    expect(search.advance(10, 6)).toBe(true);
-    expect(search.rawLimit).toBe(20);
-    expect(search.strategy).toBe("exact");
+    expect(search.rawLimit).toBe(8);
+    expect(search.advance(8, 6)).toBe(false);
   });
 
-  it("uses indexed retrieval for broad scopes and falls back to exact", () => {
-    const search = new CandidateBudgetSearch(256, 20);
+  it("uses indexed retrieval until exact scope scoring is cheaper", () => {
+    const search = new CandidateBudgetSearch(50, {
+      scopedRepresentationCount: 1_000,
+      totalRepresentationCount: 5_000,
+    });
 
     expect(search.strategy).toBe("indexed");
-    while (search.rawLimit < 4_096) {
+    while (search.rawLimit < 800) {
       expect(search.advance(search.rawLimit, 5)).toBe(true);
     }
     expect(search.advance(search.rawLimit, 5)).toBe(true);
     expect(search.strategy).toBe("exact");
-    expect(search.rawLimit).toBe(256);
+    expect(search.rawLimit).toBe(800);
+    expect(search.advance(800, 5)).toBe(true);
+    expect(search.rawLimit).toBe(1_000);
+    expect(search.advance(1_000, 5)).toBe(false);
   });
 
-  it("stops when the evidence budget is full or raw scope is exhausted", () => {
-    const filled = new CandidateBudgetSearch(10, 20);
+  it("stops when the evidence budget is full", () => {
+    const filled = new CandidateBudgetSearch(10, {
+      scopedRepresentationCount: 20,
+      totalRepresentationCount: 20,
+    });
     expect(filled.advance(10, 10)).toBe(false);
+  });
 
-    const exhausted = new CandidateBudgetSearch(10, 20);
-    expect(exhausted.advance(9, 4)).toBe(false);
+  it("uses exact retrieval to prove exhaustion after a short indexed scan", () => {
+    const search = new CandidateBudgetSearch(10, {
+      scopedRepresentationCount: 200,
+      totalRepresentationCount: 1_000,
+    });
+    expect(search.advance(9, 4)).toBe(true);
+    expect(search.strategy).toBe("exact");
+    expect(search.rawLimit).toBe(10);
   });
 });

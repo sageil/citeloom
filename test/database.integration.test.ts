@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import {
   and,
+  asc,
   cosineDistance,
   desc,
   eq,
@@ -13,12 +14,16 @@ import {
   ne,
   sql,
 } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MockRerankingModelV4 } from "ai/test";
 
 import { IngestionArtifactStore } from "../src/ingestion/artifact-store.js";
 import { reconcileIngestionControlExecutions } from "../src/ingestion/control.js";
-import { finalizeIngestionCancellation } from "../src/ingestion/deletion.js";
+import {
+  deleteIndexedDocumentWithRuntime,
+  finalizeIngestionCancellation,
+} from "../src/ingestion/deletion.js";
 import {
   PostgresApplicationStateRevisionSource,
   readApplicationStateRevisions,
@@ -96,6 +101,7 @@ import {
   type SourceContentConfig,
 } from "../src/config/index.js";
 import {
+  type CiteLoomDatabase,
   type DatabaseSession,
   migrateDatabase,
   openDatabase,
@@ -103,7 +109,10 @@ import {
 import { applyDatabaseBootstrap } from "../src/database/administrator-bootstrap.js";
 import {
   applicationSettings,
+  activeRetrievalChunks384,
+  activeRetrievalEvidence,
   activeRetrievalLexicalChunks,
+  activeRetrievalRoutes,
   applicationRevisions,
   applicationErrorEvents,
   citationRecords,
@@ -148,6 +157,7 @@ import {
   workerHeartbeats,
 } from "../src/database/schema.js";
 import {
+  readActiveRetrievalVectorTableName,
   readActiveRetrievalVectorTable,
 } from "../src/embedding/storage-tables.js";
 import {
@@ -185,11 +195,14 @@ import {
 import {
   queryRetrievalCandidateRankings,
   rankRetrievalCandidates,
+  RetrievalScopeChangedError,
 } from "../src/retrieval/indexing/query-store.js";
+import { queryDenseEvidenceCandidates } from "../src/retrieval/indexing/vector-query-store.js";
 import {
   synchronizeActiveRetrievalProjection,
 } from "../src/retrieval/indexing/active-projection-store.js";
 import {
+  createActiveRetrievalPartitionName,
   ensureActiveRetrievalSpacePartitions,
 } from "../src/retrieval/indexing/active-projection-partitions.js";
 import {
@@ -412,6 +425,37 @@ beforeEach(async () => {
 });
 
 describe("PostgreSQL query execution", () => {
+  it("aborts promptly while waiting for a saturated connection pool", async () => {
+    const constrainedSession = await openDatabase({ poolMax: 1, url: databaseUrl });
+    const withDatabase = constrainedSession.query.withDatabase;
+    if (withDatabase === undefined) {
+      throw new Error("The PostgreSQL query executor cannot run database operations.");
+    }
+    const acquired = createDeferred<void>();
+    const release = createDeferred<void>();
+    const holder = withDatabase(async () => {
+      acquired.resolve();
+      await release.promise;
+    });
+    await acquired.promise;
+    const abortController = new AbortController();
+    const startedAt = performance.now();
+    const waiting = withDatabase(async () => "unexpected", {
+      abortSignal: abortController.signal,
+    });
+    abortController.abort();
+    try {
+      await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+      expect(performance.now() - startedAt).toBeLessThan(500);
+    } finally {
+      release.resolve();
+      await holder;
+    }
+    await expect(withDatabase(async () => "recovered"))
+      .resolves.toBe("recovered");
+    await constrainedSession.close();
+  });
+
   it("cancels, rolls back, and recovers an in-flight PostgreSQL query", async () => {
     const withDatabase = session.query.withDatabase;
     if (withDatabase === undefined) {
@@ -512,6 +556,44 @@ describe("PostgreSQL ingestion controls", () => {
       .from(sourceContentDeletions)
       .where(eq(sourceContentDeletions.documentId, documentId)))
       .resolves.toEqual([]);
+  });
+
+  it("removes active retrieval projections through document deletion", async () => {
+    const sourceFile = "/documents/delete-active-projection.pdf";
+    const content = Buffer.from("x");
+    const documentId = createHash("sha256").update(content).digest("hex");
+    const generationId = randomUUID();
+    const element = buildTextElement(documentId, "9".repeat(64));
+    element.sourceFile = sourceFile;
+    const sourceContentStore = new SourceContentStore(
+      session.database,
+      sourceContentConfig,
+    );
+    await sourceContentStore.writeDocument({ content, documentId });
+    await ensureEmbeddingSpace(session.database, space384);
+    await indexTestElements(
+      session.database,
+      space384,
+      documentId,
+      generationId,
+      [],
+      [buildEmbedding(space384.dimensions, 1)],
+      [element],
+    );
+    await writeIndexedDocument(documentId, sourceFile, randomUUID());
+    expect(await readActiveProjectionCounts384(space384.id, sourceFile))
+      .toEqual({ evidence: 1, lexical: 1, pointers: 1, routes: 1, vectors: 1 });
+
+    await expect(deleteIndexedDocumentWithRuntime({
+      config: { sourceContent: sourceContentConfig },
+      database: session.database,
+    }, {
+      documentId,
+      sourceFile,
+    })).resolves.toEqual({ kind: "deleted", sourceFile });
+
+    expect(await readActiveProjectionCounts384(space384.id, sourceFile))
+      .toEqual({ evidence: 0, lexical: 0, pointers: 0, routes: 0, vectors: 0 });
   });
 
   it("settles a running pause request and resumes it as pending work", async () => {
@@ -2887,6 +2969,26 @@ describe("PostgreSQL embedding-space retention", () => {
       false,
     );
     await insertRetentionRows(deletableId);
+    const deletableSpace: EmbeddingSpaceConfig = {
+      ...space384,
+      id: deletableId,
+      model: "retention-test-model",
+    };
+    await ensureActiveRetrievalSpacePartitions(
+      session.database,
+      deletableSpace,
+    );
+    const activePartitionNames = [
+      "active_retrieval_evidence",
+      "active_retrieval_lexical_chunks",
+      "active_retrieval_routes",
+      readActiveRetrievalVectorTableName(deletableSpace.dimensions),
+    ].map((tableName) => createActiveRetrievalPartitionName(
+      tableName,
+      deletableId,
+    ));
+    expect(await readExistingTableNames(activePartitionNames))
+      .toEqual([...activePartitionNames].sort());
 
     const dryRun = await runEmbeddingSpaceGarbageCollection(
       session.database,
@@ -2939,6 +3041,7 @@ describe("PostgreSQL embedding-space retention", () => {
       lexical: 0,
       vectors: 0,
     });
+    expect(await readExistingTableNames(activePartitionNames)).toEqual([]);
 
     const resumedCompletedRun = await runEmbeddingSpaceGarbageCollection(
       session.database,
@@ -3099,12 +3202,14 @@ describe("PostgreSQL document catalog", () => {
         documentId,
         embeddingSpaceId: space768.id,
         generationId: canonicalGenerationId,
+        representationCount: 1,
         sourceFile: canonicalSource,
       },
       {
         documentId,
         embeddingSpaceId: space768.id,
         generationId: duplicateGenerationId,
+        representationCount: 1,
         sourceFile: duplicateSource,
       },
     ]);
@@ -3142,6 +3247,7 @@ describe("PostgreSQL document catalog", () => {
           elementSetId,
           embeddingSpaceId: space768.id,
           generationId: duplicateGenerationId,
+          indexedAt: new Date("2026-01-02T00:00:00.000Z"),
           sourceFile: duplicateSource,
           totalElements: 1,
         });
@@ -3225,6 +3331,7 @@ describe("PostgreSQL document catalog", () => {
         embeddingSpaceId: space768.id,
         generationId,
         indexedAt: new Date("2026-07-13T13:00:00.000Z"),
+        representationCount: 1,
         sourceFile,
       });
     }
@@ -4994,6 +5101,40 @@ describe("PostgreSQL generation publication", () => {
         }),
       }),
     ]));
+    await expect(session.database
+      .select({
+        representationCount: indexedDocumentSpaces.representationCount,
+      })
+      .from(indexedDocumentSpaces)
+      .where(and(
+        eq(indexedDocumentSpaces.sourceFile, sourceFile),
+        eq(indexedDocumentSpaces.embeddingSpaceId, space384.id),
+      )))
+      .resolves.toEqual([{ representationCount: representations.length }]);
+    expect(await session.database.select().from(activeRetrievalChunks384))
+      .not.toHaveLength(0);
+    expect(await session.database.select().from(activeRetrievalLexicalChunks))
+      .not.toHaveLength(0);
+    expect(await session.database.select().from(activeRetrievalRoutes))
+      .not.toHaveLength(0);
+    expect(await session.database.select().from(activeRetrievalEvidence))
+      .not.toHaveLength(0);
+
+    await session.database
+      .delete(indexedDocumentSpaces)
+      .where(and(
+        eq(indexedDocumentSpaces.sourceFile, sourceFile),
+        eq(indexedDocumentSpaces.embeddingSpaceId, space384.id),
+      ));
+
+    expect(await session.database.select().from(activeRetrievalChunks384))
+      .toEqual([]);
+    expect(await session.database.select().from(activeRetrievalLexicalChunks))
+      .toEqual([]);
+    expect(await session.database.select().from(activeRetrievalRoutes))
+      .toEqual([]);
+    expect(await session.database.select().from(activeRetrievalEvidence))
+      .toEqual([]);
   });
 
   it("retains completed media descriptions across a retry", async () => {
@@ -5658,6 +5799,351 @@ describe("pgvector retrieval", () => {
     )).rejects.toThrow("incompatible with embedding space");
   });
 
+  it("matches exact dense and lexical top-k across a broad filtered scope", async () => {
+    const space: EmbeddingSpaceConfig = {
+      ...space768,
+      id: `${space768.id}:broad-quality`,
+    };
+    await ensureEmbeddingSpace(session.database, space);
+    const scopeTargets: ResolvedQueryScopeTarget[] = [];
+    for (let index = 0; index < 30; index += 1) {
+      const documentId = (index + 1_000).toString(16).padStart(64, "0");
+      const elementId = (index + 2_000).toString(16).padStart(64, "0");
+      const element = buildTextElement(documentId, elementId);
+      const outsideScope = index < 6;
+      element.content = outsideScope
+        ? "broadscopemarker ".repeat(8).trim()
+        : `broadscopemarker scoped evidence ${index}`;
+      const embedding = buildEmbedding(space.dimensions, 1);
+      if (!outsideScope) {
+        embedding[1] = (index - 5) / 100;
+      }
+      const generationId = randomUUID();
+      await indexTestElements(
+        session.database,
+        space,
+        documentId,
+        generationId,
+        [],
+        [embedding],
+        [element],
+      );
+      if (!outsideScope) {
+        scopeTargets.push({
+          documentId,
+          generationId,
+          sourceFile: element.sourceFile,
+        });
+      }
+    }
+    const queryEmbedding = buildEmbedding(space.dimensions, 1);
+    const candidateK = 5;
+    const rankings = await queryRetrievalCandidateRankings(
+      session.database,
+      session.query,
+      space,
+      [{ embedding: queryEmbedding, text: "broadscopemarker" }],
+      {
+        answerTemperature: 0,
+        candidateK,
+        chatTemperature: 0,
+        fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
+        generationSeedMode: "stable",
+        mode: "hybrid",
+        queryExpansions: 0,
+        queryExpansionTemperature: 0,
+        reranker: null,
+        rrfK: 60,
+        topK: candidateK,
+      },
+      scopeTargets,
+      new AbortController().signal,
+    );
+    const scopeDocumentIds = scopeTargets.map((target) => target.documentId);
+    const denseDistance = cosineDistance(
+      retrievalChunks768.embedding,
+      queryEmbedding,
+    );
+    const exactDense = await session.database
+      .select({ id: retrievalChunks768.id })
+      .from(retrievalChunks768)
+      .where(and(
+        eq(retrievalChunks768.embeddingSpaceId, space.id),
+        inArray(retrievalChunks768.documentId, scopeDocumentIds),
+      ))
+      .orderBy(denseDistance, asc(retrievalChunks768.id))
+      .limit(candidateK);
+    const exactLexical = await session.query.execute(
+      "retrieve-lexical-candidates",
+      [
+        "broadscopemarker",
+        space.id,
+        scopeTargets.map((target) => target.documentId),
+        scopeTargets.map((target) => target.generationId),
+        scopeTargets.map((target) => target.sourceFile),
+        candidateK,
+      ],
+    );
+    expect(rankings.dense[0]?.map((candidate) => candidate.representation.id))
+      .toEqual(exactDense.map((row) => row.id));
+    expect(rankings.lexical[0]?.map((candidate) => candidate.representation.id))
+      .toEqual(readTestRepresentationIds(exactLexical));
+    expect(rankings.dense[0]).toHaveLength(candidateK);
+    expect(rankings.lexical[0]).toHaveLength(candidateK);
+  });
+
+  it("keeps dense keys and projection hydration on one publication snapshot", async () => {
+    const space: EmbeddingSpaceConfig = {
+      ...space768,
+      id: `${space768.id}:snapshot-consistency`,
+    };
+    await ensureEmbeddingSpace(session.database, space);
+    const documentId = "d".repeat(64);
+    const element = buildTextElement(documentId, "e".repeat(64));
+    element.content = "snapshot consistency evidence";
+    const generationId = randomUUID();
+    await indexTestElements(
+      session.database,
+      space,
+      documentId,
+      generationId,
+      [],
+      [buildEmbedding(space.dimensions, 1)],
+      [element],
+    );
+    const blockerSession = await openDatabase({ poolMax: 1, url: databaseUrl });
+    const publisherSession = await openDatabase({ poolMax: 1, url: databaseUrl });
+    const blockerWithDatabase = blockerSession.query.withDatabase;
+    const publisherWithDatabase = publisherSession.query.withDatabase;
+    if (
+      blockerWithDatabase === undefined
+      || publisherWithDatabase === undefined
+    ) {
+      throw new Error("The PostgreSQL query executor cannot run database operations.");
+    }
+    const blockerAcquired = createDeferred<void>();
+    const releaseBlocker = createDeferred<void>();
+    const blocker = blockerWithDatabase(async (database) => {
+      await database.transaction(async (transaction) => {
+        await transaction.execute(sql`
+          LOCK TABLE "active_retrieval_routes" IN ACCESS EXCLUSIVE MODE
+        `);
+        blockerAcquired.resolve();
+        await releaseBlocker.promise;
+      });
+    });
+    await blockerAcquired.promise;
+    const publication = publisherWithDatabase(async (database) => {
+      await database
+        .delete(indexedDocumentSpaces)
+        .where(and(
+          eq(indexedDocumentSpaces.sourceFile, element.sourceFile),
+          eq(indexedDocumentSpaces.embeddingSpaceId, space.id),
+        ));
+    });
+    try {
+      await waitForTableLockWaiters("active_retrieval_routes", 1);
+      const retrieval = queryRetrievalCandidateRankings(
+        session.database,
+        session.query,
+        space,
+        [{
+          embedding: buildEmbedding(space.dimensions, 1),
+          text: "snapshot consistency",
+        }],
+        {
+          answerTemperature: 0,
+          candidateK: 1,
+          chatTemperature: 0,
+          fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
+          generationSeedMode: "stable",
+          mode: "dense",
+          queryExpansions: 0,
+          queryExpansionTemperature: 0,
+          reranker: null,
+          rrfK: 60,
+          topK: 1,
+        },
+        [{ documentId, generationId, sourceFile: element.sourceFile }],
+        new AbortController().signal,
+      );
+      await waitForTableLockWaiters("active_retrieval_routes", 2);
+      releaseBlocker.resolve();
+      await expect(publication).resolves.toBeUndefined();
+      await expect(retrieval).resolves.toMatchObject({
+        dense: [[{
+          documentId,
+          evidenceContent: element.content,
+          sourceFile: element.sourceFile,
+        }]],
+      });
+    } finally {
+      releaseBlocker.resolve();
+      await Promise.allSettled([blocker, publication]);
+      await Promise.all([blockerSession.close(), publisherSession.close()]);
+    }
+  });
+
+  it("rejects stale publication identities and accepts an exhausted scope", async () => {
+    const space: EmbeddingSpaceConfig = {
+      ...space768,
+      id: `${space768.id}:stale-scope`,
+    };
+    await ensureEmbeddingSpace(session.database, space);
+    const documentId = "c".repeat(64);
+    const element = buildTextElement(documentId, "f".repeat(64));
+    const generationId = randomUUID();
+    await indexTestElements(
+      session.database,
+      space,
+      documentId,
+      generationId,
+      [],
+      [buildEmbedding(space.dimensions, 1)],
+      [element],
+    );
+    await session.database
+      .delete(indexedDocumentSpaces)
+      .where(and(
+        eq(indexedDocumentSpaces.sourceFile, element.sourceFile),
+        eq(indexedDocumentSpaces.embeddingSpaceId, space.id),
+      ));
+    const query = [{
+      embedding: buildEmbedding(space.dimensions, 1),
+      text: "stale scope",
+    }];
+    const config = {
+      answerTemperature: 0,
+      candidateK: 1,
+      chatTemperature: 0,
+      fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
+      generationSeedMode: "stable" as const,
+      mode: "hybrid" as const,
+      queryExpansions: 0,
+      queryExpansionTemperature: 0,
+      reranker: null,
+      rrfK: 60,
+      topK: 1,
+    };
+    await expect(queryRetrievalCandidateRankings(
+      session.database,
+      session.query,
+      space,
+      query,
+      config,
+      [{ documentId, generationId, sourceFile: element.sourceFile }],
+      new AbortController().signal,
+    )).rejects.toBeInstanceOf(RetrievalScopeChangedError);
+    await expect(queryRetrievalCandidateRankings(
+      session.database,
+      session.query,
+      space,
+      query,
+      config,
+      [],
+      new AbortController().signal,
+    )).resolves.toEqual({ dense: [[]], lexical: [[]] });
+  });
+
+  it("uses specialized top-k indexes at representative projection cardinality", async () => {
+    const space: EmbeddingSpaceConfig = {
+      ...space384,
+      id: `${space384.id}:scaled-plan`,
+    };
+    await ensureEmbeddingSpace(session.database, space);
+    const documentId = "7".repeat(64);
+    const generationId = randomUUID();
+    const sourceFile = "/documents/scaled-plan.pdf";
+    const representationCount = 36_970;
+    const firstRepresentationId = "1".padStart(64, "0");
+    await session.database.insert(indexedDocumentSpaces).values({
+      documentId,
+      embeddingSpaceId: space.id,
+      generationId,
+      representationCount,
+      sourceFile,
+    });
+    await session.database.transaction(async (transaction) => {
+      await transaction.execute(sql`
+        INSERT INTO "active_retrieval_chunks_384" (
+          "document_id", "embedding_space_id", "generation_id",
+          "representation_id", "source_file", "embedding"
+        )
+        SELECT
+          ${documentId}, ${space.id}, ${generationId},
+          lpad(to_hex("value"), 64, '0'), ${sourceFile},
+          (
+            ARRAY[1::real, "value"::real / ${representationCount}::real]
+            || array_fill(0::real, ARRAY[382])
+          )::vector
+        FROM generate_series(1, ${representationCount}) AS "value"
+      `);
+      await transaction.execute(sql`
+        INSERT INTO "active_retrieval_lexical_chunks" (
+          "content", "document_id", "embedding_space_id", "generation_id",
+          "representation_id", "source_file"
+        )
+        SELECT
+          CASE
+            WHEN "value" <= 50
+              THEN repeat('scaledplanmarker ', 51 - "value"::integer)
+            ELSE 'unrelated corpus text '
+          END || "value", ${documentId}, ${space.id},
+          ${generationId}, lpad(to_hex("value"), 64, '0'), ${sourceFile}
+        FROM generate_series(1, ${representationCount}) AS "value"
+      `);
+      await transaction.execute(sql`
+        INSERT INTO "active_retrieval_routes" (
+          "document_id", "embedding_space_id", "generation_id",
+          "representation_id", "source_file", "evidence_id",
+          "evidence_mode", "kind", "parent_id", "representation_content",
+          "representation_type"
+        )
+        SELECT
+          ${documentId}, ${space.id}, ${generationId},
+          lpad(to_hex("value"), 64, '0'), ${sourceFile},
+          lpad(to_hex("value"), 64, '0'), 'direct', 'text',
+          lpad(to_hex("value"), 64, '0'),
+          'scaled plan evidence ' || "value", 'exact-window'
+        FROM generate_series(1, ${representationCount}) AS "value"
+      `);
+      await transaction.execute(sql`
+        INSERT INTO "active_retrieval_evidence" (
+          "document_id", "embedding_space_id", "evidence_content",
+          "evidence_id", "generation_id", "kind", "parent_id", "source_file"
+        )
+        SELECT
+          ${documentId}, ${space.id}, 'scaled plan evidence ' || "value",
+          lpad(to_hex("value"), 64, '0'), ${generationId}, 'text',
+          lpad(to_hex("value"), 64, '0'), ${sourceFile}
+        FROM generate_series(1, ${representationCount}) AS "value"
+      `);
+      await transaction.execute(sql`ANALYZE "active_retrieval_chunks_384"`);
+      await transaction.execute(sql`ANALYZE "active_retrieval_lexical_chunks"`);
+    });
+
+    await session.database.transaction(async (transaction) => {
+      await transaction.execute(sql`SET LOCAL enable_indexscan = on`);
+      const rows = await queryDenseEvidenceCandidates(
+        transaction as unknown as CiteLoomDatabase,
+        space,
+        buildEmbedding(space.dimensions, 1),
+        [{ documentId, generationId, sourceFile }],
+        [firstRepresentationId],
+      );
+      expect(rows).toHaveLength(1);
+      const settingResult = await transaction.execute(sql<{ value: string }>`
+        SELECT current_setting('enable_indexscan') AS "value"
+      `);
+      expect(settingResult.rows).toEqual([{ value: "on" }]);
+    });
+
+    await expectIndexedTopKPlans(space, {
+      forcePlanner: false,
+      lexicalQuery: "scaledplanmarker",
+    });
+  }, 30_000);
+
   it("indexes identical structured windows and text across every dimension", async () => {
     const policy = createRetrievalWindowPolicyContract(
       createRetrievalWindowPolicy("structured-token-v3", 64, 2_048),
@@ -5965,9 +6451,6 @@ describe("pgvector retrieval", () => {
         space,
       );
       const retrievalGenerationIds = documentIds.map(() => randomUUID());
-      const indexedSpaceValues: Array<
-        typeof indexedDocumentSpaces.$inferInsert
-      > = [];
       for (let index = 0; index < documentIds.length; index += 1) {
         const documentId = documentIds[index];
         const sourceFile = sourceFiles[index];
@@ -6002,16 +6485,7 @@ describe("pgvector retrieval", () => {
           generationId,
           totalElements: 1,
         });
-        indexedSpaceValues.push({
-          documentId,
-          embeddingSpaceId: space.id,
-          generationId,
-          sourceFile,
-        });
       }
-      await session.database
-        .insert(indexedDocumentSpaces)
-        .values(indexedSpaceValues);
       const vectorRows = buildStructuralTieVectorRows(
         space,
         documentIds,
@@ -6062,6 +6536,7 @@ describe("pgvector retrieval", () => {
             elementSetId: randomUUID(),
             embeddingSpaceId: space.id,
             generationId,
+            indexedAt: new Date("2026-01-01T00:00:00.000Z"),
             sourceFile,
             totalElements: 1,
           });
@@ -6893,25 +7368,18 @@ async function stageTestRetrievalRepresentations(
           elementSetId,
           embeddingSpaceId: space.id,
           generationId,
+          indexedAt: new Date(),
           sourceFile,
           totalElements,
         });
+      } else {
+        await transaction
+          .delete(indexedDocumentSpaces)
+          .where(and(
+            eq(indexedDocumentSpaces.sourceFile, sourceFile),
+            eq(indexedDocumentSpaces.embeddingSpaceId, space.id),
+          ));
       }
-      await transaction
-        .insert(indexedDocumentSpaces)
-        .values({
-          documentId,
-          embeddingSpaceId: space.id,
-          generationId,
-          sourceFile,
-        })
-        .onConflictDoUpdate({
-          set: { documentId, generationId },
-          target: [
-            indexedDocumentSpaces.sourceFile,
-            indexedDocumentSpaces.embeddingSpaceId,
-          ],
-        });
       const previousGenerationId = previousRows[0]?.generationId;
       if (
         previousGenerationId !== undefined
@@ -6972,13 +7440,21 @@ function buildEmbedding(dimensions: number, firstValue: number): number[] {
 
 async function expectIndexedTopKPlans(
   space: EmbeddingSpaceConfig,
+  options: {
+    forcePlanner?: boolean;
+    lexicalQuery?: string;
+  } = {},
 ): Promise<void> {
+  const forcePlanner = options.forcePlanner ?? true;
+  const lexicalQuery = options.lexicalQuery ?? "deterministicfixturetoken";
   const vectorTable = readActiveRetrievalVectorTable(space.dimensions);
   const embedding = buildEmbedding(space.dimensions, 1);
   const distance = cosineDistance(vectorTable.embedding, embedding);
   const plans = await session.database.transaction(async (transaction) => {
-    await transaction.execute(sql`SET LOCAL enable_seqscan = off`);
-    await transaction.execute(sql`SET LOCAL enable_sort = off`);
+    if (forcePlanner) {
+      await transaction.execute(sql`SET LOCAL enable_seqscan = off`);
+      await transaction.execute(sql`SET LOCAL enable_sort = off`);
+    }
     const denseResult = await transaction.execute(sql`
       EXPLAIN (ANALYZE, COSTS OFF, BUFFERS)
       SELECT ${vectorTable.representationId}
@@ -6994,7 +7470,7 @@ async function expectIndexedTopKPlans(
       WHERE ${activeRetrievalLexicalChunks.embeddingSpaceId} = ${space.id}
       ORDER BY ${activeRetrievalLexicalChunks.content}
         <@> to_bm25query(
-          'deterministicfixturetoken',
+          ${lexicalQuery},
           'active_retrieval_lexical_bm25_idx'
         )
       LIMIT 5
@@ -7744,6 +8220,7 @@ async function insertRetentionRows(spaceId: string): Promise<void> {
     embeddingSpaceId: spaceId,
     generationId,
     indexedAt: new Date("2026-01-01T00:00:00.000Z"),
+    representationCount: 1,
     sourceFile,
   });
   const metadata = {
@@ -7822,4 +8299,125 @@ async function readRetentionRowCounts(spaceId: string): Promise<{
     lexical: lexical.length,
     vectors: vectors.length,
   };
+}
+
+async function readActiveProjectionCounts384(
+  embeddingSpaceId: string,
+  sourceFile: string,
+): Promise<{
+  evidence: number;
+  lexical: number;
+  pointers: number;
+  routes: number;
+  vectors: number;
+}> {
+  const condition = (
+    table: {
+      embeddingSpaceId: AnyPgColumn;
+      sourceFile: AnyPgColumn;
+    },
+  ) => and(
+    eq(table.embeddingSpaceId, embeddingSpaceId),
+    eq(table.sourceFile, sourceFile),
+  );
+  const pointerRows = await session.database
+    .select({ id: indexedDocumentSpaces.documentId })
+    .from(indexedDocumentSpaces)
+    .where(condition(indexedDocumentSpaces));
+  const vectorRows = await session.database
+    .select({ id: activeRetrievalChunks384.representationId })
+    .from(activeRetrievalChunks384)
+    .where(condition(activeRetrievalChunks384));
+  const lexicalRows = await session.database
+    .select({ id: activeRetrievalLexicalChunks.representationId })
+    .from(activeRetrievalLexicalChunks)
+    .where(condition(activeRetrievalLexicalChunks));
+  const routeRows = await session.database
+    .select({ id: activeRetrievalRoutes.representationId })
+    .from(activeRetrievalRoutes)
+    .where(condition(activeRetrievalRoutes));
+  const evidenceRows = await session.database
+    .select({ id: activeRetrievalEvidence.evidenceId })
+    .from(activeRetrievalEvidence)
+    .where(condition(activeRetrievalEvidence));
+  return {
+    evidence: evidenceRows.length,
+    lexical: lexicalRows.length,
+    pointers: pointerRows.length,
+    routes: routeRows.length,
+    vectors: vectorRows.length,
+  };
+}
+
+async function readExistingTableNames(tableNames: string[]): Promise<string[]> {
+  const result = await session.database.execute(sql`
+    SELECT "relname" AS "name"
+    FROM "pg_class"
+    WHERE "relname" IN (${sql.join(
+      tableNames.map((tableName) => sql`${tableName}`),
+      sql`, `,
+    )})
+    ORDER BY "relname"
+  `);
+  const names: string[] = [];
+  for (const row of result.rows) {
+    if (
+      typeof row === "object"
+      && row !== null
+      && "name" in row
+      && typeof row.name === "string"
+    ) {
+      names.push(row.name);
+      continue;
+    }
+    throw new Error("PostgreSQL returned an invalid table-name row.");
+  }
+  return names;
+}
+
+function readTestRepresentationIds(rows: unknown[]): string[] {
+  const ids: string[] = [];
+  for (const row of rows) {
+    if (
+      typeof row === "object"
+      && row !== null
+      && "representationId" in row
+      && typeof row.representationId === "string"
+    ) {
+      ids.push(row.representationId);
+      continue;
+    }
+    throw new Error("PostgreSQL returned an invalid retrieval row.");
+  }
+  return ids;
+}
+
+async function waitForTableLockWaiters(
+  tableName: string,
+  minimumWaiters: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const result = await session.database.execute(sql`
+      SELECT count(*)::integer AS "value"
+      FROM "pg_locks"
+      WHERE "relation" = to_regclass(${tableName})
+        AND NOT "granted"
+    `);
+    const row = result.rows[0];
+    if (
+      typeof row === "object"
+      && row !== null
+      && "value" in row
+      && typeof row.value === "number"
+      && row.value >= minimumWaiters
+    ) {
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 10);
+    });
+  }
+  throw new Error(
+    `Timed out waiting for ${minimumWaiters} ${tableName} lock waiters.`,
+  );
 }
