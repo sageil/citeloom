@@ -47,7 +47,7 @@ describe("system health dashboard", () => {
         claimVerifier: { model: "hhem" },
         queryExpansionModel: null,
         reranker: { model: "modernbert" },
-        summaryModel: "qwen3",
+        indexingModel: "qwen3",
       },
       telemetry: {
         corrections: [{
@@ -109,7 +109,7 @@ describe("system health dashboard", () => {
         embedding: "snowflake-arctic-embed",
         queryExpansion: "Disabled",
         reranker: "modernbert",
-        summary: "qwen3",
+        indexing: "qwen3",
       },
       queueLength: 2,
       telemetry: {

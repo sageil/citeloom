@@ -129,7 +129,7 @@ const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
   sttMaxAudioMegabytes: 10,
   sttPrompt: null,
   sttTimeoutSeconds: 60,
-  summaryTimeoutSeconds: 21_600,
+  indexingTimeoutSeconds: 21_600,
   topK: 10,
   ttsPreloadEnabled: false,
   ttsSpeed: 1,

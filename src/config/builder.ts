@@ -1,7 +1,8 @@
 import { parseRuntimeSettings } from "./schemas.js";
 import {
   parseProviderSettings,
-  providerCatalog,
+  readProviderProfile,
+  requireProviderConnection,
   resolveEmbeddingProvider,
   resolveLanguageProvider,
   readTextToSpeechSpeedRange,
@@ -192,12 +193,15 @@ function resolveDoclingVlmConfig(
     return null;
   }
   const providerId = settings.doclingVlmProviderId;
-  const connection = providerSettings.connections[providerId];
+  const connection = requireProviderConnection(providerSettings, providerId);
   const baseUrl = connection.answer.baseUrl ?? connection.baseUrl;
   const model = settings.doclingVlmModelOverride ?? connection.answer.model;
-  const profile = providerCatalog.find((candidate) => {
-    return candidate.id === providerId;
-  });
+  const profile = readProviderProfile(providerSettings, providerId);
+  if (profile?.doclingVlm === null || profile === undefined) {
+    throw new Error(
+      `Provider ${providerId} does not support Docling VLM processing.`,
+    );
+  }
   if (baseUrl === null) {
     throw new Error(
       `${profile?.displayName ?? providerId} has no URL configured for Docling VLM processing.`,
@@ -210,8 +214,11 @@ function resolveDoclingVlmConfig(
   }
   return {
     apiToken: connection.answer.apiToken ?? connection.apiToken,
-    endpointUrl: buildDoclingVlmEndpoint(providerId, baseUrl),
-    engineType: readDoclingVlmEngineType(providerId),
+    endpointUrl: buildDoclingVlmEndpoint(
+      profile.doclingVlm.endpointStyle,
+      baseUrl,
+    ),
+    engineType: profile.doclingVlm.engineType,
     maxOutputTokens: settings.doclingVlmMaxOutputTokens,
     model,
     prompt: settings.doclingVlmPrompt,
@@ -221,32 +228,17 @@ function resolveDoclingVlmConfig(
 }
 
 function buildDoclingVlmEndpoint(
-  providerId: string,
+  endpointStyle: "ollama" | "openai",
   baseUrl: string,
 ): string {
   const normalized = removeTrailingSlash(baseUrl);
   if (normalized.endsWith("/chat/completions")) {
     return normalized;
   }
-  if (providerId === "ollama" && !normalized.endsWith("/v1")) {
+  if (endpointStyle === "ollama" && !normalized.endsWith("/v1")) {
     return `${normalized}/v1/chat/completions`;
   }
   return `${normalized}/chat/completions`;
-}
-
-function readDoclingVlmEngineType(
-  providerId: string,
-): NonNullable<AppConfig["docling"]["vlm"]>["engineType"] {
-  if (providerId === "ollama") {
-    return "api_ollama";
-  }
-  if (providerId === "lmstudio") {
-    return "api_lmstudio";
-  }
-  if (providerId === "openai") {
-    return "api_openai";
-  }
-  return "api";
 }
 
 export function readEmbeddingConfigurationWarnings(
@@ -365,7 +357,7 @@ function buildSchedulingConfig(
     "queryExpansion",
     "reranking",
     "speechToText",
-    "summarization",
+    "indexing",
     "textToSpeech",
   ];
   for (const capability of scheduledCapabilities) {
@@ -384,9 +376,7 @@ function buildSchedulingConfig(
   for (const [providerId, connection] of Object.entries(
     providerSettings.connections,
   )) {
-    const profile = providerCatalog.find((candidate) => {
-      return candidate.id === providerId;
-    });
+    const profile = readProviderProfile(providerSettings, providerId);
     providers.push({
       maximumParallelRequests: connection.maximumParallelRequests,
       name: connection.name ?? profile?.displayName ?? providerId,
@@ -444,7 +434,7 @@ function buildInferenceConfig(
       secondsToMilliseconds(settings.queryExpansionTimeoutSeconds),
     );
   }
-  const summary = resolveLanguageProvider(providerSettings, "summarization");
+  const indexing = resolveLanguageProvider(providerSettings, "indexing");
   return {
     answer: buildLanguageInferenceConfig(
       answer,
@@ -465,9 +455,9 @@ function buildInferenceConfig(
       secondsToMilliseconds(settings.embeddingTimeoutSeconds),
     ),
     queryExpansion,
-    summary: buildLanguageInferenceConfig(
-      summary,
-      secondsToMilliseconds(settings.summaryTimeoutSeconds),
+    indexing: buildLanguageInferenceConfig(
+      indexing,
+      secondsToMilliseconds(settings.indexingTimeoutSeconds),
     ),
   };
 }

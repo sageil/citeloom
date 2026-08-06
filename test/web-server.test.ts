@@ -26,7 +26,10 @@ import {
   type RuntimeSettings,
 } from "../src/config/index.js";
 import { createTestProviderSettings } from "./provider-settings-fixture.js";
-import { readProviderConnectionConfiguration } from "../src/providers/profiles.js";
+import {
+  readProviderConnectionConfiguration,
+  requireProviderConnection,
+} from "../src/providers/profiles.js";
 import {
   SourceDiscoveryScopeError,
   SourceDiscoveryUnavailableError,
@@ -701,9 +704,9 @@ describe("web server boundary", () => {
             name: "test verifier runtime",
           },
           name: "LM Studio",
-          queryExpansionModel: "summary-model",
+          queryExpansionModel: "indexing-model",
           reranker: null,
-          summaryModel: "summary-model",
+          indexingModel: "indexing-model",
         },
         supportedExtensions: [
           ".pdf",
@@ -839,13 +842,20 @@ describe("web server boundary", () => {
     const config = buildConfig();
     config.database.url = "postgresql://database-user:database-password@localhost:5432/citeloom?sslpassword=query-secret#fragment-secret";
     const settings = buildEffectiveSettings();
-    settings.providerSettings.connections.custom.answer.apiToken =
-      "database-secret";
-    settings.providerSettings.connections.custom.answer.model =
-      "database-vision";
-    settings.providerSettings.connections.openai.apiToken = "openai-secret";
-    settings.providerSettings.connections.openai.textToSpeech.apiToken =
+    const customConnection = requireProviderConnection(
+      settings.providerSettings,
+      "custom",
+    );
+    const openAIConnection = requireProviderConnection(
+      settings.providerSettings,
+      "openai",
+    );
+    customConnection.answer.apiToken = "database-secret";
+    customConnection.answer.model = "database-vision";
+    openAIConnection.apiToken = "openai-secret";
+    openAIConnection.textToSpeech.apiToken =
       "openai-speech-secret";
+    delete settings.providerSettings.connections.openrouter;
     settings.runtimeSettings.retrievalChunkTargetTokens = 4_096;
     settings.indexedDocumentCount = 7;
     settings.selectedEmbeddingSpaceDocumentCount = 2;
@@ -972,6 +982,13 @@ describe("web server boundary", () => {
         }),
       ]));
       expect(body.providers.routing.queryExpansion).toBe("lmstudio");
+      const doclingVlmProvider = body.fields.find((field: {
+        key: string;
+      }) => field.key === "doclingVlmProviderId");
+      expect(doclingVlmProvider.options).not.toContainEqual({
+        label: "OpenRouter",
+        value: "openrouter",
+      });
       const serialized = JSON.stringify(body);
       expect(serialized).not.toContain("database-secret");
       expect(serialized).not.toContain("database-password");
@@ -1292,7 +1309,7 @@ describe("web server boundary", () => {
     }
   });
 
-  it("rejects incompatible provider routing at the HTTP boundary", async () => {
+  it("accepts database-owned provider identifiers at the HTTP boundary", async () => {
     const updateSettings = vi.fn<WebServices["updateSettings"]>(async () => {
       return buildEffectiveSettings();
     });
@@ -1311,17 +1328,22 @@ describe("web server boundary", () => {
           providerChanges: [{
             action: "route",
             capability: "textToSpeech",
-            providerId: "cohere",
+            providerId: "database-provider",
           }],
         },
         url: "/api/settings",
       });
 
-      expect(response.statusCode).toBe(400);
-      expect(response.json()).toMatchObject({
-        error: { message: "Provider cohere does not support text-to-speech." },
+      expect(response.statusCode).toBe(200);
+      expect(updateSettings).toHaveBeenCalledWith({
+        changes: [],
+        expectedVersion: 0,
+        providerChanges: [{
+          action: "route",
+          capability: "textToSpeech",
+          providerId: "database-provider",
+        }],
       });
-      expect(updateSettings).not.toHaveBeenCalled();
     } finally {
       await server.close();
     }

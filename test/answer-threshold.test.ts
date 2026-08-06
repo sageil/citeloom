@@ -201,7 +201,7 @@ function buildPreparation(
       hnsw: { efSearch: 100, iterativeScan: "strict_order" },
       models: {
         queryEmbedding: { modelId: "embedding-model", provider: "test-provider" },
-        queryExpansion: { modelId: "summary-model", provider: "test-provider" },
+        queryExpansion: { modelId: "expansion-model", provider: "test-provider" },
         reranker: { modelId: "reranker-model", provider: "test-provider" },
       },
       retrieval: {

@@ -38,7 +38,8 @@ export type LanguageModelAdapter =
   | "deepseek-language"
   | "ollama-language"
   | "openai-codex-language"
-  | "openai-compatible-language";
+  | "openai-compatible-language"
+  | "openrouter-language";
 
 export type LanguageThinkingMode = "auto" | "disabled" | "enabled";
 
@@ -105,7 +106,7 @@ export type ScheduledProviderCapability =
   | "queryExpansion"
   | "reranking"
   | "speechToText"
-  | "summarization"
+  | "indexing"
   | "textToSpeech";
 
 export type WorkloadClass =
@@ -145,7 +146,7 @@ export interface InferenceConfig {
   chat: LanguageInferenceConfig;
   embedding: EmbeddingInferenceConfig;
   queryExpansion: LanguageInferenceConfig | null;
-  summary: LanguageInferenceConfig;
+  indexing: LanguageInferenceConfig;
 }
 
 export interface DoclingConfig {
@@ -230,7 +231,7 @@ export interface RerankerConfig extends ProviderRuntimeConfig {
   timeoutMs: number;
 }
 
-export type RerankerAdapter = "top-n-rerank";
+export type RerankerAdapter = "cohere-rerank" | "top-n-rerank";
 
 export type SpeechToTextAdapter =
   | "omlx-transcription"
@@ -353,7 +354,7 @@ export interface RuntimeSettings {
   retryBaseMs: number;
   rrfK: number;
   searchMethod: RetrievalMode;
-  summaryTimeoutSeconds: number;
+  indexingTimeoutSeconds: number;
   queryExpansionTimeoutSeconds: number;
   sttLanguage: string | null;
   sttMaxAudioMegabytes: number;

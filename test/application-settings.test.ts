@@ -7,6 +7,7 @@ import {
 } from "../src/app/settings.js";
 import {
   readProviderConnectionConfiguration,
+  requireProviderConnection,
   runtimeSettingsSchema,
 } from "../src/config/index.js";
 import { createTestProviderSettings } from "./provider-settings-fixture.js";
@@ -75,11 +76,12 @@ describe("provider settings changes", () => {
       defaults,
       [{ action: "configure", configuration, providerId: "groq" }],
     );
+    const updatedGroq = requireProviderConnection(updated, "groq");
 
-    expect(updated.connections.groq.apiToken).toBe("stored-secret");
-    expect(updated.connections.groq.answer.contextCapacityTokens).toBe(16_384);
-    expect(updated.connections.groq.maximumParallelRequests).toBe(3);
-    expect(updated.connections.groq.speechToText.model).toBe("configured-stt");
+    expect(updatedGroq.apiToken).toBe("stored-secret");
+    expect(updatedGroq.answer.contextCapacityTokens).toBe(16_384);
+    expect(updatedGroq.maximumParallelRequests).toBe(3);
+    expect(updatedGroq.speechToText.model).toBe("configured-stt");
   });
 
   it("resets provider settings to the database-owned defaults", () => {
@@ -137,10 +139,12 @@ describe("provider settings changes", () => {
       defaults,
       [{ action: "reset-provider", providerId: "groq" }],
     );
+    const updatedGroq = requireProviderConnection(updated, "groq");
+    const updatedOpenAI = requireProviderConnection(updated, "openai");
 
-    expect(updated.connections.groq.apiToken).toBeNull();
-    expect(updated.connections.groq.maximumParallelRequests).toBe(2);
-    expect(updated.connections.openai.apiToken).toBe("stored-openai-secret");
+    expect(updatedGroq.apiToken).toBeNull();
+    expect(updatedGroq.maximumParallelRequests).toBe(2);
+    expect(updatedOpenAI.apiToken).toBe("stored-openai-secret");
   });
 
   it("replaces capability credentials with one shared provider credential", () => {
@@ -183,8 +187,9 @@ describe("provider settings changes", () => {
       defaults,
       [{ action: "configure", configuration, providerId: "groq" }],
     );
+    const updatedCustom = requireProviderConnection(updated, "custom");
 
-    expect(updated.connections.custom.textToSpeech.apiToken).toBe(
+    expect(updatedCustom.textToSpeech.apiToken).toBe(
       "database-secret",
     );
   });
@@ -216,7 +221,7 @@ describe("provider settings changes", () => {
     expect(updated.routing.answer).toBe("lmstudio");
   });
 
-  it("updates query expansion independently from summarization", () => {
+  it("updates query expansion independently from indexing", () => {
     const defaults = createTestProviderSettings();
     const current = structuredClone(defaults);
 
@@ -241,7 +246,7 @@ describe("provider settings changes", () => {
       thinkingModeOverride: null,
     });
     expect(updated.routing.queryExpansion).toBe("deepseek");
-    expect(updated.routing.summarization).toBe("lmstudio");
+    expect(updated.routing.indexing).toBe("lmstudio");
   });
 
   it("rejects API tokens and endpoint overrides for OpenAI Codex", () => {

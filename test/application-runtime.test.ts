@@ -99,7 +99,7 @@ describe("application runtime", () => {
 
     const answer = runtime.scheduler("answer", "interactive-answer");
     const repeatedAnswer = runtime.scheduler("answer", "interactive-answer");
-    runtime.scheduler("summarization", "ingestion");
+    runtime.scheduler("indexing", "ingestion");
     runtime.scheduler("embedding", "ingestion");
 
     expect(repeatedAnswer).toBe(answer);

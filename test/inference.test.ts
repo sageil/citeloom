@@ -428,14 +428,14 @@ describe("query expansion boundary", () => {
   });
 
   it("allows the model to return no extra search queries", async () => {
-    const summaryModel = new MockLanguageModelV4({
+    const expansionModel = new MockLanguageModelV4({
       doGenerate: buildTextGeneration(JSON.stringify({
         queries: [],
       }), "stop"),
     });
 
     const expansions = await expandRetrievalQuery(
-      buildModelRegistry(summaryModel),
+      buildModelRegistry(expansionModel),
       "When was Project Northstar launched?",
       2,
       new TaskLimiter(1),
@@ -447,14 +447,14 @@ describe("query expansion boundary", () => {
   });
 
   it("applies deterministic generation settings for prepared evaluations", async () => {
-    const summaryModel = new MockLanguageModelV4({
+    const expansionModel = new MockLanguageModelV4({
       doGenerate: buildTextGeneration(JSON.stringify({
         queries: ["fixed expansion"],
       }), "stop"),
     });
 
     const expansions = await expandRetrievalQuery(
-      buildModelRegistry(summaryModel),
+      buildModelRegistry(expansionModel),
       "original question",
       1,
       new TaskLimiter(1),
@@ -463,8 +463,8 @@ describe("query expansion boundary", () => {
     );
 
     expect(expansions).toEqual(["fixed expansion"]);
-    expect(summaryModel.doGenerateCalls[0]?.seed).toBe(42);
-    expect(summaryModel.doGenerateCalls[0]?.temperature).toBe(0);
+    expect(expansionModel.doGenerateCalls[0]?.seed).toBe(42);
+    expect(expansionModel.doGenerateCalls[0]?.temperature).toBe(0);
   });
 });
 
@@ -491,7 +491,7 @@ describe("createInferenceModelRegistry", () => {
     expect(queryExpansion.modelId).toBe(
       "expansion-model:query-expansion",
     );
-    expect(models.summary.modelId).toBe("summary-model:summary");
+    expect(models.indexing.modelId).toBe("indexing-model:indexing");
   });
 
   it("uses Cohere native chat and embedding request contracts", async () => {
@@ -676,7 +676,7 @@ describe("createInferenceModelRegistry", () => {
     )).toBe(false);
     expect(requestBodies).toHaveLength(1);
     expect(requestBodies[0]).toMatchObject({
-      model: "summary-model",
+      model: "indexing-model",
       reasoning_effort: "none",
       response_format: {
         json_schema: {
@@ -868,7 +868,7 @@ describe("createInferenceModelRegistry", () => {
       );
       requestBodies.push(JSON.parse(String(init?.body)));
       const responseValue = requestBodies.length === 1
-        ? { summary: "Summary" }
+        ? { description: "Description" }
         : { queries: ["expanded search"] };
       return Promise.resolve(createOpenAIChatResponse(responseValue));
     });
@@ -878,9 +878,9 @@ describe("createInferenceModelRegistry", () => {
     const providers = createTestProviderSettings();
     providers.connections.openrouter.apiToken = "openrouter-secret";
     providers.connections.openrouter.queryExpansion.model = "openrouter/free";
-    providers.connections.openrouter.summarization.model = "openrouter/free";
+    providers.connections.openrouter.indexing.model = "openrouter/free";
     providers.routing.queryExpansion = "openrouter";
-    providers.routing.summarization = "openrouter";
+    providers.routing.indexing = "openrouter";
     const config = buildAppConfig(
       startup.database,
       runtimeSettings,
@@ -894,11 +894,11 @@ describe("createInferenceModelRegistry", () => {
 
     const result = await generateText({
       maxRetries: 0,
-      model: models.summary,
+      model: models.indexing,
       output: Output.object({
-        schema: jsonSchema(z.toJSONSchema(z.object({ summary: z.string() }).strict())),
+        schema: jsonSchema(z.toJSONSchema(z.object({ description: z.string() }).strict())),
       }),
-      prompt: "Summarize this.",
+      prompt: "Describe this for indexing.",
       providerOptions: {
         citeloomInference: {
           provider: { sort: "throughput" },
@@ -915,7 +915,7 @@ describe("createInferenceModelRegistry", () => {
       { seed: 42, temperature: 0 },
     );
 
-    expect(result.output).toEqual({ summary: "Summary" });
+    expect(result.output).toEqual({ description: "Description" });
     expect(expansions).toEqual(["expanded search"]);
     expect(requestBodies).toHaveLength(2);
     expect(requestBodies[0]).toMatchObject({
@@ -2296,27 +2296,27 @@ describe("answer generation", () => {
   });
 });
 
-function buildModelRegistry(summary: LanguageModelV4): EvaluationModelRegistry {
+function buildModelRegistry(model: LanguageModelV4): EvaluationModelRegistry {
   const embedding = new MockEmbeddingModelV4();
   return {
     answer: wrapLanguageModel({
       middleware: simulateStreamingMiddleware(),
-      model: summary,
+      model,
     }),
     answerBudget: { maximumOutputTokens: 16_384, minimumOutputTokens: 256, providerSafetyMarginTokens: 0 },
     readAnswerCapabilities: async () => buildTestModelCapabilities(),
     claimVerifier: new FakeHhemClient(),
     documentEmbedding: embedding,
-    evaluation: summary,
+    evaluation: model,
     metrics: new InferenceMetricsReporter({ enabled: false }),
-    queryExpansion: summary,
+    queryExpansion: model,
     queryEmbedding: embedding,
     reranker: null,
-    summary,
+    indexing: model,
     timeouts: {
       answerMs: 900_000,
       embeddingMs: 600_000,
-      summarizationMs: 900_000,
+      indexingMs: 900_000,
       queryExpansionMs: 900_000,
     },
   };

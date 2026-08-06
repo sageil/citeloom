@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { eq, sql } from "drizzle-orm";
 
 import {
   decodeLoginInput,
@@ -20,6 +21,7 @@ import {
   openDatabase,
 } from "../src/database/client.js";
 import { applyDatabaseBootstrap } from "../src/database/administrator-bootstrap.js";
+import { parseStoredApplicationSettings } from "../src/providers/settings-persistence.js";
 import {
   applicationSettings,
   sourceDocuments,
@@ -115,12 +117,25 @@ describe("database administrator bootstrap", () => {
     }
 
     for (const document of [stored.defaults, stored.settings]) {
+      expect(document.providers.catalog.map((profile) => profile.id)).toEqual([
+        "omlx",
+        "ollama",
+        "lmstudio",
+        "openai",
+        "openrouter",
+        "openai-codex",
+        "deepseek",
+        "groq",
+        "cohere",
+        "jina",
+        "custom",
+      ]);
       expect(document.providers.connections.deepseek).toMatchObject({
         answer: {
           contextCapacityTokens: 1_000_000,
           model: "deepseek-v4-flash",
         },
-        summarization: {
+        indexing: {
           contextCapacityTokens: 1_000_000,
           model: "deepseek-v4-flash",
         },
@@ -134,7 +149,7 @@ describe("database administrator bootstrap", () => {
           contextCapacityTokens: 2_048,
           model: "text-embedding-embeddinggemma-300m-qat",
         },
-        summarization: {
+        indexing: {
           contextCapacityTokens: 131_072,
           model: "google/gemma-4-e4b",
         },
@@ -152,7 +167,7 @@ describe("database administrator bootstrap", () => {
           contextCapacityTokens: 131_072,
           model: "qwen3.5:9b-mlx",
         },
-        summarization: {
+        indexing: {
           contextCapacityTokens: 131_072,
           model: "qwen3.5:9b",
         },
@@ -179,6 +194,72 @@ describe("database administrator bootstrap", () => {
         },
       });
     }
+  });
+
+  it("adds missing defaults without overwriting live providers", async () => {
+    await session.database.delete(applicationSettings);
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const seededRows = await session.database
+      .select({ settings: applicationSettings.settings })
+      .from(applicationSettings)
+      .where(eq(applicationSettings.id, "runtime"));
+    const seededRow = seededRows[0];
+    if (seededRow === undefined) {
+      throw new Error("Expected seeded application settings.");
+    }
+    const seeded = parseStoredApplicationSettings(seededRow.settings);
+    const lmStudioProfile = seeded.providers.catalog.find((profile) => {
+      return profile.id === "lmstudio";
+    });
+    const groqConnection = seeded.providers.connections.groq;
+    if (lmStudioProfile === undefined || groqConnection === undefined) {
+      throw new Error("Expected LM Studio and Groq defaults.");
+    }
+    seeded.providers.catalog = [
+      ...seeded.providers.catalog.filter((profile) => {
+        return profile.id !== "openrouter";
+      }),
+      {
+        ...structuredClone(lmStudioProfile),
+        displayName: "Database Provider",
+        id: "database-provider",
+      },
+    ];
+    delete seeded.providers.connections.openrouter;
+    groqConnection.maximumParallelRequests = 7;
+    await session.database
+      .update(applicationSettings)
+      .set({
+        defaults: sql`${applicationSettings.defaults} #- '{providers,catalog}'`,
+        settings: seeded,
+      })
+      .where(eq(applicationSettings.id, "runtime"));
+
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+
+    const rows = await session.database
+      .select({
+        defaults: applicationSettings.defaults,
+        settings: applicationSettings.settings,
+      })
+      .from(applicationSettings)
+      .where(eq(applicationSettings.id, "runtime"));
+    const row = rows[0];
+    if (row === undefined) {
+      throw new Error("Expected bootstrapped application settings.");
+    }
+    const defaults = parseStoredApplicationSettings(row.defaults);
+    const settings = parseStoredApplicationSettings(row.settings);
+    expect(defaults.providers.catalog).toHaveLength(11);
+    expect(settings.providers.catalog).toHaveLength(12);
+    expect(settings.providers.catalog).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "database-provider" }),
+      expect.objectContaining({ id: "openrouter" }),
+    ]));
+    expect(settings.providers.connections.openrouter).toBeDefined();
+    expect(
+      settings.providers.connections.groq?.maximumParallelRequests,
+    ).toBe(7);
   });
 
 });

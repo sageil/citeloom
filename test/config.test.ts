@@ -134,7 +134,7 @@ describe("application configuration", () => {
       chat: { providerId: "lmstudio" },
       embedding: { providerId: "lmstudio" },
       queryExpansion: { providerId: "lmstudio" },
-      summarization: { providerId: "lmstudio" },
+      indexing: { providerId: "lmstudio" },
     });
     expect(config.scheduling.providers).toContainEqual({
       maximumParallelRequests: 3,

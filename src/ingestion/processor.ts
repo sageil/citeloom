@@ -256,7 +256,7 @@ export class IngestionProcessor {
       this.descriptionScheduler = createRuntimeTaskScheduler(
         config,
         this.inferenceCoordinator,
-        "summarization",
+        "indexing",
         "ingestion",
       );
       return;
@@ -265,7 +265,7 @@ export class IngestionProcessor {
     this.models = runtime.models;
     this.embeddingScheduler = runtime.scheduler("embedding", "ingestion");
     this.descriptionScheduler = runtime.scheduler(
-      "summarization",
+      "indexing",
       "ingestion",
     );
   }

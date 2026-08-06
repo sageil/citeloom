@@ -70,7 +70,6 @@ export type {
 export {
   parseProviderSettings,
   providerCapabilitySchema,
-  providerCatalog,
   providerConfigurationTextSchema,
   providerConnectionConfigurationSchema,
   providerCredentialSchema,
@@ -80,6 +79,9 @@ export {
   providerIdSchema,
   providerSettingsSchema,
   providerSupportsCapability,
+  readProviderAuthenticationMethod,
+  readProviderProfile,
+  requireProviderConnection,
   readProviderConnectionConfiguration,
   readTextToSpeechSpeedRange,
   rerankerAdapterSchema,

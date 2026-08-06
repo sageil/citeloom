@@ -230,16 +230,16 @@ async function requestCondensedToc(
 ): Promise<string[]> {
   const finishMetric = models.metrics.start(
     "generate-document-toc",
-    models.summary.provider,
-    models.summary.modelId,
+    models.indexing.provider,
+    models.indexing.modelId,
   );
-  const timeoutMs = models.timeouts.summarizationMs;
+  const timeoutMs = models.timeouts.indexingMs;
   const signals = createInferenceRequestSignal(timeoutMs, abortSignal);
   try {
     const result = await generateText({
       abortSignal: signals.requestSignal,
       maxRetries: 1,
-      model: models.summary,
+      model: models.indexing,
       output: createStructuredOutput({
         description:
           "The identifiers of the most useful structural headings for a compact document table of contents.",
@@ -291,7 +291,7 @@ async function requestCondensedToc(
     }
     throwInferenceRequestFailure(
       error,
-      "summarization",
+      "indexing",
       timeoutMs,
       signals.timeoutSignal,
       abortSignal,

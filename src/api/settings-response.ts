@@ -5,8 +5,6 @@ import {
   type RuntimeSettingPanel,
 } from "../app/settings.js";
 import {
-  providerCatalog,
-  readProviderAuthenticationMethod,
   readProviderConnectionConfiguration,
   type ProviderAuthenticationMethod,
   type ProviderCapability,
@@ -101,7 +99,7 @@ export interface ProviderConnectionResponse {
     queryExpansion: boolean;
     reranking: boolean;
     speechToText: boolean;
-    summarization: boolean;
+    indexing: boolean;
     textToSpeech: boolean;
   };
   configuration: ProviderConnectionConfiguration;
@@ -109,6 +107,7 @@ export interface ProviderConnectionResponse {
 }
 
 export interface ProviderProfileResponse {
+  adapterConfiguration: "catalog" | "connection";
   authentication: ProviderAuthenticationMethod;
   capabilities: ProviderCapabilityProfile[];
   displayName: string;
@@ -145,14 +144,26 @@ export function buildApplicationSettingsResponse(
     const source = Object.hasOwn(settings.overrides, definition.key)
       ? "database"
       : "database-default";
-    const options = definition.key === "embeddingInputFormatId"
-      ? settings.embeddingInputFormats
+    let options = definition.options ?? [];
+    if (definition.key === "embeddingInputFormatId") {
+      options = settings.embeddingInputFormats
         .filter((inputFormat) => inputFormat.retiredAt === null)
         .map((inputFormat) => ({
           label: inputFormat.name,
           value: inputFormat.id,
-        }))
-      : definition.options ?? [];
+        }));
+    }
+    if (definition.key === "doclingVlmProviderId") {
+      options = settings.providerSettings.catalog
+        .filter((profile) => {
+          return profile.doclingVlm !== null
+            && settings.providerSettings.connections[profile.id] !== undefined;
+        })
+        .map((profile) => ({
+          label: profile.displayName,
+          value: profile.id,
+        }));
+    }
     fields.push({
       changeExample: runtimeSettingChangeExamples[definition.key],
       configured: sensitive ? effectiveValue !== null : true,
@@ -269,8 +280,11 @@ function buildProviderSettingsResponse(
   settings: EffectiveApplicationSettings,
 ): ProviderSettingsResponse {
   const connections: ProviderConnectionResponse[] = [];
-  for (const profile of providerCatalog) {
+  for (const profile of settings.providerSettings.catalog) {
     const connection = settings.providerSettings.connections[profile.id];
+    if (connection === undefined) {
+      continue;
+    }
     connections.push({
       apiTokenConfigured: connection.apiToken !== null,
       capabilityApiTokensConfigured: {
@@ -280,16 +294,17 @@ function buildProviderSettingsResponse(
         queryExpansion: connection.queryExpansion.apiToken !== null,
         reranking: connection.reranking.apiToken !== null,
         speechToText: connection.speechToText.apiToken !== null,
-        summarization: connection.summarization.apiToken !== null,
+        indexing: connection.indexing.apiToken !== null,
         textToSpeech: connection.textToSpeech.apiToken !== null,
       },
       configuration: readProviderConnectionConfiguration(connection),
       providerId: profile.id,
     });
   }
-  const catalog: ProviderProfileResponse[] = providerCatalog.map((profile) => {
+  const catalog: ProviderProfileResponse[] = settings.providerSettings.catalog.map((profile) => {
     return {
-      authentication: readProviderAuthenticationMethod(profile.id),
+      adapterConfiguration: profile.adapterConfiguration,
+      authentication: profile.authentication,
       capabilities: profile.capabilities.map((capability) => ({ ...capability })),
       displayName: profile.displayName,
       id: profile.id,

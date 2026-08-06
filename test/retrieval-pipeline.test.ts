@@ -612,11 +612,11 @@ function buildModelRegistry(
     queryExpansion: answerModel,
     queryEmbedding: embedding,
     reranker: null,
-    summary: answerModel,
+    indexing: answerModel,
     timeouts: {
       answerMs: 900_000,
       embeddingMs: 600_000,
-      summarizationMs: 900_000,
+      indexingMs: 900_000,
       queryExpansionMs: 900_000,
     },
   };

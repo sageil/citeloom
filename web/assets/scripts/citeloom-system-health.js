@@ -65,7 +65,7 @@ function readSystemHealthDashboard(dashboard, system, queue) {
         "query-expansion model",
       ) ?? "Disabled",
       reranker: readReranker(inferenceRuntime.reranker),
-      summary: readNonEmptyString(inferenceRuntime.summaryModel, "indexing model"),
+      indexing: readNonEmptyString(inferenceRuntime.indexingModel, "indexing model"),
     },
     queueLength: queue.length,
     telemetry: readTelemetry(dashboard.telemetry),
@@ -282,7 +282,7 @@ function buildEmptySystemHealth() {
       embedding: "Unavailable",
       queryExpansion: "Unavailable",
       reranker: "Disabled",
-      summary: "Unavailable",
+      indexing: "Unavailable",
     },
     queueLength: 0,
     telemetry: {

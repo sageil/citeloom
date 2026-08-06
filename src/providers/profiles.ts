@@ -9,32 +9,18 @@ import type {
   TextToSpeechAdapter,
 } from "../config/types.js";
 
-export const PROVIDER_IDS = [
-  "omlx",
-  "ollama",
-  "lmstudio",
-  "openai",
-  "openrouter",
-  "openai-codex",
-  "deepseek",
-  "groq",
-  "cohere",
-  "jina",
-  "custom",
-] as const;
-
 export const PROVIDER_CAPABILITIES = [
   "answer",
   "chat",
   "queryExpansion",
-  "summarization",
+  "indexing",
   "embedding",
   "reranking",
   "speechToText",
   "textToSpeech",
 ] as const;
 
-export type ProviderId = typeof PROVIDER_IDS[number];
+export type ProviderId = string;
 export type ProviderCapability = typeof PROVIDER_CAPABILITIES[number];
 export type CustomLanguageModelAdapter = Exclude<
   LanguageModelAdapter,
@@ -45,15 +31,21 @@ export type ProviderCapabilityProfile =
   | { adapter: LanguageModelAdapter; capability: "answer" }
   | { adapter: LanguageModelAdapter; capability: "chat" }
   | { adapter: LanguageModelAdapter; capability: "queryExpansion" }
-  | { adapter: LanguageModelAdapter; capability: "summarization" }
+  | { adapter: LanguageModelAdapter; capability: "indexing" }
   | { adapter: EmbeddingModelAdapter; capability: "embedding" }
   | { adapter: RerankerAdapter; capability: "reranking" }
   | { adapter: SpeechToTextAdapter; capability: "speechToText" }
   | { adapter: TextToSpeechAdapter; capability: "textToSpeech" };
 
 export interface ProviderProfile {
+  adapterConfiguration: "catalog" | "connection";
+  authentication: ProviderAuthenticationMethod;
   capabilities: readonly ProviderCapabilityProfile[];
   displayName: string;
+  doclingVlm: {
+    endpointStyle: "ollama" | "openai";
+    engineType: "api" | "api_lmstudio" | "api_ollama" | "api_openai";
+  } | null;
   id: ProviderId;
 }
 
@@ -80,7 +72,7 @@ export interface CustomProviderAdapters {
   queryExpansion: CustomLanguageModelAdapter;
   reranking: RerankerAdapter;
   speechToText: SpeechToTextAdapter;
-  summarization: CustomLanguageModelAdapter;
+  indexing: CustomLanguageModelAdapter;
   textToSpeech: TextToSpeechAdapter;
 }
 
@@ -98,7 +90,7 @@ export interface ProviderConnection {
   queryExpansion: ProviderModelConnection;
   reranking: ProviderCapabilityConnection;
   speechToText: ProviderCapabilityConnection;
-  summarization: ProviderModelConnection;
+  indexing: ProviderModelConnection;
   textToSpeech: ProviderTextToSpeechConnection;
 }
 
@@ -109,7 +101,7 @@ export interface ProviderRouting {
   queryExpansion: ProviderId | null;
   reranking: ProviderId | null;
   speechToText: ProviderId | null;
-  summarization: ProviderId | null;
+  indexing: ProviderId | null;
   textToSpeech: ProviderId | null;
 }
 
@@ -139,11 +131,12 @@ export interface ProviderFeatureOverrides {
   queryExpansion: ProviderLanguageFeatureOverrides;
   reranking: ProviderCapabilityFeatureOverrides;
   speechToText: ProviderCapabilityFeatureOverrides;
-  summarization: ProviderLanguageFeatureOverrides;
+  indexing: ProviderLanguageFeatureOverrides;
   textToSpeech: ProviderTextToSpeechFeatureOverrides;
 }
 
 export interface ProviderSettings {
+  catalog: readonly ProviderProfile[];
   connections: Record<ProviderId, ProviderConnection>;
   featureOverrides: ProviderFeatureOverrides;
   routing: ProviderRouting;
@@ -177,7 +170,7 @@ export interface ProviderConnectionConfiguration {
   queryExpansion: ProviderModelConfiguration;
   reranking: ProviderCapabilityConfiguration;
   speechToText: ProviderCapabilityConfiguration;
-  summarization: ProviderModelConfiguration;
+  indexing: ProviderModelConfiguration;
   textToSpeech: ProviderTextToSpeechConfiguration;
 }
 
@@ -189,7 +182,7 @@ export type ProviderFeatureConfiguration =
       | "answer"
       | "chat"
       | "queryExpansion"
-      | "summarization";
+      | "indexing";
     contextCapacityTokensOverride: number | null;
     modelOverride: string | null;
     providerId: ProviderId | null;
@@ -284,7 +277,14 @@ export const providerCredentialSchema = z.string()
   .trim()
   .min(1)
   .nullable();
-export const providerIdSchema = z.enum(PROVIDER_IDS);
+export const providerIdSchema = z.string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(
+    /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u,
+    "must start with an alphanumeric character and contain only letters, numbers, dots, underscores, colons, or hyphens",
+  );
 export const providerCapabilitySchema = z.enum(PROVIDER_CAPABILITIES);
 export const languageThinkingModeSchema = z.enum([
   "auto",
@@ -297,19 +297,24 @@ export const languageModelAdapterSchema = z.enum([
   "ollama-language",
   "openai-codex-language",
   "openai-compatible-language",
+  "openrouter-language",
 ]);
 const customLanguageModelAdapterSchema = z.enum([
   "cohere-language",
   "deepseek-language",
   "ollama-language",
   "openai-compatible-language",
+  "openrouter-language",
 ]);
 export const embeddingModelAdapterSchema = z.enum([
   "cohere-embedding",
   "ollama-embedding",
   "openai-compatible-embedding",
 ]);
-export const rerankerAdapterSchema = z.enum(["top-n-rerank"]);
+export const rerankerAdapterSchema = z.enum([
+  "cohere-rerank",
+  "top-n-rerank",
+]);
 export const speechToTextAdapterSchema = z.enum([
   "omlx-transcription",
   "openrouter-transcription",
@@ -321,6 +326,56 @@ export const textToSpeechAdapterSchema = z.enum([
   "openrouter-speech",
   "openai-speech",
 ]);
+const providerCapabilityProfileSchema = z.discriminatedUnion("capability", [
+  z.object({
+    adapter: languageModelAdapterSchema,
+    capability: z.literal("answer"),
+  }).strict(),
+  z.object({
+    adapter: languageModelAdapterSchema,
+    capability: z.literal("chat"),
+  }).strict(),
+  z.object({
+    adapter: embeddingModelAdapterSchema,
+    capability: z.literal("embedding"),
+  }).strict(),
+  z.object({
+    adapter: languageModelAdapterSchema,
+    capability: z.literal("queryExpansion"),
+  }).strict(),
+  z.object({
+    adapter: rerankerAdapterSchema,
+    capability: z.literal("reranking"),
+  }).strict(),
+  z.object({
+    adapter: speechToTextAdapterSchema,
+    capability: z.literal("speechToText"),
+  }).strict(),
+  z.object({
+    adapter: languageModelAdapterSchema,
+    capability: z.literal("indexing"),
+  }).strict(),
+  z.object({
+    adapter: textToSpeechAdapterSchema,
+    capability: z.literal("textToSpeech"),
+  }).strict(),
+]);
+const providerProfileSchema = z.object({
+  adapterConfiguration: z.enum(["catalog", "connection"]),
+  authentication: z.enum(["api-token", "openai-device"]),
+  capabilities: z.array(providerCapabilityProfileSchema).min(1),
+  displayName: z.string().trim().min(1).max(100),
+  doclingVlm: z.object({
+    endpointStyle: z.enum(["ollama", "openai"]),
+    engineType: z.enum([
+      "api",
+      "api_lmstudio",
+      "api_ollama",
+      "api_openai",
+    ]),
+  }).strict().nullable(),
+  id: providerIdSchema,
+}).strict();
 const providerCapabilityConnectionSchema = z.object({
   apiToken: providerCredentialSchema,
   baseUrl: httpUrlSchema.nullable(),
@@ -340,7 +395,7 @@ const providerConnectionSchema = z.object({
     queryExpansion: customLanguageModelAdapterSchema,
     reranking: rerankerAdapterSchema,
     speechToText: speechToTextAdapterSchema,
-    summarization: customLanguageModelAdapterSchema,
+    indexing: customLanguageModelAdapterSchema,
     textToSpeech: textToSpeechAdapterSchema,
   }).strict(),
   maximumParallelRequests: z.number().int().min(1).max(16),
@@ -352,7 +407,7 @@ const providerConnectionSchema = z.object({
   queryExpansion: providerModelConnectionSchema,
   reranking: providerCapabilityConnectionSchema,
   speechToText: providerCapabilityConnectionSchema,
-  summarization: providerModelConnectionSchema,
+  indexing: providerModelConnectionSchema,
   textToSpeech: providerCapabilityConnectionSchema.extend({
     voice: providerConfigurationTextSchema,
   }).strict(),
@@ -376,7 +431,7 @@ export const providerFeatureOverridesSchema = z.object({
   queryExpansion: providerLanguageFeatureOverridesSchema,
   reranking: providerCapabilityFeatureOverridesSchema,
   speechToText: providerCapabilityFeatureOverridesSchema,
-  summarization: providerLanguageFeatureOverridesSchema,
+  indexing: providerLanguageFeatureOverridesSchema,
   textToSpeech: providerCapabilityFeatureOverridesSchema.extend({
     voiceOverride: providerConfigurationTextSchema,
   }).strict(),
@@ -392,7 +447,7 @@ const providerConnectionConfigurationInputSchema = z.object({
     queryExpansion: customLanguageModelAdapterSchema,
     reranking: rerankerAdapterSchema,
     speechToText: speechToTextAdapterSchema,
-    summarization: customLanguageModelAdapterSchema,
+    indexing: customLanguageModelAdapterSchema,
     textToSpeech: textToSpeechAdapterSchema,
   }).strict(),
   maximumParallelRequests: z.number().int().min(1).max(16),
@@ -426,7 +481,7 @@ const providerConnectionConfigurationInputSchema = z.object({
     baseUrl: httpUrlSchema.nullable(),
     model: providerConfigurationTextSchema,
   }).strict(),
-  summarization: z.object({
+  indexing: z.object({
     baseUrl: httpUrlSchema.nullable(),
     contextCapacityTokens: z.number().int().positive().nullable(),
     model: providerConfigurationTextSchema,
@@ -444,6 +499,7 @@ export const providerConnectionConfigurationSchema =
   );
 
 const providerSettingsInputSchema = z.object({
+  catalog: z.array(providerProfileSchema).min(1),
   connections: z.record(providerIdSchema, providerConnectionSchema),
   featureOverrides: providerFeatureOverridesSchema,
   routing: z.object({
@@ -453,7 +509,7 @@ const providerSettingsInputSchema = z.object({
     queryExpansion: providerIdSchema.nullable(),
     reranking: providerIdSchema.nullable(),
     speechToText: providerIdSchema.nullable(),
-    summarization: providerIdSchema.nullable(),
+    indexing: providerIdSchema.nullable(),
     textToSpeech: providerIdSchema.nullable(),
   }).strict(),
 }).strict();
@@ -464,11 +520,13 @@ function createProviderSettingsSchema() {
       return materializeProviderSettings(settings);
     })
     .superRefine((settings, context) => {
+      validateProviderCatalog(settings, context);
+      validateProviderConnections(settings, context);
       validateAdaptiveContextConfiguration(settings, context);
       validateSelectedProvider(settings, "answer", context);
       validateSelectedProvider(settings, "chat", context);
       validateSelectedProvider(settings, "queryExpansion", context);
-      validateSelectedProvider(settings, "summarization", context);
+      validateSelectedProvider(settings, "indexing", context);
       validateSelectedProvider(settings, "embedding", context);
       validateSelectedProvider(settings, "reranking", context);
       validateSelectedProvider(settings, "speechToText", context);
@@ -477,143 +535,6 @@ function createProviderSettingsSchema() {
 }
 
 export const providerSettingsSchema = createProviderSettingsSchema();
-
-export const providerCatalog: readonly ProviderProfile[] = [
-  {
-    capabilities: [
-      { adapter: "openai-compatible-language", capability: "answer" },
-      { adapter: "openai-compatible-language", capability: "chat" },
-      { adapter: "openai-compatible-language", capability: "queryExpansion" },
-      { adapter: "openai-compatible-language", capability: "summarization" },
-      { adapter: "openai-compatible-embedding", capability: "embedding" },
-      { adapter: "top-n-rerank", capability: "reranking" },
-      { adapter: "omlx-transcription", capability: "speechToText" },
-      { adapter: "omlx-speech", capability: "textToSpeech" },
-    ],
-    displayName: "oMLX",
-    id: "omlx",
-  },
-  {
-    capabilities: [
-      { adapter: "ollama-language", capability: "answer" },
-      { adapter: "ollama-language", capability: "chat" },
-      { adapter: "ollama-language", capability: "queryExpansion" },
-      { adapter: "ollama-embedding", capability: "embedding" },
-      { adapter: "ollama-language", capability: "summarization" },
-    ],
-    displayName: "Ollama",
-    id: "ollama",
-  },
-  {
-    capabilities: [
-      { adapter: "openai-compatible-language", capability: "answer" },
-      { adapter: "openai-compatible-language", capability: "chat" },
-      { adapter: "openai-compatible-language", capability: "queryExpansion" },
-      { adapter: "openai-compatible-language", capability: "summarization" },
-      { adapter: "openai-compatible-embedding", capability: "embedding" },
-    ],
-    displayName: "LM Studio",
-    id: "lmstudio",
-  },
-  {
-    capabilities: [
-      { adapter: "openai-compatible-language", capability: "answer" },
-      { adapter: "openai-compatible-language", capability: "chat" },
-      { adapter: "openai-compatible-language", capability: "queryExpansion" },
-      { adapter: "openai-compatible-language", capability: "summarization" },
-      { adapter: "openai-compatible-embedding", capability: "embedding" },
-      { adapter: "openai-transcription", capability: "speechToText" },
-      { adapter: "openai-speech", capability: "textToSpeech" },
-    ],
-    displayName: "OpenAI",
-    id: "openai",
-  },
-  {
-    capabilities: [
-      { adapter: "openai-compatible-language", capability: "answer" },
-      { adapter: "openai-compatible-language", capability: "chat" },
-      { adapter: "openai-compatible-language", capability: "queryExpansion" },
-      { adapter: "openai-compatible-language", capability: "summarization" },
-      { adapter: "openai-compatible-embedding", capability: "embedding" },
-      { adapter: "top-n-rerank", capability: "reranking" },
-      { adapter: "openrouter-transcription", capability: "speechToText" },
-      { adapter: "openrouter-speech", capability: "textToSpeech" },
-    ],
-    displayName: "OpenRouter",
-    id: "openrouter",
-  },
-  {
-    capabilities: [
-      { adapter: "openai-codex-language", capability: "answer" },
-      { adapter: "openai-codex-language", capability: "chat" },
-      { adapter: "openai-codex-language", capability: "queryExpansion" },
-      { adapter: "openai-codex-language", capability: "summarization" },
-    ],
-    displayName: "OpenAI Codex",
-    id: "openai-codex",
-  },
-  {
-    capabilities: [
-      { adapter: "deepseek-language", capability: "answer" },
-      { adapter: "deepseek-language", capability: "chat" },
-      { adapter: "deepseek-language", capability: "queryExpansion" },
-      { adapter: "deepseek-language", capability: "summarization" },
-    ],
-    displayName: "DeepSeek",
-    id: "deepseek",
-  },
-  {
-    capabilities: [
-      { adapter: "openai-compatible-language", capability: "answer" },
-      { adapter: "openai-compatible-language", capability: "chat" },
-      { adapter: "openai-compatible-language", capability: "queryExpansion" },
-      { adapter: "openai-compatible-language", capability: "summarization" },
-      { adapter: "openai-transcription", capability: "speechToText" },
-      { adapter: "groq-speech", capability: "textToSpeech" },
-    ],
-    displayName: "Groq",
-    id: "groq",
-  },
-  {
-    capabilities: [
-      { adapter: "cohere-language", capability: "answer" },
-      { adapter: "cohere-language", capability: "chat" },
-      { adapter: "cohere-language", capability: "queryExpansion" },
-      { adapter: "cohere-language", capability: "summarization" },
-      { adapter: "cohere-embedding", capability: "embedding" },
-      { adapter: "top-n-rerank", capability: "reranking" },
-    ],
-    displayName: "Cohere",
-    id: "cohere",
-  },
-  {
-    capabilities: [
-      { adapter: "openai-compatible-embedding", capability: "embedding" },
-      { adapter: "top-n-rerank", capability: "reranking" },
-    ],
-    displayName: "Jina",
-    id: "jina",
-  },
-  {
-    capabilities: [
-      { adapter: "openai-compatible-language", capability: "answer" },
-      { adapter: "openai-compatible-language", capability: "chat" },
-      { adapter: "openai-compatible-language", capability: "queryExpansion" },
-      { adapter: "openai-compatible-language", capability: "summarization" },
-      { adapter: "openai-compatible-embedding", capability: "embedding" },
-      { adapter: "top-n-rerank", capability: "reranking" },
-      { adapter: "openai-transcription", capability: "speechToText" },
-      { adapter: "openai-speech", capability: "textToSpeech" },
-    ],
-    displayName: "Custom",
-    id: "custom",
-  },
-];
-
-const profileById = new Map<ProviderId, ProviderProfile>();
-for (const profile of providerCatalog) {
-  profileById.set(profile.id, profile);
-}
 
 export function parseProviderSettings(value: unknown): ProviderSettings {
   const result = createProviderSettingsSchema().safeParse(value);
@@ -649,7 +570,7 @@ export function readProviderConnectionConfiguration(
     thinkingMode: connection.thinkingMode,
     reranking: readCapabilityConfiguration(connection.reranking),
     speechToText: readCapabilityConfiguration(connection.speechToText),
-    summarization: readModelConfiguration(connection.summarization),
+    indexing: readModelConfiguration(connection.indexing),
     textToSpeech: {
       ...readCapabilityConfiguration(connection.textToSpeech),
       voice: connection.textToSpeech.voice,
@@ -658,19 +579,39 @@ export function readProviderConnectionConfiguration(
 }
 
 export function providerSupportsCapability(
+  settings: ProviderSettings,
   providerId: ProviderId,
   capability: ProviderCapability,
 ): boolean {
-  const profile = requireProviderProfile(providerId);
+  const profile = requireProviderProfile(settings, providerId);
   return profile.capabilities.some((candidate) => {
     return candidate.capability === capability;
   });
 }
 
 export function readProviderAuthenticationMethod(
+  settings: ProviderSettings,
   providerId: ProviderId,
 ): ProviderAuthenticationMethod {
-  return providerId === "openai-codex" ? "openai-device" : "api-token";
+  return requireProviderProfile(settings, providerId).authentication;
+}
+
+export function readProviderProfile(
+  settings: ProviderSettings,
+  providerId: ProviderId,
+): ProviderProfile | undefined {
+  return settings.catalog.find((profile) => profile.id === providerId);
+}
+
+export function requireProviderConnection(
+  settings: ProviderSettings,
+  providerId: ProviderId,
+): ProviderConnection {
+  const connection = settings.connections[providerId];
+  if (connection === undefined) {
+    throw new Error(`Provider ${providerId} has no configured connection.`);
+  }
+  return connection;
 }
 
 export function resolveProviderCapability(
@@ -703,7 +644,7 @@ export function resolveProviderCapability(
 
 export function resolveLanguageProvider(
   settings: ProviderSettings,
-  capability: "answer" | "chat" | "queryExpansion" | "summarization",
+  capability: "answer" | "chat" | "queryExpansion" | "indexing",
 ): ResolvedLanguageProvider {
   const provider = resolveConfiguredProvider(settings, capability);
   if (provider === null) {
@@ -717,7 +658,8 @@ export function resolveLanguageProvider(
   return {
     ...provider,
     adaptiveContextEnabled:
-      settings.connections[provider.providerId].adaptiveContextEnabled,
+      requireProviderConnection(settings, provider.providerId)
+        .adaptiveContextEnabled,
     adapter: provider.adapter,
     contextCapacityTokens: readEffectiveModelContextCapacity(
       settings,
@@ -732,6 +674,62 @@ export function resolveLanguageProvider(
   };
 }
 
+function validateProviderCatalog(
+  settings: ProviderSettings,
+  context: z.RefinementCtx,
+): void {
+  const providerIds = new Set<string>();
+  for (let profileIndex = 0; profileIndex < settings.catalog.length; profileIndex += 1) {
+    const profile = settings.catalog[profileIndex];
+    if (profile === undefined) {
+      continue;
+    }
+    if (providerIds.has(profile.id)) {
+      context.addIssue({
+        code: "custom",
+        message: `Provider ${profile.id} appears more than once in the catalog.`,
+        path: ["catalog", profileIndex, "id"],
+      });
+    }
+    providerIds.add(profile.id);
+    const capabilities = new Set<ProviderCapability>();
+    for (
+      let capabilityIndex = 0;
+      capabilityIndex < profile.capabilities.length;
+      capabilityIndex += 1
+    ) {
+      const entry = profile.capabilities[capabilityIndex];
+      if (entry === undefined) {
+        continue;
+      }
+      if (capabilities.has(entry.capability)) {
+        context.addIssue({
+          code: "custom",
+          message: `${profile.displayName} declares ${formatCapability(entry.capability)} more than once.`,
+          path: ["catalog", profileIndex, "capabilities", capabilityIndex],
+        });
+      }
+      capabilities.add(entry.capability);
+    }
+  }
+}
+
+function validateProviderConnections(
+  settings: ProviderSettings,
+  context: z.RefinementCtx,
+): void {
+  for (const providerId of Object.keys(settings.connections)) {
+    if (readProviderProfile(settings, providerId) !== undefined) {
+      continue;
+    }
+    context.addIssue({
+      code: "custom",
+      message: `Provider connection ${providerId} has no catalog profile.`,
+      path: ["connections", providerId],
+    });
+  }
+}
+
 function validateAdaptiveContextConfiguration(
   settings: ProviderSettings,
   context: z.RefinementCtx,
@@ -740,7 +738,11 @@ function validateAdaptiveContextConfiguration(
     if (!connection.adaptiveContextEnabled) {
       continue;
     }
-    if (providerId !== "ollama") {
+    const profile = readProviderProfile(settings, providerId);
+    const supportsAdaptiveContext = profile?.capabilities.some((candidate) => {
+      return candidate.adapter === "ollama-language";
+    }) === true;
+    if (!supportsAdaptiveContext) {
       context.addIssue({
         code: "custom",
         message: "Automatic context size is available only for the Ollama provider.",
@@ -786,8 +788,8 @@ function resolveConfiguredProvider(
   if (providerId === null) {
     return null;
   }
-  const profile = requireProviderProfile(providerId);
-  const connection = settings.connections[providerId];
+  const profile = requireProviderProfile(settings, providerId);
+  const connection = requireProviderConnection(settings, providerId);
   const capabilityConnection = readCapabilityConnection(
     connection,
     capability,
@@ -819,8 +821,8 @@ export function resolveTextToSpeechProvider(
   if (providerId === null) {
     return null;
   }
-  const profile = requireProviderProfile(providerId);
-  const connection = settings.connections[providerId];
+  const profile = requireProviderProfile(settings, providerId);
+  const connection = requireProviderConnection(settings, providerId);
   const capabilityConnection = connection.textToSpeech;
   const adapter = readTextToSpeechAdapter(profile, connection);
   const baseUrl = capabilityConnection.baseUrl
@@ -891,8 +893,16 @@ function validateSelectedProvider(
   if (providerId === null) {
     return;
   }
-  const profile = requireProviderProfile(providerId);
-  if (!providerSupportsCapability(providerId, capability)) {
+  const profile = readProviderProfile(settings, providerId);
+  if (profile === undefined) {
+    context.addIssue({
+      code: "custom",
+      message: `The selected provider ${providerId} is not in the configured catalog.`,
+      path: ["routing", capability],
+    });
+    return;
+  }
+  if (!providerSupportsCapability(settings, providerId, capability)) {
     context.addIssue({
       code: "custom",
       message: `${profile.displayName} does not support ${formatCapability(capability)}.`,
@@ -901,6 +911,14 @@ function validateSelectedProvider(
     return;
   }
   const connection = settings.connections[providerId];
+  if (connection === undefined) {
+    context.addIssue({
+      code: "custom",
+      message: `${profile.displayName} has no configured connection.`,
+      path: ["connections", providerId],
+    });
+    return;
+  }
   const capabilityConnection = readCapabilityConnection(
     connection,
     capability,
@@ -952,8 +970,11 @@ function validateSelectedProvider(
   }
 }
 
-function requireProviderProfile(providerId: ProviderId): ProviderProfile {
-  const profile = profileById.get(providerId);
+function requireProviderProfile(
+  settings: ProviderSettings,
+  providerId: ProviderId,
+): ProviderProfile {
+  const profile = readProviderProfile(settings, providerId);
   if (profile === undefined) {
     throw new Error(`Unknown provider profile: ${providerId}.`);
   }
@@ -970,7 +991,7 @@ function readAdapter(
   | RerankerAdapter
   | SpeechToTextAdapter
   | TextToSpeechAdapter {
-  if (profile.id === "custom") {
+  if (profile.adapterConfiguration === "connection") {
     if (capability === "chat") {
       return readChatAdapter(connection);
     }
@@ -991,7 +1012,7 @@ function readTextToSpeechAdapter(
   profile: ProviderProfile,
   connection: ProviderConnection,
 ): TextToSpeechAdapter {
-  if (profile.id === "custom") {
+  if (profile.adapterConfiguration === "connection") {
     return connection.customAdapters.textToSpeech;
   }
   const capabilityProfile = profile.capabilities.find((candidate) => {
@@ -1032,7 +1053,8 @@ function isLanguageModelAdapter(
     || value === "deepseek-language"
     || value === "ollama-language"
     || value === "openai-codex-language"
-    || value === "openai-compatible-language";
+    || value === "openai-compatible-language"
+    || value === "openrouter-language";
 }
 
 function isEmbeddingModelAdapter(
@@ -1056,7 +1078,8 @@ function isRerankerAdapter(
     | SpeechToTextAdapter
     | TextToSpeechAdapter,
 ): value is RerankerAdapter {
-  return value === "top-n-rerank";
+  return value === "cohere-rerank"
+    || value === "top-n-rerank";
 }
 
 function isSpeechToTextAdapter(
@@ -1076,7 +1099,7 @@ function formatCapability(capability: ProviderCapability): string {
   if (capability === "answer") {
     return "Ask";
   }
-  if (capability === "summarization") {
+  if (capability === "indexing") {
     return "Indexing model";
   }
   if (capability === "chat") {
@@ -1107,12 +1130,12 @@ function isModelCapability(
   | "chat"
   | "embedding"
   | "queryExpansion"
-  | "summarization" {
+  | "indexing" {
   return capability === "answer"
     || capability === "chat"
     || capability === "embedding"
     || capability === "queryExpansion"
-    || capability === "summarization";
+    || capability === "indexing";
 }
 
 function readEffectiveModelContextCapacity(
@@ -1123,12 +1146,15 @@ function readEffectiveModelContextCapacity(
     | "chat"
     | "embedding"
     | "queryExpansion"
-    | "summarization",
+    | "indexing",
 ): number {
   const contextCapacityTokens =
     readModelFeatureOverrides(settings, capability)
       .contextCapacityTokensOverride
-    ?? readModelConnection(settings.connections[providerId], capability)
+    ?? readModelConnection(
+      requireProviderConnection(settings, providerId),
+      capability,
+    )
       .contextCapacityTokens;
   if (contextCapacityTokens === null) {
     throw new Error(
@@ -1142,8 +1168,7 @@ function materializeProviderSettings(
   settings: z.output<typeof providerSettingsInputSchema>,
 ): ProviderSettings {
   const entries: Array<[ProviderId, ProviderConnection]> = [];
-  for (const providerId of PROVIDER_IDS) {
-    const connection = settings.connections[providerId];
+  for (const [providerId, connection] of Object.entries(settings.connections)) {
     entries.push([
       providerId,
       {
@@ -1165,6 +1190,7 @@ function materializeProviderSettings(
     ProviderConnection
   >;
   return {
+    catalog: settings.catalog,
     connections,
     featureOverrides: {
       ...settings.featureOverrides,
@@ -1199,11 +1225,12 @@ function materializeProviderConnectionConfiguration(
 function readEffectiveThinkingMode(
   settings: ProviderSettings,
   providerId: ProviderId,
-  capability: "answer" | "chat" | "queryExpansion" | "summarization",
+  capability: "answer" | "chat" | "queryExpansion" | "indexing",
 ): LanguageThinkingMode {
   const override = readLanguageFeatureOverrides(settings, capability)
     .thinkingModeOverride;
-  return override ?? settings.connections[providerId].thinkingMode;
+  return override
+    ?? requireProviderConnection(settings, providerId).thinkingMode;
 }
 
 function readProviderRoute(
@@ -1245,7 +1272,7 @@ function readModelConnection(
     | "chat"
     | "embedding"
     | "queryExpansion"
-    | "summarization",
+    | "indexing",
 ): ProviderModelConnection {
   if (capability === "chat") {
     return readChatConnection(connection);
@@ -1271,7 +1298,7 @@ function readModelFeatureOverrides(
     | "chat"
     | "embedding"
     | "queryExpansion"
-    | "summarization",
+    | "indexing",
 ): ProviderModelFeatureOverrides {
   if (capability === "chat") {
     return settings.featureOverrides.chat
@@ -1282,7 +1309,7 @@ function readModelFeatureOverrides(
 
 function readLanguageFeatureOverrides(
   settings: ProviderSettings,
-  capability: "answer" | "chat" | "queryExpansion" | "summarization",
+  capability: "answer" | "chat" | "queryExpansion" | "indexing",
 ): ProviderLanguageFeatureOverrides {
   if (capability === "chat") {
     return settings.featureOverrides.chat

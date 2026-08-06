@@ -935,11 +935,11 @@ function buildModels(claimVerifier: FakeHhemClient): InferenceModelRegistry {
     queryExpansion: languageModel,
     queryEmbedding: embedding,
     reranker: null,
-    summary: languageModel,
+    indexing: languageModel,
     timeouts: {
       answerMs: 900_000,
       embeddingMs: 600_000,
-      summarizationMs: 900_000,
+      indexingMs: 900_000,
       queryExpansionMs: 900_000,
     },
   };

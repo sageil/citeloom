@@ -43,7 +43,7 @@ export interface DashboardResponse {
       model: string;
       name: string;
     } | null;
-    summaryModel: string;
+    indexingModel: string;
   };
   maximumUploadRequestBytes: number;
   maximumDocumentBytes: number;
@@ -128,7 +128,7 @@ export async function buildDashboardResponse(
       queryExpansionModel:
         effectiveConfig.inference.queryExpansion?.model ?? null,
       reranker,
-      summaryModel: effectiveConfig.inference.summary.model,
+      indexingModel: effectiveConfig.inference.indexing.model,
     },
     maximumDocumentBytes: effectiveConfig.maxDocumentBytes,
     maximumUploadRequestBytes,

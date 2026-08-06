@@ -66,12 +66,12 @@ export interface InferenceModelRegistry {
   queryExpansion: LanguageModelV4 | null;
   queryEmbedding: EmbeddingModelV4;
   reranker: ResolvedReranker | null;
-  summary: LanguageModelV4;
+  indexing: LanguageModelV4;
   timeouts: {
     answerMs: number;
     chatMs?: number;
     embeddingMs: number;
-    summarizationMs: number;
+    indexingMs: number;
     queryExpansionMs: number | null;
   };
 }
@@ -143,18 +143,18 @@ export function createInferenceModelRegistry(
     config.inference.answerBudget.providerSafetyMarginTokens,
     ollamaModelMetadataCache,
   );
-  const summaryRuntime = createLanguageModel(
-    config.inference.summary,
+  const indexingRuntime = createLanguageModel(
+    config.inference.indexing,
     INFERENCE_PROVIDER_OPTIONS_KEY,
     true,
     database,
-    "summary",
+    "indexing",
     0,
     ollamaModelMetadataCache,
   );
   const baseLanguageModel = answerRuntime.model;
   const baseChatModel = chatRuntime.model;
-  const baseSummaryModel = summaryRuntime.model;
+  const baseIndexingModel = indexingRuntime.model;
   const answerThinkingProviderOptions = buildLanguageThinkingProviderOptions(
     config.inference.answer,
     config.inference.answer.thinkingMode,
@@ -163,9 +163,9 @@ export function createInferenceModelRegistry(
     chatConfig,
     chatConfig.thinkingMode,
   );
-  const summaryThinkingProviderOptions = buildLanguageThinkingProviderOptions(
-    config.inference.summary,
-    config.inference.summary.thinkingMode,
+  const indexingThinkingProviderOptions = buildLanguageThinkingProviderOptions(
+    config.inference.indexing,
+    config.inference.indexing.thinkingMode,
   );
   const answerReasoning = buildLanguageReasoning(
     config.inference.answer,
@@ -175,9 +175,9 @@ export function createInferenceModelRegistry(
     chatConfig,
     chatConfig.thinkingMode,
   );
-  const summaryReasoning = buildLanguageReasoning(
-    config.inference.summary,
-    config.inference.summary.thinkingMode,
+  const indexingReasoning = buildLanguageReasoning(
+    config.inference.indexing,
+    config.inference.indexing.thinkingMode,
   );
   const answerModel = wrapLanguageModel({
     middleware: defaultSettingsMiddleware({
@@ -203,17 +203,17 @@ export function createInferenceModelRegistry(
     model: baseChatModel,
     modelId: `${chatConfig.model}:chat`,
   });
-  const summaryModel = wrapLanguageModel({
+  const indexingModel = wrapLanguageModel({
     middleware: defaultSettingsMiddleware({
       settings: buildLanguageModelSettings(
         null,
         0.1,
-        summaryThinkingProviderOptions,
-        summaryReasoning,
+        indexingThinkingProviderOptions,
+        indexingReasoning,
       ),
     }),
-    model: baseSummaryModel,
-    modelId: `${config.inference.summary.model}:summary`,
+    model: baseIndexingModel,
+    modelId: `${config.inference.indexing.model}:indexing`,
   });
   const queryExpansionRuntime = createQueryExpansionRuntime(
     config.inference.queryExpansion,
@@ -247,7 +247,7 @@ export function createInferenceModelRegistry(
   const languageModels: Record<string, LanguageModelV4> = {
     answer: answerModel,
     chat: chatModel,
-    summary: summaryModel,
+    indexing: indexingModel,
   };
   if (queryExpansionRuntime !== null) {
     languageModels.queryExpansion = queryExpansionRuntime.model;
@@ -305,12 +305,12 @@ export function createInferenceModelRegistry(
     readAnswerCapabilities: answerRuntime.readCapabilities,
     readChatCapabilities: chatRuntime.readCapabilities,
     reranker,
-    summary: registry.languageModel("inference:summary"),
+    indexing: registry.languageModel("inference:indexing"),
     timeouts: {
       answerMs: config.inference.answer.timeoutMs,
       chatMs: chatConfig.timeoutMs,
       embeddingMs: config.inference.embedding.timeoutMs,
-      summarizationMs: config.inference.summary.timeoutMs,
+      indexingMs: config.inference.indexing.timeoutMs,
       queryExpansionMs: queryExpansionRuntime?.timeoutMs ?? null,
     },
   };
@@ -436,7 +436,8 @@ function isOpenAICompatibleLanguageAdapter(
 ): boolean {
   return adapter === "deepseek-language"
     || adapter === "openai-compatible-language"
-    || adapter === "openai-codex-language";
+    || adapter === "openai-codex-language"
+    || adapter === "openrouter-language";
 }
 
 function buildProviderSettings(
@@ -462,7 +463,7 @@ function buildLanguageProviderSettings(
   workload: OllamaAdaptiveWorkload,
 ): OpenAICompatibleProviderSettings {
   const usesDeepSeekContract = config.adapter === "deepseek-language";
-  const usesOpenRouterContract = config.providerId === "openrouter";
+  const usesOpenRouterContract = config.adapter === "openrouter-language";
   const settings = buildProviderSettings(
     config,
     providerName,

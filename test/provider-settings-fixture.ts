@@ -3,9 +3,30 @@ import {
   type ProviderCapabilityConnection,
   type ProviderConnection,
   type ProviderModelConnection,
+  type ProviderProfile,
   type ProviderSettings,
   type ProviderTextToSpeechConnection,
 } from "../src/config/index.js";
+
+const TEST_PROVIDER_IDS = [
+  "cohere",
+  "custom",
+  "deepseek",
+  "groq",
+  "jina",
+  "lmstudio",
+  "ollama",
+  "omlx",
+  "openai",
+  "openai-codex",
+  "openrouter",
+] as const;
+
+type TestProviderId = typeof TEST_PROVIDER_IDS[number];
+
+export interface TestProviderSettings extends ProviderSettings {
+  connections: Record<TestProviderId, ProviderConnection>;
+}
 
 export interface TestProviderSettingsOptions {
   answerModel?: string;
@@ -21,7 +42,7 @@ export interface TestProviderSettingsOptions {
   speechToTextBaseUrl?: string;
   speechToTextEnabled?: boolean;
   speechToTextModel?: string;
-  summaryModel?: string;
+  indexingModel?: string;
   textToSpeechApiToken?: string | null;
   textToSpeechBaseUrl?: string;
   textToSpeechEnabled?: boolean;
@@ -29,13 +50,131 @@ export interface TestProviderSettingsOptions {
   textToSpeechVoice?: string;
 }
 
+function createTestProviderCatalog(): ProviderProfile[] {
+  return [
+    createTestProviderProfile("cohere", "Cohere", [
+      { adapter: "cohere-language", capability: "answer" },
+      { adapter: "cohere-language", capability: "chat" },
+      { adapter: "cohere-embedding", capability: "embedding" },
+      { adapter: "cohere-language", capability: "queryExpansion" },
+      { adapter: "cohere-rerank", capability: "reranking" },
+      { adapter: "cohere-language", capability: "indexing" },
+    ]),
+    createTestProviderProfile("custom", "Custom", [
+      { adapter: "openai-compatible-language", capability: "answer" },
+      { adapter: "openai-compatible-language", capability: "chat" },
+      { adapter: "openai-compatible-embedding", capability: "embedding" },
+      { adapter: "openai-compatible-language", capability: "queryExpansion" },
+      { adapter: "top-n-rerank", capability: "reranking" },
+      { adapter: "openai-transcription", capability: "speechToText" },
+      { adapter: "openai-compatible-language", capability: "indexing" },
+      { adapter: "openai-speech", capability: "textToSpeech" },
+    ], { adapterConfiguration: "connection" }),
+    createTestProviderProfile("deepseek", "DeepSeek", [
+      { adapter: "deepseek-language", capability: "answer" },
+      { adapter: "deepseek-language", capability: "chat" },
+      { adapter: "deepseek-language", capability: "queryExpansion" },
+      { adapter: "deepseek-language", capability: "indexing" },
+    ]),
+    createTestProviderProfile("groq", "Groq", [
+      { adapter: "openai-compatible-language", capability: "answer" },
+      { adapter: "openai-compatible-language", capability: "chat" },
+      { adapter: "openai-compatible-language", capability: "queryExpansion" },
+      { adapter: "openai-transcription", capability: "speechToText" },
+      { adapter: "openai-compatible-language", capability: "indexing" },
+      { adapter: "groq-speech", capability: "textToSpeech" },
+    ]),
+    createTestProviderProfile("jina", "Jina", [
+      { adapter: "openai-compatible-embedding", capability: "embedding" },
+      { adapter: "top-n-rerank", capability: "reranking" },
+    ]),
+    createTestProviderProfile("lmstudio", "LM Studio", [
+      { adapter: "openai-compatible-language", capability: "answer" },
+      { adapter: "openai-compatible-language", capability: "chat" },
+      { adapter: "openai-compatible-embedding", capability: "embedding" },
+      { adapter: "openai-compatible-language", capability: "queryExpansion" },
+      { adapter: "openai-compatible-language", capability: "indexing" },
+    ], { engineType: "api_lmstudio" }),
+    createTestProviderProfile("ollama", "Ollama", [
+      { adapter: "ollama-language", capability: "answer" },
+      { adapter: "ollama-language", capability: "chat" },
+      { adapter: "ollama-embedding", capability: "embedding" },
+      { adapter: "ollama-language", capability: "queryExpansion" },
+      { adapter: "ollama-language", capability: "indexing" },
+    ], { endpointStyle: "ollama", engineType: "api_ollama" }),
+    createTestProviderProfile("omlx", "oMLX", [
+      { adapter: "openai-compatible-language", capability: "answer" },
+      { adapter: "openai-compatible-language", capability: "chat" },
+      { adapter: "openai-compatible-embedding", capability: "embedding" },
+      { adapter: "openai-compatible-language", capability: "queryExpansion" },
+      { adapter: "top-n-rerank", capability: "reranking" },
+      { adapter: "omlx-transcription", capability: "speechToText" },
+      { adapter: "openai-compatible-language", capability: "indexing" },
+      { adapter: "omlx-speech", capability: "textToSpeech" },
+    ]),
+    createTestProviderProfile("openai", "OpenAI", [
+      { adapter: "openai-compatible-language", capability: "answer" },
+      { adapter: "openai-compatible-language", capability: "chat" },
+      { adapter: "openai-compatible-embedding", capability: "embedding" },
+      { adapter: "openai-compatible-language", capability: "queryExpansion" },
+      { adapter: "openai-transcription", capability: "speechToText" },
+      { adapter: "openai-compatible-language", capability: "indexing" },
+      { adapter: "openai-speech", capability: "textToSpeech" },
+    ], { engineType: "api_openai" }),
+    createTestProviderProfile("openai-codex", "OpenAI Codex", [
+      { adapter: "openai-codex-language", capability: "answer" },
+      { adapter: "openai-codex-language", capability: "chat" },
+      { adapter: "openai-codex-language", capability: "queryExpansion" },
+      { adapter: "openai-codex-language", capability: "indexing" },
+    ], { authentication: "openai-device", doclingVlm: null }),
+    createTestProviderProfile("openrouter", "OpenRouter", [
+      { adapter: "openrouter-language", capability: "answer" },
+      { adapter: "openrouter-language", capability: "chat" },
+      { adapter: "openai-compatible-embedding", capability: "embedding" },
+      { adapter: "openrouter-language", capability: "queryExpansion" },
+      { adapter: "top-n-rerank", capability: "reranking" },
+      { adapter: "openrouter-transcription", capability: "speechToText" },
+      { adapter: "openrouter-language", capability: "indexing" },
+      { adapter: "openrouter-speech", capability: "textToSpeech" },
+    ]),
+  ];
+}
+
+function createTestProviderProfile(
+  id: TestProviderId,
+  displayName: string,
+  capabilities: ProviderProfile["capabilities"],
+  options: {
+    adapterConfiguration?: ProviderProfile["adapterConfiguration"];
+    authentication?: ProviderProfile["authentication"];
+    doclingVlm?: ProviderProfile["doclingVlm"];
+    endpointStyle?: "ollama" | "openai";
+    engineType?: NonNullable<ProviderProfile["doclingVlm"]>["engineType"];
+  } = {},
+): ProviderProfile {
+  const doclingVlm = options.doclingVlm === null
+    ? null
+    : {
+      endpointStyle: options.endpointStyle ?? "openai",
+      engineType: options.engineType ?? "api",
+    };
+  return {
+    adapterConfiguration: options.adapterConfiguration ?? "catalog",
+    authentication: options.authentication ?? "api-token",
+    capabilities,
+    displayName,
+    doclingVlm,
+    id,
+  };
+}
+
 export function createTestProviderSettings(
   options: TestProviderSettingsOptions = {},
-): ProviderSettings {
+): TestProviderSettings {
   const inferenceBaseUrl =
     options.inferenceBaseUrl ?? "http://localhost:1234/v1";
   const omlxBaseUrl = "http://host.docker.internal:9000/v1";
-  const connections: ProviderSettings["connections"] = {
+  const connections: Record<TestProviderId, ProviderConnection> = {
     cohere: createProviderConnection("https://api.cohere.com/v2"),
     custom: createProviderConnection(null),
     deepseek: createProviderConnection("https://api.deepseek.com"),
@@ -55,7 +194,7 @@ export function createTestProviderSettings(
     "deepseek-v4-flash",
     1_000_000,
   );
-  connections.deepseek.summarization = createModelConnection(
+  connections.deepseek.indexing = createModelConnection(
     "deepseek-v4-flash",
     1_000_000,
   );
@@ -69,7 +208,7 @@ export function createTestProviderSettings(
     "embeddinggemma",
     2_048,
   );
-  connections.ollama.summarization = createModelConnection(
+  connections.ollama.indexing = createModelConnection(
     "gemma4:e4b",
     131_072,
   );
@@ -89,16 +228,16 @@ export function createTestProviderSettings(
     inferenceBaseUrl,
     options.inferenceApiToken ?? null,
   );
-  connections.lmstudio.summarization = createModelConnection(
-    options.summaryModel ?? "summary-model",
+  connections.lmstudio.indexing = createModelConnection(
+    options.indexingModel ?? "indexing-model",
     32_768,
     inferenceBaseUrl,
     options.inferenceApiToken ?? null,
   );
   connections.lmstudio.queryExpansion = createModelConnection(
     options.queryExpansionModel
-      ?? options.summaryModel
-      ?? "summary-model",
+      ?? options.indexingModel
+      ?? "indexing-model",
     32_768,
     inferenceBaseUrl,
     options.inferenceApiToken ?? null,
@@ -111,7 +250,7 @@ export function createTestProviderSettings(
     "gpt-5.6-terra",
     272_000,
   );
-  connections["openai-codex"].summarization = createModelConnection(
+  connections["openai-codex"].indexing = createModelConnection(
     "gpt-5.6-terra",
     272_000,
   );
@@ -133,7 +272,7 @@ export function createTestProviderSettings(
   connections.openrouter.speechToText = createCapabilityConnection(
     "openai/gpt-4o-mini-transcribe",
   );
-  connections.openrouter.summarization = createModelConnection(
+  connections.openrouter.indexing = createModelConnection(
     "openrouter/free",
     200_000,
   );
@@ -159,6 +298,7 @@ export function createTestProviderSettings(
   );
 
   return parseProviderSettings({
+    catalog: createTestProviderCatalog(),
     connections,
     featureOverrides: {
       answer: {
@@ -177,7 +317,7 @@ export function createTestProviderSettings(
       },
       reranking: { modelOverride: null },
       speechToText: { modelOverride: null },
-      summarization: {
+      indexing: {
         contextCapacityTokensOverride: null,
         modelOverride: null,
         thinkingModeOverride: null,
@@ -193,10 +333,10 @@ export function createTestProviderSettings(
       queryExpansion: "lmstudio",
       reranking: options.rerankEnabled === true ? "omlx" : null,
       speechToText: options.speechToTextEnabled === true ? "omlx" : null,
-      summarization: "lmstudio",
+      indexing: "lmstudio",
       textToSpeech: options.textToSpeechEnabled === true ? "omlx" : null,
     },
-  });
+  }) as TestProviderSettings;
 }
 
 function createProviderConnection(baseUrl: string | null): ProviderConnection {
@@ -211,7 +351,7 @@ function createProviderConnection(baseUrl: string | null): ProviderConnection {
       queryExpansion: "openai-compatible-language",
       reranking: "top-n-rerank",
       speechToText: "openai-transcription",
-      summarization: "openai-compatible-language",
+      indexing: "openai-compatible-language",
       textToSpeech: "openai-speech",
     },
     embedding: createModelConnection(null, null),
@@ -221,7 +361,7 @@ function createProviderConnection(baseUrl: string | null): ProviderConnection {
     reranking: createCapabilityConnection(),
     speechToText: createCapabilityConnection(),
     queryExpansion: createModelConnection(null, null),
-    summarization: createModelConnection(null, null),
+    indexing: createModelConnection(null, null),
     textToSpeech: createTextToSpeechConnection(),
   };
 }

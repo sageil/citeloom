@@ -57,7 +57,7 @@ export async function backfillDocumentTocs(
       config.embeddingSpace.id,
     );
     const documentStore = new SourceDocumentStore(runtime.database);
-    const scheduler = runtime.scheduler("summarization", "maintenance");
+    const scheduler = runtime.scheduler("indexing", "maintenance");
     const report: DocumentTocBackfillReport = {
       alreadyPublished: 0,
       published: 0,

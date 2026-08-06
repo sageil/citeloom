@@ -42,6 +42,170 @@ WITH canonical_settings AS (
     $settings$
   {
     "providers": {
+      "catalog": [
+        {
+          "adapterConfiguration": "catalog",
+          "authentication": "api-token",
+          "capabilities": [
+            { "adapter": "openai-compatible-language", "capability": "answer" },
+            { "adapter": "openai-compatible-language", "capability": "chat" },
+            { "adapter": "openai-compatible-language", "capability": "queryExpansion" },
+            { "adapter": "openai-compatible-language", "capability": "indexing" },
+            { "adapter": "openai-compatible-embedding", "capability": "embedding" },
+            { "adapter": "top-n-rerank", "capability": "reranking" },
+            { "adapter": "omlx-transcription", "capability": "speechToText" },
+            { "adapter": "omlx-speech", "capability": "textToSpeech" }
+          ],
+          "displayName": "oMLX",
+          "doclingVlm": { "endpointStyle": "openai", "engineType": "api" },
+          "id": "omlx"
+        },
+        {
+          "adapterConfiguration": "catalog",
+          "authentication": "api-token",
+          "capabilities": [
+            { "adapter": "ollama-language", "capability": "answer" },
+            { "adapter": "ollama-language", "capability": "chat" },
+            { "adapter": "ollama-language", "capability": "queryExpansion" },
+            { "adapter": "ollama-embedding", "capability": "embedding" },
+            { "adapter": "ollama-language", "capability": "indexing" }
+          ],
+          "displayName": "Ollama",
+          "doclingVlm": { "endpointStyle": "ollama", "engineType": "api_ollama" },
+          "id": "ollama"
+        },
+        {
+          "adapterConfiguration": "catalog",
+          "authentication": "api-token",
+          "capabilities": [
+            { "adapter": "openai-compatible-language", "capability": "answer" },
+            { "adapter": "openai-compatible-language", "capability": "chat" },
+            { "adapter": "openai-compatible-language", "capability": "queryExpansion" },
+            { "adapter": "openai-compatible-language", "capability": "indexing" },
+            { "adapter": "openai-compatible-embedding", "capability": "embedding" }
+          ],
+          "displayName": "LM Studio",
+          "doclingVlm": { "endpointStyle": "openai", "engineType": "api_lmstudio" },
+          "id": "lmstudio"
+        },
+        {
+          "adapterConfiguration": "catalog",
+          "authentication": "api-token",
+          "capabilities": [
+            { "adapter": "openai-compatible-language", "capability": "answer" },
+            { "adapter": "openai-compatible-language", "capability": "chat" },
+            { "adapter": "openai-compatible-language", "capability": "queryExpansion" },
+            { "adapter": "openai-compatible-language", "capability": "indexing" },
+            { "adapter": "openai-compatible-embedding", "capability": "embedding" },
+            { "adapter": "openai-transcription", "capability": "speechToText" },
+            { "adapter": "openai-speech", "capability": "textToSpeech" }
+          ],
+          "displayName": "OpenAI",
+          "doclingVlm": { "endpointStyle": "openai", "engineType": "api_openai" },
+          "id": "openai"
+        },
+        {
+          "adapterConfiguration": "catalog",
+          "authentication": "api-token",
+          "capabilities": [
+            { "adapter": "openrouter-language", "capability": "answer" },
+            { "adapter": "openrouter-language", "capability": "chat" },
+            { "adapter": "openrouter-language", "capability": "queryExpansion" },
+            { "adapter": "openrouter-language", "capability": "indexing" },
+            { "adapter": "openai-compatible-embedding", "capability": "embedding" },
+            { "adapter": "top-n-rerank", "capability": "reranking" },
+            { "adapter": "openrouter-transcription", "capability": "speechToText" },
+            { "adapter": "openrouter-speech", "capability": "textToSpeech" }
+          ],
+          "displayName": "OpenRouter",
+          "doclingVlm": { "endpointStyle": "openai", "engineType": "api" },
+          "id": "openrouter"
+        },
+        {
+          "adapterConfiguration": "catalog",
+          "authentication": "openai-device",
+          "capabilities": [
+            { "adapter": "openai-codex-language", "capability": "answer" },
+            { "adapter": "openai-codex-language", "capability": "chat" },
+            { "adapter": "openai-codex-language", "capability": "queryExpansion" },
+            { "adapter": "openai-codex-language", "capability": "indexing" }
+          ],
+          "displayName": "OpenAI Codex",
+          "doclingVlm": null,
+          "id": "openai-codex"
+        },
+        {
+          "adapterConfiguration": "catalog",
+          "authentication": "api-token",
+          "capabilities": [
+            { "adapter": "deepseek-language", "capability": "answer" },
+            { "adapter": "deepseek-language", "capability": "chat" },
+            { "adapter": "deepseek-language", "capability": "queryExpansion" },
+            { "adapter": "deepseek-language", "capability": "indexing" }
+          ],
+          "displayName": "DeepSeek",
+          "doclingVlm": { "endpointStyle": "openai", "engineType": "api" },
+          "id": "deepseek"
+        },
+        {
+          "adapterConfiguration": "catalog",
+          "authentication": "api-token",
+          "capabilities": [
+            { "adapter": "openai-compatible-language", "capability": "answer" },
+            { "adapter": "openai-compatible-language", "capability": "chat" },
+            { "adapter": "openai-compatible-language", "capability": "queryExpansion" },
+            { "adapter": "openai-compatible-language", "capability": "indexing" },
+            { "adapter": "openai-transcription", "capability": "speechToText" },
+            { "adapter": "groq-speech", "capability": "textToSpeech" }
+          ],
+          "displayName": "Groq",
+          "doclingVlm": { "endpointStyle": "openai", "engineType": "api" },
+          "id": "groq"
+        },
+        {
+          "adapterConfiguration": "catalog",
+          "authentication": "api-token",
+          "capabilities": [
+            { "adapter": "cohere-language", "capability": "answer" },
+            { "adapter": "cohere-language", "capability": "chat" },
+            { "adapter": "cohere-language", "capability": "queryExpansion" },
+            { "adapter": "cohere-language", "capability": "indexing" },
+            { "adapter": "cohere-embedding", "capability": "embedding" },
+            { "adapter": "cohere-rerank", "capability": "reranking" }
+          ],
+          "displayName": "Cohere",
+          "doclingVlm": null,
+          "id": "cohere"
+        },
+        {
+          "adapterConfiguration": "catalog",
+          "authentication": "api-token",
+          "capabilities": [
+            { "adapter": "openai-compatible-embedding", "capability": "embedding" },
+            { "adapter": "top-n-rerank", "capability": "reranking" }
+          ],
+          "displayName": "Jina",
+          "doclingVlm": null,
+          "id": "jina"
+        },
+        {
+          "adapterConfiguration": "connection",
+          "authentication": "api-token",
+          "capabilities": [
+            { "adapter": "openai-compatible-language", "capability": "answer" },
+            { "adapter": "openai-compatible-language", "capability": "chat" },
+            { "adapter": "openai-compatible-language", "capability": "queryExpansion" },
+            { "adapter": "openai-compatible-language", "capability": "indexing" },
+            { "adapter": "openai-compatible-embedding", "capability": "embedding" },
+            { "adapter": "top-n-rerank", "capability": "reranking" },
+            { "adapter": "openai-transcription", "capability": "speechToText" },
+            { "adapter": "openai-speech", "capability": "textToSpeech" }
+          ],
+          "displayName": "Custom",
+          "doclingVlm": { "endpointStyle": "openai", "engineType": "api" },
+          "id": "custom"
+        }
+      ],
       "connections": {
         "cohere": {
           "apiToken": null,
@@ -58,7 +222,7 @@ WITH canonical_settings AS (
             "queryExpansion": "openai-compatible-language",
             "reranking": "top-n-rerank",
             "speechToText": "openai-transcription",
-            "summarization": "openai-compatible-language",
+            "indexing": "openai-compatible-language",
             "textToSpeech": "openai-speech"
           },
           "embedding": {
@@ -86,7 +250,7 @@ WITH canonical_settings AS (
             "baseUrl": null,
             "model": null
           },
-          "summarization": {
+          "indexing": {
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": null,
@@ -114,7 +278,7 @@ WITH canonical_settings AS (
             "queryExpansion": "openai-compatible-language",
             "reranking": "top-n-rerank",
             "speechToText": "openai-transcription",
-            "summarization": "openai-compatible-language",
+            "indexing": "openai-compatible-language",
             "textToSpeech": "openai-speech"
           },
           "embedding": {
@@ -142,7 +306,7 @@ WITH canonical_settings AS (
             "baseUrl": null,
             "model": null
           },
-          "summarization": {
+          "indexing": {
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": null,
@@ -170,7 +334,7 @@ WITH canonical_settings AS (
             "queryExpansion": "openai-compatible-language",
             "reranking": "top-n-rerank",
             "speechToText": "openai-transcription",
-            "summarization": "openai-compatible-language",
+            "indexing": "openai-compatible-language",
             "textToSpeech": "openai-speech"
           },
           "embedding": {
@@ -198,7 +362,7 @@ WITH canonical_settings AS (
             "baseUrl": null,
             "model": null
           },
-          "summarization": {
+          "indexing": {
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": 1000000,
@@ -226,7 +390,7 @@ WITH canonical_settings AS (
             "queryExpansion": "openai-compatible-language",
             "reranking": "top-n-rerank",
             "speechToText": "openai-transcription",
-            "summarization": "openai-compatible-language",
+            "indexing": "openai-compatible-language",
             "textToSpeech": "openai-speech"
           },
           "embedding": {
@@ -254,7 +418,7 @@ WITH canonical_settings AS (
             "baseUrl": null,
             "model": null
           },
-          "summarization": {
+          "indexing": {
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": null,
@@ -282,7 +446,7 @@ WITH canonical_settings AS (
             "queryExpansion": "openai-compatible-language",
             "reranking": "top-n-rerank",
             "speechToText": "openai-transcription",
-            "summarization": "openai-compatible-language",
+            "indexing": "openai-compatible-language",
             "textToSpeech": "openai-speech"
           },
           "embedding": {
@@ -310,7 +474,7 @@ WITH canonical_settings AS (
             "baseUrl": null,
             "model": null
           },
-          "summarization": {
+          "indexing": {
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": null,
@@ -338,7 +502,7 @@ WITH canonical_settings AS (
             "queryExpansion": "openai-compatible-language",
             "reranking": "top-n-rerank",
             "speechToText": "openai-transcription",
-            "summarization": "openai-compatible-language",
+            "indexing": "openai-compatible-language",
             "textToSpeech": "openai-speech"
           },
           "embedding": {
@@ -366,7 +530,7 @@ WITH canonical_settings AS (
             "baseUrl": null,
             "model": null
           },
-          "summarization": {
+          "indexing": {
             "apiToken": null,
             "baseUrl": "http://host.docker.internal:1234/v1",
             "contextCapacityTokens": 131072,
@@ -395,7 +559,7 @@ WITH canonical_settings AS (
             "queryExpansion": "openai-compatible-language",
             "reranking": "top-n-rerank",
             "speechToText": "openai-transcription",
-            "summarization": "openai-compatible-language",
+            "indexing": "openai-compatible-language",
             "textToSpeech": "openai-speech"
           },
           "embedding": {
@@ -423,7 +587,7 @@ WITH canonical_settings AS (
             "baseUrl": null,
             "model": null
           },
-          "summarization": {
+          "indexing": {
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": 131072,
@@ -451,7 +615,7 @@ WITH canonical_settings AS (
             "queryExpansion": "openai-compatible-language",
             "reranking": "top-n-rerank",
             "speechToText": "openai-transcription",
-            "summarization": "openai-compatible-language",
+            "indexing": "openai-compatible-language",
             "textToSpeech": "openai-speech"
           },
           "embedding": {
@@ -479,7 +643,7 @@ WITH canonical_settings AS (
             "baseUrl": null,
             "model": "Qwen3-ASR-1.7B-8bit"
           },
-          "summarization": {
+          "indexing": {
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": null,
@@ -507,7 +671,7 @@ WITH canonical_settings AS (
             "queryExpansion": "openai-compatible-language",
             "reranking": "top-n-rerank",
             "speechToText": "openai-transcription",
-            "summarization": "openai-compatible-language",
+            "indexing": "openai-compatible-language",
             "textToSpeech": "openai-speech"
           },
           "embedding": {
@@ -535,7 +699,7 @@ WITH canonical_settings AS (
             "baseUrl": null,
             "model": null
           },
-          "summarization": {
+          "indexing": {
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": null,
@@ -563,7 +727,7 @@ WITH canonical_settings AS (
             "queryExpansion": "openai-compatible-language",
             "reranking": "top-n-rerank",
             "speechToText": "openrouter-transcription",
-            "summarization": "openai-compatible-language",
+            "indexing": "openai-compatible-language",
             "textToSpeech": "openrouter-speech"
           },
           "embedding": {
@@ -591,7 +755,7 @@ WITH canonical_settings AS (
             "baseUrl": null,
             "model": "openai/gpt-4o-mini-transcribe"
           },
-          "summarization": {
+          "indexing": {
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": 200000,
@@ -619,7 +783,7 @@ WITH canonical_settings AS (
             "queryExpansion": "openai-compatible-language",
             "reranking": "top-n-rerank",
             "speechToText": "openai-transcription",
-            "summarization": "openai-compatible-language",
+            "indexing": "openai-compatible-language",
             "textToSpeech": "openai-speech"
           },
           "embedding": {
@@ -647,7 +811,7 @@ WITH canonical_settings AS (
             "baseUrl": null,
             "model": null
           },
-          "summarization": {
+          "indexing": {
             "apiToken": null,
             "baseUrl": null,
             "contextCapacityTokens": 272000,
@@ -682,7 +846,7 @@ WITH canonical_settings AS (
         "speechToText": {
           "modelOverride": null
         },
-        "summarization": {
+        "indexing": {
           "contextCapacityTokensOverride": null,
           "modelOverride": null,
           "thinkingModeOverride": null
@@ -698,7 +862,7 @@ WITH canonical_settings AS (
         "queryExpansion": "ollama",
         "reranking": null,
         "speechToText": null,
-        "summarization": "ollama",
+        "indexing": "ollama",
         "textToSpeech": null
       }
     },
@@ -765,7 +929,7 @@ WITH canonical_settings AS (
       "sttMaxAudioMegabytes": 10,
       "sttPrompt": null,
       "sttTimeoutSeconds": 60,
-      "summaryTimeoutSeconds": 21600,
+      "indexingTimeoutSeconds": 21600,
       "topK": 10,
       "ttsPreloadEnabled": false,
       "ttsSpeed": 1,
@@ -783,6 +947,44 @@ WITH canonical_settings AS (
     ),
     true
   ) AS document
+), settings_documents AS (
+  SELECT
+    canonical_settings.document AS defaults_document,
+    jsonb_set(
+      canonical_settings.document,
+      '{providers,catalog}',
+      COALESCE(
+        existing_settings.settings#>'{providers,catalog}',
+        '[]'::jsonb
+      )
+        || COALESCE(
+          (
+            SELECT jsonb_agg(
+              canonical_profile.value
+              ORDER BY canonical_profile.ordinality
+            )
+            FROM jsonb_array_elements(
+              canonical_settings.document#>'{providers,catalog}'
+            ) WITH ORDINALITY AS canonical_profile(value, ordinality)
+            WHERE NOT EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(
+                COALESCE(
+                  existing_settings.settings#>'{providers,catalog}',
+                  '[]'::jsonb
+                )
+              ) AS existing_profile(value)
+              WHERE existing_profile.value->>'id'
+                = canonical_profile.value->>'id'
+            )
+          ),
+          '[]'::jsonb
+        ),
+      true
+    ) AS settings_document
+  FROM canonical_settings
+  LEFT JOIN application_settings AS existing_settings
+    ON existing_settings.id = 'runtime'
 )
 INSERT INTO "application_settings" (
   "defaults",
@@ -790,10 +992,10 @@ INSERT INTO "application_settings" (
   "settings"
 )
 SELECT
-  "document",
+  "defaults_document",
   'runtime',
-  "document"
-FROM canonical_settings
+  "settings_document"
+FROM settings_documents
 ON CONFLICT ("id") DO UPDATE
 SET
   "defaults" = jsonb_set(
@@ -810,12 +1012,12 @@ SET
                     EXCLUDED."defaults"#>'{providers,routing}',
                     true
                   ),
-                  '{providers,connections,omlx}',
-                  EXCLUDED."defaults"#>'{providers,connections,omlx}',
+                  '{providers,catalog}',
+                  EXCLUDED."defaults"#>'{providers,catalog}',
                   true
                 ),
-                '{providers,connections,ollama}',
-                EXCLUDED."defaults"#>'{providers,connections,ollama}',
+                '{providers,connections}',
+                EXCLUDED."defaults"#>'{providers,connections}',
                 true
               ),
               '{runtime,answerMaximumOutputTokens}',
@@ -848,7 +1050,21 @@ SET
         jsonb_set(
           jsonb_set(
             jsonb_set(
-              "application_settings"."settings",
+              jsonb_set(
+                jsonb_set(
+                  "application_settings"."settings",
+                  '{providers,catalog}',
+                  EXCLUDED."settings"#>'{providers,catalog}',
+                  true
+                ),
+                '{providers,connections}',
+                EXCLUDED."settings"#>'{providers,connections}'
+                  || COALESCE(
+                    "application_settings"."settings"#>'{providers,connections}',
+                    '{}'::jsonb
+                  ),
+                true
+              ),
               '{runtime,answerMaximumOutputTokens}',
               CASE
                 WHEN
@@ -921,10 +1137,10 @@ SET
 WHERE
   "application_settings"."defaults"#>'{providers,routing}'
     IS DISTINCT FROM EXCLUDED."defaults"#>'{providers,routing}'
-  OR "application_settings"."defaults"#>'{providers,connections,omlx}'
-    IS DISTINCT FROM EXCLUDED."defaults"#>'{providers,connections,omlx}'
-  OR "application_settings"."defaults"#>'{providers,connections,ollama}'
-    IS DISTINCT FROM EXCLUDED."defaults"#>'{providers,connections,ollama}'
+  OR "application_settings"."defaults"#>'{providers,catalog}'
+    IS DISTINCT FROM EXCLUDED."defaults"#>'{providers,catalog}'
+  OR "application_settings"."defaults"#>'{providers,connections}'
+    IS DISTINCT FROM EXCLUDED."defaults"#>'{providers,connections}'
   OR "application_settings"."defaults"#>'{runtime,answerMaximumOutputTokens}'
     IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,answerMaximumOutputTokens}'
   OR "application_settings"."defaults"#>'{runtime,embeddingInputFormatId}'
@@ -939,6 +1155,16 @@ WHERE
     IS DISTINCT FROM EXCLUDED."defaults"->'sourceContent'
   OR "application_settings"."settings"#>'{providers,connections,ollama,adaptiveContextEnabled}'
     IS NULL
+  OR "application_settings"."settings"#>'{providers,catalog}'
+    IS DISTINCT FROM EXCLUDED."settings"#>'{providers,catalog}'
+  OR "application_settings"."settings"#>'{providers,connections}'
+    IS DISTINCT FROM (
+      EXCLUDED."settings"#>'{providers,connections}'
+        || COALESCE(
+          "application_settings"."settings"#>'{providers,connections}',
+          '{}'::jsonb
+        )
+    )
   OR "application_settings"."settings"->'sourceContent'
     IS DISTINCT FROM EXCLUDED."settings"->'sourceContent';
 

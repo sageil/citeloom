@@ -78,7 +78,10 @@ export class RerankingTimeoutError extends Error {
 export function createHttpRerankingModel(
   config: RerankerConfig,
 ): RerankingModelV4 {
-  if (config.adapter !== "top-n-rerank") {
+  if (
+    config.adapter !== "cohere-rerank"
+    && config.adapter !== "top-n-rerank"
+  ) {
     throw new Error(`Unsupported reranking adapter: ${config.adapter}.`);
   }
   return {

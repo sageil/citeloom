@@ -128,7 +128,7 @@ export const runtimeSettingsSchema = z.object({
   rrfK: z.number().int().min(1).max(1_000),
   searchMethod: z.enum(RETRIEVAL_MODES),
   queryExpansionTimeoutSeconds: z.number().int().min(1).max(3_600),
-  summaryTimeoutSeconds: z.number().int().min(1).max(86_400),
+  indexingTimeoutSeconds: z.number().int().min(1).max(86_400),
   sttLanguage: z.string().trim().min(1).max(100).nullable(),
   sttMaxAudioMegabytes: z.number().int().min(1).max(25),
   sttPrompt: z.string().trim().max(2_000).nullable(),

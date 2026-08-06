@@ -336,7 +336,7 @@ function buildInferenceRuntimeChecks(
     { config: config.answer, item: "Ask" },
     { config: config.chat, item: "Chat" },
     { config: config.queryExpansion, item: "Query expansion" },
-    { config: config.summary, item: "Summaries" },
+    { config: config.indexing, item: "Indexing" },
     { config: config.embedding, item: config.embedding.model },
   ]);
   const checks: Promise<DoctorCheck>[] = [];
@@ -509,7 +509,7 @@ function checkRerankerProviderRuntime(
     "Search ranking availability",
     [config.model],
   );
-  if (config.providerId === "cohere") {
+  if (config.adapter === "cohere-rerank") {
     return checkCohereRuntime(config, [config.model], identity);
   }
   return checkOpenAICompatibleRuntime(config, [config.model], identity);

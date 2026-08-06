@@ -738,7 +738,7 @@ function buildProvenance(
         provider: "test",
       },
       queryExpansion: {
-        modelId: "summary-model:summary",
+        modelId: "expansion-model:query-expansion",
         provider: "test",
       },
       reranker: {

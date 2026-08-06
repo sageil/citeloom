@@ -6,6 +6,9 @@ import {
   buildAppConfig,
   parseProviderSettings,
   parseRuntimeSettings,
+  readProviderAuthenticationMethod,
+  readProviderProfile,
+  requireProviderConnection,
   runtimeSettingsSchema,
   type AppConfig,
   type DatabaseConfig,
@@ -24,13 +27,11 @@ import type {
   ProviderConnection,
   ProviderConnectionConfiguration,
   ProviderCredentialTarget,
-  ProviderId,
   ProviderLanguageFeatureOverrides,
   ProviderModelConnection,
   ProviderModelFeatureOverrides,
   ProviderSettings,
 } from "../providers/profiles.js";
-import { providerCatalog } from "../providers/profiles.js";
 import {
   parseStoredApplicationSettings,
   type StoredApplicationSettings,
@@ -130,7 +131,7 @@ const runtimeSettingKeySchema = z.enum([
   "retryBaseMs",
   "rrfK",
   "searchMethod",
-  "summaryTimeoutSeconds",
+  "indexingTimeoutSeconds",
   "sttLanguage",
   "sttMaxAudioMegabytes",
   "sttPrompt",
@@ -216,10 +217,6 @@ const doclingDiagnosticsPanel: RuntimeSettingPanel = {
   label: "Diagnostics",
 };
 
-const doclingVlmProviderOptions = providerCatalog.map((provider) => {
-  return { label: provider.displayName, value: provider.id };
-});
-
 const embeddingDimensionOptions = SUPPORTED_EMBEDDING_DIMENSIONS.map(
   (dimensions) => {
     return { label: String(dimensions), value: dimensions };
@@ -245,7 +242,7 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   featureSetting(positiveIntegerSetting("retrievalChunkTargetTokens", "Embedding space", "Document section size", "The preferred size of searchable document sections. Smaller values create more focused sections, while larger values keep more nearby text together.", "tokens"), "embedding"),
   featureSetting(numberSetting("embeddingTimeoutSeconds", "Embedding space", "Embedding timeout", "How long CiteLoom waits while indexing documents or searching.", 1, 86_400, 1, "seconds"), "embedding"),
   featureSetting(nullableSetting("embeddingSpaceId", "Embedding space", "Search index name", "text", "An optional name for this search setup. Leave it blank to let CiteLoom choose one."), "embedding"),
-  featureSetting(numberSetting("summaryTimeoutSeconds", "Document processing", "Indexing model timeout", "How long CiteLoom waits for the indexing model while preparing document content for search.", 1, 86_400, 1, "seconds"), "summarization"),
+  featureSetting(numberSetting("indexingTimeoutSeconds", "Document processing", "Indexing model timeout", "How long CiteLoom waits for the indexing model while preparing document content for search.", 1, 86_400, 1, "seconds"), "indexing"),
   featureSetting(numberSetting("queryExpansions", "Search and answers", "Number of expansions", "How many alternative searches CiteLoom may create for one question. Set this to 0 to search only the original wording.", 0, 4, 1), "queryExpansion"),
   featureSetting(numberSetting("queryExpansionTemperature", "Search and answers", "Temperature", "How much generated search wording may vary. Set this to 0 for the most repeatable wording.", 0, 2, 0.01), "queryExpansion"),
   featureSetting(numberSetting("originalQueryWeight", "Search and answers", "Original question influence", "How strongly results found using the original question affect the final search order compared with query expansions.", 0.01, 100, 0.01), "queryExpansion"),
@@ -259,7 +256,7 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
     { label: "Standard", value: "standard" },
     { label: "VLM", value: "vlm" },
   ]), doclingPdfProcessingPanel),
-  panelSetting(selectSetting("doclingVlmProviderId", "Docling", "VLM provider", "Choose an existing provider connection for visual page processing.", doclingVlmProviderOptions), doclingPdfProcessingPanel),
+  panelSetting(selectSetting("doclingVlmProviderId", "Docling", "VLM provider", "Choose an existing provider connection for visual page processing.", []), doclingPdfProcessingPanel),
   panelSetting(nullableSetting("doclingVlmModelOverride", "Docling", "VLM model override", "text", "Use this model instead of the selected provider's default model."), doclingPdfProcessingPanel),
   panelSetting(setting("doclingVlmPrompt", "Docling", "VLM instructions", "text", "The task instructions sent with every PDF page."), doclingPdfProcessingPanel),
   panelSetting(numberSetting("doclingVlmMaxOutputTokens", "Docling", "VLM output limit", "The most output the VLM may return for one PDF page.", 1, 262_144, 1, "tokens"), doclingPdfProcessingPanel),
@@ -391,7 +388,7 @@ export const runtimeSettingChangeExamples = {
   embeddingTimeoutSeconds: "Raise 600 to 900 when a local embedding request needs more than 10 minutes.",
   retrievalChunkTargetTokens: "Use 512 for focused document sections. Larger values keep more nearby text together but may make individual matches less precise.",
   retrievalWindowPolicy: "Keep document structure to preserve headings, paragraphs, and table rows within searchable sections.",
-  summaryTimeoutSeconds: "Raise 21600 when table or image descriptions need more than six hours, up to a maximum of 86400.",
+  indexingTimeoutSeconds: "Raise 21600 when table or image descriptions need more than six hours, up to a maximum of 86400.",
   queryExpansionTimeoutSeconds: "Raise 60 to 120 when creating additional search wording needs more than one minute.",
   doclingBaseUrl: "Point it to http://docling:5001 when Docling runs in the Compose network.",
   doclingApiKey: "Replace it after Docling rotates its key so document conversions keep working.",
@@ -522,7 +519,11 @@ export class ApplicationSettingsRepository {
         stored,
       });
       await validateDefaultDoclingUrlChange(transaction, resolved);
-      await validateOpenAICodexRouteChange(transaction, providerChanges);
+      await validateOpenAICodexRouteChange(
+        transaction,
+        providerChanges,
+        resolved.providerSettings,
+      );
       const availability = await readEmbeddingSpaceAvailability(
         transaction,
         resolved.effectiveConfig.embeddingSpace.id,
@@ -783,23 +784,33 @@ async function validateDefaultDoclingUrlChange(
 async function validateOpenAICodexRouteChange(
   transaction: ApplicationSettingsTransaction,
   changes: NormalizedProviderSettingsChange[],
+  providerSettings: ProviderSettings,
 ): Promise<void> {
-  const selectsOpenAICodex = changes.some((change) => {
+  let selectedProviderId: string | null = null;
+  for (const change of changes) {
+    let providerId: string | null = null;
     if (change.action === "route") {
-      return change.providerId === "openai-codex";
+      providerId = change.providerId;
     }
     if (change.action === "feature") {
-      return change.configuration.providerId === "openai-codex";
+      providerId = change.configuration.providerId;
     }
-    return false;
-  });
-  if (!selectsOpenAICodex) {
+    if (providerId === null) {
+      continue;
+    }
+    const profile = readProviderProfile(providerSettings, providerId);
+    if (profile?.authentication === "openai-device") {
+      selectedProviderId = providerId;
+      break;
+    }
+  }
+  if (selectedProviderId === null) {
     return;
   }
   const rows = await transaction
     .select({ status: providerOAuthCredentials.status })
     .from(providerOAuthCredentials)
-    .where(eq(providerOAuthCredentials.providerId, "openai-codex"))
+    .where(eq(providerOAuthCredentials.providerId, selectedProviderId))
     .limit(1);
   if (rows[0]?.status !== "connected") {
     throw new SettingsValidationError(
@@ -1081,20 +1092,23 @@ export function applyProviderSettingsChanges(
   for (const change of changes) {
     if (change.action === "configure") {
       next.connections[change.providerId] = configureProviderConnection(
-        next.connections[change.providerId],
+        requireProviderConnection(next, change.providerId),
         change.configuration,
-        change.providerId,
+        readProviderAuthenticationMethod(next, change.providerId),
       );
       continue;
     }
     if (change.action === "credential") {
-      if (change.providerId === "openai-codex") {
+      if (
+        readProviderProfile(next, change.providerId)?.authentication
+          === "openai-device"
+      ) {
         throw new SettingsValidationError(
           "OpenAI Codex uses device sign-in instead of API tokens.",
         );
       }
       setProviderCredential(
-        next.connections[change.providerId],
+        requireProviderConnection(next, change.providerId),
         change.target,
         change.value,
       );
@@ -1123,9 +1137,12 @@ export function applyProviderSettingsChanges(
       continue;
     }
     if (change.action === "reset-provider") {
-      next.connections[change.providerId] = structuredClone(
-        normalizedDefaults.connections[change.providerId],
-      );
+      const defaultConnection = normalizedDefaults.connections[change.providerId];
+      if (defaultConnection === undefined) {
+        delete next.connections[change.providerId];
+      } else {
+        next.connections[change.providerId] = structuredClone(defaultConnection);
+      }
       continue;
     }
     if (change.action === "route") {
@@ -1139,7 +1156,7 @@ export function applyProviderSettingsChanges(
         || change.capability === "chat"
         || change.capability === "embedding"
         || change.capability === "queryExpansion"
-        || change.capability === "summarization"
+        || change.capability === "indexing"
       ) {
         readMutableModelFeatureOverrides(
           next,
@@ -1150,7 +1167,7 @@ export function applyProviderSettingsChanges(
         change.capability === "answer"
         || change.capability === "chat"
         || change.capability === "queryExpansion"
-        || change.capability === "summarization"
+        || change.capability === "indexing"
       ) {
         readMutableLanguageFeatureOverrides(
           next,
@@ -1181,7 +1198,7 @@ function configureApplicationFeature(
     || configuration.capability === "chat"
     || configuration.capability === "embedding"
     || configuration.capability === "queryExpansion"
-    || configuration.capability === "summarization"
+    || configuration.capability === "indexing"
   ) {
     readMutableModelFeatureOverrides(
       settings,
@@ -1193,7 +1210,7 @@ function configureApplicationFeature(
     configuration.capability === "answer"
     || configuration.capability === "chat"
     || configuration.capability === "queryExpansion"
-    || configuration.capability === "summarization"
+    || configuration.capability === "indexing"
   ) {
     readMutableLanguageFeatureOverrides(
       settings,
@@ -1209,9 +1226,9 @@ function configureApplicationFeature(
 function configureProviderConnection(
   current: ProviderConnection,
   configuration: ProviderConnectionConfiguration,
-  providerId: ProviderId,
+  authentication: "api-token" | "openai-device",
 ): ProviderConnection {
-  validateOpenAICodexConnectionConfiguration(providerId, configuration);
+  validateOpenAICodexConnectionConfiguration(authentication, configuration);
   return {
     adaptiveContextEnabled: configuration.adaptiveContextEnabled,
     apiToken: current.apiToken,
@@ -1244,9 +1261,9 @@ function configureProviderConnection(
       current.speechToText,
       configuration.speechToText,
     ),
-    summarization: configureModelConnection(
-      current.summarization,
-      configuration.summarization,
+    indexing: configureModelConnection(
+      current.indexing,
+      configuration.indexing,
     ),
     textToSpeech: {
       ...configureCapabilityConnection(
@@ -1259,10 +1276,10 @@ function configureProviderConnection(
 }
 
 function validateOpenAICodexConnectionConfiguration(
-  providerId: ProviderId,
+  authentication: "api-token" | "openai-device",
   configuration: ProviderConnectionConfiguration,
 ): void {
-  if (providerId !== "openai-codex") {
+  if (authentication !== "openai-device") {
     return;
   }
   if (
@@ -1270,7 +1287,7 @@ function validateOpenAICodexConnectionConfiguration(
     || configuration.answer.baseUrl !== null
     || (configuration.chat?.baseUrl ?? null) !== null
     || configuration.queryExpansion.baseUrl !== null
-    || configuration.summarization.baseUrl !== null
+    || configuration.indexing.baseUrl !== null
   ) {
     throw new SettingsValidationError(
       "The OpenAI Codex device credential can only use the fixed ChatGPT Codex endpoint.",
@@ -1326,7 +1343,7 @@ function setProviderCredential(
     connection.queryExpansion.apiToken = null;
     connection.reranking.apiToken = null;
     connection.speechToText.apiToken = null;
-    connection.summarization.apiToken = null;
+    connection.indexing.apiToken = null;
     connection.textToSpeech.apiToken = null;
     return;
   }
@@ -1357,7 +1374,7 @@ function readMutableModelFeatureOverrides(
     | "chat"
     | "embedding"
     | "queryExpansion"
-    | "summarization",
+    | "indexing",
 ): ProviderModelFeatureOverrides {
   if (capability === "chat") {
     settings.featureOverrides.chat ??= {
@@ -1370,7 +1387,7 @@ function readMutableModelFeatureOverrides(
 
 function readMutableLanguageFeatureOverrides(
   settings: ProviderSettings,
-  capability: "answer" | "chat" | "queryExpansion" | "summarization",
+  capability: "answer" | "chat" | "queryExpansion" | "indexing",
 ): ProviderLanguageFeatureOverrides {
   if (capability === "chat") {
     settings.featureOverrides.chat ??= {

@@ -14,7 +14,7 @@ describe("feature-specific inference deadlines", () => {
         answerTimeoutSeconds: 1_200,
         embeddingTimeoutSeconds: 28_800,
         queryExpansionTimeoutSeconds: 800,
-        summaryTimeoutSeconds: 1_000,
+        indexingTimeoutSeconds: 1_000,
       },
     });
     const queryExpansion = config.inference.queryExpansion;
@@ -25,7 +25,7 @@ describe("feature-specific inference deadlines", () => {
     expect(config.inference.answer.timeoutMs).toBe(1_200_000);
     expect(config.inference.embedding.timeoutMs).toBe(28_800_000);
     expect(queryExpansion.timeoutMs).toBe(800_000);
-    expect(config.inference.summary.timeoutMs).toBe(1_000_000);
+    expect(config.inference.indexing.timeoutMs).toBe(1_000_000);
   });
 
   it("classifies an expired feature deadline", async () => {

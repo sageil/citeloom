@@ -209,7 +209,7 @@ async function requestTableDescription(
     (requestSignal) => generateText({
       abortSignal: requestSignal,
       maxRetries: 1,
-      model: models.summary,
+      model: models.indexing,
       output: createStructuredOutput({
         description:
           "A concise, factual, self-contained table description for semantic and keyword retrieval.",
@@ -248,7 +248,7 @@ async function requestImageDescription(
       abortSignal: requestSignal,
       maxRetries: 1,
       messages: [{ content, role: "user" }],
-      model: models.summary,
+      model: models.indexing,
       output: createStructuredOutput({
         description:
           "A factual visual retrieval description and substantive-content classification.",
@@ -281,10 +281,10 @@ async function requestDescription<Result>(
 ): Promise<Result> {
   const finishMetric = models.metrics.start(
     operation,
-    models.summary.provider,
-    models.summary.modelId,
+    models.indexing.provider,
+    models.indexing.modelId,
   );
-  const timeoutMs = models.timeouts.summarizationMs;
+  const timeoutMs = models.timeouts.indexingMs;
   const signals = createInferenceRequestSignal(timeoutMs, abortSignal);
   try {
     const result = await request(signals.requestSignal);
@@ -313,7 +313,7 @@ async function requestDescription<Result>(
     }
     throwInferenceRequestFailure(
       error,
-      "summarization",
+      "indexing",
       timeoutMs,
       signals.timeoutSignal,
       abortSignal,

@@ -40,8 +40,6 @@ import {
 import type { SpeechRequest } from "../providers/text-to-speech.js";
 import type {
   NormalizedProviderSettingsChange,
-  ProviderCapability,
-  ProviderId,
 } from "../providers/profiles.js";
 import {
   providerCapabilitySchema,
@@ -50,7 +48,6 @@ import {
   providerCredentialSchema,
   providerIdSchema,
   languageThinkingModeSchema,
-  providerSupportsCapability,
 } from "../providers/profiles.js";
 import type {
   TranscriptionAudio,
@@ -270,7 +267,7 @@ const providerSettingsChangeSchema = z.discriminatedUnion("action", [
           "answer",
           "chat",
           "queryExpansion",
-          "summarization",
+          "indexing",
         ]),
         contextCapacityTokensOverride: z.number().int().positive().nullable(),
         modelOverride: providerConfigurationTextSchema,
@@ -747,28 +744,6 @@ export function decodeApplicationSettingsUpdate(
       throw new WebRequestError(400, message);
     }
   }
-  for (const change of result.data.providerChanges) {
-    let providerId: ProviderId | null;
-    let capability: ProviderCapability;
-    if (change.action === "route") {
-      providerId = change.providerId;
-      capability = change.capability;
-    } else if (change.action === "feature") {
-      providerId = change.configuration.providerId;
-      capability = change.configuration.capability;
-    } else {
-      continue;
-    }
-    if (
-      providerId !== null
-      && !providerSupportsCapability(providerId, capability)
-    ) {
-      throw new WebRequestError(
-        400,
-        `Provider ${providerId} does not support ${formatProviderCapability(capability)}.`,
-      );
-    }
-  }
   return {
     changes,
     expectedVersion: result.data.expectedVersion,
@@ -800,24 +775,6 @@ export function decodeCopyEmbeddingInputFormatRequest(
     );
   }
   return result.data;
-}
-
-function formatProviderCapability(
-  capability: ProviderCapability,
-): string {
-  if (capability === "answer") {
-    return "answer generation";
-  }
-  if (capability === "chat") {
-    return "chat";
-  }
-  if (capability === "speechToText") {
-    return "speech-to-text";
-  }
-  if (capability === "textToSpeech") {
-    return "text-to-speech";
-  }
-  return capability;
 }
 
 export function decodeReindexDocumentRequest(

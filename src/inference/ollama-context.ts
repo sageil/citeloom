@@ -19,7 +19,7 @@ export type OllamaAdaptiveWorkload =
   | "answer"
   | "chat"
   | "query-expansion"
-  | "summary";
+  | "indexing";
 
 export interface OllamaLanguageModelRuntime {
   model: LanguageModelV4;
@@ -66,7 +66,7 @@ interface ContextTarget {
   reason:
     | "answer-required"
     | "model-maximum-reasoning"
-    | "model-maximum-summary"
+    | "model-maximum-indexing"
     | "model-maximum-tools"
     | "model-maximum-unbounded-answer"
     | "model-maximum-vision"
@@ -427,10 +427,10 @@ function readContextTarget(
   hardMaximumContextTokens: number,
   providerSafetyMarginTokens: number,
 ): ContextTarget {
-  if (workload === "summary") {
+  if (workload === "indexing") {
     return {
       contextCapacityTokens: hardMaximumContextTokens,
-      reason: "model-maximum-summary",
+      reason: "model-maximum-indexing",
     };
   }
   if (containsFileContent(options)) {

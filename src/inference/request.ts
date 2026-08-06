@@ -4,7 +4,7 @@ export type InferenceFeature =
   | "answer"
   | "embedding"
   | "queryExpansion"
-  | "summarization";
+  | "indexing";
 
 export interface InferenceRequestSignal {
   requestSignal: AbortSignal;

@@ -26,7 +26,7 @@ const providerCapabilities = Object.freeze([
   "answer",
   "chat",
   "queryExpansion",
-  "summarization",
+  "indexing",
   "embedding",
   "reranking",
   "speechToText",
@@ -42,28 +42,16 @@ const modelProviderCapabilities = Object.freeze([
   "chat",
   "embedding",
   "queryExpansion",
-  "summarization",
+  "indexing",
 ]);
 const languageProviderCapabilities = Object.freeze([
   "answer",
   "chat",
   "queryExpansion",
-  "summarization",
+  "indexing",
 ]);
 const thinkingModes = Object.freeze(["auto", "disabled", "enabled"]);
-const providerIds = Object.freeze([
-  "omlx",
-  "ollama",
-  "lmstudio",
-  "openai",
-  "openrouter",
-  "openai-codex",
-  "deepseek",
-  "groq",
-  "cohere",
-  "jina",
-  "custom",
-]);
+const providerAdapterConfigurations = Object.freeze(["catalog", "connection"]);
 const runtimeInputs = Object.freeze([
   "boolean",
   "number",
@@ -102,19 +90,21 @@ const languageAdapters = Object.freeze([
   "ollama-language",
   "openai-codex-language",
   "openai-compatible-language",
+  "openrouter-language",
 ]);
 const customLanguageAdapters = Object.freeze([
   "cohere-language",
   "deepseek-language",
   "ollama-language",
   "openai-compatible-language",
+  "openrouter-language",
 ]);
 const embeddingAdapters = Object.freeze([
   "cohere-embedding",
   "ollama-embedding",
   "openai-compatible-embedding",
 ]);
-const rerankingAdapters = Object.freeze(["top-n-rerank"]);
+const rerankingAdapters = Object.freeze(["cohere-rerank", "top-n-rerank"]);
 const speechToTextAdapters = Object.freeze([
   "omlx-transcription",
   "openrouter-transcription",
@@ -133,7 +123,7 @@ const capabilityLabels = Object.freeze({
   queryExpansion: "Query Expansion",
   reranking: "Search ranking",
   speechToText: "Speech input",
-  summarization: "Indexing model",
+  indexing: "Indexing model",
   textToSpeech: "Spoken answers",
 });
 const startupGroupName = "Startup and deployment";
@@ -421,6 +411,11 @@ function readProviderCatalog(value) {
     }
     ids.add(id);
     catalog.push({
+      adapterConfiguration: readEnum(
+        profile.adapterConfiguration,
+        providerAdapterConfigurations,
+        "provider adapter configuration",
+      ),
       authentication: readEnum(
         profile.authentication,
         providerAuthenticationMethods,
@@ -465,7 +460,7 @@ function readCapabilityAdapter(value, capability) {
     capability === "answer"
     || capability === "chat"
     || capability === "queryExpansion"
-    || capability === "summarization"
+    || capability === "indexing"
   ) {
     return readEnum(value, languageAdapters, "language adapter");
   }
@@ -567,8 +562,8 @@ function readProviderConfiguration(value) {
       configuration.speechToText,
       "speech-to-text configuration",
     ),
-    summarization: readProviderModelConfiguration(
-      configuration.summarization,
+    indexing: readProviderModelConfiguration(
+      configuration.indexing,
       "indexing model configuration",
     ),
     textToSpeech: readTextToSpeechConfiguration(configuration.textToSpeech),
@@ -655,8 +650,8 @@ function readCustomAdapters(value) {
       speechToTextAdapters,
       "speech-to-text adapter",
     ),
-    summarization: readEnum(
-      adapters.summarization,
+    indexing: readEnum(
+      adapters.indexing,
       customLanguageAdapters,
       "indexing model adapter",
     ),
@@ -738,15 +733,13 @@ function validateProviderRelationships(
     }
     connectionIds.add(connection.providerId);
   }
-  for (const profile of catalog) {
-    if (!connectionIds.has(profile.id)) {
-      throw new Error(`Provider profile ${profile.id} has no connection.`);
-    }
-  }
   for (const capability of providerCapabilities) {
     const providerId = routing[capability];
     if (providerId === null) {
       continue;
+    }
+    if (!connectionIds.has(providerId)) {
+      throw new Error(`Routed provider ${providerId} has no connection.`);
     }
     const profile = profiles.get(providerId);
     const supported = profile.capabilities.some((entry) => {
@@ -793,7 +786,14 @@ function readStringOrFiniteNumber(value, label) {
 }
 
 function readProviderId(value, label) {
-  return readEnum(value, providerIds, label);
+  const providerId = readNonEmptyString(value, label);
+  if (
+    providerId.length > 64
+    || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(providerId)
+  ) {
+    throw new Error(`The ${label} is invalid.`);
+  }
+  return providerId;
 }
 
 function buildEmptyFeatureOverrides() {
@@ -819,7 +819,7 @@ function buildEmptyFeatureOverrides() {
     },
     reranking: { modelOverride: null },
     speechToText: { modelOverride: null },
-    summarization: {
+    indexing: {
       contextCapacityTokensOverride: null,
       modelOverride: null,
       thinkingModeOverride: null,
@@ -2357,7 +2357,7 @@ export function registerPage(alpine) {
         queryExpansion: "Choose whether CiteLoom creates alternative searches and how their results influence ordering.",
         reranking: "Choose how CiteLoom orders semantic search results.",
         speechToText: "Choose how CiteLoom turns recorded questions into text.",
-        summarization: "Choose the model CiteLoom uses to prepare Docling output for search, including images, tables, and document structure.",
+        indexing: "Choose the model CiteLoom uses to prepare Docling output for search, including images, tables, and document structure.",
         textToSpeech: "Choose how CiteLoom creates spoken answers.",
       };
       return descriptions[this.selectedFeatureCapability];
@@ -2545,7 +2545,7 @@ export function registerPage(alpine) {
 
     featureCredentialConfigured(capability) {
       const connection = this.featureConnection(capability);
-      if (connection?.providerId === "openai-codex") {
+      if (this.providerUsesDeviceAuthentication(connection?.providerId ?? null)) {
         return this.openAICodexAuth?.connection.state === "connected";
       }
       return connection !== null
@@ -2757,7 +2757,7 @@ export function registerPage(alpine) {
     },
 
     providerAdaptiveContextEnabled() {
-      return this.selectedProviderId === "ollama"
+      return this.selectedProviderUsesOllamaLanguage()
         && (
           this.selectedProviderConnection
             ?.configuration.adaptiveContextEnabled
@@ -2766,7 +2766,7 @@ export function registerPage(alpine) {
     },
 
     writeProviderAdaptiveContextEnabled(value) {
-      if (this.selectedProviderId !== "ollama") {
+      if (!this.selectedProviderUsesOllamaLanguage()) {
         return;
       }
       this.updateSelectedProviderConfiguration((configuration) => {
@@ -2846,7 +2846,7 @@ export function registerPage(alpine) {
       if (connection === null) {
         return "Not configured";
       }
-      if (connection.providerId === "openai-codex") {
+      if (this.providerUsesDeviceAuthentication(connection.providerId)) {
         return this.openAICodexConnectionLabel();
       }
       if (connection.capabilityApiTokensConfigured[capability]) {
@@ -2856,6 +2856,21 @@ export function registerPage(alpine) {
         return "Configured at provider level";
       }
       return "Not configured";
+    },
+
+    providerUsesDeviceAuthentication(providerId) {
+      if (providerId === null) {
+        return false;
+      }
+      return this.providerProfilesById[providerId]?.authentication
+        === "openai-device";
+    },
+
+    selectedProviderUsesOllamaLanguage() {
+      const capabilities = this.selectedProviderProfile?.capabilities ?? [];
+      return capabilities.some((entry) => {
+        return entry.adapter === "ollama-language";
+      });
     },
 
     providerCapabilityModel(capability) {
@@ -2938,7 +2953,7 @@ export function registerPage(alpine) {
         capability === "answer"
         || capability === "chat"
         || capability === "queryExpansion"
-        || capability === "summarization"
+        || capability === "indexing"
       ) {
         return [
           { label: "OpenAI-compatible language model", value: "openai-compatible-language" },
@@ -3032,6 +3047,9 @@ export function registerPage(alpine) {
       }
       for (const profile of drafts.catalog) {
         profilesById[profile.id] = profile;
+        if (connectionsById[profile.id] === undefined) {
+          continue;
+        }
         for (const entry of profile.capabilities) {
           compatibleProvidersByCapability[entry.capability].push(profile);
         }

@@ -44,6 +44,69 @@ describe("provider profiles", () => {
     );
   });
 
+  it("accepts a provider supplied by the stored catalog", () => {
+    const providers = createTestProviderSettings();
+    const sourceProfile = providers.catalog.find((profile) => {
+      return profile.id === "lmstudio";
+    });
+    if (sourceProfile === undefined) {
+      throw new Error("Missing LM Studio test profile.");
+    }
+    providers.catalog = [
+      ...providers.catalog,
+      {
+        ...structuredClone(sourceProfile),
+        displayName: "Database Provider",
+        id: "database-provider",
+      },
+    ];
+    providers.routing.answer = "database-provider";
+    providers.routing.chat = "database-provider";
+
+    const parsed = parseProviderSettings({
+      ...providers,
+      connections: {
+        ...providers.connections,
+        "database-provider": structuredClone(providers.connections.lmstudio),
+      },
+    });
+
+    expect(parsed.routing.answer).toBe("database-provider");
+  });
+
+  it("allows an unused catalog provider to have no connection", () => {
+    const providers = createTestProviderSettings();
+    const { openrouter: _unused, ...connections } = providers.connections;
+
+    const parsed = parseProviderSettings({ ...providers, connections });
+
+    expect(parsed.connections.openrouter).toBeUndefined();
+  });
+
+  it("rejects a routed catalog provider without a connection", () => {
+    const providers = createTestProviderSettings();
+    const { openrouter: _unused, ...connections } = providers.connections;
+    providers.routing.answer = "openrouter";
+
+    expect(() => parseProviderSettings({
+      ...providers,
+      connections,
+    })).toThrow("OpenRouter has no configured connection");
+  });
+
+  it("rejects a connection without a catalog profile", () => {
+    const providers = createTestProviderSettings();
+    expect(() => parseProviderSettings({
+      ...providers,
+      connections: {
+        ...providers.connections,
+        "orphan-provider": structuredClone(providers.connections.lmstudio),
+      },
+    })).toThrow(
+      "Provider connection orphan-provider has no catalog profile",
+    );
+  });
+
   it("rejects a selected model without a context capacity", () => {
     const providers = createTestProviderSettings();
     providers.connections.lmstudio.answer.contextCapacityTokens = null;
@@ -107,10 +170,10 @@ describe("provider profiles", () => {
     providers.connections.deepseek.apiToken = "deepseek-token";
     providers.connections.deepseek.answer.model = "deepseek-v4-flash";
     providers.connections.deepseek.queryExpansion.model = "deepseek-v4-flash";
-    providers.connections.deepseek.summarization.model = "deepseek-v4-flash";
+    providers.connections.deepseek.indexing.model = "deepseek-v4-flash";
     providers.routing.answer = "deepseek";
     providers.routing.queryExpansion = "deepseek";
-    providers.routing.summarization = "deepseek";
+    providers.routing.indexing = "deepseek";
     const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
 
     const config = buildAppConfig(
@@ -131,7 +194,7 @@ describe("provider profiles", () => {
       model: "deepseek-v4-flash",
       runtimeName: "DeepSeek",
     });
-    expect(config.inference.summary).toMatchObject({
+    expect(config.inference.indexing).toMatchObject({
       adapter: "deepseek-language",
       apiToken: "deepseek-token",
       baseUrl: "https://api.deepseek.com",
@@ -159,7 +222,7 @@ describe("provider profiles", () => {
     providers.routing.queryExpansion = "openrouter";
     providers.routing.reranking = "openrouter";
     providers.routing.speechToText = "openrouter";
-    providers.routing.summarization = "openrouter";
+    providers.routing.indexing = "openrouter";
     providers.routing.textToSpeech = "openrouter";
     const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
 
@@ -174,7 +237,7 @@ describe("provider profiles", () => {
     );
 
     expect(config.inference.answer).toMatchObject({
-      adapter: "openai-compatible-language",
+      adapter: "openrouter-language",
       apiToken: "openrouter-token",
       baseUrl: "https://openrouter.ai/api/v1",
       contextCapacityTokens: 200_000,
@@ -206,6 +269,33 @@ describe("provider profiles", () => {
       apiToken: "openrouter-token",
       model: "fish-audio/s2.1-pro-free:free",
       voice: "alloy",
+    });
+  });
+
+  it("resolves Cohere reranking from the stored catalog adapter", () => {
+    const runtimeSettings = createTestRuntimeSettings();
+    const providers = createTestProviderSettings();
+    providers.connections.cohere.apiToken = "cohere-token";
+    providers.connections.cohere.reranking.model = "rerank-v4.0-pro";
+    providers.routing.reranking = "cohere";
+    const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
+
+    const config = buildAppConfig(
+      startup.database,
+      runtimeSettings,
+      1,
+      providers,
+      startup.doclingServices,
+      startup.sourceContent,
+      TEST_EMBEDDING_INPUT_FORMAT,
+    );
+
+    expect(config.retrieval.reranker).toMatchObject({
+      adapter: "cohere-rerank",
+      apiToken: "cohere-token",
+      baseUrl: "https://api.cohere.com/v2",
+      model: "rerank-v4.0-pro",
+      runtimeName: "Cohere",
     });
   });
 
@@ -251,7 +341,7 @@ describe("provider profiles", () => {
     const runtimeSettings = createTestRuntimeSettings();
     const providers = createTestProviderSettings();
     providers.connections.lmstudio.thinkingMode = "enabled";
-    providers.featureOverrides.summarization.thinkingModeOverride = "disabled";
+    providers.featureOverrides.indexing.thinkingModeOverride = "disabled";
     const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
 
     const config = buildAppConfig(
@@ -271,7 +361,7 @@ describe("provider profiles", () => {
     expect(config.inference.answer.thinkingMode).toBe("enabled");
     expect(config.inference.chat.thinkingMode).toBe("enabled");
     expect(queryExpansion.thinkingMode).toBe("enabled");
-    expect(config.inference.summary.thinkingMode).toBe("disabled");
+    expect(config.inference.indexing.thinkingMode).toBe("disabled");
   });
 
   it("switches text-to-speech by route while retaining both connections", () => {

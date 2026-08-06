@@ -282,7 +282,7 @@
                 <input
                   :placeholder="featureModelInputPlaceholder(selectedFeatureCapability)"
                   type="text"
-                  :list="featureProviderId(selectedFeatureCapability) === 'openai-codex' ? 'openai-codex-models' : null"
+                  :list="providerUsesDeviceAuthentication(featureProviderId(selectedFeatureCapability)) ? 'openai-codex-models' : null"
                   :value="featureModelOverride(selectedFeatureCapability) ?? ''"
                   @input="writeFeatureModelOverride(selectedFeatureCapability, $event.target.value)"
                 />
@@ -556,7 +556,7 @@
                 </select>
                 <small>Used for this provider's language features unless a feature has its own setting. Disabled is the default.</small>
               </label>
-              <div class="form-field" x-cloak x-show="selectedProviderId === 'ollama'">
+              <div class="form-field" x-cloak x-show="selectedProviderUsesOllamaLanguage()">
                 <span>Automatic context size</span>
                 <label class="toggle-control settings-toggle-control">
                   <input type="checkbox" :checked="providerAdaptiveContextEnabled()" @change="writeProviderAdaptiveContextEnabled($event.target.checked)" />
@@ -614,7 +614,7 @@
                 <span>Maximum parallel requests</span>
                 <strong x-text="providerMaximumParallelRequests() ?? 'Not configured'"></strong>
               </div>
-              <div x-cloak x-show="selectedProviderId === 'ollama'">
+              <div x-cloak x-show="selectedProviderUsesOllamaLanguage()">
                 <span>Automatic context size</span>
                 <strong x-text="providerAdaptiveContextEnabled() ? 'Enabled' : 'Off'"></strong>
               </div>
@@ -698,7 +698,7 @@
                     <div class="settings-provider-inline-fields">
                       <label class="form-field">
                         <span>Default model</span>
-                        <input placeholder="Enter a provider model ID" type="text" :list="selectedProviderId === 'openai-codex' ? 'openai-codex-models' : null" :value="providerCapabilityModel(entry.capability) ?? ''" @input="writeProviderCapabilityModel(entry.capability, $event.target.value)" />
+                        <input placeholder="Enter a provider model ID" type="text" :list="providerUsesDeviceAuthentication(selectedProviderId) ? 'openai-codex-models' : null" :value="providerCapabilityModel(entry.capability) ?? ''" @input="writeProviderCapabilityModel(entry.capability, $event.target.value)" />
                         <small x-show="providerCapabilityModel(entry.capability) === null">No default model configured.</small>
                       </label>
                       <label class="form-field" x-show="capabilityHasModelContext(entry.capability)">
@@ -711,7 +711,7 @@
                         <input placeholder="Enter a provider voice" type="text" :value="providerDefaultVoice() ?? ''" @input="writeProviderDefaultVoice($event.target.value)" />
                         <small x-show="providerDefaultVoice() === null">No default voice configured.</small>
                       </label>
-                      <label class="form-field" x-show="selectedProviderId === 'custom'">
+                      <label class="form-field" x-show="selectedProviderProfile?.adapterConfiguration === 'connection'">
                         <span>Protocol</span>
                         <select :disabled="entry.capability === 'reranking'" :value="providerAdapter(entry.capability)" @change="writeProviderAdapter(entry.capability, $event.target.value)">
                           <template x-for="option in adapterOptions(entry.capability)" :key="option.value">

@@ -2225,7 +2225,7 @@ function buildDatabaseOwnedSettings(): StoredApplicationSettings {
     answerModel: "test-vision",
     embeddingModel: space768.model,
     inferenceBaseUrl: "http://127.0.0.1:1234/v1",
-    summaryModel: "test-description",
+    indexingModel: "test-description",
   });
   const runtime = createTestRuntimeSettings({
     claimVerifierRuntimeName: "test verifier runtime",
@@ -5395,7 +5395,7 @@ describe("distributed inference capacity", () => {
       answer: { providerId: "accelerator-b" },
       embedding: { providerId: "accelerator-a" },
       reranking: { providerId: "accelerator-b" },
-      summarization: { providerId: "accelerator-b" },
+      indexing: { providerId: "accelerator-b" },
     };
     await coordinator.configure(scheduling);
     const firstStarted = createDeferred();
