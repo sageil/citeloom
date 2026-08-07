@@ -16,6 +16,11 @@
   scroll-margin-top: 20px;
 }
 
+.ingestion-panel,
+.recent-documents-panel {
+  background: transparent;
+}
+
 .ingestion-panel {
   display: grid;
   grid-template-columns: minmax(0, 1.65fr) minmax(340px, 0.85fr);

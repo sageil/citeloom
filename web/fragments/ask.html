@@ -218,13 +218,27 @@
       x-text="workspaceError()"
     ></p>
 
+    <header
+      class="discovery-intro"
+      x-cloak
+      x-show="mode === 'discover'"
+    >
+      <h1>Find sources</h1>
+      <p>Search your indexed documents before asking a question.</p>
+    </header>
+
     <div class="question-layout">
       <div class="panel question-composer">
         <template x-if="questionDocuments.length > 0">
           <div class="composer-scope-controls" x-cloak x-show="mode === 'discover'">
             <div class="form-field">
               <span class="form-field-heading">
-                <label for="question-search-scope-selected">Search scope</label>
+                <span class="discovery-scope-label">
+                  <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+                  </svg>
+                  <label for="question-search-scope-selected">Search scope</label>
+                </span>
                 <a
                   class="text-action inline-help"
                   data-view="help"
@@ -261,7 +275,12 @@
           <div class="composer-scope-controls" x-cloak x-show="mode === 'discover'">
             <div class="form-field">
               <span class="form-field-heading">
-                <label for="question-search-scope">Search scope</label>
+                <span class="discovery-scope-label">
+                  <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+                  </svg>
+                  <label for="question-search-scope">Search scope</label>
+                </span>
                 <a
                   class="text-action inline-help"
                   data-view="help"
@@ -465,15 +484,6 @@
           </div>
         </div>
 
-        <label
-          class="discovery-related-toggle"
-          x-cloak
-          x-show="mode === 'discover'"
-        >
-          <input type="checkbox" x-model="includeRelated" />
-          <span>Include semantic matches</span>
-        </label>
-
         <p
           class="field-error"
           role="alert"
@@ -482,25 +492,33 @@
           x-text="requestError"
         ></p>
 
-        <button
-          class="button primary submit-button"
-          type="button"
-          :disabled="(operation === null && queryableDocumentCount === 0) || (speechState !== 'idle' && speechState !== 'error')"
-          @click="operation === null ? submit(questionDocuments) : stopRequest(true)"
-        >
-          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-            <use :href="submitIconHref()"></use>
-          </svg>
-          <span x-text="submitLabel()"></span>
-        </button>
-        <button
-          class="text-action mode-text-action"
-          type="button"
-          x-cloak
-          x-show="mode === 'discover'"
-          @click="changeMode(mode === 'ask' ? 'discover' : 'ask')"
-          x-text="mode === 'ask' ? 'Find sources instead' : 'Ask a question instead'"
-        ></button>
+        <div class="discovery-options-row">
+          <label
+            class="toggle-control discovery-related-toggle"
+            x-cloak
+            x-show="mode === 'discover'"
+          >
+            <input type="checkbox" x-model="includeRelated" />
+            <span class="toggle-track" aria-hidden="true"><span></span></span>
+            <span><strong>Semantic matching</strong></span>
+          </label>
+          <span
+            class="discovery-related-help"
+            x-cloak
+            x-show="mode === 'discover'"
+          >Find related content using meaning and context, not just exact terms.</span>
+          <button
+            class="button primary submit-button"
+            type="button"
+            :disabled="(operation === null && queryableDocumentCount === 0) || (speechState !== 'idle' && speechState !== 'error')"
+            @click="operation === null ? submit(questionDocuments) : stopRequest(true)"
+          >
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+              <use :href="submitIconHref()"></use>
+            </svg>
+            <span x-text="submitLabel()"></span>
+          </button>
+        </div>
       </div>
 
       <div class="ask-result-column">
@@ -913,10 +931,22 @@
             <svg aria-hidden="true" class="citeloom-icon ask-empty-icon">
               <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
             </svg>
-            <strong x-text="queryableDocumentCount === 0 ? 'No documents are ready to search' : 'Find sources before asking'"></strong>
-            <p x-text="queryableDocumentCount === 0 ? 'Upload or reindex a document, then wait until it is Ready.' : 'Find documents with exact terms or optional semantic similarity without generating a response.'"></p>
+            <strong x-text="queryableDocumentCount === 0 ? 'No documents are ready to search' : 'Start with a focused search'"></strong>
+            <p x-text="queryableDocumentCount === 0 ? 'Upload or reindex a document, then wait until it is Ready.' : 'Try one of these examples or enter your own topic above.'"></p>
+            <div
+              class="discovery-query-examples"
+              x-cloak
+              x-show="queryableDocumentCount > 0"
+              aria-label="Example source searches"
+            >
+              <button type="button" @click="question = 'mortgage default risk'; focusQuestionInput()">mortgage default risk</button>
+              <button type="button" @click="question = 'employee access to records'; focusQuestionInput()">employee access to records</button>
+              <button type="button" @click="question = 'gastrointestinal protectants'; focusQuestionInput()">gastrointestinal protectants</button>
+            </div>
             <a
               class="text-action"
+              x-cloak
+              x-show="queryableDocumentCount === 0"
               data-view="help"
               href="./index.html?view=help#prepare-your-documents"
               hx-get="./fragments/help.html"
@@ -924,6 +954,13 @@
               :href="`./index.html?view=help#${queryableDocumentCount === 0 ? 'prepare-your-documents' : 'find-sources'}`"
               :hx-push-url="`./index.html?view=help#${queryableDocumentCount === 0 ? 'prepare-your-documents' : 'find-sources'}`"
             >Learn more</a>
+            <button
+              class="text-action discovery-ask-action"
+              type="button"
+              x-cloak
+              x-show="queryableDocumentCount > 0"
+              @click="changeMode('ask')"
+            >Ask a question instead</button>
           </div>
         </template>
 
@@ -934,93 +971,159 @@
               <div>
                 <p class="section-kicker">Source discovery</p>
                 <h2 x-text="`Results for “${discoveryResult.query}”`"></h2>
+                <p class="discovery-summary" aria-live="polite" x-text="discoverySummary()"></p>
               </div>
-              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon spin" x-cloak x-show="operation === 'search' || discoveryPageLoading">
-                <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
-              </svg>
+              <div class="discovery-result-controls">
+                <span class="discovery-order-note" x-text="discoveryOrderLabel()"></span>
+                <label
+                  x-cloak
+                  x-show="discoveryResult.related.status !== 'disabled'"
+                >
+                  <span>Match type</span>
+                  <select
+                    x-model="discoveryMatchFilter"
+                    @change="changeDiscoveryMatchFilter($event.target.value)"
+                  >
+                    <option value="all">All</option>
+                    <option value="keyword">Keyword</option>
+                    <option value="semantic">Semantic</option>
+                  </select>
+                </label>
+                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon spin" x-cloak x-show="operation === 'search' || discoveryPageLoading">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
+                </svg>
+              </div>
             </div>
-            <p class="discovery-summary" aria-live="polite" x-text="discoverySummary()"></p>
             <div class="discovery-warning" role="status" x-cloak x-show="discoveryWarnings().length > 0">
               <template x-for="warning in discoveryWarnings()" :key="warning">
                 <p x-text="warning"></p>
               </template>
             </div>
-            <div class="discovery-groups" x-cloak x-show="discoveryHasResults()">
-              <template x-for="group in discoveryGroups()" :key="group.key">
-                <section class="discovery-group">
-                  <header>
-                    <h3 x-text="group.label"></h3>
-                    <span x-text="group.total"></span>
+            <div class="discovery-outline" x-cloak x-show="discoveryHasResults()">
+              <div
+                class="discovery-filter-empty"
+                x-cloak
+                x-show="!discoveryHasVisibleResults()"
+              >
+                <strong x-text="discoveryFilterEmptyMessage()"></strong>
+                <button class="text-action" type="button" @click="changeDiscoveryMatchFilter('all')">Show all matches</button>
+              </div>
+              <template x-for="entry in discoveryVisibleEntries()" :key="entry.key">
+                <article
+                  class="discovery-document"
+                  :class="{
+                    expanded: discoveryDocumentExpanded(entry.groupKey, entry.document),
+                    selected: discoveryDocumentSelected(entry.document),
+                  }"
+                >
+                  <div
+                    class="discovery-group-divider"
+                    x-cloak
+                    x-show="entry.showGroupLabel"
+                    x-text="entry.groupLabel"
+                  ></div>
+                  <header class="discovery-document-row">
+                    <div class="discovery-document-leading">
+                      <label class="discovery-select">
+                        <input
+                          type="checkbox"
+                          :checked="discoveryDocumentSelected(entry.document)"
+                          @change="toggleDiscoveryDocument(entry.document)"
+                        />
+                        <span class="visually-hidden" x-text="`Select ${basename(entry.document.sourceFile)}`"></span>
+                      </label>
+                      <span class="discovery-rank" x-text="entry.rank"></span>
+                    </div>
+                    <button
+                      class="discovery-document-toggle"
+                      type="button"
+                      :aria-expanded="discoveryDocumentExpanded(entry.groupKey, entry.document)"
+                      @click="toggleDiscoveryDocumentExpanded(entry.groupKey, entry.document)"
+                    >
+                      <svg aria-hidden="true" class="citeloom-icon discovery-document-icon">
+                        <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+                      </svg>
+                      <span class="discovery-document-identity">
+                        <strong x-text="basename(entry.document.sourceFile)"></strong>
+                        <small x-text="discoveryFileTypeLabel(entry.document.sourceFile)"></small>
+                      </span>
+                      <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon discovery-expand-icon">
+                        <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+                      </svg>
+                    </button>
+                    <div class="discovery-document-stat">
+                      <small>Matches</small>
+                      <strong x-text="entry.document.matchingPassageCount"></strong>
+                    </div>
+                    <div class="discovery-document-location">
+                      <small>Representative locations</small>
+                      <span x-text="discoveryRepresentativeLocations(entry.document)"></span>
+                    </div>
+                    <div class="match-badges" aria-label="Match types">
+                      <span class="keyword" x-cloak x-show="entry.document.matchKinds.includes('keyword')">Keyword</span>
+                      <span class="semantic" x-cloak x-show="entry.document.matchKinds.includes('semantic')">Semantic</span>
+                    </div>
+                    <a
+                      class="button secondary discovery-open-source"
+                      rel="noopener noreferrer"
+                      target="_blank"
+                      :href="discoverySourceUrl(entry.document, entry.document.passages[0])"
+                    >
+                      <span>Open source</span>
+                      <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                        <use href="./assets/images/citeloom-icons.svg#citeloom-external"></use>
+                      </svg>
+                    </a>
                   </header>
-                  <p class="discovery-empty-group" x-cloak x-show="group.documents.length === 0" x-text="group.emptyLabel"></p>
-                  <div class="discovery-card-list">
-                    <template x-for="document in group.documents" :key="discoveryDocumentKey(document)">
-                      <article class="discovery-card">
-                        <header>
-                          <label class="discovery-select">
-                            <input
-                              type="checkbox"
-                              :checked="discoveryDocumentSelected(document)"
-                              @change="toggleDiscoveryDocument(document)"
-                            />
-                            <span class="visually-hidden" x-text="`Select ${basename(document.sourceFile)}`"></span>
-                          </label>
-                          <div>
-                            <h4 x-text="basename(document.sourceFile)"></h4>
-                            <div class="match-badges">
-                              <span class="keyword" x-cloak x-show="document.matchKinds.includes('keyword')">Keyword match</span>
-                              <span class="semantic" x-cloak x-show="document.matchKinds.includes('semantic')">Semantic match</span>
-                            </div>
-                          </div>
+                  <div
+                    class="discovery-document-evidence"
+                    x-cloak
+                    x-show="discoveryDocumentExpanded(entry.groupKey, entry.document)"
+                  >
+                    <h4>Top matching excerpts</h4>
+                    <div class="discovery-excerpt-list">
+                      <template x-for="(passage, passageIndex) in entry.document.passages" :key="passage.id">
+                        <article class="discovery-excerpt">
+                          <span class="discovery-excerpt-number" x-text="passageIndex + 1"></span>
                           <a
-                            class="source-document-link"
+                            class="discovery-excerpt-location"
                             rel="noopener noreferrer"
                             target="_blank"
-                            :href="discoverySourceUrl(document, document.passages[0])"
-                          >
-                            <span>Open source</span>
-                            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                              <use href="./assets/images/citeloom-icons.svg#citeloom-external"></use>
-                            </svg>
-                          </a>
-                        </header>
-                        <blockquote x-text="document.passages[0].excerpt"></blockquote>
-                        <p class="discovery-passage-detail" x-text="discoveryPassageDetail(document.sourceFile, document.passages[0])"></p>
-                        <details class="discovery-passages" x-cloak x-show="document.matchingPassageCount > 1">
-                          <summary x-text="additionalPassageLabel(document)"></summary>
-                          <template x-for="passage in document.passages.slice(1)" :key="passage.id">
-                            <div>
-                              <p x-text="passage.excerpt"></p>
-                              <small x-text="discoveryPassageDetail(document.sourceFile, passage)"></small>
-                            </div>
-                          </template>
-                          <small x-cloak x-show="document.matchingPassageCount - 1 > document.passages.slice(1).length">Showing representative excerpts from this document.</small>
-                        </details>
-                      </article>
-                    </template>
+                            :href="discoverySourceUrl(entry.document, passage)"
+                            x-text="discoveryPassageDetail(entry.document.sourceFile, passage)"
+                          ></a>
+                          <p>
+                            <template x-for="segment in discoveryExcerptSegments(passage)" :key="segment.key">
+                              <span :class="{ 'discovery-query-highlight': segment.highlighted }" x-text="segment.text"></span>
+                            </template>
+                          </p>
+                        </article>
+                      </template>
+                    </div>
+                    <p class="discovery-representative-note" x-text="discoveryRepresentativeLabel(entry.document)"></p>
                   </div>
-                  <nav
-                    class="pagination discovery-pagination"
-                    aria-label="Keyword match pages"
-                    x-cloak
-                    x-show="group.key === 'keyword' && discoveryTotalPages() > 1"
-                  >
-                    <button
-                      class="button secondary"
-                      type="button"
-                      :disabled="operation !== null || discoveryPageLoading || discoveryResult.keyword.page === 1"
-                      @click="runDiscoveryPage('previous')"
-                    >Previous</button>
-                    <span x-text="`Page ${discoveryResult.keyword.page} of ${discoveryTotalPages()}`"></span>
-                    <button
-                      class="button secondary"
-                      type="button"
-                      :disabled="operation !== null || discoveryPageLoading || discoveryResult.keyword.page >= discoveryTotalPages()"
-                      @click="runDiscoveryPage('next')"
-                    >Next</button>
-                  </nav>
-                </section>
+                </article>
               </template>
+              <nav
+                class="pagination discovery-pagination"
+                aria-label="Keyword match pages"
+                x-cloak
+                x-show="discoveryTotalPages() > 1"
+              >
+                <button
+                  class="button secondary"
+                  type="button"
+                  :disabled="operation !== null || discoveryPageLoading || discoveryResult.keyword.page === 1"
+                  @click="runDiscoveryPage('previous')"
+                >Previous</button>
+                <span x-text="`Page ${discoveryResult.keyword.page} of ${discoveryTotalPages()}`"></span>
+                <button
+                  class="button secondary"
+                  type="button"
+                  :disabled="operation !== null || discoveryPageLoading || discoveryResult.keyword.page >= discoveryTotalPages()"
+                  @click="runDiscoveryPage('next')"
+                >Next</button>
+              </nav>
             </div>
             <div class="discovery-no-results" x-cloak x-show="!discoveryHasResults()">
               <strong>No relevant sources were found in the selected scope.</strong>
@@ -1034,12 +1137,15 @@
               >Read tips for finding sources</a>
             </div>
             <div class="discovery-selection-bar" x-cloak x-show="selectedDiscoveryDocuments.length > 0">
-              <span x-text="selectedDiscoveryLabel()"></span>
+              <div>
+                <span x-text="selectedDiscoveryLabel()"></span>
+                <button class="text-action" type="button" @click="clearDiscoverySelection()">Clear</button>
+              </div>
               <button
                 class="button primary"
                 type="button"
                 @click="questionDocuments = selectedDiscoveryQuestionDocuments(); changeMode('ask')"
-              >Ask about selected sources</button>
+              >Add to question</button>
             </div>
           </div>
         </template>

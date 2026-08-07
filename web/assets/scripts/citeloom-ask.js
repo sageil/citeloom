@@ -731,6 +731,7 @@ export function registerPage(alpine) {
     discoveryResult: null,
     discoveryPageAbortController: null,
     discoveryPageLoading: false,
+    discoveryMatchFilter: "all",
     discoveryScope: null,
     discoveryStatus: "",
     dictationController: null,
@@ -743,6 +744,7 @@ export function registerPage(alpine) {
     includeRelated: false,
     inferenceRuntimeName: "the configured inference runtime",
     inspectedCitation: null,
+    expandedDiscoveryResultKeys: [],
     historicalAnswerVisible: false,
     mode: "ask",
     newThreadTitle: "",
@@ -1408,6 +1410,8 @@ export function registerPage(alpine) {
       this.operation = "search";
       this.discoveryStatus = "Searching indexed sources.";
       this.discoveryResult = null;
+      this.discoveryMatchFilter = "all";
+      this.expandedDiscoveryResultKeys = [];
       this.requestError = "";
       if (clearSelection) {
         this.selectedDiscoveryDocuments = [];
@@ -1435,6 +1439,7 @@ export function registerPage(alpine) {
         if (!controller.signal.aborted) {
           this.discoveryResult = result;
           this.discoveryScope = scope;
+          this.initializeDiscoveryExpansion(result);
           this.discoveryStatus = `Search completed. ${this.discoverySummary()}`;
         }
       } catch (error) {
@@ -1508,6 +1513,7 @@ export function registerPage(alpine) {
             query: completedResult.query,
             related: completedResult.related,
           };
+          this.initializeDiscoveryExpansion(this.discoveryResult);
           this.discoveryStatus = `Keyword results page ${keywordPage} loaded. ${this.discoverySummary()}`;
         }
       } catch (error) {
@@ -2136,26 +2142,158 @@ export function registerPage(alpine) {
       }
       const groups = [{
         documents: this.discoveryResult.keyword.documents,
-        emptyLabel: this.discoveryResult.keyword.status === "complete"
-          ? "No keyword matches appeared on this page."
-          : "Keyword discovery is unavailable.",
         key: "keyword",
-        label: "Keyword matches",
-        total: this.discoveryResult.keyword.totalDocuments,
       }];
       if (this.discoveryResult.related.status !== "disabled") {
         const relatedDocuments = this.discoveryResult.related.documents;
         groups.push({
           documents: relatedDocuments,
-          emptyLabel: "No semantic matches passed the relevance threshold.",
           key: "related",
-          label: relatedDocuments.length >= this.discoveryResult.related.limit
-            ? "Top semantic matches"
-            : "Semantic matches",
-          total: relatedDocuments.length,
         });
       }
       return groups;
+    },
+
+    discoveryVisibleGroups() {
+      const groups = this.discoveryGroups();
+      if (this.discoveryMatchFilter === "all") {
+        return groups;
+      }
+      const visibleGroups = [];
+      for (const group of groups) {
+        const documents = [];
+        for (const document of group.documents) {
+          if (document.matchKinds.includes(this.discoveryMatchFilter)) {
+            documents.push(document);
+          }
+        }
+        visibleGroups.push({ documents, key: group.key });
+      }
+      return visibleGroups;
+    },
+
+    discoveryVisibleEntries() {
+      const entries = [];
+      const groups = this.discoveryVisibleGroups();
+      let nonEmptyGroupCount = 0;
+      for (const group of groups) {
+        if (group.documents.length > 0) {
+          nonEmptyGroupCount += 1;
+        }
+      }
+      for (const group of groups) {
+        for (let index = 0; index < group.documents.length; index += 1) {
+          const document = group.documents[index];
+          entries.push({
+            document,
+            groupKey: group.key,
+            groupLabel: group.key === "keyword" ? "Keyword matches" : "Semantic matches",
+            key: this.discoveryResultKey(group.key, document),
+            rank: this.discoveryDocumentRank(group.key, index),
+            showGroupLabel: nonEmptyGroupCount > 1 && index === 0,
+          });
+        }
+      }
+      return entries;
+    },
+
+    discoveryOrderLabel() {
+      let nonEmptyGroupCount = 0;
+      for (const group of this.discoveryVisibleGroups()) {
+        if (group.documents.length > 0) {
+          nonEmptyGroupCount += 1;
+        }
+      }
+      return nonEmptyGroupCount > 1
+        ? "Best matches first within each type"
+        : "Best matches first";
+    },
+
+    discoveryHasVisibleResults() {
+      return this.discoveryVisibleEntries().length > 0;
+    },
+
+    changeDiscoveryMatchFilter(filter) {
+      if (filter !== "all" && filter !== "keyword" && filter !== "semantic") {
+        return;
+      }
+      this.discoveryMatchFilter = filter;
+      const firstEntry = this.discoveryVisibleEntries()[0];
+      this.expandedDiscoveryResultKeys = firstEntry === undefined
+        ? []
+        : [firstEntry.key];
+    },
+
+    discoveryFilterEmptyMessage() {
+      if (this.discoveryMatchFilter === "semantic") {
+        if (this.discoveryResult?.related.status === "unavailable") {
+          return "Semantic search is unavailable.";
+        }
+        return "No semantic matches passed the relevance threshold.";
+      }
+      if (this.discoveryMatchFilter === "keyword") {
+        if (this.discoveryResult?.keyword.status === "unavailable") {
+          return "Keyword search is unavailable.";
+        }
+        return "No keyword matches were found in the selected scope.";
+      }
+      return "No relevant sources were found in the selected scope.";
+    },
+
+    discoveryResultKey(groupKey, document) {
+      return `${groupKey}\u0000${this.discoveryDocumentKey(document)}`;
+    },
+
+    discoveryDocumentRank(groupKey, index) {
+      if (groupKey !== "keyword" || this.discoveryResult === null) {
+        return index + 1;
+      }
+      const keyword = this.discoveryResult.keyword;
+      return ((keyword.page - 1) * keyword.pageSize) + index + 1;
+    },
+
+    initializeDiscoveryExpansion(result) {
+      const firstKeyword = result.keyword.documents[0];
+      if (firstKeyword !== undefined) {
+        this.expandedDiscoveryResultKeys = [
+          this.discoveryResultKey("keyword", firstKeyword),
+        ];
+        return;
+      }
+      const firstRelated = result.related.documents[0];
+      if (firstRelated !== undefined) {
+        this.expandedDiscoveryResultKeys = [
+          this.discoveryResultKey("related", firstRelated),
+        ];
+        return;
+      }
+      this.expandedDiscoveryResultKeys = [];
+    },
+
+    discoveryDocumentExpanded(groupKey, document) {
+      const key = this.discoveryResultKey(groupKey, document);
+      return this.expandedDiscoveryResultKeys.includes(key);
+    },
+
+    toggleDiscoveryDocumentExpanded(groupKey, document) {
+      const key = this.discoveryResultKey(groupKey, document);
+      const expandedKeys = [];
+      let removed = false;
+      for (const expandedKey of this.expandedDiscoveryResultKeys) {
+        if (expandedKey === key) {
+          removed = true;
+          continue;
+        }
+        expandedKeys.push(expandedKey);
+      }
+      if (!removed) {
+        expandedKeys.push(key);
+      }
+      this.expandedDiscoveryResultKeys = expandedKeys;
+    },
+
+    clearDiscoverySelection() {
+      this.selectedDiscoveryDocuments = [];
     },
 
     discoveryWarnings() {
@@ -2263,7 +2401,7 @@ export function registerPage(alpine) {
 
     questionPlaceholder(documentCount) {
       if (this.mode === "discover") {
-        return "loan, mortgage risk, or another topic";
+        return "Describe the evidence or topic you need";
       }
       if (documentCount > 0) {
         return "What would you like to compare across these documents?";
@@ -2557,10 +2695,108 @@ export function registerPage(alpine) {
       return parts.join(", ");
     },
 
-    additionalPassageLabel(document) {
-      const count = Math.max(0, document.matchingPassageCount - 1);
-      const label = count === 1 ? "excerpt" : "excerpts";
-      return `${count} additional matching ${label}`;
+    discoveryFileTypeLabel(sourceFile) {
+      const fileName = this.basename(sourceFile);
+      const extensionIndex = fileName.lastIndexOf(".");
+      if (extensionIndex < 0 || extensionIndex === fileName.length - 1) {
+        return "Document";
+      }
+      return fileName.slice(extensionIndex + 1).toUpperCase();
+    },
+
+    discoveryRepresentativeLocations(document) {
+      const pages = new Set();
+      for (const passage of document.passages) {
+        for (const pageNumber of passage.pageNumbers) {
+          pages.add(pageNumber);
+        }
+      }
+      const orderedPages = Array.from(pages).sort((left, right) => left - right);
+      if (orderedPages.length > 0) {
+        return this.documentLocationLabel(document.sourceFile, orderedPages);
+      }
+      const sectionLabels = [];
+      for (const passage of document.passages) {
+        const sectionLabel = passage.sectionPath.at(-1);
+        if (sectionLabel !== undefined && !sectionLabels.includes(sectionLabel)) {
+          sectionLabels.push(sectionLabel);
+        }
+      }
+      if (sectionLabels.length > 0) {
+        return sectionLabels.join(", ");
+      }
+      return "Indexed content";
+    },
+
+    discoveryRepresentativeLabel(document) {
+      const shownCount = document.passages.length;
+      const matchingCount = document.matchingPassageCount;
+      const shownNoun = shownCount === 1 ? "excerpt" : "excerpts";
+      const matchingNoun = matchingCount === 1 ? "match" : "matches";
+      if (shownCount >= matchingCount) {
+        return `${shownCount} matching ${shownNoun}`;
+      }
+      return `Showing ${shownCount} representative ${shownNoun} of ${matchingCount} ${matchingNoun}`;
+    },
+
+    discoveryExcerptSegments(passage) {
+      const query = this.discoveryResult?.query.trim() ?? "";
+      if (query === "") {
+        return [{ highlighted: false, key: `${passage.id}:0`, text: passage.excerpt }];
+      }
+      const excerpt = passage.excerpt;
+      const normalizedExcerpt = excerpt.toLocaleLowerCase();
+      const queryTerms = [];
+      for (const rawTerm of query.split(/\s+/u)) {
+        const term = rawTerm
+          .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "")
+          .toLocaleLowerCase();
+        if (term !== "" && !queryTerms.includes(term)) {
+          queryTerms.push(term);
+        }
+      }
+      if (queryTerms.length === 0) {
+        return [{ highlighted: false, key: `${passage.id}:0`, text: passage.excerpt }];
+      }
+      const segments = [];
+      let cursor = 0;
+      while (cursor < excerpt.length) {
+        let matchIndex = -1;
+        let matchedTerm = "";
+        for (const term of queryTerms) {
+          const candidateIndex = normalizedExcerpt.indexOf(term, cursor);
+          const isEarlierMatch = matchIndex < 0 || candidateIndex < matchIndex;
+          const isLongerSamePosition = candidateIndex === matchIndex
+            && term.length > matchedTerm.length;
+          if (candidateIndex >= 0 && (isEarlierMatch || isLongerSamePosition)) {
+            matchIndex = candidateIndex;
+            matchedTerm = term;
+          }
+        }
+        if (matchIndex < 0) {
+          segments.push({
+            highlighted: false,
+            key: `${passage.id}:${segments.length}`,
+            text: excerpt.slice(cursor),
+          });
+          break;
+        }
+        if (matchIndex > cursor) {
+          segments.push({
+            highlighted: false,
+            key: `${passage.id}:${segments.length}`,
+            text: excerpt.slice(cursor, matchIndex),
+          });
+        }
+        const matchEnd = matchIndex + matchedTerm.length;
+        segments.push({
+          highlighted: true,
+          key: `${passage.id}:${segments.length}`,
+          text: excerpt.slice(matchIndex, matchEnd),
+        });
+        cursor = matchEnd;
+      }
+      return segments;
     },
 
     retrievedContextLabel() {
