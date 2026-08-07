@@ -1423,6 +1423,7 @@ describe("web server boundary", () => {
             completedImages: 0,
             completedTables: 1,
           },
+          indexingActivity: null,
           pageCount: 27,
           queryStatus: "reindex-required",
           sourceFile: "/documents/removed.pdf",
@@ -2982,6 +2983,7 @@ function buildBrowserDocument(
     },
     errorMessage: null,
     images: 0,
+    indexingActivity: null,
     maxAttempts: null,
     mediaDescriptionProgress: {
       completedImages: 0,
@@ -3046,6 +3048,7 @@ function buildPendingJob(sourceFile: string): PendingIngestionJob {
     },
     generationId: "00000000-0000-4000-8000-000000000001",
     images: 0,
+    indexingActivity: "preparing",
     leaseExpiresAt: null,
     maxAttempts: 3,
     nextAttemptAt: "2026-07-14T04:00:00.000Z",

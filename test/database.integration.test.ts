@@ -1237,6 +1237,7 @@ async function withOpenTestRetrievalGeneration<Result>(
     embeddingSpaceId: input.space.id,
     fileExtension: format.extension,
     generationId: input.generationId,
+    indexingActivity: "embedding",
     mediaType: format.mediaType,
     phase: "normalized",
     sourceFile: input.sourceFile,
@@ -3507,6 +3508,7 @@ describe("PostgreSQL document catalog", () => {
       fileExtension: ".pdf",
       generationId: failedGenerationId,
       images: 2,
+      indexingActivity: "embedding",
       mediaType: "application/pdf",
       pageCount: 1,
       phase: "normalized",
@@ -3593,6 +3595,7 @@ describe("PostgreSQL document catalog", () => {
           completedImages: 1,
           completedTables: 1,
         },
+        indexingActivity: "embedding",
         phase: "normalized",
         sourceFile: failedSourceFile,
       }],
@@ -3678,8 +3681,25 @@ describe("PostgreSQL document catalog", () => {
       textChunks: 3,
       totalElements: 3,
     });
+    expect(await catalog.getJob(sourceFile)).toMatchObject({
+      indexingActivity: "preparing",
+      phase: "normalized",
+    });
+    await catalog.recordIndexingActivity(
+      sourceFile,
+      ownerId,
+      "building_outline",
+    );
+    expect(await catalog.getJob(sourceFile)).toMatchObject({
+      indexingActivity: "building_outline",
+      phase: "normalized",
+    });
     await writeTestPublicationArtifacts(sourceFile, space768);
     await catalog.completeIndexing(sourceFile, ownerId);
+    expect(await catalog.getJob(sourceFile)).toMatchObject({
+      indexingActivity: null,
+      phase: "indexed",
+    });
     const promotion = await catalog.promoteJob(sourceFile, ownerId);
 
     expect(promotion.indexed.tags).toEqual(["2026", "finance"]);
@@ -6891,6 +6911,7 @@ describe("pgvector retrieval", () => {
           embeddingSpaceId: space.id,
           fileExtension: ".pdf",
           generationId,
+          indexingActivity: "embedding",
           mediaType: "application/pdf",
           phase: "normalized",
           sourceFile,

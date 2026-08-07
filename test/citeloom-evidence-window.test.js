@@ -6,6 +6,7 @@ import {
   positionEvidenceWindow,
   prepareEvidenceWindow,
   revealEvidenceCitationTrigger,
+  waitForEvidenceWindowLayout,
 } from "../web/assets/scripts/citeloom-evidence-window.js";
 
 class FakeHtmlElement {
@@ -96,6 +97,66 @@ describe("shared evidence window", () => {
 
     expect(state.position.maxHeight).toBe(520);
     expect(state.position.top).toBe(170);
+  });
+
+  it("does not retain a zero size measured before the panel is rendered", () => {
+    vi.stubGlobal("HTMLElement", FakeHtmlElement);
+    const state = createEvidenceWindowState();
+    const trigger = new FakeHtmlElement({
+      bottom: 722,
+      height: 22,
+      left: 500,
+      top: 700,
+      width: 24,
+    });
+    const panel = new FakeHtmlElement({
+      bottom: 0,
+      height: 0,
+      left: 0,
+      top: 0,
+      width: 0,
+    });
+    prepareEvidenceWindow(state, trigger);
+
+    positionEvidenceWindow(state, panel, { height: 900, width: 1440 });
+    panel.bounds = {
+      bottom: 520,
+      height: 520,
+      left: 0,
+      top: 0,
+      width: 760,
+    };
+    positionEvidenceWindow(state, panel, { height: 900, width: 1440 });
+
+    expect(state.position.maxHeight).toBe(520);
+    expect(state.position.width).toBe(760);
+  });
+
+  it("waits for the first rendered panel layout", async () => {
+    vi.stubGlobal("HTMLElement", FakeHtmlElement);
+    const panel = new FakeHtmlElement({
+      bottom: 0,
+      height: 0,
+      left: 0,
+      top: 0,
+      width: 0,
+    });
+    let frameCount = 0;
+    vi.stubGlobal("requestAnimationFrame", (callback) => {
+      frameCount += 1;
+      panel.bounds = {
+        bottom: 520,
+        height: 520,
+        left: 0,
+        top: 0,
+        width: 760,
+      };
+      callback(frameCount);
+      return frameCount;
+    });
+
+    await expect(waitForEvidenceWindowLayout(panel)).resolves.toBe(true);
+    expect(frameCount).toBe(1);
   });
 
   it("reveals a citation instantly inside a smooth scroll container", () => {

@@ -88,6 +88,13 @@ describe("CiteLoom chat page", () => {
     expect(fragment).toContain(
       'x-text="citationWindow.pinned ? \'Unpin\' : \'Pin evidence\'"',
     );
+    expect(fragment).toContain(
+      '<h3 class="section-kicker" id="chat-evidence-title">Exact evidence</h3>',
+    );
+    expect(fragment).toContain('class="exact-evidence-text"');
+    expect(fragment).not.toContain('class="chat-evidence-source"');
+    expect(fragment).not.toContain("Exact retained evidence");
+    expect(fragment).not.toContain("Current in library");
     expect(fragment).not.toContain("toggleCitationExpanded()");
   });
 

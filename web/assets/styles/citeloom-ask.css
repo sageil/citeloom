@@ -105,7 +105,6 @@
 .inline-citation:hover, .inline-citation:focus-visible { border-color: var(--cyan); background: rgba(6, 182, 212, 0.14); outline: none; }
 .answer-finding-verification { grid-column: 2; grid-row: 1 / span 2; }
 .answer-document-section-key-points .answer-finding-verification { position: absolute; top: 23px; right: 0; color: var(--cyan-bright); }
-.ask-inline-evidence-body blockquote { width: 100%; margin: 0; padding: 14px; border-left: 3px solid var(--cyan); background: var(--surface-raised); font-size: 11px; line-height: 1.65; white-space: pre-wrap; }
 .ask-inline-evidence-body img { display: block; max-width: 100%; max-height: 360px; margin-inline: auto; object-fit: contain; }
 .ask-mode .answer-publication-details > .sources-list { display: none; }
 .answer-publication-details { padding-top: 6px; }
@@ -136,8 +135,6 @@
 .evidence-inspector-content { height: 100%; padding: 18px; overflow: auto; }
 .ask-mode .evidence-inspector { position: sticky; top: 0; grid-column: 3; grid-row: 1 / span 2; width: auto; height: calc(100vh - 116px); min-height: 620px; background: transparent; }
 .ask-mode .evidence-inspector-content { display: none; }
-.ask-inspect-source { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; color: var(--cyan); font-size: 10px; }
-
 .discovery-card-list, .discovery-groups { display: grid; gap: 14px; margin-top: 16px; }
 .discovery-card { padding: 14px; border: 1px solid var(--border); border-radius: 9px; }
 .discovery-card > header, .discovery-selection-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

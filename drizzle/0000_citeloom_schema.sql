@@ -13,6 +13,7 @@ CREATE TYPE "public"."docling_service_state" AS ENUM('active', 'unavailable', 'd
 CREATE TYPE "public"."element_kind" AS ENUM('text', 'table', 'image');--> statement-breakpoint
 CREATE TYPE "public"."inference_workload" AS ENUM('offline-tool', 'ingestion', 'interactive-answer', 'interactive-search', 'maintenance');--> statement-breakpoint
 CREATE TYPE "public"."ingestion_control_state" AS ENUM('active', 'pause_requested', 'paused', 'cancel_requested', 'cleanup_failed');--> statement-breakpoint
+CREATE TYPE "public"."ingestion_indexing_activity" AS ENUM('preparing', 'describing', 'embedding', 'building_outline');--> statement-breakpoint
 CREATE TYPE "public"."ingestion_phase" AS ENUM('discovered', 'normalized', 'indexed');--> statement-breakpoint
 CREATE TYPE "public"."ingestion_state" AS ENUM('pending', 'running', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."research_output_state" AS ENUM('building', 'published');--> statement-breakpoint
@@ -634,6 +635,7 @@ CREATE TABLE "ingestion_jobs" (
 	"file_extension" varchar(33) NOT NULL,
 	"generation_id" uuid NOT NULL,
 	"images" integer DEFAULT 0 NOT NULL,
+	"indexing_activity" "ingestion_indexing_activity",
 	"lease_expires_at" timestamp with time zone,
 	"max_attempts" integer DEFAULT 3 NOT NULL,
 	"media_type" text NOT NULL,
@@ -656,7 +658,8 @@ CREATE TABLE "ingestion_jobs" (
 	CONSTRAINT "ingestion_jobs_docling_assignment_fields_check" CHECK (("ingestion_jobs"."docling_service_instance_id" IS NULL AND "ingestion_jobs"."docling_service_slot" IS NULL) OR ("ingestion_jobs"."docling_service_instance_id" IS NOT NULL AND "ingestion_jobs"."docling_service_slot" IS NOT NULL)),
 	CONSTRAINT "ingestion_jobs_docling_assignment_phase_check" CHECK ("ingestion_jobs"."docling_service_instance_id" IS NULL OR "ingestion_jobs"."phase" = 'discovered'),
 	CONSTRAINT "ingestion_jobs_docling_assignment_slot_check" CHECK ("ingestion_jobs"."docling_service_slot" IS NULL OR "ingestion_jobs"."docling_service_slot" > 0),
-	CONSTRAINT "ingestion_jobs_page_count_check" CHECK ("ingestion_jobs"."page_count" IS NULL OR "ingestion_jobs"."page_count" > 0)
+	CONSTRAINT "ingestion_jobs_page_count_check" CHECK ("ingestion_jobs"."page_count" IS NULL OR "ingestion_jobs"."page_count" > 0),
+	CONSTRAINT "ingestion_jobs_indexing_activity_phase_check" CHECK (("ingestion_jobs"."phase" = 'normalized' AND "ingestion_jobs"."indexing_activity" IS NOT NULL) OR ("ingestion_jobs"."phase" <> 'normalized' AND "ingestion_jobs"."indexing_activity" IS NULL))
 );
 --> statement-breakpoint
 CREATE TABLE "provider_oauth_credentials" (

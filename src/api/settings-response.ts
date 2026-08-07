@@ -5,6 +5,7 @@ import {
   type RuntimeSettingPanel,
 } from "../app/settings.js";
 import {
+  providerSupportsAdaptiveContext,
   readProviderConnectionConfiguration,
   type ProviderAuthenticationMethod,
   type ProviderCapability,
@@ -107,6 +108,7 @@ export interface ProviderConnectionResponse {
 }
 
 export interface ProviderProfileResponse {
+  adaptiveContextSupported: boolean;
   adapterConfiguration: "catalog" | "connection";
   authentication: ProviderAuthenticationMethod;
   capabilities: ProviderCapabilityProfile[];
@@ -303,6 +305,7 @@ function buildProviderSettingsResponse(
   }
   const catalog: ProviderProfileResponse[] = settings.providerSettings.catalog.map((profile) => {
     return {
+      adaptiveContextSupported: providerSupportsAdaptiveContext(profile),
       adapterConfiguration: profile.adapterConfiguration,
       authentication: profile.authentication,
       capabilities: profile.capabilities.map((capability) => ({ ...capability })),

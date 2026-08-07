@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { indexingActivitySchema } from "./model.js";
 import type { CatalogEntry, IngestionPhase } from "./index.js";
 import type { SqlQueryExecutor } from "../../database/client.js";
 
@@ -80,6 +81,7 @@ const browserDocumentSchema = z.object({
   embeddingProgress: embeddingProgressSchema,
   errorMessage: z.string().nullable(),
   images: z.number().int().nonnegative(),
+  indexingActivity: indexingActivitySchema.nullable(),
   maxAttempts: z.number().int().positive().nullable(),
   mediaDescriptionProgress: mediaDescriptionProgressSchema,
   nextAttemptAt: z.string().min(1).nullable(),
@@ -95,6 +97,16 @@ const browserDocumentSchema = z.object({
   uploadedByUserId: z.uuid().nullable(),
   updatedAt: z.string().min(1),
 }).superRefine((document, context) => {
+  if (
+    (document.phase === "normalized")
+    !== (document.indexingActivity !== null)
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "indexing activity does not match the document phase",
+      path: ["indexingActivity"],
+    });
+  }
   const progress = document.embeddingProgress;
   if (
     progress.state !== "not-started"

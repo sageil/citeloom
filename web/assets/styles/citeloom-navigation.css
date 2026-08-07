@@ -173,156 +173,9 @@
   color: #fecdd3;
 }
 
-.task-navigation-stage {
-  width: min(1180px, calc(100% - 40px));
-  margin: 0 auto;
-  padding: 58px 0 22px;
-}
-
-.task-navigation-stage-compact {
-  width: min(1560px, calc(100% - 40px));
-  padding: 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.task-navigation-intro {
-  margin-bottom: 28px;
-}
-
-.task-navigation-intro h1,
-.task-navigation-intro h2 {
-  max-width: none;
-  margin: 0;
-  font-family: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
-  font-size: clamp(34px, 5vw, 52px);
-  font-weight: 600;
-  line-height: 1.04;
-  letter-spacing: -0.045em;
-}
-
-.task-navigation-intro h1 span {
-  color: var(--cyan);
-}
-
-.task-launchpad {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.task-navigation-stage-compact .task-launchpad {
-  gap: 0;
-}
-
-.task-navigation-stage-compact .task-button {
-  grid-template-columns: 36px minmax(0, 1fr);
-  min-height: 70px;
-  gap: 12px;
-  padding: 0 28px;
-  border: 0;
-  border-right: 1px solid var(--border);
-  border-radius: 0;
-  background: transparent;
-  transform: none;
-}
-
-.task-navigation-stage-compact .task-button:last-child {
-  border-right: 0;
-}
-
-.task-navigation-stage-compact .task-button:hover,
-.task-navigation-stage-compact .task-button.active {
-  border-color: var(--border);
-  background: rgba(11, 16, 32, 0.42);
-  transform: none;
-}
-
-.task-navigation-stage-compact .task-button.active {
-  color: var(--cyan);
-}
-
-.task-navigation-stage-compact .task-button.active strong {
-  color: var(--cyan);
-}
-
-.task-navigation-stage-compact .task-button-icon {
-  width: 36px;
-  height: 36px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.task-navigation-stage-compact .citeloom-arrow-icon {
-  display: none;
-}
-
-.task-button {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 18px;
-  align-items: center;
-  min-height: 88px;
-  gap: 13px;
-  padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface-opaque);
-  color: var(--muted);
-  text-align: left;
-  transition: border-color 180ms ease, transform 180ms ease;
-}
-
-.task-button:hover,
-.task-button.active {
-  border-color: var(--border-strong);
-  color: var(--text);
-  transform: translateY(-2px);
-}
-
-.task-button.active {
-  border-color: rgba(6, 182, 212, 0.54);
-  background: var(--surface-soft);
-}
-
-.task-button-icon {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  background: var(--surface-soft);
-  color: var(--cyan);
-}
-
-.task-button-copy {
-  display: grid;
-  gap: 5px;
-}
-
-.task-button-copy strong {
-  color: var(--text);
-  font-size: 14px;
-}
-
-.task-button-copy small {
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.35;
-}
-
 .task-navigation-workspace-page {
   width: min(1600px, calc(100% - 40px));
   padding-top: 30px;
-}
-
-.task-navigation-workspace-page.with-task-launchpad {
-  padding-top: 0;
-}
-
-.task-navigation-shell .workspace-status-header {
-  justify-content: flex-end;
-  padding-bottom: 24px;
 }
 
 .feature-page {
@@ -333,12 +186,6 @@
 .ask-feature-page,
 .chat-feature-page {
   padding-top: 0;
-}
-
-@media (max-width: 1080px) {
-  .task-launchpad {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 1180px) {
@@ -371,19 +218,10 @@
   .task-navigation-primary-nav {
     gap: 14px;
   }
-
-  .task-navigation-stage {
-    padding-top: 40px;
-  }
-
-  .task-navigation-stage-compact {
-    padding-top: 0;
-  }
 }
 
 @media (max-width: 520px) {
-  .task-navigation-header,
-  .task-navigation-stage {
+  .task-navigation-header {
     width: min(100% - 28px, 1180px);
   }
 
@@ -405,25 +243,5 @@
   .utility-navigation-icon {
     width: 32px;
     height: 32px;
-  }
-
-  .task-button {
-    grid-template-columns: 40px minmax(0, 1fr) 16px;
-  }
-
-  .task-navigation-stage-compact .task-launchpad {
-    grid-template-columns: 1fr;
-  }
-
-  .task-navigation-stage-compact .task-button {
-    grid-template-columns: 32px minmax(0, 1fr);
-    min-height: 60px;
-    padding: 0 12px;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .task-navigation-stage-compact .task-button:last-child {
-    border-bottom: 0;
   }
 }

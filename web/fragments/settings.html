@@ -556,14 +556,14 @@
                 </select>
                 <small>Used for this provider's language features unless a feature has its own setting. Disabled is the default.</small>
               </label>
-              <div class="form-field" x-cloak x-show="selectedProviderUsesOllamaLanguage()">
+              <div class="form-field" x-cloak x-show="selectedProviderSupportsAdaptiveContext()">
                 <span>Automatic context size</span>
                 <label class="toggle-control settings-toggle-control">
                   <input type="checkbox" :checked="providerAdaptiveContextEnabled()" @change="writeProviderAdaptiveContextEnabled($event.target.checked)" />
                   <span class="toggle-track" aria-hidden="true"><span></span></span>
                   <span><strong x-text="providerAdaptiveContextEnabled() ? 'Enabled' : 'Off'"></strong></span>
                 </label>
-                <small>Adaptively sizes native GGUF runners. MLX models use Ollama's dynamic context automatically. Adaptive GGUF sizing limits the provider to one request at a time, and the Ollama server must use <code>OLLAMA_NUM_PARALLEL=1</code>. Turn it off to use the configured input limit for GGUF.</small>
+                <small>Automatically sizes compatible model runners. Enabling it limits the provider to one request at a time. Turn it off to use the configured maximum input.</small>
               </div>
               <div class="settings-provider-authentication" x-show="providerUsesDeviceAuth()">
                 <div class="settings-provider-auth-heading">
@@ -614,7 +614,7 @@
                 <span>Maximum parallel requests</span>
                 <strong x-text="providerMaximumParallelRequests() ?? 'Not configured'"></strong>
               </div>
-              <div x-cloak x-show="selectedProviderUsesOllamaLanguage()">
+              <div x-cloak x-show="selectedProviderSupportsAdaptiveContext()">
                 <span>Automatic context size</span>
                 <strong x-text="providerAdaptiveContextEnabled() ? 'Enabled' : 'Off'"></strong>
               </div>

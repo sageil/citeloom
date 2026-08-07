@@ -910,9 +910,17 @@ export class IngestionProcessor {
   }
 
   private async index(job: IngestionJob, abortSignal: AbortSignal): Promise<void> {
-    this.reportProgress(
-      `${basename(job.sourceFile)}: describing media and embedding retrieval representations`,
-    );
+    this.reportProgress(`${basename(job.sourceFile)}: preparing search index`);
+    if (job.state !== "running") {
+      throw new Error(`Cannot index unclaimed ingestion job ${job.sourceFile}.`);
+    }
+    if (job.indexingActivity !== "preparing") {
+      await this.catalog.recordIndexingActivity(
+        job.sourceFile,
+        job.ownerId,
+        "preparing",
+      );
+    }
     const elementSetId = requireElementSetId(job);
     const elementSet = await this.documentStore.readElementSet(elementSetId);
     assertElementSetMatchesJob(job, elementSet);
@@ -932,6 +940,11 @@ export class IngestionProcessor {
     while (position < elementSet.elementCount) {
       abortSignal.throwIfAborted();
       if (titleEmbedding === null) {
+        await this.catalog.recordIndexingActivity(
+          job.sourceFile,
+          job.ownerId,
+          "embedding",
+        );
         const titleEmbeddings = await embedDocumentTexts(
           this.models,
           [buildDocumentTitleEmbeddingContent(job.sourceFile)],
@@ -951,6 +964,14 @@ export class IngestionProcessor {
       );
       if (batch.elements.length === 0) {
         throw new Error(`Missing source element at position ${position}.`);
+      }
+      const describesMedia = containsDescribableElement(batch.elements);
+      if (describesMedia) {
+        await this.catalog.recordIndexingActivity(
+          job.sourceFile,
+          job.ownerId,
+          "describing",
+        );
       }
       await this.describeElementBatch(
         job,
@@ -996,6 +1017,13 @@ export class IngestionProcessor {
         batch.elements,
         this.config.embeddingSpace.inputFormat,
       );
+      if (describesMedia) {
+        await this.catalog.recordIndexingActivity(
+          job.sourceFile,
+          job.ownerId,
+          "embedding",
+        );
+      }
       const embedded = await embedDocumentInputs(
         this.models,
         embeddingInputs,
@@ -1022,10 +1050,12 @@ export class IngestionProcessor {
       );
       position = batch.nextPosition;
     }
+    await this.catalog.recordIndexingActivity(
+      job.sourceFile,
+      job.ownerId,
+      "building_outline",
+    );
     await this.stageDocumentToc(job, elementSetId, abortSignal);
-    if (job.state !== "running") {
-      throw new Error(`Cannot complete indexing for ${job.sourceFile}.`);
-    }
     await this.catalog.completeIndexing(job.sourceFile, job.ownerId);
   }
 
@@ -1752,6 +1782,17 @@ function isRequestedControlState(
   state: IngestionControlState,
 ): state is "pause_requested" | "cancel_requested" {
   return state === "pause_requested" || state === "cancel_requested";
+}
+
+function containsDescribableElement(
+  elements: readonly SourceElement[],
+): boolean {
+  for (const element of elements) {
+    if (isDescribableElement(element)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function buildRetrievalEmbeddingInputs(

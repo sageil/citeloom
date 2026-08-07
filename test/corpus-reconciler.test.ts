@@ -158,6 +158,7 @@ function buildPendingJob(sourceFile: string): IngestionJob {
     },
     generationId: "00000000-0000-4000-8000-000000000001",
     images: 0,
+    indexingActivity: null,
     leaseExpiresAt: null,
     maxAttempts: 3,
     nextAttemptAt: "2026-07-14T11:00:00.000Z",

@@ -632,7 +632,7 @@
                   @pointerup="finishAskEvidencePanelDrag($event)"
                 >
                   <div>
-                    <h3 id="ask-inline-evidence-title">Exact evidence</h3>
+                    <h3 class="section-kicker" id="ask-inline-evidence-title">Exact evidence</h3>
                     <span x-text="selectedCitationSummary()"></span>
                   </div>
                   <div class="evidence-window-actions">
@@ -655,24 +655,21 @@
                   <p class="field-error" role="alert" x-cloak x-show="citationError !== ''" x-text="citationError"></p>
                   <p class="ask-citation-loading" x-cloak x-show="citationLoading">Refreshing evidence...</p>
                   <template x-if="inspectedCitation !== null">
-                    <div>
+                    <div class="evidence-window-content-stack">
                       <template x-if="inspectedCitation.evidence.kind === 'image'">
                         <img :alt="`Citation ${inspectedCitation.citationNumber} evidence`" :src="citationImageUrl()" />
                       </template>
                       <template x-if="inspectedCitation.evidence.kind !== 'image'">
-                        <blockquote x-text="citationEvidenceText()"></blockquote>
+                        <blockquote class="exact-evidence-text" x-text="citationEvidenceText()"></blockquote>
                       </template>
-                      <a
-                        class="ask-inspect-source"
-                        rel="noopener noreferrer"
-                        target="_blank"
-                        :href="citationFileUrl()"
-                      >
-                        <span>Inspect source</span>
-                        <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                          <use href="./assets/images/citeloom-icons.svg#citeloom-external"></use>
-                        </svg>
-                      </a>
+                      <div class="evidence-window-source-actions">
+                        <a
+                          rel="noopener noreferrer"
+                          target="_blank"
+                          :href="citationFileUrl()"
+                          x-text="citationFileLabel()"
+                        ></a>
+                      </div>
                     </div>
                   </template>
                 </div>

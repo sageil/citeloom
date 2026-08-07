@@ -26,7 +26,11 @@ import {
   buildCitationPresentation,
   buildCitationPresentations,
 } from "./citeloom-citation-presentation.js";
-import { buildPdfViewerUrl } from "./citeloom-file-links.js";
+import {
+  buildHighlightedSourceViewerUrl,
+  buildPdfViewerUrl,
+  isTextSourceFile,
+} from "./citeloom-file-links.js";
 import {
   beginEvidenceWindowDrag,
   continueEvidenceWindowDrag,
@@ -40,6 +44,7 @@ import {
   resetEvidenceWindow,
   revealEvidenceCitationTrigger,
   toggleEvidenceWindowPin,
+  waitForEvidenceWindowLayout,
 } from "./citeloom-evidence-window.js";
 import { focusTextArea } from "./citeloom-focus.js";
 import { createDictationController } from "./citeloom-dictation.js";
@@ -1559,9 +1564,22 @@ export function registerPage(alpine) {
         citation: { negative: 0, positive: 0 },
       };
       await this.$nextTick();
-      this.positionAskEvidencePanel();
+      if (controller.signal.aborted) {
+        return;
+      }
       if (this.mode === "ask") {
-        this.$refs.askEvidencePanel?.focus();
+        const panelReady = await waitForEvidenceWindowLayout(
+          this.$refs.askEvidencePanel,
+        );
+        if (controller.signal.aborted) {
+          return;
+        }
+        if (panelReady) {
+          this.positionAskEvidencePanel();
+          this.$refs.askEvidencePanel?.focus();
+        } else {
+          this.citationError = "Citation evidence could not be displayed.";
+        }
       } else {
         this.$root.querySelector(".evidence-inspector")?.focus();
       }
@@ -2645,10 +2663,20 @@ export function registerPage(alpine) {
         return "";
       }
       const sourceFile = this.inspectedCitation.sourceFile.toLowerCase();
-      if (sourceFile.endsWith(".pdf") && this.inspectedCitation.regions.length > 0) {
+      if (this.citationSourceIsImage()) {
+        return this.citationOriginalFileUrl();
+      }
+      if (
+        sourceFile.endsWith(".pdf")
+        && this.inspectedCitation.regions.length === 0
+      ) {
+        return this.citationOriginalFileUrl();
+      }
+      if (sourceFile.endsWith(".pdf") || isTextSourceFile(sourceFile)) {
         const citationId = encodeURIComponent(this.inspectedCitation.id);
-        return buildPdfViewerUrl(
+        return buildHighlightedSourceViewerUrl(
           `/api/citations/${citationId}/highlighted-file`,
+          sourceFile,
           this.inspectedCitation.pageNumbers,
         );
       }
@@ -2663,6 +2691,9 @@ export function registerPage(alpine) {
         return this.inspectedCitation.regions.length > 0
           ? "Open highlighted PDF"
           : "Open original PDF";
+      }
+      if (isTextSourceFile(this.inspectedCitation.sourceFile)) {
+        return "Open highlighted source";
       }
       return this.citationSourceIsImage()
         ? "Open original image"
@@ -2679,6 +2710,9 @@ export function registerPage(alpine) {
       }
       if (this.citationSourceIsImage() && this.inspectedCitation.regions.length > 0) {
         return "Highlighted evidence is shown above";
+      }
+      if (isTextSourceFile(sourceFile)) {
+        return "Opens an inert source viewer at the exact indexed evidence";
       }
       return "Opens the original stored document";
     },

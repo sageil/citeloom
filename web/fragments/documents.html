@@ -54,52 +54,6 @@
       </nav>
 
       <div class="document-browser-main">
-        <div class="catalog-toolbar">
-          <label class="search-control catalog-search">
-            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-              <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
-            </svg>
-            <span class="visually-hidden">Search documents</span>
-            <input
-              placeholder="Search documents by name"
-              type="search"
-              x-model="searchInput"
-              @input="scheduleSearch()"
-            />
-          </label>
-          <label>
-            <span class="visually-hidden">Filter by status</span>
-            <select class="form-control" :value="status" @change="chooseStatus($event.target.value)">
-              <option value="all">Status: All</option>
-              <option value="ready">Ready</option>
-              <option value="processing">Processing</option>
-              <option value="failed">Failed</option>
-              <option value="reindex-required">Reindex required</option>
-            </select>
-          </label>
-          <label>
-            <span class="visually-hidden">Filter by tag</span>
-            <select class="form-control" :value="tagFilter" @change="chooseTag($event.target.value)">
-              <option value="">Tags: All</option>
-              <template x-for="facet in facets.tags" :key="facet.tag">
-                <option
-                  :value="facet.tag"
-                  x-text="`${facet.tag} (${facet.count})`"
-                ></option>
-              </template>
-            </select>
-          </label>
-          <label>
-            <span class="visually-hidden">Sort documents</span>
-            <select class="form-control" :value="sort" @change="chooseSort($event.target.value)">
-              <option value="updated-desc">Updated: newest</option>
-              <option value="updated-asc">Updated: oldest</option>
-              <option value="name-asc">Name: A-Z</option>
-              <option value="name-desc">Name: Z-A</option>
-            </select>
-          </label>
-        </div>
-
         <div
           class="status-message catalog-error error"
           role="alert"
@@ -170,16 +124,16 @@
                     <span
                       aria-hidden="true"
                       class="phase-progress"
-                      :class="{ indeterminate: !embeddingProgressDeterminate(document) }"
+                      :class="{ indeterminate: attentionRunning(document) &amp;&amp; !indexingProgressDeterminate(document) }"
                       x-show="attentionProcessing(document)"
                     >
-                      <span :style="embeddingProgressStyle(document)"></span>
+                      <span :style="indexingProgressStyle(document)"></span>
                     </span>
                   </span>
                   <time
-                    :aria-label="attentionRunning(document) ? `${document.statusLabel} elapsed time: ${elapsedDuration(document)}` : null"
+                    :aria-label="attentionRunning(document) ? `${document.statusLabel} activity elapsed time: ${elapsedDuration(document)}` : null"
                     :datetime="document.updatedAt"
-                    :title="attentionRunning(document) ? 'Elapsed time in the current phase' : null"
+                    :title="attentionRunning(document) ? 'Elapsed time in the current activity' : null"
                     x-text="attentionRunning(document) ? elapsedDuration(document) : documentUpdated(document)"
                   ></time>
                 </button>
@@ -188,22 +142,53 @@
           </div>
         </section>
 
-        <section class="catalog-table" aria-labelledby="catalog-table-title">
-          <header class="catalog-table-title">
+        <div class="catalog-toolbar">
+          <label class="search-control catalog-search">
             <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-              <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+              <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
             </svg>
-            <h3 id="catalog-table-title" x-text="collectionLabel"></h3>
-            <span x-text="displayCount(total)"></span>
-            <svg
-              aria-hidden="true"
-              class="citeloom-icon citeloom-small-icon spin"
-              x-cloak
-              x-show="loading"
-            >
-              <use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use>
-            </svg>
-          </header>
+            <span class="visually-hidden">Search documents</span>
+            <input
+              placeholder="Search documents by name"
+              type="search"
+              x-model="searchInput"
+              @input="scheduleSearch()"
+            />
+          </label>
+          <label>
+            <span class="visually-hidden">Filter by status</span>
+            <select class="form-control" :value="status" @change="chooseStatus($event.target.value)">
+              <option value="all">Status: All</option>
+              <option value="ready">Ready</option>
+              <option value="processing">Processing</option>
+              <option value="failed">Failed</option>
+              <option value="reindex-required">Reindex required</option>
+            </select>
+          </label>
+          <label>
+            <span class="visually-hidden">Filter by tag</span>
+            <select class="form-control" :value="tagFilter" @change="chooseTag($event.target.value)">
+              <option value="">Tags: All</option>
+              <template x-for="facet in facets.tags" :key="facet.tag">
+                <option
+                  :value="facet.tag"
+                  x-text="`${facet.tag} (${facet.count})`"
+                ></option>
+              </template>
+            </select>
+          </label>
+          <label>
+            <span class="visually-hidden">Sort documents</span>
+            <select class="form-control" :value="sort" @change="chooseSort($event.target.value)">
+              <option value="updated-desc">Updated: newest</option>
+              <option value="updated-asc">Updated: oldest</option>
+              <option value="name-asc">Name: A-Z</option>
+              <option value="name-desc">Name: Z-A</option>
+            </select>
+          </label>
+        </div>
+
+        <section class="catalog-table" aria-label="Documents">
 
           <div class="catalog-columns">
             <label class="catalog-question-checkbox catalog-page-checkbox">
@@ -224,7 +209,7 @@
             <span class="catalog-column-name">Name</span>
             <span class="catalog-column-tags">Tags</span>
             <span class="catalog-column-status">Status</span>
-            <span class="catalog-column-stat">Locations</span>
+            <span class="catalog-column-stat">Pages</span>
             <span class="catalog-column-stat">Tables</span>
             <span class="catalog-column-stat">Images</span>
             <span class="catalog-column-updated">Updated</span>
@@ -308,14 +293,6 @@
 
           <footer class="pagination catalog-pagination">
             <span x-text="`Showing ${firstResult}-${lastResult} of ${displayCount(total)}`"></span>
-            <label>
-              <span class="visually-hidden">Documents per page</span>
-              <select class="form-control" :value="pageSize" @change="choosePageSize($event.target.value)">
-                <option value="25">25 per page</option>
-                <option value="50">50 per page</option>
-                <option value="100">100 per page</option>
-              </select>
-            </label>
             <div class="pagination-actions page-buttons" aria-label="Document pages">
               <button
                 aria-label="Previous page"
@@ -339,6 +316,14 @@
                 @click="choosePage(page + 1)"
               >→</button>
             </div>
+            <label>
+              <span class="visually-hidden">Documents per page</span>
+              <select class="form-control" :value="pageSize" @change="choosePageSize($event.target.value)">
+                <option value="25">25 per page</option>
+                <option value="50">50 per page</option>
+                <option value="100">100 per page</option>
+              </select>
+            </label>
           </footer>
         </section>
       </div>
@@ -378,12 +363,36 @@
                 x-text="selectedDocument.statusDetail"
               ></span>
             </div>
+            <button
+              class="inspector-copy-button"
+              type="button"
+              :aria-label="copyState === 'copied' ? 'Source path copied' : 'Copy source path'"
+              @click="copySource()"
+            >
+              <span aria-hidden="true" x-text="copyState === 'copied' ? '✓' : '⧉'"></span>
+            </button>
           </header>
+
+          <div class="inspector-ready-action" x-show="selectedDocument.queryStatus === 'ready'">
+            <button
+              class="button primary"
+              type="button"
+              :aria-pressed="isQuestionDocumentSelected(selectedDocument.sourceFile)"
+              :class="{ selected: isQuestionDocumentSelected(selectedDocument.sourceFile) }"
+              :disabled="actionKind === 'reindex'"
+              @click="toggleQuestionDocument(selectedDocument)"
+            >
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use>
+              </svg>
+              <span x-text="isQuestionDocumentSelected(selectedDocument.sourceFile) ? 'Added to question' : 'Add to question'"></span>
+            </button>
+          </div>
 
           <section class="inspector-section inspector-progress-section">
             <div class="inspector-section-heading">
               <h4>Ingestion progress</h4>
-              <span x-text="`${completedPhaseCount(selectedDocument)} of ${phaseStages(selectedDocument).length}`"></span>
+              <span x-text="`${completedPhaseCount(selectedDocument)} of ${phaseStages(selectedDocument).length}${selectedDocument.status === 'ready' ? ' complete' : ''}`"></span>
             </div>
             <ol class="phase-progress-rail">
               <template x-for="stage in phaseStages(selectedDocument)" :key="stage.label">
@@ -393,25 +402,31 @@
                 </li>
               </template>
             </ol>
-            <div
-              class="ingestion-activity-list"
-              x-cloak
-              x-show="embeddingProgressVisible(selectedDocument)"
-            >
-              <div class="ingestion-activity">
-                <div>
-                  <strong>Embedding content</strong>
-                  <span x-text="embeddingProgressDetail(selectedDocument)"></span>
-                </div>
-                <span
-                  aria-hidden="true"
-                  class="phase-progress"
-                  :class="{ indeterminate: !embeddingProgressDeterminate(selectedDocument) }"
+            <template x-if="indexingProgressVisible(selectedDocument)">
+              <div class="ingestion-activity-list">
+                <div
+                  aria-live="polite"
+                  class="ingestion-activity"
+                  role="status"
                 >
-                  <span :style="embeddingProgressStyle(selectedDocument)"></span>
-                </span>
+                  <div>
+                    <strong x-text="indexingActivityLabel(selectedDocument)"></strong>
+                    <span x-text="indexingActivityDetail(selectedDocument)"></span>
+                  </div>
+                  <span
+                    class="phase-progress"
+                    role="progressbar"
+                    :aria-label="indexingActivityLabel(selectedDocument)"
+                    :aria-valuemax="indexingProgressDeterminate(selectedDocument) ? indexingProgressMaximum(selectedDocument) : null"
+                    :aria-valuemin="indexingProgressDeterminate(selectedDocument) ? 0 : null"
+                    :aria-valuenow="indexingProgressDeterminate(selectedDocument) ? indexingProgressValue(selectedDocument) : null"
+                    :class="{ indeterminate: !indexingProgressDeterminate(selectedDocument) }"
+                  >
+                    <span :style="indexingProgressStyle(selectedDocument)"></span>
+                  </span>
+                </div>
               </div>
-            </div>
+            </template>
 
             <div
               class="inspector-notification-action"
@@ -442,22 +457,6 @@
               </div>
             </div>
 
-            <div class="inspector-ready-action" x-show="selectedDocument.queryStatus === 'ready'">
-              <button
-                class="button primary"
-                type="button"
-                :aria-pressed="isQuestionDocumentSelected(selectedDocument.sourceFile)"
-                :class="{ selected: isQuestionDocumentSelected(selectedDocument.sourceFile) }"
-                :disabled="actionKind === 'reindex'"
-                @click="toggleQuestionDocument(selectedDocument)"
-              >
-                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                  <use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use>
-                </svg>
-                <span x-text="isQuestionDocumentSelected(selectedDocument.sourceFile) ? 'Added to question' : 'Add to question'"></span>
-              </button>
-            </div>
-
             <div class="inspector-retry-action" x-show="selectedDocument.status === 'failed'">
               <button
                 class="button primary"
@@ -476,32 +475,6 @@
               </button>
             </div>
           </section>
-
-          <details
-            class="inspector-disclosure"
-            :open="inspectorDisclosures.source"
-            @toggle="inspectorDisclosures.source = $event.currentTarget.open"
-          >
-            <summary>
-              <span>
-                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                  <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
-                </svg>
-                <strong>Source</strong>
-              </span>
-              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon inspector-disclosure-caret">
-                <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
-              </svg>
-            </summary>
-            <div class="inspector-disclosure-content">
-              <div class="inspector-source">
-                <span x-text="selectedDocument.sourceFile"></span>
-                <button aria-label="Copy source path" type="button" @click="copySource()">
-                  <span aria-hidden="true" x-text="copyState === 'copied' ? '✓' : '⧉'"></span>
-                </button>
-              </div>
-            </div>
-          </details>
 
           <details
             class="inspector-disclosure"

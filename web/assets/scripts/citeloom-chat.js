@@ -15,7 +15,10 @@ import {
   readCreatedChat,
 } from "./citeloom-chat-boundaries.js";
 import { readDocumentCatalog } from "./citeloom-documents.js";
-import { buildPdfViewerUrl } from "./citeloom-file-links.js";
+import {
+  buildHighlightedSourceViewerUrl,
+  isTextSourceFile,
+} from "./citeloom-file-links.js";
 import {
   beginEvidenceWindowDrag,
   continueEvidenceWindowDrag,
@@ -28,6 +31,7 @@ import {
   resetEvidenceWindow,
   revealEvidenceCitationTrigger,
   toggleEvidenceWindowPin,
+  waitForEvidenceWindowLayout,
 } from "./citeloom-evidence-window.js";
 import { focusTextArea } from "./citeloom-focus.js";
 import {
@@ -1580,10 +1584,19 @@ export function registerPage(alpine) {
       }
       prepareEvidenceWindow(this.citationWindow, trigger);
       this.selectedCitation = citation;
-      this.$nextTick(() => {
-        this.positionCitationPanel();
-        this.$refs.citationPanel?.focus();
-      });
+      void this.completeCitationOpen(citation.id);
+    },
+
+    async completeCitationOpen(citationId) {
+      await this.$nextTick();
+      const panelReady = await waitForEvidenceWindowLayout(
+        this.$refs.citationPanel,
+      );
+      if (this.selectedCitation?.id !== citationId || !panelReady) {
+        return;
+      }
+      this.positionCitationPanel();
+      this.$refs.citationPanel?.focus();
     },
 
     async openCitationFromNavigator(citation) {
@@ -1731,8 +1744,16 @@ export function registerPage(alpine) {
     citationFileUrl(citation) {
       const citationId = encodeURIComponent(citation.id);
       if (citation.mediaType === "application/pdf" && citation.regions.length > 0) {
-        return buildPdfViewerUrl(
+        return buildHighlightedSourceViewerUrl(
           `/api/chat/citations/${citationId}/highlighted-file`,
+          citation.sourceFile,
+          citation.pageNumbers,
+        );
+      }
+      if (citation.mediaType === "text/html" || citation.mediaType === "text/plain") {
+        return buildHighlightedSourceViewerUrl(
+          `/api/chat/citations/${citationId}/highlighted-file`,
+          citation.sourceFile,
           citation.pageNumbers,
         );
       }
@@ -1747,6 +1768,9 @@ export function registerPage(alpine) {
       }
       if (citation.mediaType.startsWith("image/")) {
         return "Open original image";
+      }
+      if (isTextSourceFile(citation.sourceFile)) {
+        return "Open highlighted source";
       }
       return "Open original file";
     },

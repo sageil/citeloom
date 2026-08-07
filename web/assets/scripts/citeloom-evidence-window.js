@@ -1,4 +1,5 @@
 const evidenceWindowGap = 10;
+const evidenceWindowLayoutAttempts = 3;
 const evidenceWindowViewportPadding = 16;
 
 function clamp(value, minimum, maximum) {
@@ -14,6 +15,25 @@ function readViewport() {
 
 function hasRenderedBounds(bounds) {
   return bounds.height > 0 && bounds.width > 0;
+}
+
+function waitForAnimationFrame() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => resolve());
+  });
+}
+
+export async function waitForEvidenceWindowLayout(panel) {
+  if (!(panel instanceof HTMLElement)) {
+    return false;
+  }
+  for (let attempt = 0; attempt < evidenceWindowLayoutAttempts; attempt += 1) {
+    if (hasRenderedBounds(panel.getBoundingClientRect())) {
+      return true;
+    }
+    await waitForAnimationFrame();
+  }
+  return hasRenderedBounds(panel.getBoundingClientRect());
 }
 
 export function createEvidenceWindowState() {
@@ -86,9 +106,14 @@ export function positionEvidenceWindow(
   viewport = readViewport(),
 ) {
   if (state.pinned || !(panel instanceof HTMLElement)) {
-    return;
+    return false;
   }
   const panelBounds = panel.getBoundingClientRect();
+  if (!hasRenderedBounds(panelBounds)) {
+    state.position = null;
+    state.size = null;
+    return false;
+  }
   if (state.size === null) {
     state.size = {
       height: panelBounds.height,
@@ -111,7 +136,7 @@ export function positionEvidenceWindow(
         );
         if (availableHeight === 0) {
           state.position = null;
-          return;
+          return false;
         }
         const availablePanelSize = {
           height: Math.min(state.size.height, availableHeight),
@@ -122,7 +147,7 @@ export function positionEvidenceWindow(
           availablePanelSize,
           viewport,
         );
-        return;
+        return true;
       }
     }
   }
@@ -142,6 +167,7 @@ export function positionEvidenceWindow(
     top: Math.round((viewport.height - maxHeight) / 2),
     width,
   };
+  return true;
 }
 
 export function toggleEvidenceWindowPin(state) {

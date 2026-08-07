@@ -295,113 +295,59 @@
         </header>
 
         <div
-          class="task-navigation-stage"
-          :class="{ 'task-navigation-stage-compact': activeView !== 'overview' }"
+          class="document-library-progress"
           x-cloak
-          x-show="showTaskLaunchpad"
+          x-show="activeView === 'documents'"
         >
-          <div class="task-navigation-intro" x-show="activeView === 'overview'">
+          <header class="documents-library-intro">
             <p class="section-kicker">Private by design</p>
             <h1>Your documents, woven into <span>cited answers.</span></h1>
-          </div>
-          <nav class="task-launchpad" aria-label="Primary tasks">
-            <a
-              class="task-button citeloom-task-link"
-              data-view="overview"
-              href="./index.html?view=overview"
-              hx-get="./fragments/overview.html"
-              hx-push-url="./index.html?view=overview"
-              :class="{ active: activeView === 'overview' }"
-              :aria-current="currentPage('overview')"
-            >
-              <span class="task-button-icon">
-                <svg aria-hidden="true" class="citeloom-icon">
-                  <use href="./assets/images/citeloom-icons.svg#citeloom-upload"></use>
-                </svg>
-              </span>
-              <span class="task-button-copy">
-                <strong>Add knowledge</strong>
-                <small>Upload and process source material</small>
-              </span>
-              <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
-                <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+          </header>
+          <a
+            class="button primary documents-upload-button citeloom-task-link"
+            data-view="overview"
+            href="./index.html?view=overview"
+            hx-get="./fragments/overview.html"
+            hx-push-url="./index.html?view=overview"
+          >
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-upload"></use>
+            </svg>
+            <span>Upload</span>
+          </a>
+          <ol aria-label="Document library ingestion stages">
+            <li>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-upload"></use>
               </svg>
-            </a>
-            <a
-              class="task-button citeloom-task-link"
-              data-view="documents"
-              href="./index.html?view=documents"
-              hx-get="./fragments/documents.html"
-              hx-push-url="./index.html?view=documents"
-              :class="{ active: activeView === 'documents' }"
-              :aria-current="currentPage('documents')"
-            >
-              <span class="task-button-icon">
-                <svg aria-hidden="true" class="citeloom-icon">
-                  <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
-                </svg>
-              </span>
-              <span class="task-button-copy">
-                <strong>Organize library</strong>
-                <small>Search, filter, and inspect documents</small>
-              </span>
-              <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
-                <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+              <span>Stored</span>
+            </li>
+            <li>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use>
               </svg>
-            </a>
-            <a
-              class="task-button citeloom-task-link"
-              data-view="ask"
-              href="./index.html?view=ask"
-              hx-get="./fragments/ask.html"
-              hx-push-url="./index.html?view=ask"
-              :class="{ active: activeView === 'ask' }"
-              :aria-current="currentPage('ask')"
-            >
-              <span class="task-button-icon">
-                <svg aria-hidden="true" class="citeloom-icon">
-                  <use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use>
-                </svg>
-              </span>
-              <span class="task-button-copy">
-                <strong>Ask and verify</strong>
-                <small>Ask questions and review evidence</small>
-              </span>
-              <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
-                <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+              <span>Normalized</span>
+            </li>
+            <li>
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
               </svg>
-            </a>
-            <a
-              class="task-button citeloom-task-link"
-              data-view="chat"
-              href="./index.html?view=chat"
-              hx-get="./fragments/chat.html"
-              hx-push-url="./index.html?view=chat"
-              :class="{ active: activeView === 'chat' }"
-              :aria-current="currentPage('chat')"
-              @click="handlePrimaryChatNavigation($event)"
-            >
-              <span class="task-button-icon">
-                <svg aria-hidden="true" class="citeloom-icon">
-                  <use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use>
-                </svg>
-              </span>
-              <span class="task-button-copy">
-                <strong>Chat with documents</strong>
-                <small>Continue a grounded, cited conversation</small>
-              </span>
-              <svg aria-hidden="true" class="citeloom-icon citeloom-arrow-icon">
-                <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
+              <span>Indexed</span>
+            </li>
+            <li class="ready">
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
               </svg>
-            </a>
-          </nav>
+              <span>Ready</span>
+            </li>
+          </ol>
         </div>
 
         <div
           class="workspace-page task-navigation-workspace-page"
           :class="{
             'login-workspace-page': activeView === 'login',
-            'with-task-launchpad': showTaskLaunchpad,
+            'with-document-library-progress': activeView === 'documents',
           }"
         >
           <div

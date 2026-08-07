@@ -468,7 +468,7 @@
       @pointerup="finishCitationPanelDrag($event)"
     >
       <div>
-        <h3 id="chat-evidence-title">Exact evidence</h3>
+        <h3 class="section-kicker" id="chat-evidence-title">Exact evidence</h3>
         <span x-text="selectedCitationSummary()"></span>
       </div>
       <div class="evidence-window-actions chat-evidence-header-actions">
@@ -487,17 +487,8 @@
     </header>
 
     <template x-if="selectedCitation !== null">
-      <div class="evidence-window-body chat-evidence-content">
-        <div class="chat-evidence-source">
-          <strong x-text="sourceTitle(selectedCitation.sourceFile)"></strong>
-          <span
-            :class="{ removed: !selectedCitation.sourceAvailable }"
-            x-text="selectedCitation.sourceAvailable ? 'Current in library' : 'No longer current in library - evidence retained by chat'"
-          ></span>
-        </div>
-
+      <div class="evidence-window-body evidence-window-content-stack chat-evidence-content">
         <div class="chat-evidence-body">
-          <p class="section-kicker">Exact retained evidence</p>
           <template x-if="selectedCitation.evidence.kind === 'image'">
             <img
               :src="imageUrl(selectedCitation)"
@@ -506,13 +497,14 @@
             />
           </template>
           <template x-if="selectedCitation.evidence.kind === 'text'">
-            <pre x-text="evidenceText(selectedCitation)"></pre>
+            <pre class="exact-evidence-text" x-text="evidenceText(selectedCitation)"></pre>
           </template>
           <template x-if="selectedCitation.evidence.kind === 'table'">
             <div>
               <template x-if="selectedCitation.evidence.table.renderMode === 'text'">
                 <pre
                   :aria-label="`${citationLabel(selectedCitation)} extracted table text`"
+                  class="exact-evidence-text"
                   x-text="evidenceText(selectedCitation)"
                 ></pre>
               </template>
@@ -570,7 +562,7 @@
           <div><dt>Section</dt><dd x-text="selectedCitation.sectionPath.length === 0 ? 'Not specified' : selectedCitation.sectionPath.join(' / ')"></dd></div>
         </dl>
 
-        <div class="chat-evidence-actions">
+        <div class="evidence-window-source-actions">
           <a
             :href="citationFileUrl(selectedCitation)"
             target="_blank"

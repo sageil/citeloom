@@ -421,32 +421,6 @@ h3 {
   font-size: 14px;
 }
 
-.workspace-facts {
-  display: flex;
-  gap: 32px;
-  margin: 0;
-}
-
-.workspace-facts div {
-  display: grid;
-  min-width: 76px;
-  gap: 4px;
-  text-align: right;
-}
-
-.workspace-facts dt {
-  color: var(--muted);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.workspace-facts dd {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 680;
-}
-
 .workflow-progress {
   display: flex;
   align-items: center;
@@ -953,32 +927,6 @@ textarea.form-control {
   to { transform: rotate(360deg); }
 }
 
-@media (max-width: 1550px) {
-  .document-explorer {
-    grid-template-columns: 190px minmax(0, 1fr) 380px;
-    gap: 14px;
-  }
-
-  .catalog-columns,
-  .catalog-row {
-    grid-template-columns: 30px minmax(170px, 1fr) 116px 100px 52px 56px 54px 78px;
-    gap: 6px;
-  }
-}
-
-@media (max-width: 1360px) {
-  .document-explorer {
-    grid-template-columns: 160px minmax(0, 1fr);
-  }
-
-  .document-inspector {
-    position: static;
-    grid-column: 2;
-    width: 100%;
-    max-height: none;
-  }
-}
-
 @media (max-width: 1120px) {
   .question-selection-bar {
     align-items: stretch;
@@ -1005,7 +953,6 @@ textarea.form-control {
     grid-row: 1;
   }
 
-  .overview-grid,
   .question-layout {
     grid-template-columns: 1fr;
   }
@@ -1025,38 +972,6 @@ textarea.form-control {
   .help-toc ol {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .document-explorer {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .collections-rail {
-    overflow-x: auto;
-    padding: 10px;
-  }
-
-  .collections-rail > p {
-    margin: 0 0 7px;
-  }
-
-  .collections-rail > .saved-view-label {
-    margin-top: 10px;
-    padding-top: 10px;
-  }
-
-  .collection-links {
-    display: flex;
-    min-width: max-content;
-  }
-
-  .collection-links button {
-    width: auto;
-    min-width: 125px;
-  }
-
-  .document-inspector {
-    grid-column: 1;
-  }
 }
 
 @media (max-width: 700px) {
@@ -1072,15 +987,6 @@ textarea.form-control {
     padding-bottom: 24px;
   }
 
-  .workspace-facts {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .workspace-facts div {
-    text-align: left;
-  }
-
   .workflow-progress {
     align-items: stretch;
     flex-direction: column;
@@ -1088,10 +994,6 @@ textarea.form-control {
 
   .workflow-progress li svg {
     display: none;
-  }
-
-  .overview-grid {
-    padding-top: 28px;
   }
 
   .help-content {
@@ -1213,10 +1115,6 @@ textarea.form-control {
     font-size: 36px;
   }
 
-  .workspace-facts {
-    gap: 18px;
-  }
-
   .workflow-progress ol {
     gap: 2px;
   }
@@ -1232,23 +1130,6 @@ textarea.form-control {
   .drop-zone {
     min-height: 164px;
     padding-inline: 16px;
-  }
-
-  .catalog-toolbar {
-    grid-template-columns: 1fr;
-  }
-
-  .catalog-search {
-    grid-column: 1;
-  }
-
-  .attention-select {
-    grid-template-columns: 22px minmax(0, 1fr) 64px;
-  }
-
-  .mini-document-icon,
-  .catalog-pagination label {
-    display: none;
   }
 
   .question-composer,

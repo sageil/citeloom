@@ -1,5 +1,6 @@
 import { Readable } from "node:stream";
 import { finished } from "node:stream/promises";
+import { z } from "zod";
 
 import {
   readTextToSpeechSpeedRange,
@@ -11,19 +12,38 @@ import {
   renderPublishedAnswerSpeech,
   type PublishedAnswerDocument,
 } from "../answers/published.js";
-import { readBoundedResponseText } from "./http-response.js";
+import {
+  readBoundedJsonResponse,
+  readBoundedResponseText,
+} from "./http-response.js";
 
 const MAX_PROVIDER_ERROR_BYTES = 16 * 1_024;
 const MAX_PROVIDER_ERROR_CHARACTERS = 2_000;
+const MAX_MISTRAL_SPEECH_RESPONSE_BYTES = 64 * 1_024 * 1_024;
 const MINIMUM_WAV_HEADER_BYTES = 12;
+const mistralSpeechResponseSchema = z.object({
+  audio_data: z.string().trim().min(1),
+}).strict();
 
-interface SpeechProviderRequest {
+interface OpenAiSpeechProviderRequest {
   input: string;
   model: string;
   response_format: "mp3" | "wav";
   speed: number;
   voice: string;
 }
+
+interface MistralSpeechProviderRequest {
+  input: string;
+  model: string;
+  response_format: "wav";
+  stream: false;
+  voice_id: string;
+}
+
+type SpeechProviderRequest =
+  | MistralSpeechProviderRequest
+  | OpenAiSpeechProviderRequest;
 
 export interface SpeechRequest {
   answerDocument: PublishedAnswerDocument;
@@ -120,13 +140,8 @@ async function requestSpeech(
       `${speedRange.displayName} speech speed must be from ${speedRange.minimum} to ${speedRange.maximum}.`,
     );
   }
-  const requestBody: SpeechProviderRequest = {
-    input: renderPublishedAnswerSpeech(request.answerDocument),
-    model: config.model,
-    response_format: adapter.responseFormat,
-    speed: config.speed,
-    voice: config.voice,
-  };
+  const input = renderPublishedAnswerSpeech(request.answerDocument);
+  const requestBody = buildSpeechProviderRequest(config, input, adapter);
   const timeoutSignal = AbortSignal.timeout(config.timeoutMs);
   const requestSignal = AbortSignal.any([abortSignal, timeoutSignal]);
   try {
@@ -143,18 +158,12 @@ async function requestSpeech(
       );
     }
 
-    const contentType = readAudioContentType(response, adapter);
-    if (response.body === null) {
-      throw new TextToSpeechProviderError(
-        "Text-to-speech provider returned an empty audio response.",
-      );
-    }
-    return {
-      audio: Readable.fromWeb(response.body, { signal: requestSignal }),
-      audioFormat: adapter.responseFormat,
-      contentType,
+    return await readProviderGeneratedSpeech(
+      response,
+      adapter,
+      requestSignal,
       timeoutSignal,
-    };
+    );
   } catch (error: unknown) {
     throwTextToSpeechFailure(error, abortSignal, timeoutSignal);
   }
@@ -175,6 +184,8 @@ interface SpeechAdapterContract {
   acceptsAudioFamily: boolean;
   acceptedContentTypes: readonly string[];
   path: "/audio/speech";
+  requestFormat: "mistral" | "openai";
+  responseBody: "binary" | "mistral-json";
   responseFormat: "mp3" | "wav";
 }
 
@@ -185,6 +196,17 @@ function readSpeechAdapter(config: TextToSpeechConfig): SpeechAdapterContract {
         acceptsAudioFamily: false,
         acceptedContentTypes: ["audio/wav", "audio/x-wav"],
         path: "/audio/speech",
+        requestFormat: "openai",
+        responseBody: "binary",
+        responseFormat: "wav",
+      };
+    case "mistral-speech":
+      return {
+        acceptsAudioFamily: false,
+        acceptedContentTypes: ["application/json"],
+        path: "/audio/speech",
+        requestFormat: "mistral",
+        responseBody: "mistral-json",
         responseFormat: "wav",
       };
     case "omlx-speech":
@@ -192,6 +214,8 @@ function readSpeechAdapter(config: TextToSpeechConfig): SpeechAdapterContract {
         acceptsAudioFamily: false,
         acceptedContentTypes: ["audio/wav", "audio/x-wav"],
         path: "/audio/speech",
+        requestFormat: "openai",
+        responseBody: "binary",
         responseFormat: "wav",
       };
     case "openrouter-speech":
@@ -199,6 +223,8 @@ function readSpeechAdapter(config: TextToSpeechConfig): SpeechAdapterContract {
         acceptsAudioFamily: false,
         acceptedContentTypes: ["audio/mpeg"],
         path: "/audio/speech",
+        requestFormat: "openai",
+        responseBody: "binary",
         responseFormat: "mp3",
       };
     case "openai-speech":
@@ -210,9 +236,100 @@ function readSpeechAdapter(config: TextToSpeechConfig): SpeechAdapterContract {
           "audio/x-wav",
         ],
         path: "/audio/speech",
+        requestFormat: "openai",
+        responseBody: "binary",
         responseFormat: "wav",
       };
   }
+}
+
+function buildSpeechProviderRequest(
+  config: TextToSpeechConfig,
+  input: string,
+  adapter: SpeechAdapterContract,
+): SpeechProviderRequest {
+  if (adapter.requestFormat === "mistral") {
+    return {
+      input,
+      model: config.model,
+      response_format: "wav",
+      stream: false,
+      voice_id: config.voice,
+    };
+  }
+  return {
+    input,
+    model: config.model,
+    response_format: adapter.responseFormat,
+    speed: config.speed,
+    voice: config.voice,
+  };
+}
+
+async function readProviderGeneratedSpeech(
+  response: Response,
+  adapter: SpeechAdapterContract,
+  requestSignal: AbortSignal,
+  timeoutSignal: AbortSignal,
+): Promise<ProviderGeneratedSpeech> {
+  if (adapter.responseBody === "mistral-json") {
+    return readMistralGeneratedSpeech(response, adapter, timeoutSignal);
+  }
+  const contentType = readAudioContentType(response, adapter);
+  if (response.body === null) {
+    throw new TextToSpeechProviderError(
+      "Text-to-speech provider returned an empty audio response.",
+    );
+  }
+  return {
+    audio: Readable.fromWeb(response.body, { signal: requestSignal }),
+    audioFormat: adapter.responseFormat,
+    contentType,
+    timeoutSignal,
+  };
+}
+
+async function readMistralGeneratedSpeech(
+  response: Response,
+  adapter: SpeechAdapterContract,
+  timeoutSignal: AbortSignal,
+): Promise<ProviderGeneratedSpeech> {
+  readAudioContentType(response, adapter);
+  const value = await readBoundedJsonResponse(
+    response,
+    MAX_MISTRAL_SPEECH_RESPONSE_BYTES,
+  );
+  const result = mistralSpeechResponseSchema.safeParse(value);
+  if (!result.success) {
+    throw new TextToSpeechProviderError(
+      "Mistral returned an invalid speech response.",
+    );
+  }
+  const audio = decodeMistralAudio(result.data.audio_data);
+  return {
+    audio: Readable.from([audio]),
+    audioFormat: adapter.responseFormat,
+    contentType: "audio/wav",
+    timeoutSignal,
+  };
+}
+
+function decodeMistralAudio(value: string): Buffer {
+  if (
+    value.length % 4 !== 0
+    || !/^[A-Za-z0-9+/]+={0,2}$/u.test(value)
+  ) {
+    throw new TextToSpeechProviderError(
+      "Mistral returned invalid base64 speech audio.",
+    );
+  }
+  const audio = Buffer.from(value, "base64");
+  if (audio.length === 0) {
+    throw new TextToSpeechProviderError(
+      "Mistral returned empty speech audio.",
+    );
+  }
+  return audio;
 }
 
 function buildHeaders(

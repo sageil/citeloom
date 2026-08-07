@@ -32,6 +32,7 @@ import type {
   IngestionControlDoclingTask,
   IngestionJob,
   IngestionControlState,
+  IndexingActivity,
   IngestionPhase,
   JobFailureResult,
   PendingIngestionJob,
@@ -757,6 +758,7 @@ export class CatalogJobStore {
           elementSetId,
           errorMessage: null,
           images: statistics.images,
+          indexingActivity: "preparing",
           nextAttemptAt: currentTime,
           phase: "normalized",
           pageCount: statistics.pageCount,
@@ -784,6 +786,25 @@ export class CatalogJobStore {
     ownerId: string,
   ): Promise<void> {
     await this.transitionPhase(sourceFile, ownerId, "normalized", "indexed");
+  }
+
+  public async recordIndexingActivity(
+    sourceFile: string,
+    ownerId: string,
+    activity: IndexingActivity,
+  ): Promise<void> {
+    const rows = await this.database
+      .update(ingestionJobs)
+      .set({
+        indexingActivity: activity,
+        updatedAt: this.clock.now(),
+      })
+      .where(and(
+        buildOwnedRunningJobCondition(ownerId, sourceFile),
+        eq(ingestionJobs.phase, "normalized"),
+      ))
+      .returning({ sourceFile: ingestionJobs.sourceFile });
+    requireSingleJobTransition(rows, sourceFile, "normalized");
   }
 
   public async markJobFailed(
@@ -1188,6 +1209,7 @@ export class CatalogJobStore {
       .set({
         attemptCount: 0,
         errorMessage: null,
+        indexingActivity: null,
         nextAttemptAt: currentTime,
         phase: nextPhase,
         updatedAt: currentTime,

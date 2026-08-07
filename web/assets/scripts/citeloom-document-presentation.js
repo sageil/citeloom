@@ -136,23 +136,10 @@ export function buildCollections(facets) {
   return collections;
 }
 
-export function readCollectionLabel(collection) {
-  if (collection === "all") {
-    return "All documents";
-  }
-  if (collection === "uploads") {
-    return "Uploads";
-  }
-  if (collection === "untagged") {
-    return "Untagged";
-  }
-  return titleCase(collection.slice(4));
-}
-
 export function readDocumentStatusCopy(document) {
   if (document.displayStatus === "running") {
     const detail = document.phase === "normalized"
-      ? readEmbeddingProgressDetail(document.embeddingProgress)
+      ? readIndexingActivityLabel(document)
       : null;
     return {
       detail,
@@ -164,14 +151,14 @@ export function readDocumentStatusCopy(document) {
       return { detail: null, label: "Waiting to normalize" };
     }
     if (document.phase === "normalized") {
-      let label = "Waiting to resume embedding";
+      let label = "Waiting to resume indexing";
       if (document.embeddingProgress.state === "not-started") {
-        label = "Waiting to embed";
+        label = "Waiting to index";
       } else if (document.embeddingProgress.state === "complete") {
-        label = "Waiting to finish embedding";
+        label = "Waiting to finish indexing";
       }
       return {
-        detail: readEmbeddingProgressDetail(document.embeddingProgress),
+        detail: readIndexingProgressDetail(document.embeddingProgress),
         label,
       };
     }
@@ -191,8 +178,11 @@ export function readDocumentStatusCopy(document) {
   }
   if (document.phase === "normalized") {
     return {
-      detail: readEmbeddingProgressDetail(document.embeddingProgress),
-      label: "Embedding failed",
+      detail: combineStatusDetails(
+        readIndexingActivityLabel(document),
+        readIndexingProgressDetail(document.embeddingProgress),
+      ),
+      label: "Indexing failed",
     };
   }
   if (document.phase === "indexed") {
@@ -211,18 +201,11 @@ export function combineStatusDetails(...values) {
   return details.length === 0 ? null : details.join(". ");
 }
 
-export function readMediaProgressDetail(document, kind) {
-  const progress = readMediaProgress(document, kind);
-  const completed = formatCount(progress.completed);
-  const total = formatCount(progress.total);
-  return `${completed} of ${total} ${progress.label} processed`;
-}
-
 export function buildPhaseStages(document) {
-  const labels = ["Stored", "Normalize", "Embed", "Ready"];
+  const labels = ["Stored", "Normalize", "Index", "Ready"];
   const stages = [];
   if (document.status === "ready") {
-    const completedLabels = ["Stored", "Normalized", "Embedded", "Ready"];
+    const completedLabels = ["Stored", "Normalized", "Indexed", "Ready"];
     for (const label of completedLabels) {
       stages.push({ label, state: "complete" });
     }
@@ -232,11 +215,11 @@ export function buildPhaseStages(document) {
   if (document.phase === "normalized") {
     currentIndex = 2;
     labels[1] = "Normalized";
-    labels[2] = "Embedding";
+    labels[2] = "Indexing";
   } else if (document.phase === "indexed") {
     currentIndex = 3;
     labels[1] = "Normalized";
-    labels[2] = "Embedded";
+    labels[2] = "Indexed";
     labels[3] = "Publishing";
   } else {
     labels[1] = "Normalizing";
@@ -275,7 +258,7 @@ export function readRetryPhase(document) {
     return "normalization";
   }
   if (document.phase === "normalized") {
-    return "embedding";
+    return "indexing";
   }
   if (document.phase === "indexed") {
     return "publishing";
@@ -292,10 +275,7 @@ function titleCase(value) {
 
 function readActivePhaseLabel(document) {
   if (document.phase === "normalized") {
-    if (document.embeddingProgress.state === "complete") {
-      return "Finishing embedding";
-    }
-    return "Embedding";
+    return "Indexing";
   }
   if (document.phase === "indexed") {
     return "Publishing";
@@ -303,28 +283,40 @@ function readActivePhaseLabel(document) {
   return "Normalizing";
 }
 
-export function readEmbeddingProgressDetail(progress) {
+export function readIndexingProgressDetail(progress) {
   if (progress.state === "not-started") {
     return null;
   }
   const completed = formatCount(progress.completedElements);
   const total = formatCount(progress.totalElements);
-  return `${completed} of ${total} elements embedded`;
+  return `${completed} of ${total} elements indexed`;
 }
 
-function readMediaProgress(document, kind) {
-  if (kind === "images") {
-    return {
-      completed: document.mediaDescriptionProgress.completedImages,
-      label: "images",
-      total: document.images,
-    };
+export function readIndexingActivityLabel(document) {
+  if (document.indexingActivity === "preparing") {
+    return "Preparing search index";
   }
-  return {
-    completed: document.mediaDescriptionProgress.completedTables,
-    label: "tables",
-    total: document.tables,
-  };
+  if (document.indexingActivity === "describing") {
+    return "Describing tables and images";
+  }
+  if (document.indexingActivity === "embedding") {
+    return "Embedding search content";
+  }
+  if (document.indexingActivity === "building_outline") {
+    return "Building document outline";
+  }
+  throw new Error("An indexing document requires a current activity.");
+}
+
+export function readIndexingActivityDetail(document) {
+  if (document.indexingActivity === "describing") {
+    const completed = document.mediaDescriptionProgress.completedImages
+      + document.mediaDescriptionProgress.completedTables;
+    const total = document.images + document.tables;
+    return `${formatCount(completed)} of ${formatCount(total)} tables and images described`;
+  }
+  return readIndexingProgressDetail(document.embeddingProgress)
+    ?? "Waiting for the first completed indexing batch";
 }
 
 function findDocument(catalog, sourceFile) {

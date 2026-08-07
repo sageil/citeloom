@@ -3,7 +3,10 @@ import { pipeUIMessageStreamToResponse } from "ai";
 
 import type { AuthenticatedPrincipal } from "../auth/model.js";
 import { requireRequestPrincipal } from "./authentication-routes.js";
-import { applyInertDocumentHeaders } from "./inert-document-response.js";
+import {
+  applyHighlightedDocumentHeaders,
+  applyInertDocumentHeaders,
+} from "./inert-document-response.js";
 import {
   buildInlineContentDisposition,
   decodeChatConversationId,
@@ -177,15 +180,17 @@ export function registerChatRoutes(
       const principal = requireRequestPrincipal(requestPrincipals, request);
       const id = decodeResourceId(request.params);
       const document = await services.run(async (runtime) => {
-        if (runtime.readChatCitationHighlightedPdf === undefined) {
+        const readHighlightedFile = runtime.readChatCitationHighlightedFile
+          ?? runtime.readChatCitationHighlightedPdf;
+        if (readHighlightedFile === undefined) {
           throw new Error("Chat highlighted citations are not configured.");
         }
-        return runtime.readChatCitationHighlightedPdf(principal, id);
+        return readHighlightedFile(principal, id);
       });
       if (document === null) {
         throw new WebRequestError(404, "The chat citation was not found.");
       }
-      applyInertDocumentHeaders(reply);
+      applyHighlightedDocumentHeaders(reply, document.mediaType);
       reply.header(
         "Content-Disposition",
         buildInlineContentDisposition(document.filename),

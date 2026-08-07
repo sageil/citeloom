@@ -11,6 +11,12 @@ export const ingestionPhaseSchema = z.enum([
   "indexed",
 ]);
 export const ingestionStateSchema = z.enum(["pending", "running", "failed"]);
+export const indexingActivitySchema = z.enum([
+  "preparing",
+  "describing",
+  "embedding",
+  "building_outline",
+]);
 export const ingestionControlStateSchema = z.enum([
   "active",
   "pause_requested",
@@ -21,6 +27,7 @@ export const ingestionControlStateSchema = z.enum([
 
 export type IngestionPhase = z.output<typeof ingestionPhaseSchema>;
 export type IngestionState = z.output<typeof ingestionStateSchema>;
+export type IndexingActivity = z.output<typeof indexingActivitySchema>;
 export type IngestionControlState = z.output<typeof ingestionControlStateSchema>;
 
 export interface IngestionControlActor {
@@ -77,6 +84,7 @@ export interface IngestionJobBase extends DocumentStatistics {
   errorMessage: string | null;
   format: DocumentFormat;
   generationId: string;
+  indexingActivity: IndexingActivity | null;
   maxAttempts: number;
   nextAttemptAt: string;
   phase: IngestionPhase;
@@ -118,6 +126,7 @@ export interface CatalogEntry extends DocumentStatistics {
   documentId: string;
   errorMessage: string | null;
   embeddingSpaceIds: string[];
+  indexingActivity: IndexingActivity | null;
   maxAttempts: number | null;
   nextAttemptAt: string | null;
   phase: IngestionPhase | null;

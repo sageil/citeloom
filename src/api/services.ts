@@ -85,6 +85,7 @@ import {
   startApplicationErrorRetentionController,
 } from "../observability/application-error-retention.js";
 import { renderHighlightedPdf } from "../research/evidence-document.js";
+import { renderHighlightedTextDocument } from "../research/highlighted-text-document.js";
 import {
   searchIndexedSourcesWithRuntime,
 } from "../retrieval/discovery/pipeline.js";
@@ -249,7 +250,9 @@ export interface RuntimeWebServices {
   ) => Promise<ChatConversationSummary[]>;
   listResearchThreads: () => Promise<ResearchThreadSummary[]>;
   readCitationEvidence: (id: string) => Promise<StoredCitationRecord | null>;
-  readCitationHighlightedPdf: (id: string) => Promise<IndexedDocumentFile | null>;
+  readCitationHighlightedFile?: (id: string) => Promise<IndexedDocumentFile | null>;
+  /** @deprecated Use readCitationHighlightedFile. */
+  readCitationHighlightedPdf?: (id: string) => Promise<IndexedDocumentFile | null>;
   readCitationImage: (id: string) => Promise<{
     content: Buffer;
     mediaType: string;
@@ -262,6 +265,11 @@ export interface RuntimeWebServices {
     principal: AuthenticatedPrincipal,
     id: string,
   ) => Promise<IndexedDocumentFile | null>;
+  readChatCitationHighlightedFile?: (
+    principal: AuthenticatedPrincipal,
+    id: string,
+  ) => Promise<IndexedDocumentFile | null>;
+  /** @deprecated Use readChatCitationHighlightedFile. */
   readChatCitationHighlightedPdf?: (
     principal: AuthenticatedPrincipal,
     id: string,
@@ -915,7 +923,7 @@ function createRuntimeWebServices(
       const record = await research.readCitation(id);
       return record?.citation ?? null;
     },
-    readCitationHighlightedPdf: async (id) => {
+    readCitationHighlightedFile: async (id) => {
       const record = await research.readCitation(id);
       if (record === null) {
         return null;
@@ -926,7 +934,11 @@ function createRuntimeWebServices(
       if (document === null) {
         return null;
       }
-      return buildHighlightedCitationFile(record.citation, document);
+      return buildHighlightedCitationFile(
+        record.citation,
+        document,
+        `/api/document-versions/${encodeURIComponent(record.citation.documentVersionId)}/file`,
+      );
     },
     readCitationImage: async (id) => {
       const record = await research.readCitation(id);
@@ -963,7 +975,7 @@ function createRuntimeWebServices(
         sourceFile: record.citation.sourceFile,
       };
     },
-    readChatCitationHighlightedPdf: async (principal, id) => {
+    readChatCitationHighlightedFile: async (principal, id) => {
       const [record, document] = await Promise.all([
         chat.readCitation(principal, id),
         chat.readCitationFile(principal, id),
@@ -971,7 +983,11 @@ function createRuntimeWebServices(
       if (record === null || document === null) {
         return null;
       }
-      return buildHighlightedCitationFile(record.citation, document);
+      return buildHighlightedCitationFile(
+        record.citation,
+        document,
+        `/api/chat/citations/${encodeURIComponent(record.citation.id)}/file`,
+      );
     },
     readChatCitationImage: async (principal, id) => {
       const record = await chat.readCitation(principal, id);
@@ -1101,22 +1117,41 @@ function createRuntimeWebServices(
 }
 
 async function buildHighlightedCitationFile(
-  citation: Pick<StoredCitationRecord, "documentId" | "regions" | "sourceFile">,
+  citation: Pick<
+    StoredCitationRecord,
+    "documentId" | "evidence" | "regions" | "sourceFile"
+  >,
   document: Pick<IndexedDocumentFile, "content" | "mediaType">,
+  originalFileUrl: string,
 ): Promise<IndexedDocumentFile> {
-  if (document.mediaType !== "application/pdf") {
-    throw new ResearchInputConflictError(
-      "Highlighted evidence files are available only for PDF sources.",
-    );
+  if (document.mediaType === "application/pdf" && citation.regions.length > 0) {
+    const content = await renderHighlightedPdf(document.content, citation.regions);
+    return {
+      content,
+      documentId: citation.documentId,
+      filename: basename(citation.sourceFile),
+      mediaType: document.mediaType,
+      sourceFile: citation.sourceFile,
+    };
   }
-  if (citation.regions.length === 0) {
-    throw new ResearchInputConflictError(
-      "The selected citation has no stored PDF regions to highlight.",
-    );
+  if (document.mediaType === "text/html" || document.mediaType === "text/plain") {
+    const result = renderHighlightedTextDocument({
+      content: document.content,
+      evidence: citation.evidence,
+      filename: basename(citation.sourceFile),
+      mediaType: document.mediaType,
+      originalFileUrl,
+    });
+    return {
+      content: result.content,
+      documentId: citation.documentId,
+      filename: `${basename(citation.sourceFile)}.evidence.html`,
+      mediaType: "text/html",
+      sourceFile: citation.sourceFile,
+    };
   }
-  const content = await renderHighlightedPdf(document.content, citation.regions);
   return {
-    content,
+    content: document.content,
     documentId: citation.documentId,
     filename: basename(citation.sourceFile),
     mediaType: document.mediaType,

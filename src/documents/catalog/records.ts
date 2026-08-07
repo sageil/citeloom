@@ -4,6 +4,7 @@ import {
   ingestionPhaseSchema,
   ingestionControlStateSchema,
   ingestionStateSchema,
+  indexingActivitySchema,
   type CatalogEntry,
   type IndexedDocument,
   type IngestionJob,
@@ -59,6 +60,7 @@ const ingestionJobRowSchema = documentStatisticsSchema.extend({
   errorMessage: z.string().nullable(),
   fileExtension: z.string(),
   generationId: z.uuid(),
+  indexingActivity: indexingActivitySchema.nullable(),
   leaseExpiresAt: z.date().nullable(),
   maxAttempts: z.number().int().positive(),
   mediaType: z.string(),
@@ -162,6 +164,11 @@ export function decodeIngestionJob(row: unknown): IngestionJob {
       `Invalid ingestion job row: Docling metrics run has no attempt configuration for ${data.sourceFile}.`,
     );
   }
+  if ((data.phase === "normalized") !== (data.indexingActivity !== null)) {
+    throw new Error(
+      `Invalid ingestion job row: indexing activity does not match phase for ${data.sourceFile}.`,
+    );
+  }
   const base: IngestionJobBase = {
     attemptCount: data.attemptCount,
     controlError: data.controlError,
@@ -175,6 +182,7 @@ export function decodeIngestionJob(row: unknown): IngestionJob {
     format,
     generationId: data.generationId,
     images: data.images,
+    indexingActivity: data.indexingActivity,
     maxAttempts: data.maxAttempts,
     nextAttemptAt: data.nextAttemptAt.toISOString(),
     pageCount: data.pageCount,
@@ -264,6 +272,7 @@ export function buildCatalogEntries(
       embeddingSpaceIds: spaceIdsBySource.get(job.sourceFile) ?? [],
       errorMessage: job.errorMessage,
       images: job.images,
+      indexingActivity: job.indexingActivity,
       maxAttempts: job.maxAttempts,
       nextAttemptAt: job.nextAttemptAt,
       pageCount: job.pageCount,
@@ -292,6 +301,7 @@ export function buildCatalogEntries(
       embeddingSpaceIds: spaceIdsBySource.get(document.sourceFile) ?? [],
       errorMessage: null,
       images: document.images,
+      indexingActivity: null,
       maxAttempts: null,
       nextAttemptAt: null,
       pageCount: document.pageCount,

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import {
   decodeLoginInput,
@@ -21,7 +21,10 @@ import {
   openDatabase,
 } from "../src/database/client.js";
 import { applyDatabaseBootstrap } from "../src/database/administrator-bootstrap.js";
-import { parseStoredApplicationSettings } from "../src/providers/settings-persistence.js";
+import {
+  parseStoredApplicationSettings,
+  type StoredApplicationSettings,
+} from "../src/providers/settings-persistence.js";
 import {
   applicationSettings,
   sourceDocuments,
@@ -126,6 +129,8 @@ describe("database administrator bootstrap", () => {
         "openai-codex",
         "deepseek",
         "groq",
+        "mistral",
+        "together",
         "cohere",
         "jina",
         "custom",
@@ -154,6 +159,34 @@ describe("database administrator bootstrap", () => {
           model: "google/gemma-4-e4b",
         },
       });
+      expect(document.providers.connections.mistral).toMatchObject({
+        answer: {
+          contextCapacityTokens: 256_000,
+          model: "mistral-large-2512",
+        },
+        baseUrl: "https://api.mistral.ai/v1",
+        embedding: {
+          contextCapacityTokens: 8_192,
+          model: "mistral-embed",
+        },
+        indexing: {
+          contextCapacityTokens: 256_000,
+          model: "mistral-large-2512",
+        },
+        speechToText: {
+          model: "voxtral-mini-latest",
+        },
+        textToSpeech: {
+          model: "voxtral-mini-tts-2603",
+          voice: null,
+        },
+      });
+      expect(document.providers.catalog.find((profile) => {
+        return profile.id === "mistral";
+      })?.capabilities).toEqual(expect.arrayContaining([
+        { adapter: "mistral-transcription", capability: "speechToText" },
+        { adapter: "mistral-speech", capability: "textToSpeech" },
+      ]));
       expect(document.providers.connections.ollama).toMatchObject({
         answer: {
           contextCapacityTokens: 131_072,
@@ -193,20 +226,52 @@ describe("database administrator bootstrap", () => {
           voice: "alloy",
         },
       });
+      expect(document.providers.connections.together).toMatchObject({
+        answer: {
+          contextCapacityTokens: 262_144,
+          model: "moonshotai/Kimi-K2.6",
+        },
+        baseUrl: "https://api.together.xyz/v1",
+        embedding: {
+          contextCapacityTokens: 514,
+          model: "intfloat/multilingual-e5-large-instruct",
+        },
+        indexing: {
+          contextCapacityTokens: 262_144,
+          model: "moonshotai/Kimi-K2.6",
+        },
+        speechToText: {
+          model: "openai/whisper-large-v3",
+        },
+        textToSpeech: {
+          model: "hexgrad/Kokoro-82M",
+          voice: "af_heart",
+        },
+      });
+      expect(document.providers.catalog.find((profile) => {
+        return profile.id === "together";
+      })?.capabilities).toEqual(expect.arrayContaining([
+        { adapter: "openai-transcription", capability: "speechToText" },
+        { adapter: "openai-speech", capability: "textToSpeech" },
+      ]));
     }
   });
 
-  it("adds missing defaults without overwriting live providers", async () => {
+  it("upgrades provider defaults without overwriting live configuration", async () => {
     await session.database.delete(applicationSettings);
     await applyDatabaseBootstrap(session.database, administratorEnvironment());
     const seededRows = await session.database
-      .select({ settings: applicationSettings.settings })
+      .select({
+        defaults: applicationSettings.defaults,
+        settings: applicationSettings.settings,
+      })
       .from(applicationSettings)
       .where(eq(applicationSettings.id, "runtime"));
     const seededRow = seededRows[0];
     if (seededRow === undefined) {
       throw new Error("Expected seeded application settings.");
     }
+    const legacyDefaults = parseStoredApplicationSettings(seededRow.defaults);
     const seeded = parseStoredApplicationSettings(seededRow.settings);
     const lmStudioProfile = seeded.providers.catalog.find((profile) => {
       return profile.id === "lmstudio";
@@ -215,6 +280,17 @@ describe("database administrator bootstrap", () => {
     if (lmStudioProfile === undefined || groqConnection === undefined) {
       throw new Error("Expected LM Studio and Groq defaults.");
     }
+    removeProviderSpeechDefaults(legacyDefaults, "mistral");
+    removeProviderSpeechDefaults(legacyDefaults, "together");
+    removeProviderSpeechDefaults(seeded, "mistral");
+    removeProviderSpeechDefaults(seeded, "together");
+    const liveMistralConnection = seeded.providers.connections.mistral;
+    const liveTogetherConnection = seeded.providers.connections.together;
+    if (liveMistralConnection === undefined || liveTogetherConnection === undefined) {
+      throw new Error("Expected live Mistral and Together connections.");
+    }
+    liveMistralConnection.apiToken = "live-mistral-token";
+    liveTogetherConnection.maximumParallelRequests = 4;
     seeded.providers.catalog = [
       ...seeded.providers.catalog.filter((profile) => {
         return profile.id !== "openrouter";
@@ -230,7 +306,7 @@ describe("database administrator bootstrap", () => {
     await session.database
       .update(applicationSettings)
       .set({
-        defaults: sql`${applicationSettings.defaults} #- '{providers,catalog}'`,
+        defaults: legacyDefaults,
         settings: seeded,
       })
       .where(eq(applicationSettings.id, "runtime"));
@@ -250,8 +326,8 @@ describe("database administrator bootstrap", () => {
     }
     const defaults = parseStoredApplicationSettings(row.defaults);
     const settings = parseStoredApplicationSettings(row.settings);
-    expect(defaults.providers.catalog).toHaveLength(11);
-    expect(settings.providers.catalog).toHaveLength(12);
+    expect(defaults.providers.catalog).toHaveLength(13);
+    expect(settings.providers.catalog).toHaveLength(14);
     expect(settings.providers.catalog).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "database-provider" }),
       expect.objectContaining({ id: "openrouter" }),
@@ -260,9 +336,62 @@ describe("database administrator bootstrap", () => {
     expect(
       settings.providers.connections.groq?.maximumParallelRequests,
     ).toBe(7);
+    expect(settings.providers.catalog.find((profile) => {
+      return profile.id === "mistral";
+    })?.capabilities).toEqual(expect.arrayContaining([
+      { adapter: "mistral-transcription", capability: "speechToText" },
+      { adapter: "mistral-speech", capability: "textToSpeech" },
+    ]));
+    expect(settings.providers.connections.mistral).toMatchObject({
+      apiToken: "live-mistral-token",
+      customAdapters: {
+        speechToText: "mistral-transcription",
+        textToSpeech: "mistral-speech",
+      },
+      speechToText: { model: "voxtral-mini-latest" },
+      textToSpeech: { model: "voxtral-mini-tts-2603" },
+    });
+    expect(settings.providers.catalog.find((profile) => {
+      return profile.id === "together";
+    })?.capabilities).toEqual(expect.arrayContaining([
+      { adapter: "openai-transcription", capability: "speechToText" },
+      { adapter: "openai-speech", capability: "textToSpeech" },
+    ]));
+    expect(settings.providers.connections.together).toMatchObject({
+      maximumParallelRequests: 4,
+      speechToText: { model: "openai/whisper-large-v3" },
+      textToSpeech: {
+        model: "hexgrad/Kokoro-82M",
+        voice: "af_heart",
+      },
+    });
   });
 
 });
+
+function removeProviderSpeechDefaults(
+  document: StoredApplicationSettings,
+  providerId: "mistral" | "together",
+): void {
+  const profile = document.providers.catalog.find((candidate) => {
+    return candidate.id === providerId;
+  });
+  const connection = document.providers.connections[providerId];
+  if (profile === undefined || connection === undefined) {
+    throw new Error(`Expected ${providerId} provider defaults.`);
+  }
+  profile.capabilities = profile.capabilities.filter((capability) => {
+    return capability.capability !== "speechToText"
+      && capability.capability !== "textToSpeech";
+  });
+  connection.speechToText.model = null;
+  connection.textToSpeech.model = null;
+  connection.textToSpeech.voice = null;
+  if (providerId === "mistral") {
+    connection.customAdapters.speechToText = "openai-transcription";
+    connection.customAdapters.textToSpeech = "openai-speech";
+  }
+}
 
 describe("authentication persistence", () => {
   it("authenticates case-insensitively and persists only a session digest", async () => {

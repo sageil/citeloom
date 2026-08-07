@@ -84,38 +84,6 @@ const providerAuthenticationMethods = Object.freeze([
   "api-token",
   "openai-device",
 ]);
-const languageAdapters = Object.freeze([
-  "cohere-language",
-  "deepseek-language",
-  "ollama-language",
-  "openai-codex-language",
-  "openai-compatible-language",
-  "openrouter-language",
-]);
-const customLanguageAdapters = Object.freeze([
-  "cohere-language",
-  "deepseek-language",
-  "ollama-language",
-  "openai-compatible-language",
-  "openrouter-language",
-]);
-const embeddingAdapters = Object.freeze([
-  "cohere-embedding",
-  "ollama-embedding",
-  "openai-compatible-embedding",
-]);
-const rerankingAdapters = Object.freeze(["cohere-rerank", "top-n-rerank"]);
-const speechToTextAdapters = Object.freeze([
-  "omlx-transcription",
-  "openrouter-transcription",
-  "openai-transcription",
-]);
-const textToSpeechAdapters = Object.freeze([
-  "groq-speech",
-  "omlx-speech",
-  "openrouter-speech",
-  "openai-speech",
-]);
 const capabilityLabels = Object.freeze({
   answer: "Ask",
   chat: "Chat",
@@ -385,7 +353,11 @@ function readRuntimeSettingValue(value, label) {
 function readProviderSettings(value) {
   const providers = readPlainObject(value, "provider settings");
   const catalog = readProviderCatalog(providers.catalog);
-  const connections = readProviderConnections(providers.connections);
+  const adapterOptions = buildProviderAdapterOptions(catalog);
+  const connections = readProviderConnections(
+    providers.connections,
+    adapterOptions,
+  );
   const featureOverrides = providers.featureOverrides === undefined
     ? buildEmptyFeatureOverrides()
     : readFeatureOverrides(providers.featureOverrides);
@@ -411,6 +383,10 @@ function readProviderCatalog(value) {
     }
     ids.add(id);
     catalog.push({
+      adaptiveContextSupported: readBoolean(
+        profile.adaptiveContextSupported,
+        "provider automatic context support",
+      ),
       adapterConfiguration: readEnum(
         profile.adapterConfiguration,
         providerAdapterConfigurations,
@@ -448,35 +424,53 @@ function readProviderCapabilityProfiles(value) {
     }
     capabilities.add(capability);
     profiles.push({
-      adapter: readCapabilityAdapter(profile.adapter, capability),
+      adapter: readAdapterId(profile.adapter, "provider adapter ID"),
       capability,
     });
   }
   return profiles;
 }
 
-function readCapabilityAdapter(value, capability) {
-  if (
-    capability === "answer"
-    || capability === "chat"
-    || capability === "queryExpansion"
-    || capability === "indexing"
-  ) {
-    return readEnum(value, languageAdapters, "language adapter");
+function buildProviderAdapterOptions(catalog) {
+  const optionsByCapability = {};
+  const adapterIdsByCapability = {};
+  for (const capability of providerCapabilities) {
+    optionsByCapability[capability] = [];
+    adapterIdsByCapability[capability] = new Set();
   }
-  if (capability === "embedding") {
-    return readEnum(value, embeddingAdapters, "embedding model connection type");
+  for (const profile of catalog) {
+    if (profile.authentication !== "api-token") {
+      continue;
+    }
+    for (const entry of profile.capabilities) {
+      const adapterIds = adapterIdsByCapability[entry.capability];
+      if (adapterIds.has(entry.adapter)) {
+        continue;
+      }
+      adapterIds.add(entry.adapter);
+      optionsByCapability[entry.capability].push({
+        label: entry.adapter,
+        value: entry.adapter,
+      });
+    }
   }
-  if (capability === "reranking") {
-    return readEnum(value, rerankingAdapters, "search ranking connection type");
-  }
-  if (capability === "speechToText") {
-    return readEnum(value, speechToTextAdapters, "speech-to-text adapter");
-  }
-  return readEnum(value, textToSpeechAdapters, "text-to-speech adapter");
+  return optionsByCapability;
 }
 
-function readProviderConnections(value) {
+function readConfiguredAdapter(value, capability, adapterOptions) {
+  const adapter = readAdapterId(value, `${capability} adapter ID`);
+  const available = adapterOptions[capability].some((option) => {
+    return option.value === adapter;
+  });
+  if (!available) {
+    throw new Error(
+      `The ${capability} adapter ${adapter} is not present in the provider catalog.`,
+    );
+  }
+  return adapter;
+}
+
+function readProviderConnections(value, adapterOptions) {
   const values = readArray(value, "provider connections");
   const connections = [];
   const ids = new Set();
@@ -498,7 +492,10 @@ function readProviderConnections(value) {
       capabilityApiTokensConfigured: readCapabilityCredentialStates(
         connection.capabilityApiTokensConfigured,
       ),
-      configuration: readProviderConfiguration(connection.configuration),
+      configuration: readProviderConfiguration(
+        connection.configuration,
+        adapterOptions,
+      ),
       providerId,
     });
   }
@@ -517,7 +514,7 @@ function readCapabilityCredentialStates(value) {
   return normalized;
 }
 
-function readProviderConfiguration(value) {
+function readProviderConfiguration(value, adapterOptions) {
   const configuration = readPlainObject(value, "provider configuration");
   return {
     adaptiveContextEnabled: readBoolean(
@@ -536,7 +533,10 @@ function readProviderConfiguration(value) {
       configuration.baseUrl,
       "provider base URL",
     ),
-    customAdapters: readCustomAdapters(configuration.customAdapters),
+    customAdapters: readCustomAdapters(
+      configuration.customAdapters,
+      adapterOptions,
+    ),
     embedding: readProviderModelConfiguration(
       configuration.embedding,
       "embedding model settings",
@@ -617,50 +617,17 @@ function readTextToSpeechConfiguration(value) {
   };
 }
 
-function readCustomAdapters(value) {
+function readCustomAdapters(value, adapterOptions) {
   const adapters = readPlainObject(value, "custom provider adapters");
-  return {
-    answer: readEnum(
-      adapters.answer,
-      customLanguageAdapters,
-      "answer adapter",
-    ),
-    chat: readEnum(
-      adapters.chat,
-      customLanguageAdapters,
-      "chat adapter",
-    ),
-    embedding: readEnum(
-      adapters.embedding,
-      embeddingAdapters,
-      "embedding model connection type",
-    ),
-    queryExpansion: readEnum(
-      adapters.queryExpansion,
-      customLanguageAdapters,
-      "query-expansion adapter",
-    ),
-    reranking: readEnum(
-      adapters.reranking,
-      rerankingAdapters,
-      "search ranking connection type",
-    ),
-    speechToText: readEnum(
-      adapters.speechToText,
-      speechToTextAdapters,
-      "speech-to-text adapter",
-    ),
-    indexing: readEnum(
-      adapters.indexing,
-      customLanguageAdapters,
-      "indexing model adapter",
-    ),
-    textToSpeech: readEnum(
-      adapters.textToSpeech,
-      textToSpeechAdapters,
-      "text-to-speech adapter",
-    ),
-  };
+  const normalized = {};
+  for (const capability of providerCapabilities) {
+    normalized[capability] = readConfiguredAdapter(
+      adapters[capability],
+      capability,
+      adapterOptions,
+    );
+  }
+  return normalized;
 }
 
 function readFeatureOverrides(value) {
@@ -786,14 +753,22 @@ function readStringOrFiniteNumber(value, label) {
 }
 
 function readProviderId(value, label) {
-  const providerId = readNonEmptyString(value, label);
+  return readSettingsIdentifier(value, label);
+}
+
+function readAdapterId(value, label) {
+  return readSettingsIdentifier(value, label);
+}
+
+function readSettingsIdentifier(value, label) {
+  const identifier = readNonEmptyString(value, label);
   if (
-    providerId.length > 64
-    || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(providerId)
+    identifier.length > 64
+    || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(identifier)
   ) {
     throw new Error(`The ${label} is invalid.`);
   }
-  return providerId;
+  return identifier;
 }
 
 function buildEmptyFeatureOverrides() {
@@ -1165,6 +1140,7 @@ export function registerPage(alpine) {
     pending: {},
     compatibleProvidersByCapability: {},
     providerConnectionsById: {},
+    providerAdapterOptionsByCapability: {},
     providerDrafts: null,
     providerEditorSection: "capabilities",
     providerProfilesById: {},
@@ -2757,7 +2733,7 @@ export function registerPage(alpine) {
     },
 
     providerAdaptiveContextEnabled() {
-      return this.selectedProviderUsesOllamaLanguage()
+      return this.selectedProviderSupportsAdaptiveContext()
         && (
           this.selectedProviderConnection
             ?.configuration.adaptiveContextEnabled
@@ -2766,7 +2742,7 @@ export function registerPage(alpine) {
     },
 
     writeProviderAdaptiveContextEnabled(value) {
-      if (!this.selectedProviderUsesOllamaLanguage()) {
+      if (!this.selectedProviderSupportsAdaptiveContext()) {
         return;
       }
       this.updateSelectedProviderConfiguration((configuration) => {
@@ -2866,11 +2842,8 @@ export function registerPage(alpine) {
         === "openai-device";
     },
 
-    selectedProviderUsesOllamaLanguage() {
-      const capabilities = this.selectedProviderProfile?.capabilities ?? [];
-      return capabilities.some((entry) => {
-        return entry.adapter === "ollama-language";
-      });
+    selectedProviderSupportsAdaptiveContext() {
+      return this.selectedProviderProfile?.adaptiveContextSupported === true;
     },
 
     providerCapabilityModel(capability) {
@@ -2949,47 +2922,27 @@ export function registerPage(alpine) {
     },
 
     adapterOptions(capability) {
-      if (
-        capability === "answer"
-        || capability === "chat"
-        || capability === "queryExpansion"
-        || capability === "indexing"
-      ) {
-        return [
-          { label: "OpenAI-compatible language model", value: "openai-compatible-language" },
-          { label: "Ollama language model", value: "ollama-language" },
-          { label: "Cohere language model", value: "cohere-language" },
-        ];
-      }
-      if (capability === "embedding") {
-        return [
-          { label: "OpenAI-compatible embedding model", value: "openai-compatible-embedding" },
-          { label: "Ollama embedding model", value: "ollama-embedding" },
-          { label: "Cohere embedding model", value: "cohere-embedding" },
-        ];
-      }
-      if (capability === "reranking") {
-        return [{ label: "Top-N search ranking", value: "top-n-rerank" }];
-      }
-      if (capability === "speechToText") {
-        return [
-          { label: "OpenAI transcription", value: "openai-transcription" },
-          { label: "OpenRouter transcription", value: "openrouter-transcription" },
-          { label: "oMLX transcription", value: "omlx-transcription" },
-        ];
-      }
-      return [
-        { label: "OpenAI speech", value: "openai-speech" },
-        { label: "OpenRouter speech", value: "openrouter-speech" },
-        { label: "Groq speech", value: "groq-speech" },
-        { label: "oMLX speech", value: "omlx-speech" },
-      ];
+      const selectedCapability = readEnum(
+        capability,
+        providerCapabilities,
+        "provider adapter capability",
+      );
+      return this.providerAdapterOptionsByCapability[selectedCapability] ?? [];
     },
 
     writeProviderAdapter(capability, value) {
-      const adapter = readCapabilityAdapter(value, capability);
+      const selectedCapability = readEnum(
+        capability,
+        providerCapabilities,
+        "provider adapter capability",
+      );
+      const adapter = readConfiguredAdapter(
+        value,
+        selectedCapability,
+        this.providerAdapterOptionsByCapability,
+      );
       this.updateSelectedProviderConfiguration((configuration) => {
-        configuration.customAdapters[capability] = adapter;
+        configuration.customAdapters[selectedCapability] = adapter;
       });
     },
 
@@ -3055,6 +3008,8 @@ export function registerPage(alpine) {
         }
       }
       this.providerConnectionsById = connectionsById;
+      this.providerAdapterOptionsByCapability =
+        buildProviderAdapterOptions(drafts.catalog);
       this.providerProfilesById = profilesById;
       this.compatibleProvidersByCapability = compatibleProvidersByCapability;
       this.providerDrafts = drafts;

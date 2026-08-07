@@ -34,6 +34,7 @@ WITH active_spaces AS (
     jobs.max_attempts,
     jobs.next_attempt_at,
     jobs.images,
+    jobs.indexing_activity::text AS indexing_activity,
     jobs.page_count,
     jobs.phase::text AS phase,
     jobs.state::text AS status,
@@ -75,6 +76,7 @@ WITH active_spaces AS (
     NULL::integer AS max_attempts,
     NULL::timestamptz AS next_attempt_at,
     indexed.images,
+    NULL::text AS indexing_activity,
     indexed.page_count,
     NULL::text AS phase,
     'ready'::text AS status,
@@ -128,6 +130,7 @@ WITH active_spaces AS (
       'embeddingSpaceIds', classified.embedding_space_ids,
       'errorMessage', classified.error_message,
       'images', classified.images,
+      'indexingActivity', classified.indexing_activity,
       'embeddingProgress', CASE
         WHEN classified.embedding_completed IS TRUE THEN jsonb_build_object(
           'completedElements', classified.embedded_elements,

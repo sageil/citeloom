@@ -234,12 +234,14 @@ export interface RerankerConfig extends ProviderRuntimeConfig {
 export type RerankerAdapter = "cohere-rerank" | "top-n-rerank";
 
 export type SpeechToTextAdapter =
+  | "mistral-transcription"
   | "omlx-transcription"
   | "openrouter-transcription"
   | "openai-transcription";
 
 export type TextToSpeechAdapter =
   | "groq-speech"
+  | "mistral-speech"
   | "omlx-speech"
   | "openrouter-speech"
   | "openai-speech";

@@ -4,6 +4,7 @@
 .evidence-window > header:active { cursor: grabbing; }
 .evidence-window > header > div:first-child { display: grid; min-width: 0; gap: 3px; }
 .evidence-window h3 { margin: 0; font-size: 13px; }
+.evidence-window .section-kicker { color: var(--cyan); font-size: 10px; font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; }
 .evidence-window header span { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .evidence-window-actions { display: flex; flex: 0 0 auto; gap: 6px; }
 .evidence-window-actions .button, .evidence-window-actions .icon-button { min-height: 28px; border-radius: 6px; font-size: 9px; }
@@ -11,6 +12,10 @@
 .evidence-window-actions .icon-button { width: 28px; }
 .evidence-window-pin[aria-pressed="true"] { border-color: var(--cyan); background: var(--cyan-subtle); color: var(--cyan-bright); }
 .evidence-window-body { min-height: 0; overflow: auto; padding: 14px; }
+.evidence-window-content-stack { display: flex; flex-direction: column; gap: 17px; }
+.evidence-window-source-actions { display: flex; flex-direction: column; gap: 8px; }
+.evidence-window-source-actions a { padding: 9px 11px; border: 1px solid var(--border); border-radius: 9px; color: #bae6fd; font-size: 10px; font-weight: 700; text-align: center; text-decoration: none; }
+.exact-evidence-text { width: 100%; margin: 0; padding: 14px; overflow: auto; border: 0; border-left: 3px solid var(--cyan); background: var(--surface-raised); font-family: inherit; font-size: 11px; line-height: 1.65; white-space: pre-wrap; }
 .source-navigator { display: grid; height: 100%; min-height: 0; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
 .source-navigator > header { padding: 14px; }
 .source-navigator > header h2 { margin: 0; font-size: 13px; letter-spacing: 0; }

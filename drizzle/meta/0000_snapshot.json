@@ -5684,6 +5684,13 @@
           "notNull": true,
           "default": 0
         },
+        "indexing_activity": {
+          "name": "indexing_activity",
+          "type": "ingestion_indexing_activity",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
         "lease_expires_at": {
           "name": "lease_expires_at",
           "type": "timestamp with time zone",
@@ -5985,6 +5992,10 @@
         "ingestion_jobs_page_count_check": {
           "name": "ingestion_jobs_page_count_check",
           "value": "\"ingestion_jobs\".\"page_count\" IS NULL OR \"ingestion_jobs\".\"page_count\" > 0"
+        },
+        "ingestion_jobs_indexing_activity_phase_check": {
+          "name": "ingestion_jobs_indexing_activity_phase_check",
+          "value": "(\"ingestion_jobs\".\"phase\" = 'normalized' AND \"ingestion_jobs\".\"indexing_activity\" IS NOT NULL) OR (\"ingestion_jobs\".\"phase\" <> 'normalized' AND \"ingestion_jobs\".\"indexing_activity\" IS NULL)"
         }
       },
       "isRLSEnabled": false
@@ -9053,6 +9064,16 @@
         "paused",
         "cancel_requested",
         "cleanup_failed"
+      ]
+    },
+    "public.ingestion_indexing_activity": {
+      "name": "ingestion_indexing_activity",
+      "schema": "public",
+      "values": [
+        "preparing",
+        "describing",
+        "embedding",
+        "building_outline"
       ]
     },
     "public.ingestion_phase": {

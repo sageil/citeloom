@@ -31,12 +31,12 @@ import {
   formatExactDate,
   formatRelativeTime,
   readBasename,
-  readCollectionLabel,
   readContentCountLabel,
   readDocumentStatusCopy,
-  readEmbeddingProgressDetail,
   readFileType,
-  readMediaProgressDetail,
+  readIndexingActivityDetail,
+  readIndexingActivityLabel,
+  readIndexingProgressDetail,
   readNextSelectedDocument,
   readRetryPhase,
 } from "./citeloom-document-presentation.js";
@@ -67,6 +67,12 @@ const ingestionPhases = Object.freeze([
   "discovered",
   "indexed",
   "normalized",
+]);
+const indexingActivities = Object.freeze([
+  "preparing",
+  "describing",
+  "embedding",
+  "building_outline",
 ]);
 const ingestionControlStates = Object.freeze([
   "active",
@@ -171,6 +177,11 @@ function readCatalogEntry(value) {
     ingestionPhases,
     "document ingestion phase",
   );
+  const indexingActivity = readNullableEnum(
+    document.indexingActivity,
+    indexingActivities,
+    "document indexing activity",
+  );
   const sourceFile = readNonEmptyString(
     document.sourceFile,
     "document source file",
@@ -219,6 +230,7 @@ function readCatalogEntry(value) {
   validateDocumentProcessingProgress(
     phase,
     status,
+    indexingActivity,
     embeddingProgress,
     mediaDescriptionProgress,
     images,
@@ -234,6 +246,7 @@ function readCatalogEntry(value) {
   let statusCopy = readDocumentStatusCopy({
     displayStatus,
     embeddingProgress,
+    indexingActivity,
     phase,
     queryStatus,
   });
@@ -241,7 +254,7 @@ function readCatalogEntry(value) {
     statusCopy = {
       detail: combineStatusDetails(
         controlError ?? "Stopping the active operation safely",
-        readEmbeddingProgressDetail(embeddingProgress),
+        readIndexingProgressDetail(embeddingProgress),
       ),
       label: controlError === null ? "Pausing" : "Pause delayed",
     };
@@ -249,7 +262,7 @@ function readCatalogEntry(value) {
     statusCopy = {
       detail: combineStatusDetails(
         "Resume when ready",
-        readEmbeddingProgressDetail(embeddingProgress),
+        readIndexingProgressDetail(embeddingProgress),
       ),
       label: "Paused",
     };
@@ -313,6 +326,7 @@ function readCatalogEntry(value) {
     failureHeading: retryState.failureHeading,
     images,
     imagesLabel: readContentCountLabel(images, contentCountsAvailable),
+    indexingActivity,
     filename,
     fileType: readFileType(filename),
     mediaDescriptionProgress,
@@ -405,11 +419,15 @@ function readMediaDescriptionProgress(value, images, tables) {
 function validateDocumentProcessingProgress(
   phase,
   status,
+  indexingActivity,
   embeddingProgress,
   mediaDescriptionProgress,
   images,
   tables,
 ) {
+  if ((phase === "normalized") !== (indexingActivity !== null)) {
+    throw new Error("Indexing activity does not match the document phase.");
+  }
   if (phase === "discovered" && embeddingProgress.state !== "not-started") {
     throw new Error("A discovered document cannot have embedding progress.");
   }
@@ -748,10 +766,35 @@ function requestDocumentsRefresh() {
 function createInspectorDisclosureState() {
   return {
     indexedContent: true,
-    source: true,
     tags: false,
     version: false,
   };
+}
+
+function readProgressStyle(completed, total) {
+  if (total === 0) {
+    return "width: 0%";
+  }
+  const percentage = Math.floor((completed / total) * 100);
+  return `width: ${percentage}%`;
+}
+
+function readIndexingProgressMaximum(document) {
+  if (document.indexingActivity === "describing") {
+    return document.images + document.tables;
+  }
+  return document.totalElements;
+}
+
+function readIndexingProgressValue(document) {
+  if (document.indexingActivity === "describing") {
+    return document.mediaDescriptionProgress.completedImages
+      + document.mediaDescriptionProgress.completedTables;
+  }
+  if (document.embeddingProgress.state === "not-started") {
+    return 0;
+  }
+  return document.embeddingProgress.completedElements;
 }
 
 export function registerPage(alpine) {
@@ -806,10 +849,6 @@ export function registerPage(alpine) {
 
     get catalogDocuments() {
       return this.catalog?.documents ?? [];
-    },
-
-    get collectionLabel() {
-      return readCollectionLabel(this.collection);
     },
 
     get collections() {
@@ -1121,52 +1160,48 @@ export function registerPage(alpine) {
       return document.displayStatus === "running";
     },
 
-    embeddingProgressDeterminate(document) {
-      return document.embeddingProgress.state !== "not-started";
+    indexingProgressDeterminate(document) {
+      if (readIndexingProgressMaximum(document) === 0) {
+        return false;
+      }
+      if (document.displayStatus !== "running") {
+        return true;
+      }
+      if (document.indexingActivity === "describing") {
+        return document.images + document.tables > 0;
+      }
+      if (document.indexingActivity === "embedding") {
+        return document.totalElements > 0;
+      }
+      return false;
     },
 
-    embeddingProgressStyle(document) {
-      const progress = document.embeddingProgress;
-      if (progress.state === "not-started") {
-        return "";
-      }
-      if (progress.totalElements === 0) {
-        return "width: 100%";
-      }
-      const percentage = Math.floor(
-        (progress.completedElements / progress.totalElements) * 100,
+    indexingProgressMaximum(document) {
+      return readIndexingProgressMaximum(document);
+    },
+
+    indexingProgressValue(document) {
+      return readIndexingProgressValue(document);
+    },
+
+    indexingProgressStyle(document) {
+      return readProgressStyle(
+        readIndexingProgressValue(document),
+        readIndexingProgressMaximum(document),
       );
-      return `width: ${percentage}%`;
     },
 
-    embeddingProgressDetail(document) {
-      return readEmbeddingProgressDetail(document.embeddingProgress)
-        ?? "Waiting for the first completed embedding batch";
+    indexingActivityLabel(document) {
+      return readIndexingActivityLabel(document);
     },
 
-    embeddingProgressVisible(document) {
+    indexingActivityDetail(document) {
+      return readIndexingActivityDetail(document);
+    },
+
+    indexingProgressVisible(document) {
       return document.phase === "normalized"
         && document.status !== "ready";
-    },
-
-    mediaProgressDetail(document, kind) {
-      return readMediaProgressDetail(document, kind);
-    },
-
-    mediaProgressStyle(document, kind) {
-      const progress = readMediaProgress(document, kind);
-      if (progress.total === 0) {
-        return "width: 100%";
-      }
-      const percentage = Math.floor(
-        (progress.completed / progress.total) * 100,
-      );
-      return `width: ${percentage}%`;
-    },
-
-    mediaProgressVisible(document, kind) {
-      const progress = readMediaProgress(document, kind);
-      return this.embeddingProgressVisible(document) && progress.total > 0;
     },
 
     elapsedDuration(document) {

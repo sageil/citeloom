@@ -32,7 +32,10 @@ import {
   type HealthResponse,
 } from "./dashboard-response.js";
 import { registerChatRoutes } from "./chat-routes.js";
-import { applyInertDocumentHeaders } from "./inert-document-response.js";
+import {
+  applyHighlightedDocumentHeaders,
+  applyInertDocumentHeaders,
+} from "./inert-document-response.js";
 import type {
   ApplicationStateRevisionSnapshot,
 } from "../app/application-state-revisions.js";
@@ -443,12 +446,17 @@ export async function buildWebServer(
   server.get("/api/citations/:id/highlighted-file", async (request, reply) => {
     const id = decodeResourceId(request.params);
     const document = await services.run(async (runtime) => {
-      return runtime.readCitationHighlightedPdf(id);
+      const readHighlightedFile = runtime.readCitationHighlightedFile
+        ?? runtime.readCitationHighlightedPdf;
+      if (readHighlightedFile === undefined) {
+        throw new Error("Highlighted citation files are not configured.");
+      }
+      return readHighlightedFile(id);
     });
     if (document === null) {
       throw new WebRequestError(404, "The citation or document version was not found.");
     }
-    applyInertDocumentHeaders(reply);
+    applyHighlightedDocumentHeaders(reply, document.mediaType);
     reply.header("Content-Disposition", buildInlineContentDisposition(document.filename));
     return reply.type(document.mediaType).send(document.content);
   });

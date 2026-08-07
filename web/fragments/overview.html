@@ -49,153 +49,101 @@
     </button>
   </section>
 
-  <header class="workspace-header workspace-status-header">
-    <dl class="workspace-facts" aria-label="Workspace status">
-      <div>
-        <dt>Ready</dt>
-        <dd x-text="workspaceFact(overviewSummary.readyDocuments, dashboardStatus)">-</dd>
-      </div>
-      <div>
-        <dt>Processing</dt>
-        <dd x-text="workspaceFact(overviewSummary.processingDocuments, dashboardStatus)">-</dd>
-      </div>
-      <div>
-        <dt>Needs attention</dt>
-        <dd x-text="workspaceFact(overviewSummary.needsAttention, dashboardStatus)">-</dd>
-      </div>
-    </dl>
-  </header>
-
-  <div class="workflow-progress">
-    <ol aria-label="Document workflow">
-      <li :aria-current="stepCurrent(workflow.activeStep, 0)" :class="stepClass(workflow.activeStep, 0)">
-        <svg aria-hidden="true" class="citeloom-icon citeloom-workflow-done-icon" x-show="stepComplete(workflow.activeStep, 0)">
-          <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
-        </svg>
-        <span>Upload</span>
-      </li>
-      <li :aria-current="stepCurrent(workflow.activeStep, 1)" :class="stepClass(workflow.activeStep, 1)">
-        <svg aria-hidden="true" class="citeloom-icon citeloom-workflow-done-icon" x-show="stepComplete(workflow.activeStep, 1)">
-          <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
-        </svg>
-        <span>Normalize</span>
-      </li>
-      <li :aria-current="stepCurrent(workflow.activeStep, 2)" :class="stepClass(workflow.activeStep, 2)">
-        <svg aria-hidden="true" class="citeloom-icon citeloom-workflow-done-icon" x-show="stepComplete(workflow.activeStep, 2)">
-          <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
-        </svg>
-        <span>Embed</span>
-      </li>
-      <li :aria-current="stepCurrent(workflow.activeStep, 3)" :class="stepClass(workflow.activeStep, 3)">
-        <svg aria-hidden="true" class="citeloom-icon citeloom-workflow-done-icon" x-show="stepComplete(workflow.activeStep, 3)">
-          <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
-        </svg>
-        <span>Publish</span>
-      </li>
-      <li :aria-current="stepCurrent(workflow.activeStep, 4)" :class="stepClass(workflow.activeStep, 4)">
-        <svg aria-hidden="true" class="citeloom-icon citeloom-workflow-done-icon" x-show="stepComplete(workflow.activeStep, 4)">
-          <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
-        </svg>
-        <span>Ask</span>
-      </li>
-    </ol>
-    <span class="live-label">
-      <span class="status-dot" aria-hidden="true"></span>
-      <span x-text="workflowStatusLabel()"></span>
-    </span>
-  </div>
-
   <section class="overview-grid" aria-label="Workspace overview">
     <section class="panel ingestion-panel" aria-labelledby="ingestion-title">
-      <header class="panel-header">
-        <span class="panel-icon" aria-hidden="true">
-          <svg class="citeloom-icon">
-            <use href="./assets/images/citeloom-icons.svg#citeloom-upload"></use>
-          </svg>
-        </span>
-        <div>
-          <p class="section-kicker">Knowledge intake</p>
-          <h2 id="ingestion-title">Ingest documents</h2>
-        </div>
-      </header>
-
-      <label
-        class="drop-zone"
-        @dragover.prevent
-        @drop.prevent="chooseFiles($event.dataTransfer?.files ?? null)"
-      >
-        <input
-          multiple
-          type="file"
-          x-ref="fileInput"
-          @change="chooseFiles($event.target.files)"
-        />
-        <span class="drop-icon" aria-hidden="true">
-          <svg class="citeloom-icon">
-            <use href="./assets/images/citeloom-icons.svg#citeloom-upload"></use>
-          </svg>
-        </span>
-        <strong>Drop documents here or browse</strong>
-        <span
-          x-text="`${overviewSummary.supportedExtensions.join(', ')}, or another readable UTF-8 text file, up to ${documentSizeLimitLabel()}`"
-        ></span>
-      </label>
-
-      <div class="selected-files" x-cloak x-show="files.length > 0">
-        <div>
-          <strong x-text="selectedFileCountLabel"></strong>
-          <span x-text="selectedFileSizeLabel"></span>
-        </div>
-        <button class="text-button" type="button" @click="clearFiles()">Clear</button>
-      </div>
-
-      <div class="form-field tag-field">
-        <label for="ingestion-tags">Tags</label>
-        <div class="tag-entry">
-          <template x-for="tag in tags" :key="tag.toLocaleLowerCase()">
-            <span class="tag-chip">
-              <span x-text="tag"></span>
-              <button type="button" :aria-label="`Remove ${tag} tag`" @click="removeTag(tag)">
-                <span aria-hidden="true">×</span>
-              </button>
-            </span>
-          </template>
-          <input
-            aria-describedby="ingestion-tags-help"
-            id="ingestion-tags"
-            type="text"
-            x-model="tagDraft"
-            :placeholder="tags.length === 0 ? 'legal or veterinary' : 'Add another tag'"
-            @keydown.enter.prevent="commitTagDraft()"
-          />
-        </div>
-        <span class="field-help" id="ingestion-tags-help">Type a word to use as a tag and press Enter. Tags help you search a smaller part of your knowledge library instead of every document. Try legal or veterinary.</span>
-      </div>
-
-      <div class="toggle-row">
-        <label class="toggle-control">
-          <input type="checkbox" x-model="force" />
-          <span class="toggle-track" aria-hidden="true"><span></span></span>
-          <span>
-            <strong>Force re-index</strong>
-            <small>Process matching documents again from the beginning. Use this after changing ingestion or embedding settings.</small>
+      <div class="ingestion-main">
+        <header class="panel-header">
+          <span class="panel-icon" aria-hidden="true">
+            <svg class="citeloom-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-upload"></use>
+            </svg>
           </span>
+          <div>
+            <p class="section-kicker">Knowledge intake</p>
+            <h2 id="ingestion-title">Ingest documents</h2>
+          </div>
+        </header>
+
+        <label
+          class="drop-zone"
+          @dragover.prevent
+          @drop.prevent="chooseFiles($event.dataTransfer?.files ?? null)"
+        >
+          <input
+            multiple
+            type="file"
+            x-ref="fileInput"
+            @change="chooseFiles($event.target.files)"
+          />
+          <span class="drop-icon" aria-hidden="true">
+            <svg class="citeloom-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-upload"></use>
+            </svg>
+          </span>
+          <strong>Drop documents here or browse</strong>
+          <span
+            x-text="`${overviewSummary.supportedExtensions.join(', ')}, or another readable UTF-8 text file, up to ${documentSizeLimitLabel()}`"
+          ></span>
         </label>
+
+        <div class="selected-files" x-cloak x-show="files.length > 0">
+          <div>
+            <strong x-text="selectedFileCountLabel"></strong>
+            <span x-text="selectedFileSizeLabel"></span>
+          </div>
+          <button class="text-button" type="button" @click="clearFiles()">Clear</button>
+        </div>
       </div>
 
-      <p class="field-error" role="alert" x-cloak x-show="errorMessage !== ''" x-text="errorMessage"></p>
-      <button
-        class="button primary submit-button"
-        type="button"
-        :aria-busy="submitting"
-        :disabled="submitting"
-        @click="submit()"
-      >
-        <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon" :class="{ spin: submitting }">
-          <use :href="submitting ? './assets/images/citeloom-icons.svg#citeloom-refresh' : './assets/images/citeloom-icons.svg#citeloom-upload'"></use>
-        </svg>
-        <span x-text="submitLabel()">Queue documents</span>
-      </button>
+      <div class="ingestion-settings">
+        <div class="form-field tag-field">
+          <label for="ingestion-tags">Tags</label>
+          <div class="tag-entry">
+            <template x-for="tag in tags" :key="tag.toLocaleLowerCase()">
+              <span class="tag-chip">
+                <span x-text="tag"></span>
+                <button type="button" :aria-label="`Remove ${tag} tag`" @click="removeTag(tag)">
+                  <span aria-hidden="true">×</span>
+                </button>
+              </span>
+            </template>
+            <input
+              aria-describedby="ingestion-tags-help"
+              id="ingestion-tags"
+              type="text"
+              x-model="tagDraft"
+              :placeholder="tags.length === 0 ? 'legal or veterinary' : 'Add another tag'"
+              @keydown.enter.prevent="commitTagDraft()"
+            />
+          </div>
+          <span class="field-help" id="ingestion-tags-help">Type a word to use as a tag and press Enter. Tags help you search a smaller part of your knowledge library instead of every document. Try legal or veterinary.</span>
+        </div>
+
+        <div class="toggle-row">
+          <label class="toggle-control">
+            <input type="checkbox" x-model="force" />
+            <span class="toggle-track" aria-hidden="true"><span></span></span>
+            <span>
+              <strong>Force re-index</strong>
+              <small>Process matching documents again from the beginning. Use this after changing ingestion or embedding settings.</small>
+            </span>
+          </label>
+        </div>
+
+        <p class="field-error" role="alert" x-cloak x-show="errorMessage !== ''" x-text="errorMessage"></p>
+        <button
+          class="button primary submit-button"
+          type="button"
+          :aria-busy="submitting"
+          :disabled="submitting"
+          @click="submit()"
+        >
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon" :class="{ spin: submitting }">
+            <use :href="submitting ? './assets/images/citeloom-icons.svg#citeloom-refresh' : './assets/images/citeloom-icons.svg#citeloom-upload'"></use>
+          </svg>
+          <span x-text="submitLabel()">Queue documents</span>
+        </button>
+      </div>
     </section>
 
     <section class="panel recent-documents-panel" aria-labelledby="recent-documents-title">
@@ -208,7 +156,7 @@
           </span>
           <div>
             <p class="section-kicker">Knowledge library</p>
-            <h2 id="recent-documents-title">Recently added</h2>
+            <h2 id="recent-documents-title">Recent activity</h2>
           </div>
         </header>
         <a
@@ -223,6 +171,12 @@
             <use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use>
           </svg>
         </a>
+      </div>
+
+      <div class="recent-documents-columns" aria-hidden="true">
+        <span>Document</span>
+        <span>Added</span>
+        <span>Status</span>
       </div>
 
       <ol
@@ -246,12 +200,12 @@
                 :title="recentDocumentName(document.sourceFile)"
                 x-text="recentDocumentName(document.sourceFile)"
               ></strong>
-              <time
-                class="recent-document-time"
-                :datetime="document.updatedAt"
-                x-text="recentDocumentTime(document.updatedAt)"
-              ></time>
             </div>
+            <time
+              class="recent-document-time"
+              :datetime="document.updatedAt"
+              x-text="recentDocumentTime(document.updatedAt)"
+            ></time>
             <span
               class="recent-document-status"
               :class="`is-${document.displayStatus}`"

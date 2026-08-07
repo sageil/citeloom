@@ -170,6 +170,44 @@ describe("transcribeAudio", () => {
     });
   });
 
+  it("uses Mistral's language and context-bias transcription fields", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      text: "Mistral transcript",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const config = buildEnabledConfig({
+      apiToken: "mistral-token",
+      language: "English",
+      prompt: "CiteLoom, systemic hypertension; chronic kidney disease",
+    });
+    if (config.speechToText === null) {
+      throw new Error("Expected enabled speech-to-text configuration.");
+    }
+    config.speechToText.adapter = "mistral-transcription";
+    config.speechToText.model = "voxtral-mini-latest";
+
+    await expect(transcribeAudio(
+      config,
+      buildAudio(),
+      new AbortController().signal,
+    )).resolves.toEqual({ text: "Mistral transcript" });
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    const form = request?.body;
+    expect(form).toBeInstanceOf(FormData);
+    if (!(form instanceof FormData)) {
+      throw new Error("Expected provider request FormData.");
+    }
+    expect(form.get("model")).toBe("voxtral-mini-latest");
+    expect(form.get("language")).toBe("en");
+    expect(form.get("prompt")).toBeNull();
+    expect(form.getAll("context_bias")).toEqual([
+      "CiteLoom",
+      "systemic_hypertension",
+      "chronic_kidney_disease",
+    ]);
+  });
+
   it("bounds and redacts provider error responses", async () => {
     const cancel = vi.fn();
     const body = new ReadableStream<Uint8Array>({

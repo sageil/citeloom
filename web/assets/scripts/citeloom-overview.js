@@ -379,39 +379,11 @@ export function registerPage(alpine) {
       this.dashboardWarningDismissed = true;
     },
 
-    stepClass(activeStep, index) {
-      if (index < activeStep) {
-        return "done";
-      }
-      if (index === activeStep) {
-        return "current";
-      }
-      return "";
-    },
-
-    stepComplete(activeStep, index) {
-      return index < activeStep;
-    },
-
-    stepCurrent(activeStep, index) {
-      return index === activeStep ? "step" : null;
-    },
-
     submitLabel() {
       if (this.submitting) {
         return "Submitting documents";
       }
       return "Queue documents";
-    },
-
-    workspaceFact(value, status) {
-      if (status === "loading") {
-        return "-";
-      }
-      if (status === "error") {
-        return "Unavailable";
-      }
-      return String(value);
     },
   }));
 }

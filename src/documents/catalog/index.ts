@@ -16,6 +16,7 @@ import type {
   IndexedDocument,
   IngestionControlActor,
   IngestionJob,
+  IndexingActivity,
   IngestionPhase,
   JobFailureResult,
   PrepareIngestionResult,
@@ -46,6 +47,7 @@ export type {
   IndexedDocument,
   IngestionControlActor,
   IngestionJob,
+  IndexingActivity,
   IngestionControlState,
   IngestionControlDoclingTask,
   IngestionPhase,
@@ -303,6 +305,14 @@ export class DocumentCatalog {
     ownerId: string,
   ): Promise<void> {
     await this.jobs.completeIndexing(sourceFile, ownerId);
+  }
+
+  public async recordIndexingActivity(
+    sourceFile: string,
+    ownerId: string,
+    activity: IndexingActivity,
+  ): Promise<void> {
+    await this.jobs.recordIndexingActivity(sourceFile, ownerId, activity);
   }
 
   public async markJobFailed(

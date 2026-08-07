@@ -68,6 +68,13 @@ export const ingestionPhase = pgEnum("ingestion_phase", [
   "indexed",
 ]);
 
+export const ingestionIndexingActivity = pgEnum("ingestion_indexing_activity", [
+  "preparing",
+  "describing",
+  "embedding",
+  "building_outline",
+]);
+
 export const ingestionState = pgEnum("ingestion_state", [
   "pending",
   "running",
@@ -786,6 +793,7 @@ export const ingestionJobs = pgTable(
       .notNull()
       .unique("ingestion_jobs_generation_idx"),
     images: integer("images").notNull().default(0),
+    indexingActivity: ingestionIndexingActivity("indexing_activity"),
     leaseExpiresAt: timestamp("lease_expires_at", {
       mode: "date",
       withTimezone: true,
@@ -834,6 +842,10 @@ export const ingestionJobs = pgTable(
     check(
       "ingestion_jobs_page_count_check",
       sql`${table.pageCount} IS NULL OR ${table.pageCount} > 0`,
+    ),
+    check(
+      "ingestion_jobs_indexing_activity_phase_check",
+      sql`(${table.phase} = 'normalized' AND ${table.indexingActivity} IS NOT NULL) OR (${table.phase} <> 'normalized' AND ${table.indexingActivity} IS NULL)`,
     ),
     index("ingestion_jobs_document_id_idx").on(table.documentId),
     index("ingestion_jobs_control_state_idx").on(table.controlState, table.state),

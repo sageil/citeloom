@@ -455,6 +455,7 @@ function buildRunningJob(): IngestionJob {
     },
     generationId: "00000000-0000-4000-8000-000000000001",
     images: 0,
+    indexingActivity: null,
     leaseExpiresAt: "2026-07-15T12:02:00.000Z",
     maxAttempts: 3,
     nextAttemptAt: "2026-07-15T12:00:00.000Z",

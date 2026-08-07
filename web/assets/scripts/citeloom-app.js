@@ -776,13 +776,9 @@ function registerShell(alpine) {
       }).length;
     },
 
-    get showTaskLaunchpad() {
-      return this.activeView === "overview"
-        || this.activeView === "documents";
-    },
-
     get showWorkflowProgress() {
       return this.activeView !== "overview"
+        && this.activeView !== "documents"
         && this.activeView !== "ask"
         && this.activeView !== "chat"
         && this.activeView !== "login"

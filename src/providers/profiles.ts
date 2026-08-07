@@ -316,12 +316,14 @@ export const rerankerAdapterSchema = z.enum([
   "top-n-rerank",
 ]);
 export const speechToTextAdapterSchema = z.enum([
+  "mistral-transcription",
   "omlx-transcription",
   "openrouter-transcription",
   "openai-transcription",
 ]);
 export const textToSpeechAdapterSchema = z.enum([
   "groq-speech",
+  "mistral-speech",
   "omlx-speech",
   "openrouter-speech",
   "openai-speech",
@@ -739,9 +741,8 @@ function validateAdaptiveContextConfiguration(
       continue;
     }
     const profile = readProviderProfile(settings, providerId);
-    const supportsAdaptiveContext = profile?.capabilities.some((candidate) => {
-      return candidate.adapter === "ollama-language";
-    }) === true;
+    const supportsAdaptiveContext = profile !== undefined
+      && providerSupportsAdaptiveContext(profile);
     if (!supportsAdaptiveContext) {
       context.addIssue({
         code: "custom",
@@ -757,6 +758,14 @@ function validateAdaptiveContextConfiguration(
       });
     }
   }
+}
+
+export function providerSupportsAdaptiveContext(
+  profile: ProviderProfile,
+): boolean {
+  return profile.capabilities.some((candidate) => {
+    return candidate.adapter === "ollama-language";
+  });
 }
 
 export function resolveEmbeddingProvider(
@@ -855,6 +864,9 @@ export function readTextToSpeechSpeedRange(
 ): TextToSpeechSpeedRange {
   if (adapter === "groq-speech") {
     return { displayName: "Groq", maximum: 5, minimum: 0.5 };
+  }
+  if (adapter === "mistral-speech") {
+    return { displayName: "Mistral", maximum: 1, minimum: 1 };
   }
   if (adapter === "openrouter-speech") {
     return { displayName: "OpenRouter", maximum: 4, minimum: 0.25 };
@@ -1036,6 +1048,7 @@ function isTextToSpeechAdapter(
     | TextToSpeechAdapter,
 ): value is TextToSpeechAdapter {
   return value === "groq-speech"
+    || value === "mistral-speech"
     || value === "omlx-speech"
     || value === "openrouter-speech"
     || value === "openai-speech";
@@ -1091,6 +1104,7 @@ function isSpeechToTextAdapter(
     | TextToSpeechAdapter,
 ): value is SpeechToTextAdapter {
   return value === "omlx-transcription"
+    || value === "mistral-transcription"
     || value === "openrouter-transcription"
     || value === "openai-transcription";
 }

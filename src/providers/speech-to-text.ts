@@ -162,7 +162,9 @@ async function requestProviderTranscription(
 }
 
 interface TranscriptionAdapterContract {
+  languageFormat: "configured" | "iso-639";
   path: "/audio/transcriptions";
+  promptFormat: "context-bias" | "prompt";
   rejectPromptEcho: boolean;
   requestFormat: "multipart" | "openrouter-json";
 }
@@ -171,21 +173,35 @@ function readTranscriptionAdapter(
   config: SpeechToTextConfig,
 ): TranscriptionAdapterContract {
   switch (config.adapter) {
+    case "mistral-transcription":
+      return {
+        languageFormat: "iso-639",
+        path: "/audio/transcriptions",
+        promptFormat: "context-bias",
+        rejectPromptEcho: false,
+        requestFormat: "multipart",
+      };
     case "omlx-transcription":
       return {
+        languageFormat: "configured",
         path: "/audio/transcriptions",
+        promptFormat: "prompt",
         rejectPromptEcho: true,
         requestFormat: "multipart",
       };
     case "openrouter-transcription":
       return {
+        languageFormat: "iso-639",
         path: "/audio/transcriptions",
+        promptFormat: "prompt",
         rejectPromptEcho: false,
         requestFormat: "openrouter-json",
       };
     case "openai-transcription":
       return {
+        languageFormat: "configured",
         path: "/audio/transcriptions",
+        promptFormat: "prompt",
         rejectPromptEcho: false,
         requestFormat: "multipart",
       };
@@ -204,7 +220,7 @@ function buildProviderTranscriptionRequest(
     };
   }
   return {
-    body: buildProviderForm(config, audio),
+    body: buildProviderForm(config, audio, adapter),
     headers: buildProviderHeaders(config, null),
   };
 }
@@ -220,14 +236,14 @@ function buildOpenRouterTranscriptionRequest(
     },
     model: config.model,
   };
-  const language = normalizeOpenRouterLanguage(config.language);
+  const language = normalizeIso639Language(config.language);
   if (language !== null) {
     request.language = language;
   }
   return request;
 }
 
-function normalizeOpenRouterLanguage(language: string | null): string | null {
+function normalizeIso639Language(language: string | null): string | null {
   if (language === null) {
     return null;
   }
@@ -259,18 +275,66 @@ function readOpenRouterAudioFormat(
 function buildProviderForm(
   config: SpeechToTextConfig,
   audio: TranscriptionAudio,
+  adapter: TranscriptionAdapterContract,
 ): FormData {
   const form = new FormData();
   const content = new Uint8Array(audio.content);
   form.append("file", new Blob([content], { type: audio.mediaType }), audio.filename);
   form.append("model", config.model);
-  if (config.language !== null) {
-    form.append("language", config.language);
-  }
-  if (config.prompt !== null) {
-    form.append("prompt", config.prompt);
-  }
+  appendProviderLanguage(form, config.language, adapter);
+  appendProviderPrompt(form, config.prompt, adapter);
   return form;
+}
+
+function appendProviderLanguage(
+  form: FormData,
+  language: string | null,
+  adapter: TranscriptionAdapterContract,
+): void {
+  if (language === null) {
+    return;
+  }
+  if (adapter.languageFormat === "iso-639") {
+    const normalizedLanguage = normalizeIso639Language(language);
+    if (normalizedLanguage !== null) {
+      form.append("language", normalizedLanguage);
+    }
+    return;
+  }
+  form.append("language", language);
+}
+
+function appendProviderPrompt(
+  form: FormData,
+  prompt: string | null,
+  adapter: TranscriptionAdapterContract,
+): void {
+  if (prompt === null) {
+    return;
+  }
+  if (adapter.promptFormat === "prompt") {
+    form.append("prompt", prompt);
+    return;
+  }
+  for (const contextBias of readMistralContextBias(prompt)) {
+    form.append("context_bias", contextBias);
+  }
+}
+
+function readMistralContextBias(prompt: string): string[] {
+  const contextBias: string[] = [];
+  const entries = prompt.split(/[\n,;]+/u);
+  for (const entry of entries) {
+    const normalizedEntry = entry.trim().replace(/\s+/gu, "_");
+    if (normalizedEntry === "") {
+      continue;
+    }
+    contextBias.push(normalizedEntry);
+    if (contextBias.length === 100) {
+      break;
+    }
+  }
+  return contextBias;
 }
 
 function buildProviderHeaders(

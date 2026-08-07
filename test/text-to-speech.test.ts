@@ -187,6 +187,75 @@ describe("generateTextToSpeech", () => {
     });
   });
 
+  it("uses Mistral's voice identifier and decodes its base64 WAV response", async () => {
+    const audioBytes = Buffer.from("RIFF Mistral audio");
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({
+      audio_data: audioBytes.toString("base64"),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const config = buildEnabledConfig();
+    if (config.textToSpeech === null) {
+      throw new Error("Expected enabled text-to-speech configuration.");
+    }
+    config.textToSpeech.adapter = "mistral-speech";
+    config.textToSpeech.model = "voxtral-mini-tts-2603";
+    config.textToSpeech.speed = 1;
+    config.textToSpeech.voice = "voice-identifier";
+
+    const result = await generateTextToSpeech(
+      config,
+      buildSpeechRequest("An answer."),
+      new AbortController().signal,
+    );
+
+    await expect(readAudio(result.audio)).resolves.toEqual(audioBytes);
+    await expect(result.completion).resolves.toBeUndefined();
+    expect(result.contentType).toBe("audio/wav");
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(JSON.parse(String(request?.body))).toEqual({
+      input: "An answer.",
+      model: "voxtral-mini-tts-2603",
+      response_format: "wav",
+      stream: false,
+      voice_id: "voice-identifier",
+    });
+  });
+
+  it("rejects malformed Mistral base64 audio", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({
+      audio_data: "not base64!",
+    })));
+    const config = buildEnabledConfig();
+    if (config.textToSpeech === null) {
+      throw new Error("Expected enabled text-to-speech configuration.");
+    }
+    config.textToSpeech.adapter = "mistral-speech";
+    config.textToSpeech.speed = 1;
+
+    await expect(generateTextToSpeech(
+      config,
+      buildSpeechRequest("An answer."),
+      new AbortController().signal,
+    )).rejects.toThrow("invalid base64 speech audio");
+  });
+
+  it("rejects speech-speed changes that Mistral does not document", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const config = buildEnabledConfig();
+    if (config.textToSpeech === null) {
+      throw new Error("Expected enabled text-to-speech configuration.");
+    }
+    config.textToSpeech.adapter = "mistral-speech";
+
+    await expect(generateTextToSpeech(
+      config,
+      buildSpeechRequest("An answer."),
+      new AbortController().signal,
+    )).rejects.toThrow("Mistral speech speed must be from 1 to 1");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("keeps completion pending until the provider audio body ends", async () => {
     const providerBody = new TransformStream<Uint8Array, Uint8Array>();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(

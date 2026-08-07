@@ -166,6 +166,38 @@ WITH canonical_settings AS (
           "adapterConfiguration": "catalog",
           "authentication": "api-token",
           "capabilities": [
+            { "adapter": "openai-compatible-language", "capability": "answer" },
+            { "adapter": "openai-compatible-language", "capability": "chat" },
+            { "adapter": "openai-compatible-language", "capability": "queryExpansion" },
+            { "adapter": "openai-compatible-language", "capability": "indexing" },
+            { "adapter": "openai-compatible-embedding", "capability": "embedding" },
+            { "adapter": "mistral-transcription", "capability": "speechToText" },
+            { "adapter": "mistral-speech", "capability": "textToSpeech" }
+          ],
+          "displayName": "Mistral AI",
+          "doclingVlm": { "endpointStyle": "openai", "engineType": "api" },
+          "id": "mistral"
+        },
+        {
+          "adapterConfiguration": "catalog",
+          "authentication": "api-token",
+          "capabilities": [
+            { "adapter": "openai-compatible-language", "capability": "answer" },
+            { "adapter": "openai-compatible-language", "capability": "chat" },
+            { "adapter": "openai-compatible-language", "capability": "queryExpansion" },
+            { "adapter": "openai-compatible-language", "capability": "indexing" },
+            { "adapter": "openai-compatible-embedding", "capability": "embedding" },
+            { "adapter": "openai-transcription", "capability": "speechToText" },
+            { "adapter": "openai-speech", "capability": "textToSpeech" }
+          ],
+          "displayName": "Together AI",
+          "doclingVlm": { "endpointStyle": "openai", "engineType": "api" },
+          "id": "together"
+        },
+        {
+          "adapterConfiguration": "catalog",
+          "authentication": "api-token",
+          "capabilities": [
             { "adapter": "cohere-language", "capability": "answer" },
             { "adapter": "cohere-language", "capability": "chat" },
             { "adapter": "cohere-language", "capability": "queryExpansion" },
@@ -543,6 +575,62 @@ WITH canonical_settings AS (
             "voice": null
           }
         },
+        "mistral": {
+          "apiToken": null,
+          "answer": {
+            "apiToken": null,
+            "baseUrl": null,
+            "contextCapacityTokens": 256000,
+            "model": "mistral-large-2512"
+          },
+          "baseUrl": "https://api.mistral.ai/v1",
+          "customAdapters": {
+            "answer": "openai-compatible-language",
+            "embedding": "openai-compatible-embedding",
+            "queryExpansion": "openai-compatible-language",
+            "reranking": "top-n-rerank",
+            "speechToText": "mistral-transcription",
+            "indexing": "openai-compatible-language",
+            "textToSpeech": "mistral-speech"
+          },
+          "embedding": {
+            "apiToken": null,
+            "baseUrl": null,
+            "contextCapacityTokens": 8192,
+            "model": "mistral-embed"
+          },
+          "queryExpansion": {
+            "apiToken": null,
+            "baseUrl": null,
+            "contextCapacityTokens": 256000,
+            "model": "mistral-large-2512"
+          },
+          "maximumParallelRequests": 1,
+          "name": null,
+          "thinkingMode": "auto",
+          "reranking": {
+            "apiToken": null,
+            "baseUrl": null,
+            "model": null
+          },
+          "speechToText": {
+            "apiToken": null,
+            "baseUrl": null,
+            "model": "voxtral-mini-latest"
+          },
+          "indexing": {
+            "apiToken": null,
+            "baseUrl": null,
+            "contextCapacityTokens": 256000,
+            "model": "mistral-large-2512"
+          },
+          "textToSpeech": {
+            "apiToken": null,
+            "baseUrl": null,
+            "model": "voxtral-mini-tts-2603",
+            "voice": null
+          }
+        },
         "ollama": {
           "adaptiveContextEnabled": true,
           "apiToken": null,
@@ -823,6 +911,62 @@ WITH canonical_settings AS (
             "model": null,
             "voice": null
           }
+        },
+        "together": {
+          "apiToken": null,
+          "answer": {
+            "apiToken": null,
+            "baseUrl": null,
+            "contextCapacityTokens": 262144,
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "baseUrl": "https://api.together.xyz/v1",
+          "customAdapters": {
+            "answer": "openai-compatible-language",
+            "embedding": "openai-compatible-embedding",
+            "queryExpansion": "openai-compatible-language",
+            "reranking": "top-n-rerank",
+            "speechToText": "openai-transcription",
+            "indexing": "openai-compatible-language",
+            "textToSpeech": "openai-speech"
+          },
+          "embedding": {
+            "apiToken": null,
+            "baseUrl": null,
+            "contextCapacityTokens": 514,
+            "model": "intfloat/multilingual-e5-large-instruct"
+          },
+          "queryExpansion": {
+            "apiToken": null,
+            "baseUrl": null,
+            "contextCapacityTokens": 262144,
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "maximumParallelRequests": 1,
+          "name": null,
+          "thinkingMode": "auto",
+          "reranking": {
+            "apiToken": null,
+            "baseUrl": null,
+            "model": null
+          },
+          "speechToText": {
+            "apiToken": null,
+            "baseUrl": null,
+            "model": "openai/whisper-large-v3"
+          },
+          "indexing": {
+            "apiToken": null,
+            "baseUrl": null,
+            "contextCapacityTokens": 262144,
+            "model": "moonshotai/Kimi-K2.6"
+          },
+          "textToSpeech": {
+            "apiToken": null,
+            "baseUrl": null,
+            "model": "hexgrad/Kokoro-82M",
+            "voice": "af_heart"
+          }
         }
       },
       "featureOverrides": {
@@ -951,40 +1095,100 @@ WITH canonical_settings AS (
   SELECT
     canonical_settings.document AS defaults_document,
     jsonb_set(
-      canonical_settings.document,
-      '{providers,catalog}',
-      COALESCE(
-        existing_settings.settings#>'{providers,catalog}',
-        '[]'::jsonb
-      )
-        || COALESCE(
-          (
-            SELECT jsonb_agg(
-              canonical_profile.value
-              ORDER BY canonical_profile.ordinality
-            )
-            FROM jsonb_array_elements(
-              canonical_settings.document#>'{providers,catalog}'
-            ) WITH ORDINALITY AS canonical_profile(value, ordinality)
-            WHERE NOT EXISTS (
-              SELECT 1
+      jsonb_set(
+        canonical_settings.document,
+        '{providers,catalog}',
+        canonical_settings.document#>'{providers,catalog}'
+          || COALESCE(
+            (
+              SELECT jsonb_agg(
+                existing_profile.value
+                ORDER BY existing_profile.ordinality
+              )
               FROM jsonb_array_elements(
                 COALESCE(
                   existing_settings.settings#>'{providers,catalog}',
                   '[]'::jsonb
                 )
-              ) AS existing_profile(value)
-              WHERE existing_profile.value->>'id'
-                = canonical_profile.value->>'id'
-            )
+              ) WITH ORDINALITY AS existing_profile(value, ordinality)
+              WHERE NOT EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements(
+                  canonical_settings.document#>'{providers,catalog}'
+                ) AS canonical_profile(value)
+                WHERE canonical_profile.value->>'id'
+                  = existing_profile.value->>'id'
+              )
+            ),
+            '[]'::jsonb
           ),
-          '[]'::jsonb
-        ),
+        true
+      ),
+      '{providers,connections}',
+      merged_connections.document,
       true
     ) AS settings_document
   FROM canonical_settings
   LEFT JOIN application_settings AS existing_settings
     ON existing_settings.id = 'runtime'
+  CROSS JOIN LATERAL (
+    SELECT
+      COALESCE(
+        jsonb_object_agg(
+          canonical_connection.key,
+          (
+            SELECT jsonb_object_agg(
+              canonical_field.key,
+              CASE
+                WHEN
+                  existing_field.current_value IS NULL
+                  OR existing_field.current_value
+                    = existing_field.previous_default_value
+                THEN canonical_field.value
+                ELSE existing_field.current_value
+              END
+            )
+            FROM jsonb_each(canonical_connection.value) AS canonical_field
+            CROSS JOIN LATERAL (
+              SELECT ARRAY[
+                'providers',
+                'connections',
+                canonical_connection.key,
+                canonical_field.key
+              ]::text[] AS path
+            ) AS field_path
+            CROSS JOIN LATERAL (
+              SELECT
+                existing_settings.settings#>field_path.path AS current_value,
+                existing_settings.defaults#>field_path.path
+                  AS previous_default_value
+            ) AS existing_field
+          )
+        ),
+        '{}'::jsonb
+      )
+        || COALESCE(
+          (
+            SELECT jsonb_object_agg(
+              existing_connection.key,
+              existing_connection.value
+            )
+            FROM jsonb_each(
+              COALESCE(
+                existing_settings.settings#>'{providers,connections}',
+                '{}'::jsonb
+              )
+            ) AS existing_connection
+            WHERE NOT (
+              canonical_settings.document#>'{providers,connections}'
+            ) ? existing_connection.key
+          ),
+          '{}'::jsonb
+        ) AS document
+    FROM jsonb_each(
+      canonical_settings.document#>'{providers,connections}'
+    ) AS canonical_connection
+  ) AS merged_connections
 )
 INSERT INTO "application_settings" (
   "defaults",
@@ -1058,11 +1262,7 @@ SET
                   true
                 ),
                 '{providers,connections}',
-                EXCLUDED."settings"#>'{providers,connections}'
-                  || COALESCE(
-                    "application_settings"."settings"#>'{providers,connections}',
-                    '{}'::jsonb
-                  ),
+                EXCLUDED."settings"#>'{providers,connections}',
                 true
               ),
               '{runtime,answerMaximumOutputTokens}',
