@@ -4,7 +4,8 @@
   x-init="initialize()"
   @keydown.meta.k.window.prevent="toggleChatSwitcher()"
   @keydown.ctrl.k.window.prevent="toggleChatSwitcher()"
-  @keydown.escape.window="chatSwitcherOpen &amp;&amp; closeChatSwitcher()"
+  @keydown.escape.window="chatSwitcherOpen ? closeChatSwitcher() : (selectedCitation !== null &amp;&amp; !newChatOpen &amp;&amp; closeCitation())"
+  @resize.window="positionCitationPanel()"
 >
   <main class="chat-workspace">
     <template x-if="conversation === null">
@@ -175,8 +176,12 @@
                                       x-text="citationLabel(citationForKey(message, citationKey))"
                                       :title="citationVerificationDescription(message, statement, citationKey)"
                                       :aria-label="statementCitationLabel(message, statement, citationKey)"
+                                      :data-evidence-citation-id="citationForKey(message, citationKey)?.id"
+                                      :data-evidence-message-id="message.id"
+                                      aria-controls="chat-evidence-panel"
+                                      :aria-expanded="(selectedCitation?.id === citationForKey(message, citationKey)?.id).toString()"
                                       :disabled="citationForKey(message, citationKey)?.preview === true"
-                                      @click="openCitation(citationForKey(message, citationKey))"
+                                      @click="openCitation(citationForKey(message, citationKey), $event.currentTarget, message)"
                                     ></button>
                                   </template>
                                 </div>
@@ -201,8 +206,13 @@
                                 </span>
                                 <span class="chat-answer-evidence-number" x-text="sourceIndex + 1"></span>
                                 <strong x-text="sourceTitle(source.citation.sourceFile)"></strong>
-                                <span x-text="sourcePageLabel(source)"></span>
-                                <button type="button" @click="openCitation(source.citation)">
+                                <span x-show="source.pageNumbers.length > 0" x-text="sourcePageLabel(source)"></span>
+                                <button
+                                  type="button"
+                                  aria-controls="chat-evidence-panel"
+                                  :aria-expanded="(selectedCitation?.id === source.citation.id).toString()"
+                                  @click="openCitation(source.citation, $event.currentTarget, message)"
+                                >
                                   <span>View evidence</span>
                                   <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-external"></use></svg>
                                 </button>
@@ -224,6 +234,55 @@
           </template>
 
         </div>
+
+        <aside class="source-navigator chat-source-navigator" aria-label="Sources used in the active answer">
+          <header>
+            <h2 x-text="`Sources (${sourceSidebarCitations().length})`"></h2>
+          </header>
+          <div
+            class="source-navigator-empty"
+            x-cloak
+            x-show="sourceSidebarCitations().length === 0"
+          >
+            <svg aria-hidden="true" class="citeloom-icon">
+              <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+            </svg>
+            <strong>Sources will appear here</strong>
+            <p>Citations become available as each answer is completed.</p>
+          </div>
+          <div
+            class="source-navigator-list"
+            x-cloak
+            x-show="sourceSidebarCitations().length > 0"
+          >
+            <template x-for="(citation, sourceIndex) in sourceSidebarCitations()" :key="citation.id">
+              <button
+                type="button"
+                :class="{ selected: selectedCitation?.id === citation.id }"
+                :disabled="citation.preview === true"
+                @click="openCitationFromNavigator(citation)"
+              >
+                <span class="source-navigator-number" x-text="citation.citationNumber ?? sourceIndex + 1"></span>
+                <span class="source-navigator-copy">
+                  <strong x-text="sourceNavigatorTitle(citation)"></strong>
+                  <small
+                    x-show="citation.pageNumbers.length > 0"
+                    x-text="sourcePageLabel(citation)"
+                  ></small>
+                </span>
+                <span
+                  class="source-navigator-status"
+                  :class="`source-navigator-status-${sourceNavigatorStatus(citation)}`"
+                >
+                  <span x-text="sourceNavigatorStatusLabel(citation)"></span>
+                  <svg aria-hidden="true" class="citeloom-icon">
+                    <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+                  </svg>
+                </span>
+              </button>
+            </template>
+          </div>
+        </aside>
 
         <form class="chat-composer" @submit.prevent="sendMessage()">
           <label class="visually-hidden" for="chat-message">Message</label>
@@ -387,101 +446,137 @@
     </section>
   </div>
 
-  <aside class="chat-evidence-panel" x-cloak x-show="selectedCitation !== null" aria-label="Citation evidence">
-    <header>
+  <aside
+    class="evidence-window chat-evidence-panel"
+    id="chat-evidence-panel"
+    x-cloak
+    x-ref="citationPanel"
+    x-show="selectedCitation !== null"
+    :class="{ pinned: citationWindow.pinned }"
+    :style="citationPanelStyle()"
+    role="dialog"
+    aria-modal="false"
+    aria-labelledby="chat-evidence-title"
+    tabindex="-1"
+  >
+    <header
+      title="Drag to move evidence"
+      @lostpointercapture="finishCitationPanelDrag($event)"
+      @pointercancel="finishCitationPanelDrag($event)"
+      @pointerdown="beginCitationPanelDrag($event)"
+      @pointermove="continueCitationPanelDrag($event)"
+      @pointerup="finishCitationPanelDrag($event)"
+    >
       <div>
-        <p class="section-kicker">Retained evidence</p>
-        <h2 x-text="selectedCitation === null ? '' : citationLabel(selectedCitation)"></h2>
+        <h3 id="chat-evidence-title">Exact evidence</h3>
+        <span x-text="selectedCitationSummary()"></span>
       </div>
-      <button class="icon-button chat-icon-button" type="button" aria-label="Close evidence" @click="closeCitation()">
-        <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg>
-      </button>
+      <div class="evidence-window-actions chat-evidence-header-actions">
+        <button
+          class="button evidence-window-pin"
+          type="button"
+          :aria-pressed="citationWindow.pinned.toString()"
+          :title="citationWindow.pinned ? 'Return evidence above its citation' : 'Keep evidence at this viewport position while scrolling'"
+          @click="togglePinnedCitation()"
+          x-text="citationWindow.pinned ? 'Unpin' : 'Pin evidence'"
+        ></button>
+        <button class="icon-button" type="button" aria-label="Close evidence" @click="closeCitation()">
+          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg>
+        </button>
+      </div>
     </header>
 
     <template x-if="selectedCitation !== null">
-      <div class="chat-evidence-content">
+      <div class="evidence-window-body chat-evidence-content">
         <div class="chat-evidence-source">
-          <strong x-text="selectedCitation.sourceFile"></strong>
+          <strong x-text="sourceTitle(selectedCitation.sourceFile)"></strong>
           <span
             :class="{ removed: !selectedCitation.sourceAvailable }"
             x-text="selectedCitation.sourceAvailable ? 'Current in library' : 'No longer current in library - evidence retained by chat'"
           ></span>
         </div>
 
-        <template x-if="selectedCitation.evidence.kind === 'image'">
-          <img :src="imageUrl(selectedCitation)" alt="Retained citation evidence" />
-        </template>
-        <template x-if="selectedCitation.evidence.kind === 'text'">
-          <pre x-text="evidenceText(selectedCitation)"></pre>
-        </template>
-        <template x-if="selectedCitation.evidence.kind === 'table'">
-          <div>
-            <template x-if="selectedCitation.evidence.table.renderMode === 'text'">
-              <pre
-                :aria-label="`${citationLabel(selectedCitation)} extracted table text`"
-                x-text="evidenceText(selectedCitation)"
-              ></pre>
-            </template>
-            <template x-if="selectedCitation.evidence.table.renderMode === 'grid'">
-              <div
-                :aria-label="`${citationLabel(selectedCitation)} evidence table`"
-                class="exact-evidence-table-frame"
-                role="region"
-                tabindex="0"
-              >
-                <table class="exact-evidence-table">
-                  <caption
-                    class="visually-hidden"
-                    x-text="`${citationLabel(selectedCitation)} evidence table`"
-                  ></caption>
-                  <template x-if="selectedCitation.evidence.table.headerRows.length > 0">
-                    <thead>
-                      <template x-for="row in selectedCitation.evidence.table.headerRows" :key="row.key">
+        <div class="chat-evidence-body">
+          <p class="section-kicker">Exact retained evidence</p>
+          <template x-if="selectedCitation.evidence.kind === 'image'">
+            <img
+              :src="imageUrl(selectedCitation)"
+              alt="Retained citation evidence"
+              @load="positionCitationPanel()"
+            />
+          </template>
+          <template x-if="selectedCitation.evidence.kind === 'text'">
+            <pre x-text="evidenceText(selectedCitation)"></pre>
+          </template>
+          <template x-if="selectedCitation.evidence.kind === 'table'">
+            <div>
+              <template x-if="selectedCitation.evidence.table.renderMode === 'text'">
+                <pre
+                  :aria-label="`${citationLabel(selectedCitation)} extracted table text`"
+                  x-text="evidenceText(selectedCitation)"
+                ></pre>
+              </template>
+              <template x-if="selectedCitation.evidence.table.renderMode === 'grid'">
+                <div
+                  :aria-label="`${citationLabel(selectedCitation)} evidence table`"
+                  class="exact-evidence-table-frame"
+                  role="region"
+                  tabindex="0"
+                >
+                  <table class="exact-evidence-table">
+                    <caption
+                      class="visually-hidden"
+                      x-text="`${citationLabel(selectedCitation)} evidence table`"
+                    ></caption>
+                    <template x-if="selectedCitation.evidence.table.headerRows.length > 0">
+                      <thead>
+                        <template x-for="row in selectedCitation.evidence.table.headerRows" :key="row.key">
+                          <tr>
+                            <template x-for="cell in row.cells" :key="cell.key">
+                              <th
+                                :colspan="cell.columnSpan"
+                                :rowspan="cell.rowSpan"
+                                scope="col"
+                                x-text="cell.text"
+                              ></th>
+                            </template>
+                          </tr>
+                        </template>
+                      </thead>
+                    </template>
+                    <tbody>
+                      <template x-for="row in selectedCitation.evidence.table.bodyRows" :key="row.key">
                         <tr>
                           <template x-for="cell in row.cells" :key="cell.key">
-                            <th
+                            <td
                               :colspan="cell.columnSpan"
+                              :role="cell.rowHeader ? 'rowheader' : null"
                               :rowspan="cell.rowSpan"
-                              scope="col"
                               x-text="cell.text"
-                            ></th>
+                            ></td>
                           </template>
                         </tr>
                       </template>
-                    </thead>
-                  </template>
-                  <tbody>
-                    <template x-for="row in selectedCitation.evidence.table.bodyRows" :key="row.key">
-                      <tr>
-                        <template x-for="cell in row.cells" :key="cell.key">
-                          <td
-                            :colspan="cell.columnSpan"
-                            :role="cell.rowHeader ? 'rowheader' : null"
-                            :rowspan="cell.rowSpan"
-                            x-text="cell.text"
-                          ></td>
-                        </template>
-                      </tr>
-                    </template>
-                  </tbody>
-                </table>
-              </div>
-            </template>
-          </div>
-        </template>
+                    </tbody>
+                  </table>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
 
         <dl>
-          <div><dt>Pages</dt><dd x-text="selectedCitation.pageNumbers.length === 0 ? 'Not specified' : selectedCitation.pageNumbers.join(', ')"></dd></div>
+          <div x-show="selectedCitation.pageNumbers.length > 0"><dt>Pages</dt><dd x-text="selectedCitation.pageNumbers.join(', ')"></dd></div>
           <div><dt>Section</dt><dd x-text="selectedCitation.sectionPath.length === 0 ? 'Not specified' : selectedCitation.sectionPath.join(' / ')"></dd></div>
         </dl>
 
         <div class="chat-evidence-actions">
           <a
-            x-show="selectedCitation.mediaType === 'application/pdf' &amp;&amp; selectedCitation.regions.length > 0"
-            :href="highlightedFileUrl(selectedCitation)"
+            :href="citationFileUrl(selectedCitation)"
             target="_blank"
             rel="noopener"
-          >Open highlighted PDF</a>
+            x-text="citationFileLabel(selectedCitation)"
+          ></a>
         </div>
       </div>
     </template>

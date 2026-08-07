@@ -15,6 +15,7 @@ import type {
   FusedCandidate,
   WeightedRanking,
 } from "../ranking/rank-fusion.js";
+import { createCandidateSourceAliases } from "../ranking/rank-fusion.js";
 import {
   queryActiveTocRetrievalRows,
   readActiveDocumentTocs,
@@ -26,6 +27,7 @@ const MAXIMUM_WINDOWS_PER_SECTION = 2;
 
 interface TocSectionSelection {
   documentId: string;
+  elementSetId: string;
   entry: DocumentTocEntry;
   sourceFile: string;
 }
@@ -125,6 +127,7 @@ async function selectMatchedSections(
     selectedSectionKeys.add(sectionKey);
     selections.push({
       documentId: lookup.toc.documentId,
+      elementSetId: lookup.toc.elementSetId,
       entry,
       sourceFile: lookup.toc.sourceFile,
     });
@@ -176,7 +179,12 @@ async function loadSectionCandidates(
   }));
   const seenCandidates = new Set<string>();
   const candidates: DenseCandidate[] = [];
-  for (const rows of sectionRows) {
+  for (let index = 0; index < sectionRows.length; index += 1) {
+    const rows = sectionRows[index];
+    const selection = selections[index];
+    if (rows === undefined || selection === undefined) {
+      throw new Error(`Incomplete TOC section retrieval at index ${index}.`);
+    }
     for (const row of rows) {
       const key = `${row.documentId}\u0000${row.sourceFile}\u0000${row.id}`;
       if (seenCandidates.has(key)) {
@@ -186,6 +194,7 @@ async function loadSectionCandidates(
       candidates.push({
         distance: row.distance,
         documentId: row.documentId,
+        elementSetId: selection.elementSetId,
         evidenceContent: row.evidenceContent,
         evidenceRetrievalId: row.id,
         parentId: row.parentId,
@@ -194,6 +203,10 @@ async function loadSectionCandidates(
           id: row.id,
           type: "exact-window",
         },
+        sourceAliases: createCandidateSourceAliases({
+          evidenceRetrievalId: row.id,
+          sourceFile: row.sourceFile,
+        }),
         sourceFile: row.sourceFile,
       });
     }

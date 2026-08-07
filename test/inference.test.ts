@@ -62,6 +62,7 @@ import {
   createAnswerContentCitationKey,
   type AnswerContentSnapshot,
 } from "../src/answers/content-snapshot.js";
+import { readPublishedDirectAnswerContent } from "../src/answers/published.js";
 import {
   noopRunTelemetry,
   type RunTelemetry,
@@ -1027,7 +1028,7 @@ describe("createInferenceModelRegistry", () => {
       { receiveAnswerContent: (content) => previews.push(content) },
     );
 
-    expect(result.answerDocument.content).toBe(
+    expect(readPublishedDirectAnswerContent(result.answerDocument)).toBe(
       "Revenue increased.",
     );
     expect(previews.length).toBeGreaterThanOrEqual(2);
@@ -1086,7 +1087,7 @@ describe("createInferenceModelRegistry", () => {
       { seed: 1, temperature: 0 },
     );
 
-    expect(result.answerDocument.content).toBe(
+    expect(readPublishedDirectAnswerContent(result.answerDocument)).toBe(
       "Revenue increased.",
     );
     expect(requestBodies).toHaveLength(2);
@@ -1432,6 +1433,7 @@ describe("buildAnswerContent", () => {
         },
         evidenceContent: "| Section | Value |\n| --- | --- |\n| 40 | 18 |",
         provenance: {
+          elementSetId: "f".repeat(64),
           evidenceSha256: "e".repeat(64),
           representationHits: [{
             channel: "lexical",
@@ -1441,6 +1443,11 @@ describe("buildAnswerContent", () => {
             representationType: "table-description",
           }],
           retrievalWindowId: "d".repeat(64),
+          sourceAliases: [{
+            documentVersionId: "00000000-0000-4000-8000-000000000001",
+            evidenceRetrievalId: "d".repeat(64),
+            sourceFile: "/tmp/report.pdf",
+          }],
           descriptionAffected: true,
         },
       },
@@ -1587,10 +1594,13 @@ describe("answer generation", () => {
     expect(result.outcome).toBe("answered");
     expect(result.answerDocument).toMatchObject({
       content: "Revenue increased.",
-      schemaVersion: 1,
-      statements: [expect.objectContaining({
-        section: "key-points",
-      })],
+      schemaVersion: 2,
+      statements: [
+        expect.objectContaining({
+          content: "The retrieved evidence supports the answer.",
+          section: "key-points",
+        }),
+      ],
     });
     expect(result.sources).toEqual([
       expect.objectContaining({
@@ -1630,8 +1640,12 @@ describe("answer generation", () => {
 
     expect(result.outcome).toBe("answered");
     expect(answerModel.doGenerateCalls).toHaveLength(1);
-    expect(result.answerDocument.content).toBe("Revenue increased.");
+    expect(readPublishedDirectAnswerContent(result.answerDocument)).toBe("Revenue increased.");
     expect(result.answerDocument.statements).toHaveLength(1);
+    expect(result.answerDocument.statements[0]).toMatchObject({
+      content: "The retrieved evidence supports the answer.",
+      section: "key-points",
+    });
   });
 
   it("owns direct-answer presentation for a causal question", async () => {
@@ -1656,10 +1670,14 @@ describe("answer generation", () => {
 
     expect(result.outcome).toBe("answered");
     expect(answerModel.doGenerateCalls).toHaveLength(1);
-    expect(result.answerDocument.content).toBe(
+    expect(readPublishedDirectAnswerContent(result.answerDocument)).toBe(
       "A configuration failure stopped the service.",
     );
     expect(result.answerDocument.statements).toHaveLength(1);
+    expect(result.answerDocument.statements[0]).toMatchObject({
+      content: "The retrieved evidence supports the answer.",
+      section: "key-points",
+    });
     expect(result.answer).toContain("## Key points");
   });
 
@@ -1929,7 +1947,9 @@ describe("answer generation", () => {
       "/tmp/personal-information-protection-and-electronic-documents-act.pdf",
     );
     expect(repairPrompt).toContain("CORRECTION REQUEST:");
-    expect(repairPrompt).toContain("answer: must contain only allowed evidence references");
+    expect(repairPrompt).toContain(
+      "answer.findings: must contain only allowed evidence references",
+    );
     expect(repairPrompt).toContain("EVID_A, EVID_B");
     expect(repairPrompt).toContain("Invalid evidence reference.");
     expect(repairPrompt).toContain("Preserve all supported answer content");
@@ -1955,7 +1975,7 @@ describe("answer generation", () => {
         expect.objectContaining({
           correctionOutcome: "succeeded",
           failureCategory: "unknown-evidence-reference",
-          invalidFieldPaths: ["answer"],
+          invalidFieldPaths: ["answer.findings"],
           phase: "initial",
           responseSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
           unknownReferenceCount: 1,
@@ -1998,7 +2018,7 @@ describe("answer generation", () => {
     );
 
     expect(result.outcome).toBe("answered");
-    expect(result.answerDocument.content).toBe(longContent);
+    expect(readPublishedDirectAnswerContent(result.answerDocument)).toBe(longContent);
   });
 
   it.each([
@@ -2024,8 +2044,12 @@ describe("answer generation", () => {
 
     expect(result.outcome).toBe("answered");
     expect(result.answer).not.toContain("Conflicting evidence");
-    expect(result.answerDocument.content).toBe(`The sources describe ${content}.`);
+    expect(readPublishedDirectAnswerContent(result.answerDocument)).toBe(`The sources describe ${content}.`);
     expect(result.answerDocument.statements).toHaveLength(1);
+    expect(result.answerDocument.statements[0]).toMatchObject({
+      content: "The retrieved evidence supports the answer.",
+      section: "key-points",
+    });
   });
 
   it("accepts an uncited structured response as a fallback", async () => {
@@ -2054,7 +2078,7 @@ describe("answer generation", () => {
       answerDocument: {
         citations: [],
         content: "The source material does not identify the requested information.",
-        schemaVersion: 1,
+        schemaVersion: 2,
         statements: [],
       },
       claims: [],
@@ -2105,7 +2129,7 @@ describe("answer generation", () => {
     );
 
     expect(result.outcome).toBe("answered");
-    expect(result.answerDocument.content).toBe("Revenue increased.");
+    expect(readPublishedDirectAnswerContent(result.answerDocument)).toBe("Revenue increased.");
     expect(result.answer.split("\n")[0]).toBe("Revenue increased\\.");
   });
 
@@ -2125,7 +2149,7 @@ describe("answer generation", () => {
     );
 
     expect(result.outcome).toBe("answered");
-    expect(result.answerDocument.content)
+    expect(readPublishedDirectAnswerContent(result.answerDocument))
       .toBe("Treatment options include phenobarbital.");
   });
 
@@ -2199,11 +2223,13 @@ describe("answer generation", () => {
     );
 
     expect(result.outcome).toBe("answered");
-    expect(result.claims).toEqual([expect.objectContaining({
-      citationNumbers: [1],
-      claim: "Revenue increased by 12 percent.",
-      claimIndex: 0,
-    })]);
+    expect(result.claims).toEqual([
+      expect.objectContaining({
+        citationNumbers: [1],
+        claim: "Revenue increased by 12 percent.",
+        claimIndex: 0,
+      }),
+    ]);
   });
 
   it("uses evidenceRefs as citation authority instead of model citation decoration", async () => {
@@ -2226,7 +2252,7 @@ describe("answer generation", () => {
     );
 
     expect(result.outcome).toBe("answered");
-    expect(result.answerDocument.content).toBe("Revenue increased.");
+    expect(readPublishedDirectAnswerContent(result.answerDocument)).toBe("Revenue increased.");
     expect(result.answerDocument.citations).toHaveLength(1);
     expect(result.answerDocument.citations[0]?.elementId).toBe("b".repeat(64));
   });

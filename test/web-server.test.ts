@@ -1657,7 +1657,7 @@ describe("web server boundary", () => {
     const answerDocument = {
       citations: [] as [],
       content: "The supplied source material does not answer this question.",
-      schemaVersion: 1 as const,
+      schemaVersion: 2 as const,
       statements: [] as [],
     };
     const generateSpeech = vi.fn<RuntimeWebServices["generateSpeech"]>(async () => ({
@@ -1706,7 +1706,7 @@ describe("web server boundary", () => {
           answerDocument: {
             citations: [],
             content: "The supplied source material does not answer this question.",
-            schemaVersion: 2,
+            schemaVersion: 1,
             statements: [],
           },
         },
@@ -1737,7 +1737,7 @@ describe("web server boundary", () => {
           answerDocument: {
             citations: [],
             content: "The supplied source material does not answer this question.",
-            schemaVersion: 1,
+            schemaVersion: 2,
             statements: [],
           },
         },
@@ -3129,8 +3129,13 @@ function createAnswerStream(
               sourceFile: "/tmp/report.pdf",
             }],
             content: answer,
-            schemaVersion: 1,
-            statements: [],
+            schemaVersion: 2,
+            statements: [{
+              citationIds: ["00000000-0000-4000-8000-000000000003"],
+              content: answer,
+              presentation: "paragraph",
+              section: "answer",
+            }],
           },
           claims: [],
           matchedDocuments: [],

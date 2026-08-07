@@ -8,6 +8,7 @@ import {
   type AnswerSection,
   type EvidenceReference,
 } from "./draft.js";
+import { readAtomicAnswerStatements } from "./atomic-statements.js";
 import { formatAnswerTopicContent } from "./topic-content.js";
 import type { RetrievedElement } from "../retrieval/document-retrieval.js";
 
@@ -118,16 +119,20 @@ export function decodePartialAnswerContentSnapshot(
     if (content === null) {
       continue;
     }
-    statements.push({
-      citationKeys: readPartialCitationKeys(
-        finding,
-        citationCatalog,
-        citationsByKey,
-      ),
-      content,
-      presentation: "bullet",
-      section: "key-points",
-    });
+    const citationKeys = readPartialCitationKeys(
+      finding,
+      citationCatalog,
+      citationsByKey,
+    );
+    const atomicStatements = readAtomicAnswerStatements(content);
+    for (const atomicStatement of atomicStatements) {
+      statements.push({
+        citationKeys,
+        content: atomicStatement,
+        presentation: "bullet",
+        section: "key-points",
+      });
+    }
   }
   return {
     citations: createNumberedPartialCitations(citationCatalog, citationsByKey),
@@ -168,24 +173,34 @@ function appendPartialAnswerTopics(
     return;
   }
   for (const topic of topics) {
-    const content = readPartialAnswerTopicContent(topic);
-    if (content === null) {
+    const topicContent = readPartialAnswerTopicContent(topic);
+    if (topicContent === null) {
       continue;
     }
-    statements.push({
-      citationKeys: readPartialCitationKeys(
-        topic,
-        citationCatalog,
-        citationsByKey,
-      ),
-      content,
-      presentation: "bullet",
-      section: "answer",
-    });
+    const citationKeys = readPartialCitationKeys(
+      topic,
+      citationCatalog,
+      citationsByKey,
+    );
+    for (const content of topicContent.contents) {
+      statements.push({
+        citationKeys,
+        content: formatAnswerTopicContent(topicContent.title, content),
+        presentation: "bullet",
+        section: "answer",
+      });
+    }
   }
 }
 
-function readPartialAnswerTopicContent(value: unknown): string | null {
+interface PartialAnswerTopicContent {
+  contents: string[];
+  title: string;
+}
+
+function readPartialAnswerTopicContent(
+  value: unknown,
+): PartialAnswerTopicContent | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
@@ -197,8 +212,16 @@ function readPartialAnswerTopicContent(value: unknown): string | null {
   if (typeof content !== "string") {
     return null;
   }
-  const formatted = formatAnswerTopicContent(title, content);
-  return formatted === "" ? null : formatted;
+  const normalizedTitle = normalizeAnswerModelText(title);
+  const normalizedContent = normalizeAnswerModelText(content);
+  if (normalizedTitle === "" || normalizedContent === "") {
+    return null;
+  }
+  const contents = readAtomicAnswerStatements(normalizedContent);
+  if (contents.length === 0) {
+    return null;
+  }
+  return { contents, title: normalizedTitle };
 }
 
 function readPartialCitationKeys(
@@ -267,13 +290,12 @@ export function createPublishedAnswerContentSnapshot(
       sourceFile: citation.sourceFile,
     });
   }
-  const statements: AnswerContentStatement[] = [];
-  statements.push({
+  const statements: AnswerContentStatement[] = [{
     citationKeys: [],
     content: document.content,
     presentation: "paragraph",
     section: "answer",
-  });
+  }];
   for (const statement of document.statements) {
     const citationKeys: string[] = [];
     for (const citationId of statement.citationIds) {

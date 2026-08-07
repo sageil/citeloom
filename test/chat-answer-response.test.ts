@@ -23,10 +23,12 @@ describe("Chat answer response", () => {
     expect(schemaText).toContain('"topics"');
     expect(schemaText).not.toContain('"findings"');
     expect(schemaText).not.toContain('"status"');
+    expect(schemaText).not.toContain('"prefixItems"');
   });
 
   it("allows only an uncited response when no evidence was retrieved", () => {
     const schema = CHAT_ANSWER_RESPONSE.createSchema([]);
+    const providerSchema = z.toJSONSchema(schema);
 
     expect(schema.safeParse({
       answer: {
@@ -44,6 +46,19 @@ describe("Chat answer response", () => {
         }],
       },
     }).success).toBe(false);
+    expect(providerSchema).toMatchObject({
+      properties: {
+        answer: {
+          properties: {
+            topics: {
+              maxItems: 0,
+              type: "array",
+            },
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(providerSchema)).not.toContain('"prefixItems"');
   });
 
   it("decodes a cited answer and verifies only its topics", () => {
@@ -69,7 +84,7 @@ describe("Chat answer response", () => {
             section: "answer",
           },
           {
-            content: "Access and correction\n\nPeople may access and correct their records.",
+            content: "Access and correction: People may access and correct their records.",
             evidenceRefs: ["SOURCE_2"],
             presentation: "bullet",
             section: "answer",
@@ -79,6 +94,35 @@ describe("Chat answer response", () => {
       },
       verificationStatementIndexes: null,
     });
+  });
+
+  it("splits a compound topic into atomic evidence statements", () => {
+    const result = CHAT_ANSWER_RESPONSE.decode({
+      answer: {
+        content: "Rule B establishes two related rights.",
+        topics: [{
+          content: "People may access their records. People may correct their records.",
+          source_refs: ["SOURCE_2"],
+          title: "Access and correction",
+        }],
+      },
+    }, ["SOURCE_1", "SOURCE_2"]);
+
+    if (result.draft.status !== "answered") {
+      throw new Error("Expected a grounded Chat answer.");
+    }
+    expect(result.draft.statements.slice(1)).toEqual([{
+      content: "Access and correction: People may access their records.",
+      evidenceRefs: ["SOURCE_2"],
+      presentation: "bullet",
+      section: "answer",
+    }, {
+      content: "Access and correction: People may correct their records.",
+      evidenceRefs: ["SOURCE_2"],
+      presentation: "bullet",
+      section: "answer",
+    }]);
+    expect(result.verificationStatementIndexes).toBeNull();
   });
 
   it.each([
@@ -131,17 +175,17 @@ describe("Chat system prompt", () => {
     const prompt = createChatSystemPrompt();
 
     expect(prompt).toContain("ROLE");
-    expect(prompt).toContain("EVIDENCE RULES");
-    expect(prompt).toContain("ANSWER RULES");
-    expect(prompt).toContain("SOURCE REFERENCES");
-    expect(prompt).toContain("STRUCTURE EXAMPLE");
-    expect(prompt).toContain("OUTPUT");
+    expect(prompt).toContain("EVIDENCE USE");
+    expect(prompt).toContain("ANSWER");
+    expect(prompt).toContain("SOURCE-REFERENCE RULES");
+    expect(prompt).toContain("SUPPORTED-ANSWER EXAMPLE");
+    expect(prompt).toContain("OUTPUT CONTRACT");
     expect(prompt).toContain("REQUEST MODE");
     expect(prompt).toContain(
-      "Every grounded answer must include at least one finding in answer.topics.",
+      "A grounded answer must contain one or more topics.",
     );
     expect(prompt).toContain(
-      "Use an empty answer.topics array only for a greeting, clarification, or wholly unsupported response.",
+      "Use an empty answer.topics array only for a greeting, clarification, or wholly unsupported answer.",
     );
     expect(prompt).toContain(
       "the intended subject cannot be determined from the current message, selected conversation context, and retrieved evidence",
@@ -152,13 +196,22 @@ describe("Chat system prompt", () => {
     expect(prompt).toContain(
       "If the request is clear but the supplied evidence cannot answer it, do not ask for clarification.",
     );
-    expect(prompt).toContain("Return answer.topics as an empty array.");
+    expect(prompt).toContain(
+      "Return answer.topics as an empty array.",
+    );
     expect(prompt).toContain("GREETING EXAMPLE");
     expect(prompt).toContain("Hello! How can I help you today?");
     expect(prompt).toContain("CLARIFICATION EXAMPLE");
     expect(prompt).toContain("Could you clarify which policy you are referring to?");
     expect(prompt).toContain(
       "Do not duplicate detailed topic statements in answer.content.",
+    );
+    expect(prompt).not.toContain("answer.source_refs");
+    expect(prompt).toContain(
+      "Cross-topic synthesis and answer-level qualifications belong only in answer.content.",
+    );
+    expect(prompt).toContain(
+      "Every source listed for a topic must independently support the topic's entire factual content",
     );
     expect(prompt).not.toContain("findings");
     expect(prompt).not.toContain('"status"');

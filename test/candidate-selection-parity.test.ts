@@ -23,6 +23,8 @@ import type {
   DenseCandidate,
   FusedCandidate,
 } from "../src/retrieval/ranking/rank-fusion.js";
+import { createCandidateSourceAliases } from "../src/retrieval/ranking/rank-fusion.js";
+import { createEvidenceSha256 } from "../src/retrieval/evidence-identity.js";
 import {
   buildExactCandidateRepresentation,
 } from "./source-element-fixture.js";
@@ -259,6 +261,85 @@ describe("production and prepared candidate-selection parity", () => {
         : decision.exclusionReason !== null
     ))).toBe(true);
   });
+
+  it("removes exact publication aliases after reranking and backfills context", () => {
+    const first = buildScoredCandidate(
+      "exact evidence",
+      "a",
+      "a",
+      "1",
+      0.9,
+      1,
+    );
+    const alias = buildScoredCandidate(
+      "exact evidence",
+      "a",
+      "a",
+      "2",
+      0.8,
+      2,
+    );
+    alias.identity = {
+      ...alias.identity,
+      documentVersionId: documentVersionId("z"),
+      sourceFile: "alias.pdf",
+    };
+    const distinct = buildScoredCandidate(
+      "distinct evidence",
+      "b",
+      "a",
+      "3",
+      0.7,
+      3,
+    );
+
+    const selection = selectRerankedContext(
+      [first, alias, distinct],
+      2,
+      "top-k",
+    );
+
+    expect(selection.selected.map((candidate) => candidate.item))
+      .toEqual(["exact evidence", "distinct evidence"]);
+    expect(selection.excluded.map((decision) => ({
+      reason: decision.exclusionReason,
+      sourceFile: decision.candidate.identity.sourceFile,
+    }))).toContainEqual({
+      reason: "duplicate-evidence",
+      sourceFile: "alias.pdf",
+    });
+  });
+
+  it("preserves exact evidence from different element sets after reranking", () => {
+    const first = buildScoredCandidate(
+      "exact evidence",
+      "a",
+      "a",
+      "1",
+      0.9,
+      1,
+    );
+    const differentElementSet = buildScoredCandidate(
+      "exact evidence",
+      "a",
+      "a",
+      "2",
+      0.8,
+      2,
+    );
+    differentElementSet.identity = {
+      ...differentElementSet.identity,
+      elementSetId: elementSetId("z"),
+    };
+
+    const selection = selectRerankedContext(
+      [first, differentElementSet],
+      2,
+      "top-k",
+    );
+
+    expect(selection.selected).toHaveLength(2);
+  });
 });
 
 function buildRepeatedParentRankings(): RetrievalCandidateRankings {
@@ -287,10 +368,15 @@ function buildDenseCandidate(
   return {
     distance,
     documentId: documentId(documentCharacter),
+    elementSetId: elementSetId(documentCharacter),
     evidenceContent: content,
     evidenceRetrievalId: windowId,
     parentId: parentId(parentCharacter),
     representation: buildExactCandidateRepresentation(windowId, content),
+    sourceAliases: createCandidateSourceAliases({
+      evidenceRetrievalId: windowId,
+      sourceFile,
+    }),
     sourceFile,
   };
 }
@@ -335,6 +421,7 @@ function buildPreparedCase(
         distance: candidate.distance,
         documentId: candidate.documentId,
         elementId: candidate.parentId,
+        elementSetId: candidate.elementSetId,
         evidenceContent: candidate.evidenceContent,
         evidenceRetrievalId: candidate.evidenceRetrievalId,
         representation: candidate.representation,
@@ -344,6 +431,7 @@ function buildPreparedCase(
         bm25Score: candidate.bm25Score,
         documentId: candidate.documentId,
         elementId: candidate.parentId,
+        elementSetId: candidate.elementSetId,
         evidenceContent: candidate.evidenceContent,
         evidenceRetrievalId: candidate.evidenceRetrievalId,
         representation: candidate.representation,
@@ -447,6 +535,8 @@ function buildScoredCandidate(
       documentId: documentId(documentCharacter),
       documentVersionId: documentVersionId(documentCharacter),
       elementId: parentId(parentCharacter),
+      elementSetId: elementSetId(documentCharacter),
+      evidenceSha256: createEvidenceSha256(item),
       representativeRetrievalWindowId: retrievalId(retrievalCharacter),
       sourceFile: `${documentCharacter}.pdf`,
     },
@@ -475,6 +565,10 @@ function documentId(character: string): string {
 }
 
 function parentId(character: string): string {
+  return character.repeat(64);
+}
+
+function elementSetId(character: string): string {
   return character.repeat(64);
 }
 

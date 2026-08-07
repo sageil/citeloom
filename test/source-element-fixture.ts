@@ -116,6 +116,7 @@ export function buildRetrievedElementProvenance(
   retrievalWindowId: string,
 ): RetrievedElementProvenance {
   return {
+    elementSetId: "f".repeat(64),
     evidenceSha256: "e".repeat(64),
     representationHits: [{
       channel: "dense",
@@ -125,6 +126,11 @@ export function buildRetrievedElementProvenance(
       representationType: "exact-window",
     }],
     retrievalWindowId,
+    sourceAliases: [{
+      documentVersionId: "00000000-0000-4000-8000-000000000001",
+      evidenceRetrievalId: retrievalWindowId,
+      sourceFile: "/documents/source.pdf",
+    }],
     descriptionAffected: false,
   };
 }

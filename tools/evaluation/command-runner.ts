@@ -1,15 +1,8 @@
 import { unlink } from "node:fs/promises";
 
 import {
-  ApplicationSettingsRepository,
-  type EffectiveApplicationSettings,
-} from "../../src/app/settings.js";
-import {
   readStartupConfig,
-  type AppConfig,
-  type DoclingServiceTopology,
 } from "../../src/config/index.js";
-import { openDatabase } from "../../src/database/client.js";
 import {
   printEvaluationResult,
   printEvaluationTuningSelection,
@@ -17,6 +10,7 @@ import {
   printProgress,
 } from "./command-output.js";
 import { parseEvaluationCommand } from "./command-parser.js";
+import { readEffectiveEvaluationConfig } from "./runtime-config.js";
 
 export async function main(arguments_: string[] = process.argv.slice(2)): Promise<void> {
   const command = parseEvaluationCommand(arguments_);
@@ -78,7 +72,7 @@ export async function main(arguments_: string[] = process.argv.slice(2)): Promis
   }
 
   const startup = readStartupConfig();
-  const effectiveSettings = await readEffectiveCliConfig(
+  const effectiveSettings = await readEffectiveEvaluationConfig(
     startup.database,
     startup.doclingTopology,
   );
@@ -269,21 +263,5 @@ export async function main(arguments_: string[] = process.argv.slice(2)): Promis
       `Wrote ${dataset.cases.length} ${dataset.split} cases to ${command.outputPath}`,
     );
     return;
-  }
-}
-
-async function readEffectiveCliConfig(
-  database: AppConfig["database"],
-  doclingTopology: DoclingServiceTopology,
-): Promise<EffectiveApplicationSettings> {
-  const session = await openDatabase(database);
-  try {
-    const repository = new ApplicationSettingsRepository(session.database);
-    return await repository.read(
-      database,
-      doclingTopology,
-    );
-  } finally {
-    await session.close();
   }
 }

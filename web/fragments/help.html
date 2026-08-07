@@ -261,7 +261,8 @@
             <p>Use Find Sources first for queries such as <code>termination</code>, <code>arthritis</code>, or <code>data retention</code>.</p>
             <h3>How much document text CiteLoom checks</h3>
             <p>Administrators can change <strong>Matching sections reviewed</strong> and <strong>Sections available for answers</strong> on the Search size screen under Search and answers in Settings.</p>
-            <p>Matching sections reviewed controls how broadly CiteLoom searches, while Sections available for answers controls how much of the strongest matching content Ask and Chat can use.</p>
+            <p><strong>Matching sections reviewed</strong> is the unique candidate budget before reranking. Lower values can miss relevant evidence, while higher values search more broadly but require more search and ranking work.</p>
+            <p><strong>Sections available for answers</strong> is the post-rerank ceiling sent to the answer model. Lower values can omit needed evidence, while higher values increase model input, response time, and distraction risk. CiteLoom may use fewer sections when the remaining matches are substantially weaker.</p>
             <p>Matching sections reviewed must be equal to or greater than Sections available for answers.</p>
             <p>CiteLoom may use fewer sections when fewer useful matches exist or the selected model cannot accept all of them.</p>
             <h3>How CiteLoom finds matching sections</h3>

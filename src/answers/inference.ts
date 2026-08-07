@@ -269,7 +269,7 @@ function decodeDefaultAnswerModelResponse(
   );
   return {
     draft,
-    verificationStatementIndexes: draft.status === "uncited" ? [] : null,
+    verificationStatementIndexes: null,
   };
 }
 
@@ -1263,7 +1263,11 @@ function finalizeAnswerDraft(
       draft.content,
     );
   }
-  const answerDocument = compileAnswerDraft(draft, retrieved, evidenceRefs);
+  const answerDocument = compileAnswerDraft(
+    draft,
+    retrieved,
+    evidenceRefs,
+  );
   if (!isPublishedAnsweredDocument(answerDocument)) {
     throw new Error("Answered draft compiled into an uncited document.");
   }

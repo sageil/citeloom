@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { readAtomicAnswerStatements } from "./atomic-statements.js";
+
 export const ANSWER_SECTIONS = [
   "answer",
   "key-points",
@@ -134,32 +136,19 @@ export function createAnswerDraftSchema(
 export function createAnswerModelResponseSchema(
   allowedEvidenceRefs: readonly EvidenceReference[],
 ): z.ZodType<AnswerModelResponse> {
-  const uncitedAnswerSchema: z.ZodType<AnswerModelAnswer> = z.object({
-    content: answerModelContentSchema.describe(
-      "A natural greeting, one concise clarification question, or a clear explanation of what the supplied evidence does not establish.",
-    ),
-    findings: z.tuple([]).describe(
-      "An empty array because this response makes no grounded factual claims.",
-    ),
-  }).strict();
+  const uncitedAnswerSchema = createUncitedAnswerModelAnswerSchema();
   if (allowedEvidenceRefs.length === 0) {
     return createUncitedAnswerModelResponseSchema(uncitedAnswerSchema);
   }
   const evidenceReferenceSchema = createEvidenceReferenceSchema(
     allowedEvidenceRefs,
   );
-  const evidenceReferencesSchema = z.array(evidenceReferenceSchema).min(1);
-  const statementSchema: z.ZodType<AnswerModelStatement> = z.object({
-    content: answerModelContentSchema.describe(
-      "One independently useful source-stated fact that directly supports the answer.",
-    ),
-    evidenceRefs: evidenceReferencesSchema.describe(
-      "The smallest set of retrieved evidence references that directly supports this finding.",
-    ),
-  }).strict();
+  const statementSchema = createAnswerModelStatementSchema(
+    evidenceReferenceSchema,
+  );
   const groundedAnswerSchema: z.ZodType<AnswerModelAnswer> = z.object({
     content: answerModelContentSchema.describe(
-      "A complete, coherent answer synthesized from the supplied evidence.",
+      "A complete, coherent answer containing the synthesis and answer-level qualifications derived from the supplied evidence.",
     ),
     findings: z.array(statementSchema).min(1).describe(
       "One or more cited findings containing the independently verifiable facts used by the answer.",
@@ -177,6 +166,32 @@ export function createAnswerModelResponseSchema(
       });
     }
   });
+}
+
+function createUncitedAnswerModelAnswerSchema(): z.ZodType<AnswerModelAnswer> {
+  const statementSchema = createAnswerModelStatementSchema(z.string());
+  return z.object({
+    content: answerModelContentSchema.describe(
+      "A natural greeting, one concise clarification question, or a clear explanation of what the supplied evidence does not establish.",
+    ),
+    findings: z.array(statementSchema).max(0).describe(
+      "An empty array because this response makes no grounded factual claims.",
+    ),
+  }).strict();
+}
+
+function createAnswerModelStatementSchema(
+  evidenceReferenceSchema: z.ZodType<EvidenceReference>,
+): z.ZodType<AnswerModelStatement> {
+  const evidenceReferencesSchema = z.array(evidenceReferenceSchema).min(1);
+  return z.object({
+    content: answerModelContentSchema.describe(
+      "One independently useful source-stated fact that directly supports the answer.",
+    ),
+    evidenceRefs: evidenceReferencesSchema.describe(
+      "The smallest set of retrieved evidence references that directly supports this finding.",
+    ),
+  }).strict();
 }
 
 function createUncitedAnswerModelResponseSchema(
@@ -409,10 +424,14 @@ export function decodeAnswerModelResponse(
     if (content === null) {
       continue;
     }
-    normalizedFindings.push({
-      content,
-      evidenceRefs: uniqueEvidenceReferences(finding.evidenceRefs),
-    });
+    const evidenceRefs = uniqueEvidenceReferences(finding.evidenceRefs);
+    const atomicStatements = readAtomicAnswerStatements(content);
+    for (const atomicStatement of atomicStatements) {
+      normalizedFindings.push({
+        content: atomicStatement,
+        evidenceRefs,
+      });
+    }
   }
   if (normalizedFindings.length === 0) {
     throw new AnswerDraftDecodeError(
@@ -640,18 +659,12 @@ function countUnknownAnswerPointReferences(
     return 0;
   }
   const answer = value as {
-    evidenceRefs?: unknown;
     findings?: unknown;
   };
-  let count = countUnknownReferenceValues(
-    answer.evidenceRefs,
-    allowedEvidenceRefs,
-  );
-  count += countUnknownStatementReferences(
+  return countUnknownStatementReferences(
     answer.findings,
     allowedEvidenceRefs,
   );
-  return count;
 }
 
 function countUnknownStatementReferences(

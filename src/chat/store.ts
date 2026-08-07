@@ -144,7 +144,6 @@ const claimVerificationResultsSchema = z.array(z.object({
   }).strict()),
   rationale: z.string().trim().min(1),
   status: z.enum([
-    "collectively-supported",
     "partially-supported",
     "supported",
     "unsupported",

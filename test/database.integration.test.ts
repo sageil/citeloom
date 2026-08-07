@@ -138,6 +138,9 @@ import {
   ingestionEmbeddingManifests,
   ingestionJobs,
   providerOAuthCredentials,
+  researchClaimChecks,
+  researchClaimEvidenceUnits,
+  researchStatementCitations,
   retrievalChunks384,
   retrievalChunks768,
   retrievalChunks1024,
@@ -193,6 +196,7 @@ import {
   type RetrievalRepresentation,
 } from "../src/retrieval/representations.js";
 import {
+  loadRetrievalCandidates,
   queryRetrievalCandidateRankings,
   rankRetrievalCandidates,
   RetrievalScopeChangedError,
@@ -219,7 +223,10 @@ import {
   createRetrievalWindowPolicy,
   createRetrievalWindowPolicyContract,
 } from "../src/retrieval/window-policy.js";
-import { stageDocumentTocArtifact } from "../src/retrieval/toc/store.js";
+import {
+  readActiveDocumentTocs,
+  stageDocumentTocArtifact,
+} from "../src/retrieval/toc/store.js";
 import { runIngestionWorker } from "../src/ingestion/worker.js";
 import {
   buildResearchRunConfiguration,
@@ -2353,6 +2360,131 @@ function buildOpenAICodexJwt(claims: object): string {
 }
 
 describe("PostgreSQL research records", () => {
+  it("persists finding verification claims by statement index", async () => {
+    const config = buildTestConfig();
+    const research = new ResearchStore(session.database, config);
+    const sourceFile = "/documents/selected-verification-claims.pdf";
+    const documentId = "9".repeat(64);
+    const directElementId = "8".repeat(64);
+    const findingElementId = "7".repeat(64);
+    const findingCitationId = "00000000-0000-4000-8000-000000000122";
+    const versionId = "00000000-0000-4000-8000-000000000123";
+    await session.database
+      .insert(embeddingSpaces)
+      .values(buildEmbeddingSpaceRow(space768));
+    const elementSetId = await writeTestElementSet(
+      documentId,
+      sourceFile,
+      [directElementId, findingElementId],
+    );
+    const generationId = randomUUID();
+    await session.database.insert(documentVersions).values({
+      ...buildTestDocumentFormatRow(sourceFile),
+      documentId,
+      elementSetId,
+      generationId,
+      id: versionId,
+      images: 0,
+      pageCount: 1,
+      sourceFile,
+      tables: 0,
+      textChunks: 2,
+      totalElements: 2,
+      version: 1,
+    });
+    await session.database.insert(indexedDocuments).values({
+      documentId,
+      elementSetId,
+      generationId,
+      images: 0,
+      pageCount: 1,
+      sourceFile,
+      tables: 0,
+      tags: [],
+      textChunks: 2,
+      totalElements: 2,
+      versionId,
+    });
+    const thread = await research.createThread("Selected verification claims");
+    const sourceLocation = buildSourceLocation(1);
+    const citationEvidence = {
+      excerpt: `content for ${documentId}`,
+      kind: "text" as const,
+    };
+    const turn = await research.saveTurn({
+      answerDocument: {
+        citations: [{
+          citationNumber: 1,
+          documentId,
+          documentVersionId: versionId,
+          elementId: findingElementId,
+          evidence: citationEvidence,
+          id: findingCitationId,
+          kind: "text",
+          pageNumbers: [1],
+          regions: sourceLocation.regions,
+          sectionPath: sourceLocation.sectionPath,
+          sourceFile,
+        }],
+        content: "The report contains diagnostic and treatment guidance.",
+        schemaVersion: 2,
+        statements: [{
+          citationIds: [findingCitationId],
+          content: "The report recommends a specific diagnostic test.",
+          presentation: "bullet",
+          section: "key-points",
+        }],
+      },
+      claims: [{
+        citationNumbers: [1],
+        claim: "The report recommends a specific diagnostic test.",
+        claimIndex: 0,
+        evidenceUnits: [{
+          citationNumber: 1,
+          outcome: "supported",
+          rationale: "The finding evidence directly supports the statement.",
+          supportProbability: 0.98,
+          unitId: "claim-0-citation-1",
+        }],
+        rationale: "The finding evidence directly supports the statement.",
+        status: "supported",
+        verifierModel: config.claimVerifier.model,
+      }],
+      completedAt: new Date("2026-08-07T01:51:50.000Z"),
+      question: "What does the report recommend?",
+      retrievedContext: [{
+        documentId,
+        retrievedElementCount: 2,
+        sourceFile,
+      }],
+      retrievalTrace: buildTestRetrievalTrace(
+        "What does the report recommend?",
+      ),
+      runConfiguration: buildResearchRunConfiguration(config),
+      runId: "00000000-0000-4000-8000-000000000124",
+      scope: { kind: "sourceFiles", sourceFiles: [sourceFile] },
+      threadId: thread.id,
+    });
+
+    expect(turn.claims).toEqual([
+      expect.objectContaining({
+        claimIndex: 0,
+        claim: "The report recommends a specific diagnostic test.",
+      }),
+    ]);
+    const reopened = await research.readThread(thread.id);
+    expect(reopened?.turns[0]?.answerDocument).toEqual(turn.answerDocument);
+    expect(reopened?.turns[0]?.claims).toEqual(turn.claims);
+    expect(await session.database.select().from(researchStatements))
+      .toHaveLength(1);
+    expect(await session.database.select().from(researchStatementCitations))
+      .toHaveLength(1);
+    expect(await session.database.select().from(researchClaimChecks))
+      .toHaveLength(1);
+    expect(await session.database.select().from(researchClaimEvidenceUnits))
+      .toHaveLength(1);
+  });
+
   it("persists immutable evidence, versions, feedback, and reviewed development cases", async () => {
     const config = buildTestConfig();
     const research = new ResearchStore(session.database, config);
@@ -2462,13 +2594,13 @@ describe("PostgreSQL research records", () => {
           sectionPath: oldElement.sectionPath,
           sourceFile,
         }],
-        content: "Revenue increased by 12 percent.",
-        schemaVersion: 1,
+        content: "Revenue increased according to the source.",
+        schemaVersion: 2,
         statements: [{
           citationIds: [citationId],
           content: "The source reports a 12 percent revenue increase.",
-          presentation: "bullet",
-          section: "key-points",
+          presentation: "paragraph",
+          section: "answer",
         }],
       },
       claims: [{
@@ -2697,13 +2829,13 @@ describe("PostgreSQL research records", () => {
           sectionPath: ["Test section"],
           sourceFile: "/documents/invalid.txt",
         }],
-        content: "Invalid.",
-        schemaVersion: 1,
+        content: "The requested evidence is invalid.",
+        schemaVersion: 2,
         statements: [{
           citationIds: ["00000000-0000-4000-8000-000000000112"],
           content: "Invalid.",
-          presentation: "bullet",
-          section: "key-points",
+          presentation: "paragraph",
+          section: "answer",
         }],
       },
       claims: [{
@@ -2735,8 +2867,8 @@ describe("PostgreSQL research records", () => {
     const directTurnId = "00000000-0000-4000-8000-000000000119";
     await expect(session.database.transaction(async (transaction) => {
       await transaction.insert(researchTurns).values({
-        answerContent: "Can an invalid anchor bypass the store?",
-        answerSchemaVersion: 1,
+        answerContent: "This answer has incomplete cited output.",
+        answerSchemaVersion: 2,
         completedAt: new Date("2026-07-25T15:10:00.000Z"),
         id: directTurnId,
         outputState: "building",
@@ -2784,7 +2916,7 @@ describe("PostgreSQL research records", () => {
       answerDocument: {
         citations: [],
         content: uncitedAnswerContent,
-        schemaVersion: 1,
+        schemaVersion: 2,
         statements: [],
       },
       claims: [],
@@ -2811,7 +2943,7 @@ describe("PostgreSQL research records", () => {
         answerDocument: {
           citations: [],
           content: uncitedAnswerContent,
-          schemaVersion: 1,
+          schemaVersion: 2,
           statements: [],
         },
       }],
@@ -2839,12 +2971,9 @@ describe("PostgreSQL research records", () => {
       content: "This statement must not be added.",
       id: "00000000-0000-4000-8000-000000000115",
       presentation: "paragraph",
-      rationale: "Published output cannot gain statements.",
       section: "answer",
       statementIndex: 0,
-      status: "unverified",
       turnId: turn.id,
-      verifierModel: config.claimVerifier.model,
     })).rejects.toMatchObject({
       cause: expect.objectContaining({
         message: expect.stringContaining(
@@ -2869,7 +2998,7 @@ describe("PostgreSQL research records", () => {
     await expect(session.database.transaction(async (transaction) => {
       await transaction.insert(researchTurns).values({
         answerContent: "Can a building turn be committed?",
-        answerSchemaVersion: 1,
+        answerSchemaVersion: 2,
         completedAt: new Date("2026-07-25T15:04:00.000Z"),
         id: unpublishedTurnId,
         outputState: "building",
@@ -2898,8 +3027,8 @@ describe("PostgreSQL research records", () => {
 
     await expect(session.database.transaction(async (transaction) => {
       await transaction.insert(researchTurns).values({
-        answerContent: "Can incomplete output be published?",
-        answerSchemaVersion: 1,
+        answerContent: "This answer has incomplete cited output.",
+        answerSchemaVersion: 2,
         completedAt: new Date("2026-07-25T15:05:00.000Z"),
         id: turnId,
         outputState: "building",
@@ -2916,12 +3045,9 @@ describe("PostgreSQL research records", () => {
         content: "This statement has no citation.",
         id: "00000000-0000-4000-8000-000000000118",
         presentation: "paragraph",
-        rationale: "The fixture intentionally omits citation persistence.",
         section: "answer",
         statementIndex: 0,
-        status: "unverified",
         turnId,
-        verifierModel: config.claimVerifier.model,
       });
       await transaction
         .update(researchTurns)
@@ -4979,6 +5105,18 @@ describe("PostgreSQL generation publication", () => {
       sourceFile,
       tables: 1,
     });
+    await expect(readActiveDocumentTocs(
+      session.database,
+      space384.id,
+      [{ documentId, sourceFile }],
+    )).resolves.toEqual([
+      expect.objectContaining({
+        documentId,
+        elementSetId: elementSet.id,
+        generationId: normalizedJob.generationId,
+        sourceFile,
+      }),
+    ]);
     await expect(session.database
       .select({ content: retrievalChunks384.evidenceContent })
       .from(retrievalChunks384)
@@ -5799,6 +5937,221 @@ describe("pgvector retrieval", () => {
     )).rejects.toThrow("incompatible with embedding space");
   });
 
+  it("hydrates every active exact-evidence alias and excludes prior versions", async () => {
+    const space: EmbeddingSpaceConfig = {
+      ...space768,
+      id: `${space768.id}:evidence-aliases`,
+    };
+    await ensureEmbeddingSpace(session.database, space);
+    const documentId = "a".repeat(64);
+    const elementId = "b".repeat(64);
+    const firstSourceFile = "/documents/evidence-alias-primary.pdf";
+    const secondSourceFile = "/documents/evidence-alias-secondary.pdf";
+    const baseElement = buildTextElement(documentId, elementId);
+    baseElement.sourceFile = firstSourceFile;
+    baseElement.content = "Exact evidence alias marker.";
+    const documentStore = new SourceDocumentStore(session.database);
+    await ensureTestSourceMetadata(documentId);
+    await documentStore.writeMany([baseElement]);
+    const elementSet = await documentStore.writeElementSet(
+      documentId,
+      [baseElement],
+    );
+    const priorGenerationId = randomUUID();
+    const firstGenerationId = randomUUID();
+    const secondGenerationId = randomUUID();
+    const priorVersionId = "00000000-0000-4000-8000-000000000411";
+    const firstVersionId = "00000000-0000-4000-8000-000000000412";
+    const secondVersionId = "00000000-0000-4000-8000-000000000413";
+    await session.database.insert(documentVersions).values([
+      {
+        ...buildTestDocumentFormatRow(firstSourceFile),
+        documentId,
+        elementSetId: elementSet.id,
+        generationId: priorGenerationId,
+        id: priorVersionId,
+        images: 0,
+        pageCount: 1,
+        sourceFile: firstSourceFile,
+        tables: 0,
+        textChunks: 1,
+        totalElements: 1,
+        version: 1,
+      },
+      {
+        ...buildTestDocumentFormatRow(firstSourceFile),
+        documentId,
+        elementSetId: elementSet.id,
+        generationId: firstGenerationId,
+        id: firstVersionId,
+        images: 0,
+        pageCount: 1,
+        sourceFile: firstSourceFile,
+        tables: 0,
+        textChunks: 1,
+        totalElements: 1,
+        version: 2,
+      },
+      {
+        ...buildTestDocumentFormatRow(secondSourceFile),
+        documentId,
+        elementSetId: elementSet.id,
+        generationId: secondGenerationId,
+        id: secondVersionId,
+        images: 0,
+        pageCount: 1,
+        sourceFile: secondSourceFile,
+        tables: 0,
+        textChunks: 1,
+        totalElements: 1,
+        version: 1,
+      },
+    ]);
+    await session.database.insert(indexedDocuments).values([
+      {
+        documentId,
+        elementSetId: elementSet.id,
+        generationId: firstGenerationId,
+        images: 0,
+        pageCount: 1,
+        sourceFile: firstSourceFile,
+        tables: 0,
+        tags: [],
+        textChunks: 1,
+        totalElements: 1,
+        versionId: firstVersionId,
+      },
+      {
+        documentId,
+        elementSetId: elementSet.id,
+        generationId: secondGenerationId,
+        images: 0,
+        pageCount: 1,
+        sourceFile: secondSourceFile,
+        tables: 0,
+        tags: [],
+        textChunks: 1,
+        totalElements: 1,
+        versionId: secondVersionId,
+      },
+    ]);
+    const stageAlias = async (
+      sourceFile: string,
+      generationId: string,
+    ): Promise<void> => {
+      const element = { ...baseElement, sourceFile };
+      const representations = buildTestRepresentations([element], [], space);
+      await withOpenTestRetrievalGeneration(session.database, {
+        documentId,
+        elementSetId: elementSet.id,
+        generationId,
+        sourceFile,
+        space,
+        totalElements: 1,
+      }, async () => {
+        await stageRetrievalRepresentationBatch(
+          session.database,
+          space,
+          {
+            documentId,
+            elementSetId: elementSet.id,
+            generationId,
+            totalElements: 1,
+          },
+          0,
+          1,
+          representations,
+          representations.map(() => buildEmbedding(space.dimensions, 1)),
+        );
+      });
+    };
+    await stageAlias(firstSourceFile, priorGenerationId);
+    await stageAlias(firstSourceFile, firstGenerationId);
+    await stageAlias(secondSourceFile, secondGenerationId);
+    for (const target of [
+      { generationId: firstGenerationId, sourceFile: firstSourceFile },
+      { generationId: secondGenerationId, sourceFile: secondSourceFile },
+    ]) {
+      await session.database.transaction(async (transaction) => {
+        await synchronizeActiveRetrievalProjection(transaction, {
+          documentId,
+          elementSetId: elementSet.id,
+          embeddingSpaceId: space.id,
+          generationId: target.generationId,
+          indexedAt: new Date("2026-08-06T00:00:00.000Z"),
+          sourceFile: target.sourceFile,
+          totalElements: 1,
+        });
+      });
+    }
+    const scopeTargets = [
+      {
+        documentId,
+        generationId: firstGenerationId,
+        sourceFile: firstSourceFile,
+      },
+      {
+        documentId,
+        generationId: secondGenerationId,
+        sourceFile: secondSourceFile,
+      },
+    ];
+    const rankings = await queryRetrievalCandidateRankings(
+      session.database,
+      session.query,
+      space,
+      [{
+        embedding: buildEmbedding(space.dimensions, 1),
+        text: "evidence alias marker",
+      }],
+      {
+        answerTemperature: 0,
+        candidateK: 1,
+        chatTemperature: 0,
+        fusion: { ...EQUAL_WEIGHT_FUSION_CONFIG },
+        generationSeedMode: "stable",
+        mode: "dense",
+        queryExpansions: 0,
+        queryExpansionTemperature: 0,
+        reranker: null,
+        rrfK: 60,
+        topK: 1,
+      },
+      scopeTargets,
+      new AbortController().signal,
+    );
+    const candidates = rankRetrievalCandidates(
+      "dense",
+      rankings,
+      60,
+      EQUAL_WEIGHT_FUSION_CONFIG,
+    );
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.sourceAliases).toHaveLength(1);
+
+    const retrieved = await loadRetrievalCandidates(
+      session.database,
+      documentStore,
+      space,
+      candidates,
+      scopeTargets,
+    );
+
+    expect(retrieved).toHaveLength(1);
+    expect(retrieved[0]?.provenance.sourceAliases).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ documentVersionId: firstVersionId }),
+        expect.objectContaining({ documentVersionId: secondVersionId }),
+      ]),
+    );
+    expect(retrieved[0]?.provenance.sourceAliases).toHaveLength(2);
+    expect(retrieved[0]?.provenance.sourceAliases).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ documentVersionId: priorVersionId }),
+      ]),
+    );
+  });
+
   it("matches exact dense and lexical top-k across a broad filtered scope", async () => {
     const space: EmbeddingSpaceConfig = {
       ...space768,
@@ -5819,6 +6172,39 @@ describe("pgvector retrieval", () => {
         embedding[1] = (index - 5) / 100;
       }
       const generationId = randomUUID();
+      const elementSetId = await writeTestElementSet(
+        documentId,
+        element.sourceFile,
+        [elementId],
+      );
+      const versionId = randomUUID();
+      await session.database.insert(documentVersions).values({
+        ...buildTestDocumentFormatRow(element.sourceFile),
+        documentId,
+        elementSetId,
+        generationId,
+        id: versionId,
+        images: 0,
+        pageCount: 1,
+        sourceFile: element.sourceFile,
+        tables: 0,
+        textChunks: 1,
+        totalElements: 1,
+        version: 1,
+      });
+      await session.database.insert(indexedDocuments).values({
+        documentId,
+        elementSetId,
+        generationId,
+        images: 0,
+        pageCount: 1,
+        sourceFile: element.sourceFile,
+        tables: 0,
+        tags: [],
+        textChunks: 1,
+        totalElements: 1,
+        versionId,
+      });
       await indexTestElements(
         session.database,
         space,
@@ -5902,6 +6288,39 @@ describe("pgvector retrieval", () => {
     const element = buildTextElement(documentId, "e".repeat(64));
     element.content = "snapshot consistency evidence";
     const generationId = randomUUID();
+    const elementSetId = await writeTestElementSet(
+      documentId,
+      element.sourceFile,
+      [element.id],
+    );
+    const versionId = randomUUID();
+    await session.database.insert(documentVersions).values({
+      ...buildTestDocumentFormatRow(element.sourceFile),
+      documentId,
+      elementSetId,
+      generationId,
+      id: versionId,
+      images: 0,
+      pageCount: 1,
+      sourceFile: element.sourceFile,
+      tables: 0,
+      textChunks: 1,
+      totalElements: 1,
+      version: 1,
+    });
+    await session.database.insert(indexedDocuments).values({
+      documentId,
+      elementSetId,
+      generationId,
+      images: 0,
+      pageCount: 1,
+      sourceFile: element.sourceFile,
+      tables: 0,
+      tags: [],
+      textChunks: 1,
+      totalElements: 1,
+      versionId,
+    });
     await indexTestElements(
       session.database,
       space,

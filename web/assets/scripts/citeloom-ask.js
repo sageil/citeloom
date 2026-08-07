@@ -27,6 +27,20 @@ import {
   buildCitationPresentations,
 } from "./citeloom-citation-presentation.js";
 import { buildPdfViewerUrl } from "./citeloom-file-links.js";
+import {
+  beginEvidenceWindowDrag,
+  continueEvidenceWindowDrag,
+  createEvidenceWindowState,
+  evidenceWindowStyle,
+  findEvidenceCitationTrigger,
+  finishEvidenceWindowDrag,
+  positionEvidenceWindow,
+  prepareEvidenceWindow,
+  readEvidenceWindowPlacement,
+  resetEvidenceWindow,
+  revealEvidenceCitationTrigger,
+  toggleEvidenceWindowPin,
+} from "./citeloom-evidence-window.js";
 import { focusTextArea } from "./citeloom-focus.js";
 import { createDictationController } from "./citeloom-dictation.js";
 import { dispatchNotice } from "./citeloom-notices.js";
@@ -659,6 +673,28 @@ function clampEvidenceInspectorDimension(value, minimum, maximum) {
   return Math.min(Math.max(Math.round(value), minimum), maximum);
 }
 
+export const readAskEvidencePanelPlacement = readEvidenceWindowPlacement;
+
+export function formatDocumentLocationLabel(sourceFile, pageNumbers) {
+  const normalizedSourceFile = sourceFile.toLowerCase();
+  let singular = "Page";
+  let plural = "Pages";
+  if (normalizedSourceFile.endsWith(".xlsx")) {
+    singular = "Sheet";
+    plural = "Sheets";
+  } else if (normalizedSourceFile.endsWith(".pptx")) {
+    singular = "Slide";
+    plural = "Slides";
+  }
+  if (pageNumbers.length === 0) {
+    return "";
+  }
+  if (pageNumbers.length === 1) {
+    return `${singular} ${pageNumbers[0]}`;
+  }
+  return `${plural} ${pageNumbers.join(", ")}`;
+}
+
 function readEvidenceInspectorViewport() {
   return {
     height: window.innerHeight,
@@ -681,6 +717,7 @@ export function registerPage(alpine) {
     citationInspectorViewportResizeListener: null,
     citationImageDimensions: null,
     citationLoading: false,
+    citationWindow: createEvidenceWindowState(),
     creatingThread: false,
     dashboardError: "",
     dashboardRefreshListener: null,
@@ -1499,13 +1536,14 @@ export function registerPage(alpine) {
       }
     },
 
-    async inspectCitation(source) {
+    async inspectCitation(source, trigger = null) {
       if (source.preview === true) {
         return;
       }
       this.citationAbortController?.abort();
       const controller = new AbortController();
       this.citationAbortController = controller;
+      prepareEvidenceWindow(this.citationWindow, trigger);
       this.selectedCitation = source;
       this.inspectedCitation = buildStoredCitationPreview(source);
       this.citationError = "";
@@ -1521,7 +1559,12 @@ export function registerPage(alpine) {
         citation: { negative: 0, positive: 0 },
       };
       await this.$nextTick();
-      this.$root.querySelector(".evidence-inspector")?.focus();
+      this.positionAskEvidencePanel();
+      if (this.mode === "ask") {
+        this.$refs.askEvidencePanel?.focus();
+      } else {
+        this.$root.querySelector(".evidence-inspector")?.focus();
+      }
       try {
         const encodedCitationId = encodeURIComponent(source.id);
         const response = await fetch(`/api/citations/${encodedCitationId}`, {
@@ -1548,6 +1591,8 @@ export function registerPage(alpine) {
         if (this.citationAbortController === controller) {
           this.citationAbortController = null;
           this.citationLoading = false;
+          await this.$nextTick();
+          this.repositionAskEvidencePanel();
         }
       }
     },
@@ -1557,7 +1602,87 @@ export function registerPage(alpine) {
         return candidate.citationNumber === citationNumber;
       });
       if (source !== undefined) {
-        void this.inspectCitation(source);
+        void this.inspectCitationFromNavigator(source);
+      }
+    },
+
+    readAskFindingCitationTrigger(citationId) {
+      return findEvidenceCitationTrigger(
+        this.$root,
+        citationId,
+      );
+    },
+
+    async inspectCitationFromNavigator(source) {
+      const trigger = this.readAskFindingCitationTrigger(source.id);
+      if (trigger === null) {
+        await this.inspectCitation(source);
+        return;
+      }
+      revealEvidenceCitationTrigger(trigger);
+      await this.$nextTick();
+      await this.inspectCitation(source, trigger);
+    },
+
+    askEvidencePanelStyle() {
+      return evidenceWindowStyle(this.citationWindow, this.mode === "ask");
+    },
+
+    positionAskEvidencePanel() {
+      if (this.mode !== "ask") {
+        return;
+      }
+      positionEvidenceWindow(
+        this.citationWindow,
+        this.$refs.askEvidencePanel,
+      );
+    },
+
+    repositionAskEvidencePanel() {
+      if (this.selectedCitation !== null && !this.citationWindow.pinned) {
+        this.positionAskEvidencePanel();
+      }
+    },
+
+    togglePinnedCitation() {
+      toggleEvidenceWindowPin(this.citationWindow);
+      if (!this.citationWindow.pinned) {
+        this.$nextTick(() => this.positionAskEvidencePanel());
+      }
+      this.$refs.askEvidencePanel?.focus();
+    },
+
+    beginAskEvidencePanelDrag(event) {
+      const started = beginEvidenceWindowDrag(
+        this.citationWindow,
+        event,
+        this.$refs.askEvidencePanel,
+      );
+      if (!started) {
+        return;
+      }
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    },
+
+    continueAskEvidencePanelDrag(event) {
+      continueEvidenceWindowDrag(
+        this.citationWindow,
+        event,
+        this.$refs.askEvidencePanel,
+      );
+    },
+
+    finishAskEvidencePanelDrag(event) {
+      const finished = finishEvidenceWindowDrag(
+        this.citationWindow,
+        event.pointerId,
+      );
+      if (!finished) {
+        return;
+      }
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
       }
     },
 
@@ -1705,6 +1830,7 @@ export function registerPage(alpine) {
     closeEvidenceInspector() {
       this.citationAbortController?.abort();
       this.citationAbortController = null;
+      resetEvidenceWindow(this.citationWindow);
       this.inspectedCitation = null;
       this.citationError = "";
       this.citationImageDimensions = null;
@@ -2315,19 +2441,16 @@ export function registerPage(alpine) {
     },
 
     citationLabel(citation) {
+      const sourceSummary = this.citationSourceSummary(citation);
       if (citation.preview === true) {
         const number = citation.citationNumber ?? "pending";
-        const location = this.documentLocationLabel(
-          citation.sourceFile,
-          citation.pageNumbers,
-        );
-        return `Citation ${number}, source identified from ${this.basename(citation.sourceFile)}, ${location}. The evidence link will be available when the answer is complete.`;
+        return `Citation ${number}, source identified from ${sourceSummary}. The evidence link will be available when the answer is complete.`;
       }
       const status = this.claimStatusLabel(
         this.answerCitationStatus(citation.citationNumber),
       );
       const evidence = this.accessibleEvidenceExcerpt(citation.evidence);
-      return `Citation ${citation.citationNumber}, ${status}, ${this.basename(citation.sourceFile)}, ${this.documentLocationLabel(citation.sourceFile, citation.pageNumbers)}, ${evidence}`;
+      return `Citation ${citation.citationNumber}, ${status}, ${sourceSummary}, ${evidence}`;
     },
 
     accessibleEvidenceExcerpt(evidence) {
@@ -2348,7 +2471,19 @@ export function registerPage(alpine) {
       if (this.selectedCitation === null) {
         return "";
       }
-      return `${this.basename(this.selectedCitation.sourceFile)} · ${this.documentLocationLabel(this.selectedCitation.sourceFile, this.selectedCitation.pageNumbers)}`;
+      return this.citationSourceSummary(this.selectedCitation);
+    },
+
+    citationSourceSummary(citation) {
+      const parts = [this.basename(citation.sourceFile)];
+      const location = this.documentLocationLabel(
+        citation.sourceFile,
+        citation.pageNumbers,
+      );
+      if (location !== "") {
+        parts.push(location);
+      }
+      return parts.join(" · ");
     },
 
     sourceDetail(source) {
@@ -2363,23 +2498,7 @@ export function registerPage(alpine) {
     },
 
     documentLocationLabel(sourceFile, pageNumbers) {
-      const normalizedSourceFile = sourceFile.toLowerCase();
-      let singular = "Page";
-      let plural = "Pages";
-      if (normalizedSourceFile.endsWith(".xlsx")) {
-        singular = "Sheet";
-        plural = "Sheets";
-      } else if (normalizedSourceFile.endsWith(".pptx")) {
-        singular = "Slide";
-        plural = "Slides";
-      }
-      if (pageNumbers.length === 0) {
-        return `${singular} unavailable`;
-      }
-      if (pageNumbers.length === 1) {
-        return `${singular} ${pageNumbers[0]}`;
-      }
-      return `${plural} ${pageNumbers.join(", ")}`;
+      return formatDocumentLocationLabel(sourceFile, pageNumbers);
     },
 
     basename(path) {

@@ -1,0 +1,77 @@
+{
+  "facets": [
+    {
+      "answerPatterns": [
+        "diagnos(?:is|ed)[\\s\\S]{0,300}(?:blood pressure|BP)",
+        "(?:blood pressure|BP)[\\s\\S]{0,300}diagnos"
+      ],
+      "description": "Diagnosis requirements for systemic hypertension",
+      "evidenceAnchorSets": [
+        [
+          "The diagnosis of hypertension always should be based on reliable BP measurements",
+          "measurements repeated on multiple (>2) occasions"
+        ]
+      ],
+      "id": "diagnosis"
+    },
+    {
+      "answerPatterns": [
+        "dogs?[^.]{0,500}(?:RAAS|ACEi|angiotensin|amlodipine)",
+        "(?:RAAS|ACEi|angiotensin|amlodipine)[^.]{0,500}dogs?"
+      ],
+      "description": "Canine antihypertensive treatment",
+      "evidenceAnchorSets": [
+        [
+          "first-line antihypertensive agents in dogs",
+          "RAAS inhibitors"
+        ]
+      ],
+      "id": "canine-treatment"
+    },
+    {
+      "answerPatterns": [
+        "cats?[^.]{0,300}amlodipine",
+        "amlodipine[^.]{0,300}cats?"
+      ],
+      "description": "Feline first-line antihypertensive treatment",
+      "evidenceAnchorSets": [
+        [
+          "first choice for antihypertensive treatment",
+          "in cats"
+        ]
+      ],
+      "id": "feline-treatment"
+    },
+    {
+      "answerPatterns": [
+        "(?:goal|target)[^.]{0,300}(?:substage|140|160)"
+      ],
+      "description": "Therapeutic blood-pressure target",
+      "evidenceAnchorSets": [
+        [
+          "The goal of antihypertensive treatment",
+          "SBP < 140 mm Hg"
+        ],
+        [
+          "therapeutic goal of decreasing",
+          "at least 1 SBP substage"
+        ]
+      ],
+      "id": "treatment-target"
+    }
+  ],
+  "id": "systemic-hypertension-application",
+  "performance": {
+    "maximumRetrievalEndToEndMs": 2500,
+    "maximumRetrievalExecutionMs": 2500
+  },
+  "question": "How should systemic hypertension be diagnosed and treated in dogs and cats?",
+  "requirements": {
+    "identicalRetrievalAcrossSurfaces": true,
+    "requireCitedStatementForEveryFacet": true,
+    "requireDirectAnswerCitations": true,
+    "requireSupportedVerificationForEveryCitedFacet": true
+  },
+  "sourceDocumentId": "35eee8dfb3627272bb750b7b349ecb295e49eb3a0f10e43331f3abdea7226035",
+  "version": 1
+}

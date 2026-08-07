@@ -25,7 +25,6 @@ describe("answer content snapshots", () => {
     const snapshot = decodePartialAnswerContentSnapshot({
       answer: {
         content: "The sources describe two changes.",
-        source_refs: ["SOURCE_1"],
         topics: [{
           content: "Revenue increased.",
           source_refs: ["SOURCE_1", "SOURCE_1"],
@@ -57,12 +56,12 @@ describe("answer content snapshots", () => {
         section: "answer",
       }, {
         citationKeys: ["citation-1"],
-        content: "Revenue\n\nRevenue increased.",
+        content: "Revenue: Revenue increased.",
         presentation: "bullet",
         section: "answer",
       }, {
         citationKeys: ["citation-2"],
-        content: "Costs\n\nCosts decreased.",
+        content: "Costs: Costs decreased.",
         presentation: "bullet",
         section: "answer",
       }],
@@ -82,7 +81,6 @@ describe("answer content snapshots", () => {
     const snapshot = decodePartialAnswerContentSnapshot({
       answer: {
         content: "The report describes one change.",
-        evidenceRefs: ["EVID_A"],
         findings: [{
           content: "Revenue increased.",
           evidenceRefs: ["EVID_A"],
@@ -95,6 +93,7 @@ describe("answer content snapshots", () => {
       "key-points",
     ]);
     expect(snapshot?.statements[1]?.citationKeys).toEqual(["citation-1"]);
+    expect(snapshot?.statements[0]?.citationKeys).toEqual([]);
     expect(snapshot?.citations[0]?.citationNumber).toBe(1);
   });
 

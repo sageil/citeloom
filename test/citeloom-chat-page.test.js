@@ -67,6 +67,73 @@ describe("CiteLoom chat page", () => {
     expect(fragment).toContain("toggleMessageSpeech(message)");
     expect(fragment).not.toContain("toggleChatSpeech()");
   });
+
+  it("uses the shared source navigator and movable evidence window", async () => {
+    const fragment = await readFile(
+      new URL("../web/fragments/chat.html", import.meta.url),
+      "utf8",
+    );
+
+    expect(fragment).toContain(
+      'class="source-navigator chat-source-navigator"',
+    );
+    expect(fragment).toContain(
+      'class="evidence-window chat-evidence-panel"',
+    );
+    expect(fragment).toContain(
+      ':data-evidence-citation-id="citationForKey(message, citationKey)?.id"',
+    );
+    expect(fragment).toContain("openCitationFromNavigator(citation)");
+    expect(fragment).toContain("beginCitationPanelDrag($event)");
+    expect(fragment).toContain(
+      'x-text="citationWindow.pinned ? \'Unpin\' : \'Pin evidence\'"',
+    );
+    expect(fragment).not.toContain("toggleCitationExpanded()");
+  });
+
+  it("shows sources for the latest answer unless an older answer is active", () => {
+    const page = createChatPage();
+    const firstMessage = buildAssistantMessage("answer-1", "completed");
+    const secondMessage = buildAssistantMessage("answer-2", "completed");
+    firstMessage.citations = [buildCitation("citation-1", 1)];
+    secondMessage.citations = [buildCitation("citation-2", 2)];
+    page.conversation = buildConversation(firstMessage, secondMessage);
+
+    expect(page.sourceSidebarCitations().map((citation) => citation.id)).toEqual([
+      "citation-2",
+    ]);
+
+    page.activeEvidenceMessageId = firstMessage.id;
+    expect(page.sourceSidebarCitations().map((citation) => citation.id)).toEqual([
+      "citation-1",
+    ]);
+  });
+
+  it("derives sidebar verification from the same per-citation checks", () => {
+    const page = createChatPage();
+    const message = buildAssistantMessage("answer-1", "completed");
+    const citation = buildCitation("citation-1", 1);
+    message.citations = [citation];
+    message.answerContent.statements = [{
+      citationKeys: [citation.key],
+      verificationIndex: 0,
+    }];
+    message.claims = [{
+      claimIndex: 0,
+      evidenceUnits: [{ citationNumber: 1, outcome: "supported" }],
+    }];
+    page.conversation = buildConversation(message);
+
+    expect(page.sourceNavigatorStatus(citation)).toBe("supported");
+    expect(page.sourceNavigatorStatusLabel(citation)).toBe("Verified");
+  });
+
+  it("omits unavailable page labels from Chat evidence", () => {
+    const page = createChatPage();
+
+    expect(page.sourcePageLabel({ pageNumbers: [] })).toBe("");
+    expect(page.sourcePageLabel({ pageNumbers: [4] })).toBe("p. 4");
+  });
 });
 
 function createChatPage() {
@@ -83,7 +150,7 @@ function createChatPage() {
 function buildAssistantMessage(id, verificationState) {
   return {
     answerContent: { citations: [], statements: [] },
-    answerDocument: { citations: [], content: "Answer", schemaVersion: 1, statements: [] },
+    answerDocument: { citations: [], content: "Answer", schemaVersion: 2, statements: [] },
     citations: [],
     claims: [],
     content: "Answer",
@@ -107,4 +174,16 @@ function buildConversation(...messages) {
     });
   }
   return { id: "chat-1", runs };
+}
+
+function buildCitation(id, citationNumber) {
+  return {
+    citationNumber,
+    id,
+    key: id,
+    pageNumbers: [],
+    preview: false,
+    sectionPath: ["Findings"],
+    sourceFile: "report.pdf",
+  };
 }

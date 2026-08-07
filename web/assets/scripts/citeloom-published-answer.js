@@ -39,7 +39,7 @@ function readPublishedAnswerDocument(value, context) {
     answer.schemaVersion,
     "answer schema version",
   );
-  if (schemaVersion !== 1) {
+  if (schemaVersion !== 2) {
     throw new Error("The answer schema version is unsupported.");
   }
 
@@ -113,25 +113,9 @@ function readPublishedAnswerDocument(value, context) {
       statements,
     };
   }
-  if (typeof answer.content === "string") {
-    return {
-      citations,
-      content: readNonEmptyString(answer.content, "answer content"),
-      schemaVersion,
-      statements,
-    };
-  }
-  const legacyDirectAnswer = statements.shift();
-  if (
-    legacyDirectAnswer === undefined
-    || legacyDirectAnswer.section !== "answer"
-    || legacyDirectAnswer.presentation !== "paragraph"
-  ) {
-    throw new Error("The answer response has no direct answer content.");
-  }
   return {
     citations,
-    content: legacyDirectAnswer.content,
+    content: readNonEmptyString(answer.content, "answer content"),
     schemaVersion,
     statements,
   };

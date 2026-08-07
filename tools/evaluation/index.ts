@@ -35,6 +35,7 @@ import {
   type RetrievalCandidateRankings,
 } from "../../src/retrieval/indexing/query-store.js";
 import type { FusedCandidate } from "../../src/retrieval/ranking/rank-fusion.js";
+import { createEvidenceSha256 } from "../../src/retrieval/evidence-identity.js";
 import {
   selectRerankedContext,
   type ContextSelectionPolicy,
@@ -429,7 +430,9 @@ export function derivePreparedRerankedSelection(
       identity: {
         documentId: score.documentId,
         documentVersionId: score.documentVersionId,
+        elementSetId: candidate.elementSetId,
         elementId: score.elementId,
+        evidenceSha256: createEvidenceSha256(candidate.evidenceContent),
         representativeRetrievalWindowId: score.retrievalId,
         sourceFile: score.sourceFile,
       },

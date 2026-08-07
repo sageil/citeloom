@@ -1,9 +1,7 @@
 import { verifyAnswerClaims } from "../answers/claim-verification.js";
 import type { ApplicationRuntime } from "../app/runtime.js";
 import { selectChatInferenceModels } from "../inference/registry.js";
-import type { ClaimVerificationResult } from "../research/types.js";
 import { ChatStore } from "./store.js";
-import type { ChatClaimVerificationResult } from "./types.js";
 
 const MAXIMUM_VERIFICATION_FAILURES = 3;
 const VERIFICATION_RETRY_DELAYS_MS = [1_000, 5_000] as const;
@@ -28,11 +26,10 @@ export async function processNextChatVerificationWithRuntime(
       scheduler,
       abortSignal,
     );
-    const claims = readChatVerificationResults(verifiedClaims);
     await store.completeVerificationJob(
       job.assistantMessageId,
       job.attemptCount,
-      claims,
+      verifiedClaims,
       new Date(),
     );
   } catch (error: unknown) {
@@ -53,29 +50,6 @@ export async function processNextChatVerificationWithRuntime(
     );
   }
   return true;
-}
-
-function readChatVerificationResults(
-  claims: readonly ClaimVerificationResult[],
-): ChatClaimVerificationResult[] {
-  const results: ChatClaimVerificationResult[] = [];
-  for (const claim of claims) {
-    let allCitationsNeedCollectiveSupport = claim.evidenceUnits.length > 1;
-    for (const unit of claim.evidenceUnits) {
-      if (unit.outcome !== "unsupported") {
-        allCitationsNeedCollectiveSupport = false;
-      }
-    }
-    if (claim.status === "supported" && allCitationsNeedCollectiveSupport) {
-      results.push({
-        ...claim,
-        status: "collectively-supported",
-      });
-      continue;
-    }
-    results.push(claim);
-  }
-  return results;
 }
 
 function readRetryTime(failureCount: number): Date | null {

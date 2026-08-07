@@ -1,6 +1,9 @@
 import type {
   RetrievalRepresentationType,
 } from "../representations.js";
+import {
+  createCanonicalEvidenceIdentity,
+} from "../evidence-identity.js";
 
 export interface CandidateRepresentation {
   content: string;
@@ -8,12 +11,49 @@ export interface CandidateRepresentation {
   type: RetrievalRepresentationType;
 }
 
+export interface CandidateSourceAlias {
+  evidenceRetrievalId: string;
+  sourceFile: string;
+}
+
+export function createCandidateSourceAliases(
+  candidate: Pick<
+    RankedCandidateBase,
+    "evidenceRetrievalId" | "sourceFile"
+  >,
+): CandidateSourceAlias[] {
+  return [{
+    evidenceRetrievalId: candidate.evidenceRetrievalId,
+    sourceFile: candidate.sourceFile,
+  }];
+}
+
+export function mergeCandidateSourceAliases(
+  target: CandidateSourceAlias[],
+  aliases: readonly CandidateSourceAlias[],
+): void {
+  const existing = new Set<string>();
+  for (const alias of target) {
+    existing.add(createSourceAliasIdentity(alias));
+  }
+  for (const alias of aliases) {
+    const identity = createSourceAliasIdentity(alias);
+    if (existing.has(identity)) {
+      continue;
+    }
+    existing.add(identity);
+    target.push(alias);
+  }
+}
+
 interface RankedCandidateBase {
   documentId: string;
+  elementSetId: string;
   evidenceContent: string;
   evidenceRetrievalId: string;
   parentId: string;
   representation: CandidateRepresentation;
+  sourceAliases: CandidateSourceAlias[];
   sourceFile: string;
 }
 
@@ -37,11 +77,13 @@ export interface FusedCandidate {
   bm25Score: number | null;
   denseDistance: number | null;
   documentId: string;
+  elementSetId: string;
   evidenceContent: string;
   fusedScore: number;
   parentId: string;
   representationHits: RepresentationHit[];
   retrievalId: string;
+  sourceAliases: CandidateSourceAlias[];
   sourceFile: string;
   descriptionAffected: boolean;
 }
@@ -55,6 +97,40 @@ export interface WeightedRanking {
   channel: "dense" | "lexical" | "toc";
   queryIndex: number;
   weight: number;
+}
+
+export function selectStrongestUniqueEvidence<
+  Candidate extends RankedCandidate,
+>(
+  ranking: readonly Candidate[],
+  limit: number,
+): Candidate[] {
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new Error("Unique evidence limit must be a positive integer.");
+  }
+  const selected: Candidate[] = [];
+  const representativeByEvidence = new Map<string, Candidate>();
+  for (const candidate of ranking) {
+    const evidenceKey = createCanonicalEvidenceIdentity(candidate);
+    const representative = representativeByEvidence.get(evidenceKey);
+    if (representative !== undefined) {
+      mergeCandidateSourceAliases(
+        representative.sourceAliases,
+        candidate.sourceAliases,
+      );
+      continue;
+    }
+    if (selected.length === limit) {
+      continue;
+    }
+    const selectedCandidate: Candidate = {
+      ...candidate,
+      sourceAliases: [...candidate.sourceAliases],
+    };
+    representativeByEvidence.set(evidenceKey, selectedCandidate);
+    selected.push(selectedCandidate);
+  }
+  return selected;
 }
 
 export function fuseRankedCandidates(
@@ -76,11 +152,13 @@ export function fuseRankedCandidates(
       bm25Score: candidate.bm25Score,
       denseDistance: candidate.denseDistance,
       documentId: candidate.documentId,
+      elementSetId: candidate.elementSetId,
       evidenceContent: candidate.evidenceContent,
       fusedScore: candidate.fusedScore,
       parentId: candidate.parentId,
       representationHits: candidate.representationHits,
       retrievalId: candidate.retrievalId,
+      sourceAliases: candidate.sourceAliases,
       sourceFile: candidate.sourceFile,
       descriptionAffected: candidate.descriptionAffected,
     });
@@ -176,26 +254,31 @@ function readOrCreateCandidate(
   if (existing !== undefined) {
     if (
       existing.documentId !== candidate.documentId
-      || existing.sourceFile !== candidate.sourceFile
+      || existing.elementSetId !== candidate.elementSetId
       || existing.parentId !== candidate.parentId
-      || existing.retrievalId !== candidate.evidenceRetrievalId
       || existing.evidenceContent !== candidate.evidenceContent
     ) {
       throw new Error(
         `Retrieval metadata differs for evidence ${candidate.evidenceRetrievalId}.`,
       );
     }
+    mergeCandidateSourceAliases(
+      existing.sourceAliases,
+      candidate.sourceAliases,
+    );
     return existing;
   }
   const created: MutableFusedCandidate = {
     bm25Score: null,
     denseDistance: null,
     documentId: candidate.documentId,
+    elementSetId: candidate.elementSetId,
     evidenceContent: candidate.evidenceContent,
     fusedScore: 0,
     parentId: candidate.parentId,
     representationHits: [],
     retrievalId: candidate.evidenceRetrievalId,
+    sourceAliases: [...candidate.sourceAliases],
     sourceFile: candidate.sourceFile,
     descriptionAffected: false,
   };
@@ -221,15 +304,15 @@ function compareFusedCandidates(
 function createEvidenceKey(
   candidate: Pick<
     RankedCandidate,
-    "documentId" | "evidenceRetrievalId" | "sourceFile"
-  > | Pick<FusedCandidate, "documentId" | "retrievalId" | "sourceFile">,
+    "documentId" | "elementSetId" | "evidenceContent" | "parentId"
+  > | Pick<
+    FusedCandidate,
+    "documentId" | "elementSetId" | "evidenceContent" | "parentId"
+  >,
 ): string {
-  const retrievalId = "evidenceRetrievalId" in candidate
-    ? candidate.evidenceRetrievalId
-    : candidate.retrievalId;
-  return [
-    candidate.documentId,
-    candidate.sourceFile,
-    retrievalId,
-  ].join("\0");
+  return createCanonicalEvidenceIdentity(candidate);
+}
+
+function createSourceAliasIdentity(alias: CandidateSourceAlias): string {
+  return `${alias.sourceFile}\u0000${alias.evidenceRetrievalId}`;
 }

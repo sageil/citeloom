@@ -11,6 +11,7 @@ import type { AnswerDraftStatement } from "../src/answers/draft.js";
 import type { RetrievedElement } from "../src/retrieval/document-retrieval.js";
 import {
   compileAnswerDraft,
+  readPublishedDirectAnswerContent,
   readPublishedAnswerClaims,
   renderPublishedAnswerMarkdown,
   renderPublishedAnswerSpeech,
@@ -38,10 +39,12 @@ describe("answer draft boundary", () => {
     expect(schemaText).toContain("EVID_B");
     expect(schemaText).not.toContain("presentation");
     expect(schemaText).not.toContain('"section"');
+    expect(schemaText).not.toContain('"prefixItems"');
   });
 
   it("allows only an uncited response when no evidence was retrieved", () => {
     const schema = createAnswerModelResponseSchema([]);
+    const providerSchema = z.toJSONSchema(schema);
 
     expect(schema.safeParse({
       answer: {
@@ -58,6 +61,19 @@ describe("answer draft boundary", () => {
         }],
       },
     }).success).toBe(false);
+    expect(providerSchema).toMatchObject({
+      properties: {
+        answer: {
+          properties: {
+            findings: {
+              maxItems: 0,
+              type: "array",
+            },
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(providerSchema)).not.toContain('"prefixItems"');
   });
 
   it("decodes valid cited and uncited drafts", () => {
@@ -438,7 +454,9 @@ describe("answer draft boundary", () => {
     }
     const document = compileAnswerDraft(draft, retrieved);
     expect(document).not.toHaveProperty("status");
-    expect(document.content).toBe(`${"a".repeat(1_000)} 0`);
+    expect(readPublishedDirectAnswerContent(document)).toBe(
+      `${"a".repeat(1_000)} 0`,
+    );
     expect(document.statements).toHaveLength(65);
     expect(document.citations).toHaveLength(12);
   });
@@ -513,6 +531,33 @@ describe("answer draft boundary", () => {
     ]);
   });
 
+  it("splits compound findings into atomic evidence statements", () => {
+    const draft = decodeAnswerModelResponse({
+      answer: {
+        content: "The report describes two changes.",
+        findings: [{
+          content: "Revenue increased. Costs decreased.",
+          evidenceRefs: ["EVID_A"],
+        }],
+      },
+    }, createEvidenceReferences(1));
+
+    if (draft.status !== "answered") {
+      throw new Error("Expected a grounded answer.");
+    }
+    expect(draft.statements.slice(1)).toEqual([{
+      content: "Revenue increased.",
+      evidenceRefs: ["EVID_A"],
+      presentation: "bullet",
+      section: "key-points",
+    }, {
+      content: "Costs decreased.",
+      evidenceRefs: ["EVID_A"],
+      presentation: "bullet",
+      section: "key-points",
+    }]);
+  });
+
   it("rejects removed model-authored conflict groups", () => {
     const value = {
       conflictGroups: [{
@@ -539,6 +584,42 @@ describe("answer draft boundary", () => {
 });
 
 describe("published answer compilation", () => {
+  it("preserves the model's evidence binding without semantic rebinding", () => {
+    const claim = "Cats with systemic hypertension should receive amlodipine besylate as the first choice calcium channel blocker while clinicians monitor systolic blood pressure and adjust treatment.";
+    const wrongEvidence = "Hypertensive emergencies require gradual pressure reduction and monitoring for acute target organ damage.";
+    const correctEvidence = `${claim} Follow-up measurements determine whether dose adjustment is required.`;
+    const retrieved = [
+      buildRetrievedElementWithContent("a", "b", 3, wrongEvidence),
+      buildRetrievedElementWithContent("c", "d", 7, correctEvidence),
+    ];
+    const draft = decodeAnswerDraft({
+      conflictGroups: [],
+      statements: [{
+        content: "Treatment recommendations are summarized below.",
+        evidenceRefs: [],
+        presentation: "paragraph",
+        section: "answer",
+      }, {
+        content: claim,
+        evidenceRefs: ["EVID_A"],
+        presentation: "bullet",
+        section: "key-points",
+      }],
+      status: "answered",
+    }, createEvidenceReferences(retrieved.length));
+
+    const document = compileAnswerDraft(
+      draft,
+      retrieved,
+    );
+
+    expect(document.citations).toHaveLength(1);
+    expect(document.citations[0]?.elementId).toBe("b".repeat(64));
+    expect(document.statements[0]?.citationIds).toEqual([
+      document.citations[0]?.id,
+    ]);
+  });
+
   it("resolves evidence references against the exact ordered retrieval", () => {
     const retrieved = [
       buildRetrievedElement("a", "b", 3),
@@ -817,5 +898,26 @@ function buildRetrievedElement(
     },
     evidenceContent: "Revenue growth",
     provenance: buildRetrievedElementProvenance(elementId),
+  };
+}
+
+function buildRetrievedElementWithContent(
+  documentCharacter: string,
+  elementCharacter: string,
+  page: number,
+  content: string,
+): RetrievedElement {
+  const retrieved = buildRetrievedElement(
+    documentCharacter,
+    elementCharacter,
+    page,
+  );
+  if (retrieved.element.kind === "image") {
+    throw new Error("Expected a text retrieval fixture.");
+  }
+  return {
+    ...retrieved,
+    element: { ...retrieved.element, content },
+    evidenceContent: content,
   };
 }

@@ -11,10 +11,11 @@ import {
   createRetrievalWindowPolicy,
   createRetrievalWindowPolicyContract,
 } from "../src/retrieval/window-policy.js";
-import type {
-  DenseCandidate,
-  FusedCandidate,
-  LexicalCandidate,
+import {
+  createCandidateSourceAliases,
+  type DenseCandidate,
+  type FusedCandidate,
+  type LexicalCandidate,
 } from "../src/retrieval/ranking/rank-fusion.js";
 import {
   buildExactCandidateRepresentation,
@@ -107,19 +108,19 @@ describe("retrieval candidate telemetry", () => {
         descriptionAffected: false,
       }, {
         admissionRank: 2,
-        documentId: "document-a",
-        fusedRank: 2,
-        highestFusedRankForParent: 1,
+        documentId: "document-b",
+        fusedRank: 3,
+        highestFusedRankForParent: 3,
         hydrated: true,
-        isParentRepresentative: false,
-        parentElementId: "parent-a",
+        isParentRepresentative: true,
+        parentElementId: "parent-b",
         representationHits: [],
         rerankerInputRank: 2,
-        retrievalWindowId: "window-b",
-        sourceFile: "/documents/a.pdf",
+        retrievalWindowId: "window-c",
+        sourceFile: "/documents/b.pdf",
         descriptionAffected: false,
       }],
-      admittedDistinctParentCount: 1,
+      admittedDistinctParentCount: 2,
       admittedWindowCount: 2,
       candidateK: 2,
       fusedCandidates: [{
@@ -139,9 +140,9 @@ describe("retrieval candidate telemetry", () => {
         sourceFile: "/documents/a.pdf",
         descriptionAffected: false,
       }, {
-        admissionRank: 2,
+        admissionRank: null,
         documentId: "document-a",
-        exclusionReason: null,
+        exclusionReason: "duplicate-evidence",
         fusedRank: 2,
         fusion: {
           bm25Score: 1,
@@ -150,14 +151,14 @@ describe("retrieval candidate telemetry", () => {
         },
         parentElementId: "parent-a",
         representationHits: [],
-        representativeRetrievalWindowId: "window-b",
+        representativeRetrievalWindowId: "window-a",
         retrievalWindowId: "window-b",
         sourceFile: "/documents/a.pdf",
         descriptionAffected: false,
       }, {
-        admissionRank: null,
+        admissionRank: 2,
         documentId: "document-b",
-        exclusionReason: "candidate-budget",
+        exclusionReason: null,
         fusedRank: 3,
         fusion: {
           bm25Score: 1,
@@ -189,7 +190,7 @@ describe("retrieval candidate telemetry", () => {
       }],
       fusedDistinctParentCount: 3,
       fusedWindowCount: 4,
-      hydratedDistinctParentCount: 1,
+      hydratedDistinctParentCount: 2,
       hydratedWindowCount: 2,
       queries: [{
         channels: [{
@@ -284,11 +285,16 @@ function buildFusedCandidate(
     bm25Score: 1,
     denseDistance: 0.1,
     documentId,
+    elementSetId: "e".repeat(64),
     evidenceContent,
     fusedScore: 1,
     parentId,
     representationHits: [],
     retrievalId,
+    sourceAliases: createCandidateSourceAliases({
+      evidenceRetrievalId: retrievalId,
+      sourceFile,
+    }),
     sourceFile,
     descriptionAffected: false,
   };
@@ -298,6 +304,7 @@ function buildDenseCandidate(candidate: FusedCandidate): DenseCandidate {
   return {
     distance: candidate.denseDistance ?? 0,
     documentId: candidate.documentId,
+    elementSetId: candidate.elementSetId,
     evidenceContent: candidate.evidenceContent,
     evidenceRetrievalId: candidate.retrievalId,
     parentId: candidate.parentId,
@@ -305,6 +312,7 @@ function buildDenseCandidate(candidate: FusedCandidate): DenseCandidate {
       candidate.retrievalId,
       candidate.evidenceContent,
     ),
+    sourceAliases: candidate.sourceAliases,
     sourceFile: candidate.sourceFile,
   };
 }
@@ -313,6 +321,7 @@ function buildLexicalCandidate(candidate: FusedCandidate): LexicalCandidate {
   return {
     bm25Score: candidate.bm25Score ?? 0,
     documentId: candidate.documentId,
+    elementSetId: candidate.elementSetId,
     evidenceContent: candidate.evidenceContent,
     evidenceRetrievalId: candidate.retrievalId,
     parentId: candidate.parentId,
@@ -320,6 +329,7 @@ function buildLexicalCandidate(candidate: FusedCandidate): LexicalCandidate {
       candidate.retrievalId,
       candidate.evidenceContent,
     ),
+    sourceAliases: candidate.sourceAliases,
     sourceFile: candidate.sourceFile,
   };
 }

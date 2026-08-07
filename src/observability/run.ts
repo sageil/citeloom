@@ -163,12 +163,14 @@ export interface ContextSelectionTelemetry {
     maximumContextSize: number;
     minimumLogGapMedianMultiplier: number;
     minimumScoreRatio: number;
+    minimumTailGapFraction: number;
+    minimumTailScoreRatio: number;
   };
   cutoff: {
     rank: number;
     reason: "maximum-context" | "relevance-cliff";
   };
-  policy: "relative-relevance-cliff-v2";
+  policy: "relative-relevance-cliff-v3";
   recovery: { attempted: false; result: "not-applicable" };
 }
 

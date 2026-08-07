@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import { and, count, eq, sum } from "drizzle-orm";
 import { z } from "zod";
 
@@ -12,7 +10,6 @@ import type {
 } from "../../config/index.js";
 import type { CiteLoomDatabase, SqlQueryExecutor } from "../../database/client.js";
 import {
-  indexedDocuments,
   indexedDocumentSpaces,
 } from "../../database/schema.js";
 import {
@@ -21,10 +18,19 @@ import {
   selectTopRetrievedElements,
   type NonOverlappingCandidateSelection,
 } from "../document-retrieval.js";
-import type { RetrievedElement } from "../document-retrieval.js";
+import type {
+  RetrievedElement,
+  RetrievedEvidenceSourceAlias,
+} from "../document-retrieval.js";
+import {
+  createCanonicalEvidenceIdentity,
+  createEvidenceSha256,
+} from "../evidence-identity.js";
 import type { RetrievalSourceElement } from "../../domain/source-elements.js";
 import {
   fuseRankedCandidates,
+  createCandidateSourceAliases,
+  selectStrongestUniqueEvidence,
   type DenseCandidate,
   type FusedCandidate,
   type LexicalCandidate,
@@ -51,6 +57,7 @@ import {
 import {
   createActiveProjectionKey,
   queryDenseEvidenceCandidates,
+  readActiveEvidenceSourceAliases,
   readActiveRetrievalWindows,
   type ActiveRetrievalWindowRow,
 } from "./vector-query-store.js";
@@ -102,6 +109,7 @@ const retrievalIdentifierSchema = z.string().regex(
 const denseRetrievalRowBase = {
   distance: z.number().nonnegative(),
   documentId: contentIdSchema,
+  elementSetId: contentIdSchema,
   evidenceContent: z.string().min(1),
   evidenceRetrievalId: retrievalIdentifierSchema,
   generationId: z.uuid(),
@@ -130,6 +138,7 @@ const denseRetrievalRowSchema = z.discriminatedUnion("representationType", [
 const lexicalRetrievalRowBase = {
   bm25Score: z.number().nonnegative(),
   documentId: contentIdSchema,
+  elementSetId: contentIdSchema,
   evidenceContent: z.string().min(1),
   evidenceRetrievalId: retrievalIdentifierSchema,
   generationId: z.uuid(),
@@ -361,6 +370,10 @@ export async function retrieveRelevantElementsWithScores(
         minimumLogGapMedianMultiplier:
           answerContextSelectionConfig.minimumLogGapMedianMultiplier,
         minimumScoreRatio: answerContextSelectionConfig.minimumScoreRatio,
+        minimumTailGapFraction:
+          answerContextSelectionConfig.minimumTailGapFraction,
+        minimumTailScoreRatio:
+          answerContextSelectionConfig.minimumTailScoreRatio,
       },
       cutoff: {
         rank: reranked.selection.cutoffRank,
@@ -487,6 +500,7 @@ async function prepareRetrievalSnapshot(
     const hydrated = await loadRetrievalCandidatesWithMetadata(
       database,
       documentStore,
+      space,
       candidatesToLoad,
       scopeTargets,
     );
@@ -918,12 +932,14 @@ export function selectPreparedRerankingCandidatesWithTrace(
 export async function loadRetrievalCandidates(
   database: CiteLoomDatabase,
   documentStore: SourceDocumentStore,
+  space: EmbeddingSpaceConfig,
   candidatesToLoad: FusedCandidate[],
   scopeTargets: ResolvedQueryScopeTarget[],
 ): Promise<RetrievedElement[]> {
   const loaded = await loadRetrievalCandidatesWithMetadata(
     database,
     documentStore,
+    space,
     candidatesToLoad,
     scopeTargets,
   );
@@ -935,9 +951,18 @@ interface LoadedRetrievalCandidates {
   retrieved: RetrievedElement[];
 }
 
+type ActiveCandidateSourceAlias = RetrievedEvidenceSourceAlias;
+
+interface ActiveRetrievalCandidate {
+  candidate: FusedCandidate;
+  sourceAliases: ActiveCandidateSourceAlias[];
+  versionId: string;
+}
+
 async function loadRetrievalCandidatesWithMetadata(
   database: CiteLoomDatabase,
   documentStore: SourceDocumentStore,
+  space: EmbeddingSpaceConfig,
   candidatesToLoad: FusedCandidate[],
   scopeTargets: ResolvedQueryScopeTarget[],
 ): Promise<LoadedRetrievalCandidates> {
@@ -955,61 +980,56 @@ async function loadRetrievalCandidatesWithMetadata(
   if (scopedCandidates.length === 0) {
     return { candidates: [], retrieved: [] };
   }
-  const candidateTargets: ResolvedQueryScopeTarget[] = [];
-  const scopeTargetsByDocument = new Map<string, ResolvedQueryScopeTarget>();
-  for (const target of scopeTargets) {
-    const targetKey = createDiscoveryDocumentKey(
-      target.documentId,
-      target.sourceFile,
-    );
-    scopeTargetsByDocument.set(targetKey, target);
-  }
-  for (const candidate of scopedCandidates) {
-    const candidateKey = createDiscoveryDocumentKey(
-      candidate.documentId,
-      candidate.sourceFile,
-    );
-    const target = scopeTargetsByDocument.get(candidateKey);
-    if (target !== undefined) {
-      candidateTargets.push(target);
+  const aliasParentIds = scopedCandidates.map((candidate) => candidate.parentId);
+  const aliasRows = await readActiveEvidenceSourceAliases(
+    database,
+    space.id,
+    scopeTargets,
+    aliasParentIds,
+  );
+  const aliasesByEvidence = new Map<string, ActiveCandidateSourceAlias[]>();
+  for (const row of aliasRows) {
+    const identity = createCanonicalEvidenceIdentity({
+      documentId: row.documentId,
+      elementSetId: row.elementSetId,
+      evidenceContent: row.evidenceContent,
+      parentId: row.parentId,
+    });
+    const alias = {
+      documentVersionId: row.documentVersionId,
+      evidenceRetrievalId: row.evidenceRetrievalId,
+      sourceFile: row.sourceFile,
+    };
+    const existing = aliasesByEvidence.get(identity);
+    if (existing === undefined) {
+      aliasesByEvidence.set(identity, [alias]);
+    } else {
+      existing.push(alias);
     }
   }
-  const versionRows = await database
-    .select({
-      documentId: indexedDocuments.documentId,
-      sourceFile: indexedDocuments.sourceFile,
-      versionId: indexedDocuments.versionId,
-    })
-    .from(indexedDocuments)
-    .innerJoin(
-      indexedDocumentSpaces,
-      and(
-        eq(indexedDocumentSpaces.documentId, indexedDocuments.documentId),
-        eq(indexedDocumentSpaces.sourceFile, indexedDocuments.sourceFile),
-      ),
-    )
-    .where(matchesResolvedQueryScope(
-      indexedDocumentSpaces.documentId,
-      indexedDocumentSpaces.generationId,
-      indexedDocumentSpaces.sourceFile,
-      candidateTargets,
-    ));
-  const versionIds = new Map<string, string>();
-  for (const row of versionRows) {
-    versionIds.set(`${row.documentId}\0${row.sourceFile}`, row.versionId);
-  }
-  const activeCandidates: Array<{
-    candidate: FusedCandidate;
-    versionId: string;
-  }> = [];
+  const activeCandidates: ActiveRetrievalCandidate[] = [];
   for (const candidate of scopedCandidates) {
-    const versionId = versionIds.get(
-      `${candidate.documentId}\0${candidate.sourceFile}`,
-    );
-    if (versionId === undefined) {
+    const evidenceIdentity = createCanonicalEvidenceIdentity(candidate);
+    const sourceAliases = aliasesByEvidence.get(evidenceIdentity) ?? [];
+    sourceAliases.sort((left, right) => compareActiveSourceAliases(
+      left,
+      right,
+      candidate.sourceFile,
+    ));
+    const authoritative = sourceAliases[0];
+    if (authoritative === undefined) {
       continue;
     }
-    activeCandidates.push({ candidate, versionId });
+    const authoritativeCandidate: FusedCandidate = {
+      ...candidate,
+      retrievalId: authoritative.evidenceRetrievalId,
+      sourceFile: authoritative.sourceFile,
+    };
+    activeCandidates.push({
+      candidate: authoritativeCandidate,
+      sourceAliases,
+      versionId: authoritative.documentVersionId,
+    });
   }
   const parentIds = activeCandidates.map((entry) => entry.candidate.parentId);
   const elements = await documentStore.readManyForRetrievalFrom(
@@ -1032,11 +1052,15 @@ async function loadRetrievalCandidatesWithMetadata(
       element: canonicalElement,
       evidenceContent,
       provenance: {
-        evidenceSha256: createHash("sha256")
-          .update(evidenceContent)
-          .digest("hex"),
+        elementSetId: row.elementSetId,
+        evidenceSha256: createEvidenceSha256(evidenceContent),
         representationHits: row.representationHits,
         retrievalWindowId: row.retrievalId,
+        sourceAliases: activeCandidate.sourceAliases.map((alias) => ({
+          documentVersionId: alias.documentVersionId,
+          evidenceRetrievalId: alias.evidenceRetrievalId,
+          sourceFile: alias.sourceFile,
+        })),
         descriptionAffected: row.descriptionAffected,
       },
     });
@@ -1045,6 +1069,24 @@ async function loadRetrievalCandidatesWithMetadata(
     candidates: activeCandidates.map((entry) => entry.candidate),
     retrieved,
   };
+}
+
+function compareActiveSourceAliases(
+  left: RetrievedEvidenceSourceAlias,
+  right: RetrievedEvidenceSourceAlias,
+  preferredSourceFile: string,
+): number {
+  if (left.sourceFile === preferredSourceFile) {
+    return right.sourceFile === preferredSourceFile ? 0 : -1;
+  }
+  if (right.sourceFile === preferredSourceFile) {
+    return 1;
+  }
+  const sourceDifference = left.sourceFile.localeCompare(right.sourceFile);
+  if (sourceDifference !== 0) {
+    return sourceDifference;
+  }
+  return left.evidenceRetrievalId.localeCompare(right.evidenceRetrievalId);
 }
 
 function buildRerankerCandidateIdentities(
@@ -1066,7 +1108,9 @@ function buildRerankerCandidateIdentities(
     identities.push({
       documentId: candidate.documentId,
       documentVersionId: item.documentVersionId,
+      elementSetId: candidate.elementSetId,
       elementId: candidate.parentId,
+      evidenceSha256: item.provenance.evidenceSha256,
       representativeRetrievalWindowId: candidate.retrievalId,
       sourceFile: candidate.sourceFile,
     });
@@ -1557,7 +1601,7 @@ async function queryDenseRepresentationCandidates(
       scopeTargets,
       rows,
     );
-    const selected = selectStrongestRepresentations(candidates, candidateK);
+    const selected = selectStrongestUniqueEvidence(candidates, candidateK);
     if (!search.advance(rawRows.length, selected.length)) {
       return selected;
     }
@@ -1590,10 +1634,12 @@ async function buildDenseRepresentationCandidates(
       candidates.push({
         distance: row.distance,
         documentId: row.documentId,
+        elementSetId: row.elementSetId,
         evidenceContent: row.evidenceContent,
         evidenceRetrievalId: row.evidenceRetrievalId,
         parentId: row.parentId,
         representation: buildExactRepresentation(row),
+        sourceAliases: createCandidateSourceAliases(row),
         sourceFile: row.sourceFile,
       });
       continue;
@@ -1602,10 +1648,15 @@ async function buildDenseRepresentationCandidates(
     candidates.push({
       distance: row.distance,
       documentId: row.documentId,
+      elementSetId: row.elementSetId,
       evidenceContent: evidence.evidenceContent,
       evidenceRetrievalId: evidence.evidenceRetrievalId,
       parentId: row.parentId,
       representation: buildDescriptionCandidateRepresentation(row),
+      sourceAliases: createCandidateSourceAliases({
+        evidenceRetrievalId: evidence.evidenceRetrievalId,
+        sourceFile: row.sourceFile,
+      }),
       sourceFile: row.sourceFile,
     });
   }
@@ -1651,14 +1702,16 @@ async function queryLexicalRepresentationCandidates(
       candidates.push({
         bm25Score: row.bm25Score,
         documentId: row.documentId,
+        elementSetId: row.elementSetId,
         evidenceContent: row.evidenceContent,
         evidenceRetrievalId: row.evidenceRetrievalId,
         parentId: row.parentId,
         representation,
+        sourceAliases: createCandidateSourceAliases(row),
         sourceFile: row.sourceFile,
       });
     }
-    const selected = selectStrongestRepresentations(candidates, candidateK);
+    const selected = selectStrongestUniqueEvidence(candidates, candidateK);
     if (!search.advance(rawRows.length, selected.length)) {
       return selected;
     }
@@ -1826,40 +1879,6 @@ function readDescriptionEvidence(
     );
   }
   return evidence;
-}
-
-function selectStrongestRepresentations<
-  Candidate extends DenseCandidate | LexicalCandidate,
->(
-  ranking: readonly Candidate[],
-  candidateK: number,
-): Candidate[] {
-  const selected: Candidate[] = [];
-  const selectedEvidence = new Set<string>();
-  for (const candidate of ranking) {
-    const evidenceKey = createRepresentationEvidenceKey(candidate);
-    if (selectedEvidence.has(evidenceKey)) {
-      continue;
-    }
-    selectedEvidence.add(evidenceKey);
-    selected.push(candidate);
-    if (selected.length === candidateK) {
-      break;
-    }
-  }
-  return selected;
-}
-
-function createRepresentationEvidenceKey(candidate: {
-  documentId: string;
-  evidenceRetrievalId: string;
-  sourceFile: string;
-}): string {
-  return [
-    candidate.documentId,
-    candidate.sourceFile,
-    candidate.evidenceRetrievalId,
-  ].join("\0");
 }
 
 function createRepresentationParentKey(candidate: {

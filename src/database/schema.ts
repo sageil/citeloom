@@ -1553,7 +1553,7 @@ export const researchTurns = pgTable(
     completedAt: timestamp("completed_at", { mode: "date", withTimezone: true })
       .notNull(),
     id: uuid("id").primaryKey(),
-    answerContent: text("answer_content").notNull(),
+    answerContent: text("answer_content"),
     question: text("question").notNull(),
     outputState: researchOutputState("output_state").notNull(),
     retrievedContext: jsonb("retrieved_context").$type<MatchedDocument[]>().notNull(),
@@ -1573,11 +1573,11 @@ export const researchTurns = pgTable(
   (table) => [
     check(
       "research_turns_answer_schema_version_check",
-      sql`${table.answerSchemaVersion} = 1`,
+      sql`${table.answerSchemaVersion} = 2`,
     ),
     check(
       "research_turns_answer_content_check",
-      sql`length(trim(${table.answerContent})) > 0`,
+      sql`${table.answerContent} IS NULL OR length(trim(${table.answerContent})) > 0`,
     ),
     uniqueIndex("research_turns_thread_sequence_idx").on(
       table.threadId,
@@ -1646,22 +1646,17 @@ export const researchStatements = pgTable(
       .defaultNow(),
     id: uuid("id").primaryKey(),
     presentation: answerPresentation("presentation").notNull(),
-    rationale: text("rationale").notNull(),
     section: answerSection("section").notNull(),
     statementIndex: integer("statement_index").notNull(),
-    status: claimSupportStatus("status").notNull(),
     turnId: uuid("turn_id")
       .notNull()
       .references(() => researchTurns.id, { onDelete: "cascade" }),
-    verifierModel: text("verifier_model").notNull(),
   },
   (table) => [
     check(
       "research_statements_values_valid",
       sql`${table.statementIndex} >= 0
-        AND length(trim(${table.content})) > 0
-        AND length(trim(${table.rationale})) > 0
-        AND length(trim(${table.verifierModel})) > 0`,
+        AND length(trim(${table.content})) > 0`,
     ),
     unique("research_statements_turn_identity_unique").on(
       table.turnId,
@@ -1679,21 +1674,13 @@ export const researchStatementCitations = pgTable(
   {
     citationId: uuid("citation_id").notNull(),
     citationPosition: integer("citation_position").notNull(),
-    outcome: verificationOutcome("outcome").notNull(),
-    rationale: text("rationale").notNull(),
     statementId: uuid("statement_id").notNull(),
-    supportProbability: doublePrecision("support_probability"),
     turnId: uuid("turn_id").notNull(),
-    unitId: text("unit_id").notNull(),
   },
   (table) => [
     check(
       "research_statement_citations_values_valid",
-      sql`${table.citationPosition} >= 0
-        AND length(trim(${table.rationale})) > 0
-        AND length(trim(${table.unitId})) > 0
-        AND (${table.supportProbability} IS NULL
-          OR (${table.supportProbability} >= 0 AND ${table.supportProbability} <= 1))`,
+      sql`${table.citationPosition} >= 0`,
     ),
     foreignKey({
       columns: [table.turnId, table.citationId],
@@ -1708,9 +1695,100 @@ export const researchStatementCitations = pgTable(
     primaryKey({
       columns: [table.turnId, table.statementId, table.citationPosition],
     }),
-    uniqueIndex("research_statement_citations_identity_idx").on(
+    unique("research_statement_citations_identity_unique").on(
       table.turnId,
       table.statementId,
+      table.citationId,
+    ),
+  ],
+);
+
+export const researchClaimChecks = pgTable(
+  "research_claim_checks",
+  {
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    id: uuid("id").primaryKey(),
+    rationale: text("rationale").notNull(),
+    statementId: uuid("statement_id").notNull(),
+    status: claimSupportStatus("status").notNull(),
+    turnId: uuid("turn_id").notNull(),
+    verifierModel: text("verifier_model").notNull(),
+  },
+  (table) => [
+    check(
+      "research_claim_checks_values_valid",
+      sql`length(trim(${table.rationale})) > 0
+        AND length(trim(${table.verifierModel})) > 0`,
+    ),
+    foreignKey({
+      columns: [table.turnId, table.statementId],
+      foreignColumns: [researchStatements.turnId, researchStatements.id],
+      name: "research_claim_checks_statement_fk",
+    }).onDelete("cascade"),
+    unique("research_claim_checks_turn_identity_unique").on(
+      table.turnId,
+      table.id,
+    ),
+    uniqueIndex("research_claim_checks_statement_idx").on(
+      table.turnId,
+      table.statementId,
+    ),
+    unique("research_claim_checks_statement_identity_unique").on(
+      table.turnId,
+      table.id,
+      table.statementId,
+    ),
+  ],
+);
+
+export const researchClaimEvidenceUnits = pgTable(
+  "research_claim_evidence_units",
+  {
+    checkId: uuid("check_id").notNull(),
+    citationId: uuid("citation_id").notNull(),
+    evidencePosition: integer("evidence_position").notNull(),
+    outcome: verificationOutcome("outcome").notNull(),
+    rationale: text("rationale").notNull(),
+    statementId: uuid("statement_id").notNull(),
+    supportProbability: doublePrecision("support_probability"),
+    turnId: uuid("turn_id").notNull(),
+    unitId: text("unit_id").notNull(),
+  },
+  (table) => [
+    check(
+      "research_claim_evidence_units_values_valid",
+      sql`${table.evidencePosition} >= 0
+        AND length(trim(${table.rationale})) > 0
+        AND length(trim(${table.unitId})) > 0
+        AND (${table.supportProbability} IS NULL
+          OR (${table.supportProbability} >= 0 AND ${table.supportProbability} <= 1))`,
+    ),
+    foreignKey({
+      columns: [table.turnId, table.checkId, table.statementId],
+      foreignColumns: [
+        researchClaimChecks.turnId,
+        researchClaimChecks.id,
+        researchClaimChecks.statementId,
+      ],
+      name: "research_claim_evidence_units_check_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.turnId, table.statementId, table.citationId],
+      foreignColumns: [
+        researchStatementCitations.turnId,
+        researchStatementCitations.statementId,
+        researchStatementCitations.citationId,
+      ],
+      name: "research_claim_evidence_units_statement_citation_fk",
+    }).onDelete("cascade"),
+    primaryKey({
+      columns: [table.turnId, table.checkId, table.evidencePosition],
+    }),
+    uniqueIndex("research_claim_evidence_units_identity_idx").on(
+      table.turnId,
+      table.checkId,
       table.citationId,
     ),
   ],

@@ -4,7 +4,10 @@ import { inArray } from "drizzle-orm";
 
 import { createRuntimeTaskScheduler } from "../../src/app/runtime.js";
 import type { TaskScheduler } from "../../src/shared/concurrency.js";
-import type { AppConfig } from "../../src/config/index.js";
+import type {
+  AppConfig,
+  EmbeddingSpaceConfig,
+} from "../../src/config/index.js";
 import { DocumentCatalog } from "../../src/documents/catalog/index.js";
 import {
   HNSW_QUERY_SETTINGS,
@@ -228,7 +231,7 @@ export async function prepareComparativeEvaluation(
       provenance,
       skippedModes: modes.skipped,
       telemetry,
-      version: 13,
+      version: 14,
     }, "generated output");
   } finally {
     await runtime.session.close();
@@ -737,6 +740,7 @@ async function rerankEvaluationCandidates(
   const retrieved = await hydrateEvaluationCandidates(
     runtime,
     documentStore,
+    config.embeddingSpace,
     candidates,
     scopeTargets,
     runTelemetry,
@@ -803,7 +807,9 @@ function buildRerankerCandidateIdentities(
     identities.push({
       documentId: candidate.documentId,
       documentVersionId: item.documentVersionId,
+      elementSetId: candidate.elementSetId,
       elementId: candidate.parentId,
+      evidenceSha256: item.provenance.evidenceSha256,
       representativeRetrievalWindowId: candidate.retrievalId,
       sourceFile: candidate.sourceFile,
     });
@@ -814,6 +820,7 @@ function buildRerankerCandidateIdentities(
 async function hydrateEvaluationCandidates(
   runtime: EvaluationRuntime,
   documentStore: SourceDocumentStore,
+  space: EmbeddingSpaceConfig,
   candidates: FusedCandidate[],
   scopeTargets: ResolvedQueryScopeTarget[],
   runTelemetry: RunTelemetry,
@@ -827,6 +834,7 @@ async function hydrateEvaluationCandidates(
     const retrieved = await loadRetrievalCandidates(
       runtime.session.database,
       documentStore,
+      space,
       candidates,
       scopeTargets,
     );
@@ -1127,6 +1135,7 @@ function serializeDenseCandidate(candidate: DenseCandidate) {
   return {
     distance: candidate.distance,
     documentId: candidate.documentId,
+    elementSetId: candidate.elementSetId,
     evidenceContent: candidate.evidenceContent,
     evidenceRetrievalId: candidate.evidenceRetrievalId,
     elementId: candidate.parentId,
@@ -1139,6 +1148,7 @@ function serializeLexicalCandidate(candidate: LexicalCandidate) {
   return {
     bm25Score: candidate.bm25Score,
     documentId: candidate.documentId,
+    elementSetId: candidate.elementSetId,
     evidenceContent: candidate.evidenceContent,
     evidenceRetrievalId: candidate.evidenceRetrievalId,
     elementId: candidate.parentId,

@@ -25,7 +25,6 @@ import type {
   AnswerClaim,
   CitationEvidence,
 } from "../research/types.js";
-import type { RetrievalSourceElement } from "../domain/source-elements.js";
 import { renderAnswerMarkupSpeech } from "./markup.js";
 
 export {
@@ -154,7 +153,7 @@ export function compileAnswerDraft(
   return decodePublishedAnswerDocument({
     citations,
     content: directAnswer.statement.content,
-    schemaVersion: 1,
+    schemaVersion: 2,
     statements,
   });
 }
@@ -382,58 +381,9 @@ function compactStatementEvidence(
 
   const compacted: EvidenceReference[] = [];
   for (const selected of selectedSources) {
-    if (isRedundantStandaloneImage(selected, selectedSources)) {
-      continue;
-    }
     compacted.push(selected.evidenceRef);
   }
   return compacted;
-}
-
-function isRedundantStandaloneImage(
-  selected: SelectedSource,
-  allSelected: readonly SelectedSource[],
-): boolean {
-  const element = selected.item.element;
-  if (element.kind !== "image" || !element.sourceRefs.includes("source-image")) {
-    return false;
-  }
-  for (const candidate of allSelected) {
-    if (candidate.evidenceRef === selected.evidenceRef) {
-      continue;
-    }
-    if (candidate.item.element.kind === "image") {
-      continue;
-    }
-    if (!areSourcesFromSameVersion(selected.item, candidate.item)) {
-      continue;
-    }
-    if (haveSharedPage(element, candidate.item.element)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function areSourcesFromSameVersion(
-  left: RetrievedElement,
-  right: RetrievedElement,
-): boolean {
-  return left.documentVersionId === right.documentVersionId
-    && left.element.documentId === right.element.documentId;
-}
-
-function haveSharedPage(
-  left: RetrievalSourceElement,
-  right: RetrievalSourceElement,
-): boolean {
-  const rightPages = new Set(right.pageNumbers);
-  for (const pageNumber of left.pageNumbers) {
-    if (rightPages.has(pageNumber)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function createRetrievedElementKey(item: RetrievedElement): string {
@@ -473,6 +423,12 @@ export function readPublishedAnswerClaims(
   return claims;
 }
 
+export function readPublishedDirectAnswerContent(
+  document: PublishedAnswerDocument,
+): string {
+  return document.content;
+}
+
 export function renderPublishedAnswerMarkdown(
   document: PublishedAnswerDocument,
 ): string {
@@ -480,13 +436,10 @@ export function renderPublishedAnswerMarkdown(
     return document.content;
   }
   const citationNumberById = createCitationNumberById(document.citations);
-  const lines: string[] = [escapeMarkdownText(document.content)];
+  const lines: string[] = [escapeMarkdownText(document.content), ""];
   let currentSection: AnswerSection | null = null;
   let previousPresentation: AnswerPresentation | null = null;
   for (const statement of document.statements) {
-    if (lines.length > 0 && currentSection === null) {
-      lines.push("");
-    }
     if (statement.section !== currentSection) {
       appendSectionHeading(lines, statement.section);
       currentSection = statement.section;

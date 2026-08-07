@@ -97,6 +97,7 @@ const routes = Object.freeze({
     pageStyles: [
       "./assets/styles/citeloom-answer-content.css",
       "./assets/styles/citeloom-evidence-table.css",
+      "./assets/styles/citeloom-evidence-ui.css",
       "./assets/styles/citeloom-ask.css",
     ],
     title: "Ask | CiteLoom",
@@ -110,6 +111,7 @@ const routes = Object.freeze({
     pageStyles: [
       "./assets/styles/citeloom-answer-content.css",
       "./assets/styles/citeloom-evidence-table.css",
+      "./assets/styles/citeloom-evidence-ui.css",
       "./assets/styles/citeloom-chat.css",
     ],
     title: "Chat | CiteLoom",

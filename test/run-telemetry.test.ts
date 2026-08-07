@@ -220,12 +220,14 @@ describe("run telemetry", () => {
         maximumContextSize: 10,
         minimumLogGapMedianMultiplier: 3,
         minimumScoreRatio: 3,
+        minimumTailGapFraction: 0.5,
+        minimumTailScoreRatio: 1.25,
       },
       cutoff: {
         rank: 1,
         reason: "relevance-cliff",
       },
-      policy: "relative-relevance-cliff-v2",
+      policy: "relative-relevance-cliff-v3",
       recovery: { attempted: false, result: "not-applicable" },
     });
     const stage = telemetry.startStage({
@@ -323,7 +325,7 @@ describe("run telemetry", () => {
           retrievalWindowId: "c".repeat(64),
           selected: true,
         }],
-        policy: "relative-relevance-cliff-v2",
+        policy: "relative-relevance-cliff-v3",
       },
       durationMs: 200,
       hydratedContextCount: 10,

@@ -262,7 +262,7 @@ function buildLexicalChannelTelemetry(
 function countDistinctCandidateParents(
   candidates: readonly Pick<
     FusedCandidate,
-    "documentId" | "parentId" | "sourceFile"
+    "documentId" | "elementSetId" | "parentId" | "sourceFile"
   >[],
 ): number {
   const parentKeys = new Set<string>();

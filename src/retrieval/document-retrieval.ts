@@ -5,12 +5,23 @@ import type {
 import type {
   RetrievalSourceElement,
 } from "../domain/source-elements.js";
+import {
+  createCanonicalEvidenceIdentity,
+} from "./evidence-identity.js";
 
 export interface RetrievedElementProvenance {
+  elementSetId: string;
   evidenceSha256: string;
   representationHits: RepresentationHit[];
   retrievalWindowId: string;
+  sourceAliases: RetrievedEvidenceSourceAlias[];
   descriptionAffected: boolean;
+}
+
+export interface RetrievedEvidenceSourceAlias {
+  documentVersionId: string;
+  evidenceRetrievalId: string;
+  sourceFile: string;
 }
 
 export interface RetrievedElement {
@@ -56,9 +67,16 @@ export interface NonOverlappingCandidateSelection {
 }
 
 export function createCandidateParentKey(
-  candidate: Pick<FusedCandidate, "documentId" | "parentId" | "sourceFile">,
+  candidate: Pick<
+    FusedCandidate,
+    "documentId" | "elementSetId" | "parentId"
+  >,
 ): string {
-  return `${candidate.documentId}\u0000${candidate.sourceFile}\u0000${candidate.parentId}`;
+  return [
+    candidate.documentId,
+    candidate.elementSetId,
+    candidate.parentId,
+  ].join("\u0000");
 }
 
 export function selectNonOverlappingCandidates(
@@ -267,19 +285,16 @@ function createDocumentKey(documentId: string, sourceFile: string): string {
 }
 
 function createCandidateEvidenceKey(candidate: FusedCandidate): string {
-  return [
-    candidate.documentId,
-    candidate.sourceFile,
-    candidate.retrievalId,
-  ].join("\u0000");
+  return createCanonicalEvidenceIdentity(candidate);
 }
 
 function createRetrievedEvidenceKey(item: RetrievedElement): string {
-  return [
-    item.element.documentId,
-    item.element.sourceFile,
-    item.provenance.retrievalWindowId,
-  ].join("\u0000");
+  return createCanonicalEvidenceIdentity({
+    documentId: item.element.documentId,
+    elementSetId: item.provenance.elementSetId,
+    evidenceContent: item.evidenceContent,
+    parentId: item.element.id,
+  });
 }
 
 function validateLimit(limit: number): void {

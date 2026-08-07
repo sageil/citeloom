@@ -156,7 +156,7 @@ function buildCitedConversation() {
         answerDocument: {
           citations: [answerCitation],
           content: "The report describes a revenue change.",
-          schemaVersion: 1,
+          schemaVersion: 2,
           statements: [{
             citationIds: ["citation-1"],
             content: "Revenue increased.",

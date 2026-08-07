@@ -13,6 +13,7 @@ import type { CiteLoomDatabase } from "../../database/client.js";
 import {
   activeRetrievalEvidence,
   activeRetrievalRoutes,
+  indexedDocuments,
 } from "../../database/schema.js";
 import {
   createResolvedQueryScopeTargetKey,
@@ -40,6 +41,16 @@ export interface ActiveRetrievalWindowRow {
   sourceFile: string;
 }
 
+export interface ActiveEvidenceSourceAliasRow {
+  documentId: string;
+  documentVersionId: string;
+  elementSetId: string;
+  evidenceContent: string;
+  evidenceRetrievalId: string;
+  parentId: string;
+  sourceFile: string;
+}
+
 interface DenseCandidateKey {
   distance: number;
   documentId: string;
@@ -58,6 +69,7 @@ const denseCandidateKeySchema = z.object({
 
 interface ActiveRouteRow {
   documentId: string;
+  elementSetId: string;
   evidenceId: string | null;
   evidenceMode: "direct" | "parent-exact";
   generationId: string;
@@ -110,6 +122,45 @@ export function readActiveRetrievalWindows(
         scopeTargets,
       ),
       inArray(activeRetrievalEvidence.evidenceId, retrievalIds),
+    ));
+}
+
+export function readActiveEvidenceSourceAliases(
+  database: CiteLoomDatabase,
+  embeddingSpaceId: string,
+  scopeTargets: ResolvedQueryScopeTarget[],
+  parentIds: string[],
+): Promise<ActiveEvidenceSourceAliasRow[]> {
+  if (scopeTargets.length === 0 || parentIds.length === 0) {
+    return Promise.resolve([]);
+  }
+  return database
+    .select({
+      documentId: activeRetrievalEvidence.documentId,
+      documentVersionId: indexedDocuments.versionId,
+      elementSetId: indexedDocuments.elementSetId,
+      evidenceContent: activeRetrievalEvidence.evidenceContent,
+      evidenceRetrievalId: activeRetrievalEvidence.evidenceId,
+      parentId: activeRetrievalEvidence.parentId,
+      sourceFile: activeRetrievalEvidence.sourceFile,
+    })
+    .from(activeRetrievalEvidence)
+    .innerJoin(
+      indexedDocuments,
+      and(
+        eq(indexedDocuments.documentId, activeRetrievalEvidence.documentId),
+        eq(indexedDocuments.sourceFile, activeRetrievalEvidence.sourceFile),
+      ),
+    )
+    .where(and(
+      eq(activeRetrievalEvidence.embeddingSpaceId, embeddingSpaceId),
+      matchesResolvedQueryScope(
+        activeRetrievalEvidence.documentId,
+        activeRetrievalEvidence.generationId,
+        activeRetrievalEvidence.sourceFile,
+        scopeTargets,
+      ),
+      inArray(activeRetrievalEvidence.parentId, parentIds),
     ));
 }
 
@@ -315,6 +366,7 @@ async function hydrateDenseCandidateKeys(
   const routes: ActiveRouteRow[] = await database
     .select({
       documentId: activeRetrievalRoutes.documentId,
+      elementSetId: indexedDocuments.elementSetId,
       evidenceId: activeRetrievalRoutes.evidenceId,
       evidenceMode: activeRetrievalRoutes.evidenceMode,
       generationId: activeRetrievalRoutes.generationId,
@@ -326,6 +378,13 @@ async function hydrateDenseCandidateKeys(
       sourceFile: activeRetrievalRoutes.sourceFile,
     })
     .from(activeRetrievalRoutes)
+    .innerJoin(
+      indexedDocuments,
+      and(
+        eq(indexedDocuments.documentId, activeRetrievalRoutes.documentId),
+        eq(indexedDocuments.sourceFile, activeRetrievalRoutes.sourceFile),
+      ),
+    )
     .where(and(
       eq(activeRetrievalRoutes.embeddingSpaceId, embeddingSpaceId),
       inArray(activeRetrievalRoutes.representationId, representationIds),
@@ -411,6 +470,7 @@ async function hydrateDenseCandidateKeys(
     rows.push({
       distance: key.distance,
       documentId: key.documentId,
+      elementSetId: route.elementSetId,
       evidenceContent,
       evidenceRetrievalId,
       generationId: key.generationId,

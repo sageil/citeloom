@@ -40,6 +40,7 @@ const routedRetrievalRowSchema = z.object({
 const activeDocumentTocRowSchema = z.object({
   artifact: documentTocArtifactSchema,
   documentId: contentIdSchema,
+  elementSetId: contentIdSchema,
   generationId: z.uuid(),
   sourceFile: z.string().min(1),
 });
@@ -54,6 +55,7 @@ export interface DocumentTocGenerationIdentity {
 export interface ActiveDocumentToc {
   artifact: DocumentTocArtifact;
   documentId: string;
+  elementSetId: string;
   generationId: string;
   sourceFile: string;
 }
@@ -283,6 +285,7 @@ export async function readActiveDocumentTocs(
     .select({
       artifact: retrievalTocArtifacts.artifact,
       documentId: retrievalTocArtifacts.documentId,
+      elementSetId: retrievalTocArtifacts.elementSetId,
       generationId: retrievalTocArtifacts.generationId,
       sourceFile: retrievalTocArtifacts.sourceFile,
     })
@@ -305,6 +308,7 @@ export async function readActiveDocumentTocs(
     activeTocs.push({
       artifact: decoded.artifact,
       documentId: decoded.documentId,
+      elementSetId: decoded.elementSetId,
       generationId: decoded.generationId,
       sourceFile: decoded.sourceFile,
     });

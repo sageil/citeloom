@@ -11,6 +11,7 @@ import type {
   AnswerResponseContract,
   AnswerResponseDecodeResult,
 } from "../answers/inference.js";
+import { readAtomicAnswerStatements } from "../answers/atomic-statements.js";
 import { formatAnswerTopicContent } from "../answers/topic-content.js";
 
 interface ChatAnswerPoint {
@@ -39,34 +40,17 @@ export const CHAT_ANSWER_RESPONSE: AnswerResponseContract = {
 function createChatAnswerModelResponseSchema(
   allowedEvidenceRefs: readonly EvidenceReference[],
 ): z.ZodType<unknown> {
-  const uncitedAnswerPoint: z.ZodType<ChatAnswerPoint> = z.object({
-    content: z.string().trim().min(1).describe(
-      "A greeting, clarification question, or explanation of what the supplied evidence does not establish.",
-    ),
-    topics: z.tuple([]).describe(
-      "An empty array because this response makes no grounded factual claims.",
-    ),
-  }).strict();
+  const uncitedAnswerPoint = createUncitedChatAnswerPointSchema();
   if (allowedEvidenceRefs.length === 0) {
     return z.object({
       answer: uncitedAnswerPoint,
     }).strict();
   }
   const sourceReference = createSourceReferenceSchema(allowedEvidenceRefs);
-  const answerTopic: z.ZodType<ChatAnswerTopic> = z.object({
-    content: z.string().trim().min(1).describe(
-      "The grounded details for this topic without repeating the title.",
-    ),
-    source_refs: z.array(sourceReference).min(1).describe(
-      "The smallest set of sources that directly supports this topic.",
-    ),
-    title: z.string().trim().min(1).describe(
-      "A short descriptive title for this topic.",
-    ),
-  }).strict();
+  const answerTopic = createChatAnswerTopicSchema(sourceReference);
   const groundedAnswerPoint: z.ZodType<ChatAnswerPoint> = z.object({
     content: z.string().trim().min(1).describe(
-      "The substantive grounded answer content, including synthesis and qualifications that do not belong to one topic.",
+      "The substantive answer content containing cross-topic synthesis and answer-level qualifications derived from the supplied evidence.",
     ),
     topics: z.array(answerTopic).min(1).describe(
       "One or more ordered findings that contain the independently verifiable details of the grounded answer.",
@@ -74,6 +58,34 @@ function createChatAnswerModelResponseSchema(
   }).strict();
   return z.object({
     answer: z.union([groundedAnswerPoint, uncitedAnswerPoint]),
+  }).strict();
+}
+
+function createUncitedChatAnswerPointSchema(): z.ZodType<ChatAnswerPoint> {
+  const answerTopic = createChatAnswerTopicSchema(z.string());
+  return z.object({
+    content: z.string().trim().min(1).describe(
+      "A greeting, clarification question, or explanation of what the supplied evidence does not establish.",
+    ),
+    topics: z.array(answerTopic).max(0).describe(
+      "An empty array because this response makes no grounded factual claims.",
+    ),
+  }).strict();
+}
+
+function createChatAnswerTopicSchema(
+  sourceReference: z.ZodType<EvidenceReference>,
+): z.ZodType<ChatAnswerTopic> {
+  return z.object({
+    content: z.string().trim().min(1).describe(
+      "Exactly one independently verifiable grounded factual statement for this topic, without repeating the title.",
+    ),
+    source_refs: z.array(sourceReference).min(1).describe(
+      "The smallest set of sources that directly supports this topic.",
+    ),
+    title: z.string().trim().min(1).describe(
+      "A short descriptive title for this topic.",
+    ),
   }).strict();
 }
 
@@ -104,15 +116,16 @@ function decodeChatAnswerModelResponse(
   const statements: AnswerDraftStatement[] = [];
   statements.push(createAnswerStatement(response.answer));
   appendAnswerTopics(statements, response.answer.topics);
+  const draft = decodeAnswerDraft(
+    {
+      conflictGroups: [],
+      statements,
+      status: "answered",
+    },
+    allowedEvidenceRefs,
+  );
   return {
-    draft: decodeAnswerDraft(
-      {
-        conflictGroups: [],
-        statements,
-        status: "answered",
-      },
-      allowedEvidenceRefs,
-    ),
+    draft,
     verificationStatementIndexes: null,
   };
 }
@@ -122,12 +135,17 @@ function appendAnswerTopics(
   topics: readonly ChatAnswerTopic[],
 ): void {
   for (const topic of topics) {
-    statements.push({
-      content: formatAnswerTopicContent(topic.title, topic.content),
-      evidenceRefs: normalizeSourceReferences(topic.source_refs),
-      presentation: "bullet",
-      section: "answer",
-    });
+    const normalizedContent = normalizeAnswerModelText(topic.content);
+    const atomicStatements = readAtomicAnswerStatements(normalizedContent);
+    const evidenceRefs = normalizeSourceReferences(topic.source_refs);
+    for (const atomicStatement of atomicStatements) {
+      statements.push({
+        content: formatAnswerTopicContent(topic.title, atomicStatement),
+        evidenceRefs,
+        presentation: "bullet",
+        section: "answer",
+      });
+    }
   }
 }
 

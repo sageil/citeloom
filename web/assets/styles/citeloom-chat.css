@@ -42,6 +42,7 @@
 
 .chat-conversation {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
@@ -79,6 +80,7 @@
 }
 
 .chat-conversation-header {
+  grid-column: 1 / -1;
   padding: 0 20px;
 }
 
@@ -187,10 +189,22 @@
 }
 
 .chat-thread {
+  grid-column: 1;
+  grid-row: 2;
   min-height: 0;
   padding: 32px 20px 48px;
   overflow-y: auto;
   scroll-behavior: smooth;
+}
+
+.chat-source-navigator {
+  height: auto;
+  grid-column: 2;
+  grid-row: 2 / span 2;
+  margin: 16px 18px 24px 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: var(--surface-translucent);
 }
 
 .chat-turn {
@@ -636,6 +650,8 @@
 }
 
 .chat-composer {
+  grid-column: 1;
+  grid-row: 3;
   padding: 12px 20px 24px;
   background: rgba(6, 9, 20, 0.96);
 }
@@ -977,21 +993,11 @@
   gap: 5px;
 }
 
-.chat-evidence-panel {
-  position: fixed;
-  z-index: 70;
-  top: 70px;
-  right: 0;
-  bottom: 0;
-  width: min(390px, 92vw);
-  padding: 20px;
-  overflow-y: auto;
-  border-left: 1px solid var(--border);
-  background: rgba(11, 16, 32, 0.98);
-  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.45);
+.chat-evidence-panel:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
 }
 
-.chat-evidence-panel > header,
 .dialog.chat-modal > header {
   display: flex;
   align-items: flex-start;
@@ -999,7 +1005,6 @@
   gap: 16px;
 }
 
-.chat-evidence-panel h2,
 .chat-modal h2 {
   margin: 3px 0 0;
   font-size: 18px;
@@ -1034,7 +1039,6 @@
   display: flex;
   flex-direction: column;
   gap: 17px;
-  margin-top: 22px;
 }
 
 .chat-evidence-source {
@@ -1063,8 +1067,13 @@
   color: #fde68a;
 }
 
+.chat-evidence-body {
+  display: grid;
+  gap: 10px;
+}
+
 .chat-evidence-content pre {
-  max-height: 330px;
+  max-height: none;
   margin: 0;
   padding: 14px;
   overflow: auto;
@@ -1472,6 +1481,14 @@
 
   .chat-context-bar {
     gap: 14px;
+  }
+
+  .chat-conversation {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chat-source-navigator {
+    display: none;
   }
 
   .chat-context-details {

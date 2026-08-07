@@ -44,6 +44,7 @@ import type { SaveResearchTurnInput } from "../src/research/store.js";
 import { readEqualWeightTestConfig } from "./config-fixture.js";
 import { FakeHhemClient } from "./hhem-fixture.js";
 import { InvalidAnswerDraftError } from "../src/answers/inference.js";
+import { readPublishedDirectAnswerContent } from "../src/answers/published.js";
 import {
   buildRetrievedElementProvenance,
   buildSourceLocation,
@@ -140,17 +141,19 @@ describe("atomic structured answer publication", () => {
       answerDocument: {
         citations: [expect.objectContaining({ citationNumber: 1 })],
         content: "The report describes a revenue change.",
-        schemaVersion: 1,
+        schemaVersion: 2,
         statements: [
           expect.objectContaining({ content: "Revenue increased." }),
         ],
       },
-      claims: [{
-        citationNumbers: [1],
-        claim: "Revenue increased.",
-        claimIndex: 0,
-        status: "supported",
-      }],
+      claims: [
+        {
+          citationNumbers: [1],
+          claim: "Revenue increased.",
+          claimIndex: 0,
+          status: "supported",
+        },
+      ],
       matchedDocuments: [{
         documentId: "a".repeat(64),
         retrievedElementCount: 1,
@@ -171,11 +174,13 @@ describe("atomic structured answer publication", () => {
           expect.objectContaining({ content: "Revenue increased." }),
         ],
       },
-      claims: [{
-        citationNumbers: [1],
-        claim: "Revenue increased.",
-        status: "supported",
-      }],
+      claims: [
+        {
+          citationNumbers: [1],
+          claim: "Revenue increased.",
+          status: "supported",
+        },
+      ],
     });
   });
 
@@ -217,7 +222,9 @@ describe("atomic structured answer publication", () => {
     }
     expect(saved.answerDocument).toEqual(published.answerDocument);
     expect(saved.answerDocument.citations).toHaveLength(2);
-    expect(saved.answerDocument.content).toBe("Unsupported statement.");
+    expect(readPublishedDirectAnswerContent(saved.answerDocument)).toBe(
+      "Unsupported statement.",
+    );
     expect(saved.answerDocument.statements.map((statement) => statement.content))
       .toEqual(["Revenue decreased."]);
     expect(saved.claims.map((claim) => claim.status)).toEqual([
@@ -285,10 +292,13 @@ describe("atomic structured answer publication", () => {
       },
     });
     expect(readSavedTurnInput()).toMatchObject({
-      claims: [{
-        citationNumbers: [1, 2],
-        status: "partially-supported",
-      }],
+      claims: [
+        {
+          citationNumbers: [1, 2],
+          claim: "Revenue increased.",
+          status: "partially-supported",
+        },
+      ],
     });
   });
 
@@ -313,7 +323,7 @@ describe("atomic structured answer publication", () => {
     const saved = readSavedTurnInput();
     const published = readChunks(stream.chunks, "data-answer")[0]?.data;
     expect(saved.answerDocument.citations).toHaveLength(1);
-    expect(saved.answerDocument.content).toBe(
+    expect(readPublishedDirectAnswerContent(saved.answerDocument)).toBe(
       "The report describes a revenue change.",
     );
     expect(saved.answerDocument.statements).toEqual([
@@ -430,7 +440,10 @@ describe("atomic structured answer publication", () => {
     expect(saveTurnMock).toHaveBeenCalledOnce();
     expect(readChunks(stream.chunks, "data-answer")).toHaveLength(1);
     expect(readChunks(stream.chunks, "data-answer")[0]?.data.claims).toEqual([
-      expect.objectContaining({ status: "unverified" }),
+      expect.objectContaining({
+        claim: "Revenue increased.",
+        status: "unverified",
+      }),
     ]);
     expect(readChunks(stream.chunks, "finish")).toHaveLength(1);
   });
@@ -454,14 +467,10 @@ describe("atomic structured answer publication", () => {
     expect(readChunks(stream.chunks, "finish")).toHaveLength(1);
   });
 
-  it("completes after collective finding verification fails", async () => {
-    const verifierError = new Error("collective verifier unavailable");
+  it("does not run a collective finding verification request", async () => {
     let scoreRequestCount = 0;
     const verifier = new FakeHhemClient(0.5, async (items) => {
       scoreRequestCount += 1;
-      if (scoreRequestCount === 2) {
-        throw verifierError;
-      }
       return items.map((item) => ({
         id: item.id,
         outcome: "scored" as const,
@@ -479,7 +488,7 @@ describe("atomic structured answer publication", () => {
       stream.writer,
     );
 
-    expect(scoreRequestCount).toBe(2);
+    expect(scoreRequestCount).toBe(1);
     expect(saveTurnMock).toHaveBeenCalledOnce();
     expect(readChunks(stream.chunks, "data-answer")).toHaveLength(1);
     expect(readChunks(stream.chunks, "finish")).toHaveLength(1);

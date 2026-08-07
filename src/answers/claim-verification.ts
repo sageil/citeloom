@@ -44,13 +44,6 @@ type PreparedClaimVerification =
   | PreparedDirectClaimVerification
   | PreparedModelClaimVerification;
 
-interface PendingCollectiveCitationSetVerification {
-  candidateCitationNumbers: number[];
-  check: ClaimVerificationResult;
-  item: HhemScoreItem;
-  limitFailure: string | null;
-}
-
 type ClaimVerificationFailureCategory =
   | "aborted"
   | "http-error"
@@ -197,27 +190,10 @@ export async function verifyPublishedAnswerClaims(
       abortSignal,
       stage.timingObserver,
     );
-    const initialChecks = buildClaimVerificationResults(
+    const checks = buildClaimVerificationResults(
       preparedClaims,
       scores,
       verifier.modelId,
-      verifier.supportThreshold,
-    );
-    const pendingSets = prepareRetainedCollectiveCitationSetVerifications(
-      initialChecks,
-      answerDocument.citations,
-    );
-    const setScores = await scorePendingCitationSets(
-      pendingSets,
-      verifier.score.bind(verifier),
-      scheduler,
-      abortSignal,
-      stage.timingObserver,
-    );
-    const checks = resolveRetainedCollectiveSupport(
-      initialChecks,
-      pendingSets,
-      setScores,
       verifier.supportThreshold,
     );
     finishMetric({
@@ -305,23 +281,6 @@ export async function verifyAnswerClaims(
       verifier.modelId,
       verifier.supportThreshold,
     );
-    const pendingSets = prepareRetainedCollectiveCitationSetVerifications(
-      checks,
-      sources,
-    );
-    const setScores = await scorePendingCitationSets(
-      pendingSets,
-      verifier.score.bind(verifier),
-      scheduler,
-      abortSignal,
-      stage.timingObserver,
-    );
-    const retainedChecks = resolveRetainedCollectiveSupport(
-      checks,
-      pendingSets,
-      setScores,
-      verifier.supportThreshold,
-    );
     finishMetric({
       finishReason: "stop",
       inputTokens: null,
@@ -329,9 +288,9 @@ export async function verifyAnswerClaims(
     });
     await stage.finish(createTelemetryStageResult("success", {
       inputCount: claims.length,
-      outputCount: retainedChecks.length,
+      outputCount: checks.length,
     }));
-    return retainedChecks;
+    return checks;
   } catch (error: unknown) {
     const failure = readClaimVerificationFailure(error, abortSignal);
     finishMetric({
@@ -490,112 +449,6 @@ async function scorePreparedClaimVerifications(
   );
 }
 
-function prepareRetainedCollectiveCitationSetVerifications(
-  checks: readonly ClaimVerificationResult[],
-  sources: readonly ClaimEvidenceSource[],
-): PendingCollectiveCitationSetVerification[] {
-  const sourceByNumber = new Map<number, ClaimEvidenceSource>();
-  for (const source of sources) {
-    sourceByNumber.set(source.citationNumber, source);
-  }
-  const pending: PendingCollectiveCitationSetVerification[] = [];
-  for (const check of checks) {
-    if (check.citationNumbers.length < 2) {
-      continue;
-    }
-    const unsupportedNumbers = readCitationNumbersByOutcome(
-      check,
-      "unsupported",
-    );
-    if (unsupportedNumbers.length !== check.citationNumbers.length) {
-      continue;
-    }
-    const candidateCitationNumbers = [...check.citationNumbers]
-      .sort((left, right) => left - right);
-    const item = buildCitationSetScoreItem(
-      check,
-      candidateCitationNumbers,
-      sourceByNumber,
-    );
-    pending.push({
-      candidateCitationNumbers,
-      check,
-      item,
-      limitFailure: readHhemScoreItemLimitFailure(item),
-    });
-  }
-  return pending;
-}
-
-function readCitationNumbersByOutcome(
-  check: ClaimVerificationResult,
-  outcome: ClaimVerificationResult["evidenceUnits"][number]["outcome"],
-): number[] {
-  const citationNumbers: number[] = [];
-  for (const unit of check.evidenceUnits) {
-    if (unit.outcome === outcome) {
-      citationNumbers.push(unit.citationNumber);
-    }
-  }
-  return citationNumbers;
-}
-
-function buildCitationSetScoreItem(
-  check: ClaimVerificationResult,
-  citationNumbers: readonly number[],
-  sourceByNumber: ReadonlyMap<number, ClaimEvidenceSource>,
-): HhemScoreItem {
-  const evidenceParts: string[] = [];
-  for (const citationNumber of citationNumbers) {
-    const source = sourceByNumber.get(citationNumber);
-    if (source === undefined) {
-      throw new ClaimVerificationDataError(
-        `Claim ${check.claimIndex} references unavailable citation ${citationNumber}.`,
-      );
-    }
-    const evidence = buildTextEvidenceUnit(source);
-    if (evidence === null) {
-      throw new ClaimVerificationDataError(
-        `Claim ${check.claimIndex} has verifier-incompatible citation ${citationNumber} in a citation-set verification.`,
-      );
-    }
-    evidenceParts.push(evidence);
-  }
-  return {
-    claim: check.claim,
-    evidence: evidenceParts.join("\n\n"),
-    id: `claim-${check.claimIndex}-citation-set`,
-  };
-}
-
-async function scorePendingCitationSets(
-  pending: readonly PendingCollectiveCitationSetVerification[],
-  score: (
-    items: readonly HhemScoreItem[],
-    abortSignal: AbortSignal,
-  ) => Promise<HhemScoreResult[]>,
-  scheduler: TaskScheduler,
-  abortSignal: AbortSignal,
-  timingObserver: Parameters<TaskScheduler["run"]>[2],
-): Promise<HhemScoreResult[]> {
-  const items: HhemScoreItem[] = [];
-  for (const item of pending) {
-    if (item.limitFailure === null) {
-      items.push(item.item);
-    }
-  }
-  if (items.length === 0) {
-    return [];
-  }
-  return scoreUniqueHhemItems(
-    items,
-    score,
-    scheduler,
-    abortSignal,
-    timingObserver,
-  );
-}
-
 interface HhemScoreItemGroup {
   item: HhemScoreItem;
   resultIds: string[];
@@ -744,64 +597,6 @@ function buildClaimVerificationResults(
     });
   }
   return results;
-}
-
-function resolveRetainedCollectiveSupport(
-  checks: readonly ClaimVerificationResult[],
-  pendingSets: readonly PendingCollectiveCitationSetVerification[],
-  setScores: readonly HhemScoreResult[],
-  supportThreshold: number,
-): ClaimVerificationResult[] {
-  const pendingByClaimIndex = new Map<
-    number,
-    PendingCollectiveCitationSetVerification
-  >();
-  for (const pending of pendingSets) {
-    pendingByClaimIndex.set(pending.check.claimIndex, pending);
-  }
-  const scoreById = new Map<string, HhemScoreResult>();
-  for (const score of setScores) {
-    scoreById.set(score.id, score);
-  }
-  const resolved: ClaimVerificationResult[] = [];
-  for (const check of checks) {
-    const pending = pendingByClaimIndex.get(check.claimIndex);
-    if (pending === undefined || pending.limitFailure !== null) {
-      resolved.push(check);
-      continue;
-    }
-    const score = scoreById.get(pending.item.id);
-    if (score === undefined) {
-      throw new ClaimVerificationDataError(
-        `HHEM omitted citation-set score for claim ${check.claimIndex}.`,
-      );
-    }
-    if (
-      score.outcome === "model-context-capacity"
-      || score.supportProbability < supportThreshold
-    ) {
-      resolved.push(check);
-      continue;
-    }
-    resolved.push({
-      ...check,
-      rationale: buildCitationSetScoreRationale(
-        score.supportProbability,
-        supportThreshold,
-      ),
-      status: "supported",
-    });
-  }
-  return resolved;
-}
-
-function buildCitationSetScoreRationale(
-  supportProbability: number,
-  supportThreshold: number,
-): string {
-  const score = supportProbability.toFixed(3);
-  const threshold = supportThreshold.toFixed(3);
-  return `HHEM support probability ${score} for the complete citation set meets the configured ${threshold} threshold.`;
 }
 
 function readUniqueClaims(

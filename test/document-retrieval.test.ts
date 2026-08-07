@@ -6,7 +6,10 @@ import {
   selectTopRetrievedElements,
 } from "../src/retrieval/document-retrieval.js";
 import type { RetrievedElement } from "../src/retrieval/document-retrieval.js";
-import type { FusedCandidate } from "../src/retrieval/ranking/rank-fusion.js";
+import {
+  createCandidateSourceAliases,
+  type FusedCandidate,
+} from "../src/retrieval/ranking/rank-fusion.js";
 import {
   buildRetrievedElementProvenance,
   buildSourceLocation,
@@ -88,7 +91,7 @@ describe("document-aware retrieval", () => {
     expect(selected).toEqual([bestWindow, secondWindow, otherElement]);
   });
 
-  it("removes substantially overlapping evidence from one document", () => {
+  it("preserves overlapping evidence when the content is not exact", () => {
     const bestWindow = buildRetrievedElement("a", "1");
     bestWindow.evidenceContent = "A complete matching evidence passage.";
     const overlappingWindow = buildRetrievedElement("a", "1");
@@ -101,7 +104,7 @@ describe("document-aware retrieval", () => {
       otherElement,
     ], 3);
 
-    expect(selected).toEqual([bestWindow, otherElement]);
+    expect(selected).toEqual([bestWindow, overlappingWindow, otherElement]);
   });
 
   it("reports unique matched documents with retrieved element counts", () => {
@@ -134,11 +137,16 @@ function buildCandidate(
     bm25Score: 1,
     denseDistance: 0.1,
     documentId: documentCharacter.repeat(64),
+    elementSetId: "e".repeat(64),
     evidenceContent: `Summary ${elementCharacter}`,
     fusedScore: 1,
     parentId: elementCharacter.repeat(64),
     representationHits: [],
     retrievalId: `${elementCharacter.repeat(63)}1`,
+    sourceAliases: createCandidateSourceAliases({
+      evidenceRetrievalId: `${elementCharacter.repeat(63)}1`,
+      sourceFile: `/documents/${documentCharacter}.pdf`,
+    }),
     sourceFile: `/documents/${documentCharacter}.pdf`,
     descriptionAffected: false,
   };

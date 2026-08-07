@@ -12,10 +12,11 @@ import {
   evaluationStatisticalDesignSchema,
   evaluationStableNameSchema,
 } from "./dataset.js";
-import type {
-  DenseCandidate,
-  FusedCandidate,
-  LexicalCandidate,
+import {
+  createCandidateSourceAliases,
+  type DenseCandidate,
+  type FusedCandidate,
+  type LexicalCandidate,
 } from "../../src/retrieval/ranking/rank-fusion.js";
 import type { TelemetryRunSnapshot } from "../../src/observability/run.js";
 import {
@@ -67,6 +68,7 @@ const denseCandidateSchema = z.object({
   distance: z.number().nonnegative(),
   documentId: contentIdSchema,
   elementId: contentIdSchema,
+  elementSetId: contentIdSchema,
   evidenceContent: z.string().min(1),
   evidenceRetrievalId: sha256Schema,
   representation: candidateRepresentationSchema,
@@ -76,6 +78,7 @@ const lexicalCandidateSchema = z.object({
   bm25Score: z.number().positive(),
   documentId: contentIdSchema,
   elementId: contentIdSchema,
+  elementSetId: contentIdSchema,
   evidenceContent: z.string().min(1),
   evidenceRetrievalId: sha256Schema,
   representation: candidateRepresentationSchema,
@@ -229,7 +232,7 @@ const evaluationPreparationArtifactSchema = z.object({
   provenance: evaluationProvenanceSchema,
   skippedModes: z.array(retrievalModeSchema),
   telemetry: z.array(benchmarkTelemetrySchema).min(1),
-  version: z.literal(13),
+  version: z.literal(14),
 }).strict();
 
 export type EvaluationPreparationArtifact = z.output<
@@ -276,9 +279,9 @@ function rejectIncompatibleArtifactVersion(
     return;
   }
   const version = value.version;
-  if (version !== 13) {
+  if (version !== 14) {
     throw new Error(
-      `Incompatible evaluation preparation ${sourceLabel}: expected version 13, received ${String(version)}.`,
+      `Incompatible evaluation preparation ${sourceLabel}: expected version 14, received ${String(version)}.`,
     );
   }
 }
@@ -680,10 +683,12 @@ export function readPreparedCandidateRankings(
       candidates.push({
         distance: candidate.distance,
         documentId: candidate.documentId,
+        elementSetId: candidate.elementSetId,
         evidenceContent: candidate.evidenceContent,
         evidenceRetrievalId: candidate.evidenceRetrievalId,
         parentId: candidate.elementId,
         representation: candidate.representation,
+        sourceAliases: createCandidateSourceAliases(candidate),
         sourceFile: candidate.sourceFile,
       });
     }
@@ -696,10 +701,12 @@ export function readPreparedCandidateRankings(
       candidates.push({
         bm25Score: candidate.bm25Score,
         documentId: candidate.documentId,
+        elementSetId: candidate.elementSetId,
         evidenceContent: candidate.evidenceContent,
         evidenceRetrievalId: candidate.evidenceRetrievalId,
         parentId: candidate.elementId,
         representation: candidate.representation,
+        sourceAliases: createCandidateSourceAliases(candidate),
         sourceFile: candidate.sourceFile,
       });
     }

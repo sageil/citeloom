@@ -317,24 +317,11 @@ describe("probeTextToSpeechProvider", () => {
 });
 
 function buildSpeechRequest(content: string): SpeechRequest {
-  const citationId = "00000000-0000-4000-8000-000000000001";
   return {
     answerDocument: {
-      citations: [{
-        citationNumber: 1,
-        documentId: "a".repeat(64),
-        documentVersionId: "00000000-0000-4000-8000-000000000002",
-        elementId: "b".repeat(64),
-        evidence: { excerpt: "Supporting evidence.", kind: "text" },
-        id: citationId,
-        kind: "text",
-        pageNumbers: [1],
-        regions: [],
-        sectionPath: [],
-        sourceFile: "/tmp/report.pdf",
-      }],
+      citations: [],
       content,
-      schemaVersion: 1,
+      schemaVersion: 2,
       statements: [],
     },
   };

@@ -26,7 +26,7 @@ describe("CiteLoom answer content updates", () => {
       answerDocument: {
         citations: [],
         content: "A historical answer.",
-        schemaVersion: 1,
+        schemaVersion: 2,
         statements: [],
       },
       sources: [],
@@ -185,8 +185,10 @@ describe("CiteLoom answer content updates", () => {
 
     page.completeStreamedAnswer({
       answerDocument: {
+        citations: [{ id: "stored-citation-1" }],
         content: "The report describes a revenue change.",
         statements: [{
+          citationIds: ["stored-citation-1"],
           content: "Revenue increased.",
           presentation: "bullet",
           section: "key-points",
@@ -234,6 +236,7 @@ describe("CiteLoom answer content updates", () => {
       content,
       buildAnswerContentSections(content),
       {
+        citations: [],
         content: "Revenue decreased.",
         statements: [],
       },

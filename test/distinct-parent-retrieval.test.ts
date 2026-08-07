@@ -8,7 +8,10 @@ import {
   type RetrievedElement,
 } from "../src/retrieval/document-retrieval.js";
 import { selectRerankingCandidates } from "../src/retrieval/indexing/query-store.js";
-import type { FusedCandidate } from "../src/retrieval/ranking/rank-fusion.js";
+import {
+  createCandidateSourceAliases,
+  type FusedCandidate,
+} from "../src/retrieval/ranking/rank-fusion.js";
 import { rerankRetrievedElementsWithResponse } from "../src/retrieval/ranking/reranker.js";
 import {
   buildRetrievedElementProvenance,
@@ -52,7 +55,7 @@ describe("non-overlapping candidate budgeting", () => {
     ]);
   });
 
-  it("preserves separately indexed windows within one document and source", () => {
+  it("collapses exact aliases while preserving distinct evidence", () => {
     const first = buildCandidate(
       "window-a",
       "shared-parent",
@@ -88,12 +91,11 @@ describe("non-overlapping candidate budgeting", () => {
 
     expect(selected).toEqual([
       first,
-      duplicate,
       otherDocument,
       otherSourceFile,
     ]);
     const parentKeys = selected.map(createCandidateParentKey);
-    expect(new Set(parentKeys).size).toBe(3);
+    expect(new Set(parentKeys).size).toBe(2);
   });
 
   it("never exceeds the limit and fills it when enough parents exist", () => {
@@ -184,8 +186,8 @@ describe("non-overlapping candidate budgeting", () => {
 
     expect(selected).toEqual([
       documentAFirst,
-      documentAFirstDuplicate,
       documentASecond,
+      documentBFirst,
     ]);
   });
 
@@ -240,11 +242,16 @@ function buildCandidate(
     bm25Score: 1,
     denseDistance: 0.1,
     documentId,
+    elementSetId: "e".repeat(64),
     evidenceContent,
     fusedScore: 1,
     parentId,
     representationHits: [],
     retrievalId,
+    sourceAliases: createCandidateSourceAliases({
+      evidenceRetrievalId: retrievalId,
+      sourceFile,
+    }),
     sourceFile,
     descriptionAffected: false,
   };

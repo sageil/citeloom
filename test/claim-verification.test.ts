@@ -263,7 +263,6 @@ describe("claim verification", () => {
         if (
           item.id.endsWith("citation-1")
           || item.id.endsWith("citation-2")
-          || item.id.endsWith("citation-set")
         ) {
           supportProbability = 0.9;
         }
@@ -301,9 +300,7 @@ describe("claim verification", () => {
   it("does not prune when the complete remaining evidence set fails validation", async () => {
     const verifier = new FakeHhemClient(0.5, async (items) => {
       return items.map((item) => {
-        const supportProbability = item.id.endsWith("citation-set")
-          ? 0.1
-          : item.id.endsWith("citation-3") ? 0.1 : 0.9;
+        const supportProbability = item.id.endsWith("citation-3") ? 0.1 : 0.9;
         return {
           id: item.id,
           outcome: "scored" as const,
@@ -334,12 +331,12 @@ describe("claim verification", () => {
     });
   });
 
-  it("preserves complementary citations when only their complete set supports the statement", async () => {
+  it("does not combine individually unsupported citations into collective support", async () => {
     const verifier = new FakeHhemClient(0.5, async (items) => {
       return items.map((item) => ({
         id: item.id,
         outcome: "scored" as const,
-        supportProbability: item.id.endsWith("citation-set") ? 0.9 : 0.1,
+        supportProbability: 0.1,
       }));
     });
     const document = buildPublishedAnswer(
@@ -358,31 +355,20 @@ describe("claim verification", () => {
       new AbortController().signal,
     );
 
-    expect(verifier.scoreCalls).toHaveLength(2);
-    expect(verifier.scoreCalls[1]).toEqual([{
-      claim: "Profit improved because revenue increased and costs decreased.",
-      evidence: [
-        "[Citation 1]",
-        "Revenue increased.",
-        "",
-        "[Citation 2]",
-        "Costs decreased.",
-      ].join("\n"),
-      id: "claim-0-citation-set",
-    }]);
+    expect(verifier.scoreCalls).toHaveLength(1);
+    expect(verifier.scoreCalls[0]).toHaveLength(2);
     expect(verified.answerDocument.citations).toHaveLength(2);
     expect(verified.claims[0]).toMatchObject({
       citationNumbers: [1, 2],
-      status: "supported",
+      status: "unsupported",
     });
     expect(verified.claims[0]?.evidenceUnits.map((unit) => unit.outcome)).toEqual([
       "unsupported",
       "unsupported",
     ]);
-    expect(verified.claims[0]?.rationale).toContain("complete citation set");
   });
 
-  it("retains a published statement when its complete citation set is unsupported", async () => {
+  it("retains a published statement when all of its citations are unsupported", async () => {
     const verifier = new FakeHhemClient(0.5, async (items) => {
       return items.map((item) => ({
         id: item.id,
@@ -406,7 +392,7 @@ describe("claim verification", () => {
       new AbortController().signal,
     );
 
-    expect(verifier.scoreCalls).toHaveLength(2);
+    expect(verifier.scoreCalls).toHaveLength(1);
     expect(verified.answerDocument).toBe(document);
     expect(verified.claims).toMatchObject([{
       citationNumbers: [1, 2],
@@ -439,7 +425,7 @@ describe("claim verification", () => {
     const document = decodePublishedAnswerDocument({
       citations: [],
       content: "The supplied source material does not identify the answer.",
-      schemaVersion: 1,
+      schemaVersion: 2,
       statements: [],
     });
 
@@ -983,13 +969,13 @@ function buildPublishedAnswer(
   }
   return decodePublishedAnswerDocument({
     citations,
-    content: "The answer summarizes the supported change.",
-    schemaVersion: 1,
+    content: "The evidence is summarized below.",
+    schemaVersion: 2,
     statements: [{
       citationIds,
       content,
-      presentation: "bullet",
-      section: "key-points",
+      presentation: "paragraph",
+      section: "answer",
     }],
   });
 }
@@ -1000,7 +986,7 @@ function buildPublishedConflictAnswer(): PublishedAnswerDocument {
   return decodePublishedAnswerDocument({
     citations: [first, second],
     content: "The sources report conflicting revenue directions.",
-    schemaVersion: 1,
+    schemaVersion: 2,
     statements: [{
       citationIds: [first.id, second.id],
       content:

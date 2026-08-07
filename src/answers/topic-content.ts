@@ -9,5 +9,9 @@ export function formatAnswerTopicContent(
   if (normalizedContent === "") {
     return normalizedTitle;
   }
-  return `${normalizedTitle}\n\n${normalizedContent}`;
+  const label = normalizedTitle.replace(/[:.]+$/u, "");
+  if (label === "") {
+    return normalizedContent;
+  }
+  return `${label}: ${normalizedContent}`;
 }

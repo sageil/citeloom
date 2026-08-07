@@ -41,14 +41,14 @@ export interface PublishedAnswerStatement {
 export interface PublishedUncitedAnswerDocument {
   citations: [];
   content: string;
-  schemaVersion: 1;
+  schemaVersion: 2;
   statements: [];
 }
 
 export interface PublishedAnsweredDocument {
   content: string;
   citations: PublishedAnswerCitation[];
-  schemaVersion: 1;
+  schemaVersion: 2;
   statements: PublishedAnswerStatement[];
 }
 
@@ -118,40 +118,20 @@ const publishedAnswerStatementSchema: z.ZodType<PublishedAnswerStatement> = z.ob
 const publishedUncitedAnswerDocumentSchema = z.object({
   citations: z.tuple([]),
   content: answerStatementContentSchema,
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   statements: z.tuple([]),
 }).strict();
 
 const publishedAnsweredDocumentSchema = z.object({
   citations: z.array(publishedAnswerCitationSchema).min(1),
   content: answerStatementContentSchema,
-  schemaVersion: z.literal(1),
-  statements: z.array(publishedAnswerStatementSchema),
-}).strict();
-
-const legacyPublishedAnsweredDocumentSchema = z.object({
-  citations: z.array(publishedAnswerCitationSchema).min(1),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   statements: z.array(publishedAnswerStatementSchema).min(1),
-}).strict().superRefine((document, context) => {
-  const directAnswer = document.statements[0];
-  if (
-    directAnswer === undefined
-    || directAnswer.section !== "answer"
-    || directAnswer.presentation !== "paragraph"
-  ) {
-    context.addIssue({
-      code: "custom",
-      message: "A legacy published answer has no direct answer statement.",
-      path: ["statements", 0],
-    });
-  }
-}).transform(normalizeLegacyPublishedAnswerDocument);
+}).strict();
 
 export const publishedAnswerDocumentSchema: z.ZodType<PublishedAnswerDocument> = z.union([
   publishedUncitedAnswerDocumentSchema,
   publishedAnsweredDocumentSchema,
-  legacyPublishedAnsweredDocumentSchema,
 ]).superRefine((document, context) => {
   if (isPublishedAnsweredDocument(document)) {
     validatePublishedDocumentReferences(document, context);
@@ -172,7 +152,7 @@ export function createUncitedAnswerDocument(
   return {
     citations: [],
     content,
-    schemaVersion: 1,
+    schemaVersion: 2,
     statements: [],
   };
 }
@@ -267,27 +247,4 @@ function validatePublishedDocumentReferences(
       });
     }
   }
-}
-
-function normalizeLegacyPublishedAnswerDocument(
-  document: {
-    citations: PublishedAnswerCitation[];
-    schemaVersion: 1;
-    statements: PublishedAnswerStatement[];
-  },
-): PublishedAnsweredDocument {
-  const directAnswer = document.statements[0];
-  if (
-    directAnswer === undefined
-    || directAnswer.section !== "answer"
-    || directAnswer.presentation !== "paragraph"
-  ) {
-    throw new Error("A legacy published answer has no direct answer statement.");
-  }
-  return {
-    citations: document.citations,
-    content: directAnswer.content,
-    schemaVersion: document.schemaVersion,
-    statements: document.statements.slice(1),
-  };
 }

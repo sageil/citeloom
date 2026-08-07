@@ -3,11 +3,16 @@ import {
   selectAnswerContextCutoff,
   type AnswerContextSelection,
 } from "./context-selection.js";
+import {
+  createCanonicalEvidenceIdentityFromHash,
+} from "../evidence-identity.js";
 
 export interface RerankerCandidateIdentity {
   documentId: string;
   documentVersionId: string;
+  elementSetId: string;
   elementId: string;
+  evidenceSha256: string;
   representativeRetrievalWindowId: string;
   sourceFile: string;
 }
@@ -246,9 +251,10 @@ function readExclusionReason<Item>(
 }
 
 function createEvidenceIdentity(identity: RerankerCandidateIdentity): string {
-  return [
-    identity.documentId,
-    identity.sourceFile,
-    identity.representativeRetrievalWindowId,
-  ].join("\u0000");
+  return createCanonicalEvidenceIdentityFromHash({
+    documentId: identity.documentId,
+    elementSetId: identity.elementSetId,
+    evidenceSha256: identity.evidenceSha256,
+    parentId: identity.elementId,
+  });
 }

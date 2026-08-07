@@ -16,6 +16,19 @@ import {
 } from "./citeloom-chat-boundaries.js";
 import { readDocumentCatalog } from "./citeloom-documents.js";
 import { buildPdfViewerUrl } from "./citeloom-file-links.js";
+import {
+  beginEvidenceWindowDrag,
+  continueEvidenceWindowDrag,
+  createEvidenceWindowState,
+  evidenceWindowStyle,
+  findEvidenceCitationTrigger,
+  finishEvidenceWindowDrag,
+  positionEvidenceWindow,
+  prepareEvidenceWindow,
+  resetEvidenceWindow,
+  revealEvidenceCitationTrigger,
+  toggleEvidenceWindowPin,
+} from "./citeloom-evidence-window.js";
 import { focusTextArea } from "./citeloom-focus.js";
 import {
   createDictationController,
@@ -262,6 +275,8 @@ export function registerPage(alpine) {
     newChatTagSearch: "",
     newChatTitle: "",
     newChatTotalDocuments: 0,
+    activeEvidenceMessageId: null,
+    citationWindow: createEvidenceWindowState(),
     selectedCitation: null,
     speechAbortController: null,
     speechAnswerMessageId: null,
@@ -387,6 +402,7 @@ export function registerPage(alpine) {
       this.dictationController?.destroy();
       this.dictationController = null;
       this.resetChatSpeechAudio();
+      this.resetCitationPanel();
     },
 
     async loadSpeechFeatures() {
@@ -492,7 +508,8 @@ export function registerPage(alpine) {
       this.cancelChatDictation();
       this.resetChatSpeechAudio();
       this.errorMessage = "";
-      this.selectedCitation = null;
+      this.activeEvidenceMessageId = null;
+      this.resetCitationPanel();
       try {
         const response = await fetch(
           `/api/chat/conversations/${encodeURIComponent(id)}`,
@@ -763,6 +780,8 @@ export function registerPage(alpine) {
       if (this.chatSwitcherOpen) {
         this.closeChatSwitcher({ restoreFocus: false });
       }
+      this.activeEvidenceMessageId = null;
+      this.resetCitationPanel();
       this.resetNewChatForm();
       this.newChatOpen = true;
       this.$nextTick(() => this.$refs.newChatTitle?.focus());
@@ -1030,7 +1049,10 @@ export function registerPage(alpine) {
       if (this.newChatOpen) {
         return;
       }
-      const activeElement = document.activeElement;
+      const activeElement = this.selectedCitation === null
+        ? document.activeElement
+        : this.citationWindow.trigger;
+      this.resetCitationPanel();
       this.chatSwitcherReturnFocus = activeElement instanceof HTMLElement
         ? activeElement
         : null;
@@ -1179,7 +1201,7 @@ export function registerPage(alpine) {
         }
         this.conversation = null;
         this.resetChatSpeechAudio();
-        this.selectedCitation = null;
+        this.resetCitationPanel();
         this.clearVerificationRefresh();
         await this.refreshConversations();
         if (this.conversations.length > 0) {
@@ -1201,6 +1223,8 @@ export function registerPage(alpine) {
       const requestId = crypto.randomUUID();
       this.busy = true;
       this.errorMessage = "";
+      this.activeEvidenceMessageId = null;
+      this.resetCitationPanel();
       this.draft = "";
       this.$nextTick(() => this.resizeMessageComposer());
       let completed = false;
@@ -1419,10 +1443,90 @@ export function registerPage(alpine) {
 
     sourcePageLabel(source) {
       if (source.pageNumbers.length === 0) {
-        return "Page not specified";
+        return "";
       }
       const prefix = source.pageNumbers.length === 1 ? "p." : "pp.";
       return `${prefix} ${source.pageNumbers.join(", ")}`;
+    },
+
+    sourceSidebarMessage() {
+      if (this.conversation === null) {
+        return null;
+      }
+      let latestMessage = null;
+      for (const run of this.conversation.runs) {
+        for (const message of run.messages) {
+          if (message.role !== "assistant" || message.citations.length === 0) {
+            continue;
+          }
+          if (message.id === this.activeEvidenceMessageId) {
+            return message;
+          }
+          latestMessage = message;
+        }
+      }
+      return latestMessage;
+    },
+
+    sourceSidebarCitations() {
+      return this.sourceSidebarMessage()?.citations ?? [];
+    },
+
+    sourceNavigatorTitle(citation) {
+      const sectionTitle = citation.sectionPath.at(-1);
+      return sectionTitle ?? this.sourceTitle(citation.sourceFile);
+    },
+
+    sourceNavigatorStatus(citation) {
+      const message = this.sourceSidebarMessage();
+      if (message === null || citation.preview === true) {
+        return "pending";
+      }
+      let matched = false;
+      let pending = false;
+      let supported = false;
+      let unverified = false;
+      for (const statement of this.messageAnswerStatements(message)) {
+        if (!statement.citationKeys.includes(citation.key)) {
+          continue;
+        }
+        matched = true;
+        const status = this.citationVerificationStatus(
+          message,
+          statement,
+          citation.key,
+        );
+        if (status === "unsupported") {
+          return "unsupported";
+        }
+        if (status === "pending") {
+          pending = true;
+        } else if (status === "supported") {
+          supported = true;
+        } else {
+          unverified = true;
+        }
+      }
+      if (!matched || pending) {
+        const verificationPending = message.verificationState === "pending"
+          || message.verificationState === "running";
+        return verificationPending ? "pending" : "unverified";
+      }
+      if (unverified) {
+        return "unverified";
+      }
+      return supported ? "supported" : "unverified";
+    },
+
+    sourceNavigatorStatusLabel(citation) {
+      const status = this.sourceNavigatorStatus(citation);
+      if (status === "supported") {
+        return "Verified";
+      }
+      if (status === "unsupported") {
+        return "Needs review";
+      }
+      return status === "pending" ? "Checking" : "Unverified";
     },
 
     evidenceSources(message) {
@@ -1458,15 +1562,121 @@ export function registerPage(alpine) {
       return parts[parts.length - 1] ?? sourceFile;
     },
 
-    openCitation(citation) {
+    selectedCitationSummary() {
+      if (this.selectedCitation === null) {
+        return "";
+      }
+      const title = this.sourceTitle(this.selectedCitation.sourceFile);
+      const location = this.sourcePageLabel(this.selectedCitation);
+      return location === "" ? title : `${title} · ${location}`;
+    },
+
+    openCitation(citation, trigger, message = null) {
       if (citation === null || citation.preview === true) {
         return;
       }
+      if (message !== null) {
+        this.activeEvidenceMessageId = message.id;
+      }
+      prepareEvidenceWindow(this.citationWindow, trigger);
       this.selectedCitation = citation;
+      this.$nextTick(() => {
+        this.positionCitationPanel();
+        this.$refs.citationPanel?.focus();
+      });
     },
 
-    closeCitation() {
+    async openCitationFromNavigator(citation) {
+      const message = this.sourceSidebarMessage();
+      const messageId = message?.id ?? null;
+      const trigger = findEvidenceCitationTrigger(
+        this.$root,
+        citation.id,
+        messageId,
+      );
+      if (trigger === null) {
+        this.openCitation(citation, null, message);
+        return;
+      }
+      revealEvidenceCitationTrigger(trigger, this.$refs.thread);
+      await this.$nextTick();
+      this.openCitation(citation, trigger, message);
+    },
+
+    closeCitation(options = {}) {
+      const returnFocus = this.citationWindow.trigger;
+      this.resetCitationPanel();
+      if (
+        options.restoreFocus === false
+        || !(returnFocus instanceof HTMLElement)
+      ) {
+        return;
+      }
+      this.$nextTick(() => returnFocus.focus());
+    },
+
+    resetCitationPanel() {
+      resetEvidenceWindow(this.citationWindow);
       this.selectedCitation = null;
+    },
+
+    citationPanelStyle() {
+      return evidenceWindowStyle(
+        this.citationWindow,
+        this.selectedCitation !== null,
+      );
+    },
+
+    positionCitationPanel() {
+      if (this.selectedCitation === null) {
+        return;
+      }
+      positionEvidenceWindow(
+        this.citationWindow,
+        this.$refs.citationPanel,
+      );
+    },
+
+    togglePinnedCitation() {
+      toggleEvidenceWindowPin(this.citationWindow);
+      if (!this.citationWindow.pinned) {
+        this.$nextTick(() => this.positionCitationPanel());
+      }
+      this.$refs.citationPanel?.focus();
+    },
+
+    beginCitationPanelDrag(event) {
+      const started = beginEvidenceWindowDrag(
+        this.citationWindow,
+        event,
+        this.$refs.citationPanel,
+      );
+      if (!started) {
+        return;
+      }
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    },
+
+    continueCitationPanelDrag(event) {
+      continueEvidenceWindowDrag(
+        this.citationWindow,
+        event,
+        this.$refs.citationPanel,
+      );
+    },
+
+    finishCitationPanelDrag(event) {
+      const finished = finishEvidenceWindowDrag(
+        this.citationWindow,
+        event.pointerId,
+      );
+      if (!finished) {
+        return;
+      }
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
     },
 
     statementSectionHeading(section) {
@@ -1518,12 +1728,27 @@ export function registerPage(alpine) {
       return "Image evidence";
     },
 
-    highlightedFileUrl(citation) {
+    citationFileUrl(citation) {
       const citationId = encodeURIComponent(citation.id);
-      return buildPdfViewerUrl(
-        `/api/chat/citations/${citationId}/highlighted-file`,
-        citation.pageNumbers,
-      );
+      if (citation.mediaType === "application/pdf" && citation.regions.length > 0) {
+        return buildPdfViewerUrl(
+          `/api/chat/citations/${citationId}/highlighted-file`,
+          citation.pageNumbers,
+        );
+      }
+      return `/api/chat/citations/${citationId}/file`;
+    },
+
+    citationFileLabel(citation) {
+      if (citation.mediaType === "application/pdf") {
+        return citation.regions.length > 0
+          ? "Open highlighted PDF"
+          : "Open original PDF";
+      }
+      if (citation.mediaType.startsWith("image/")) {
+        return "Open original image";
+      }
+      return "Open original file";
     },
 
     imageUrl(citation) {
@@ -1660,6 +1885,7 @@ export function registerPage(alpine) {
         - thread.scrollTop
         - thread.clientHeight;
       this.followLatest = distanceFromBottom <= 72;
+      this.positionCitationPanel();
     },
 
     scrollToLatest(force = false) {

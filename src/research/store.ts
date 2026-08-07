@@ -23,6 +23,8 @@ import {
   documentVersions,
   embeddingSpaces,
   indexedDocuments,
+  researchClaimChecks,
+  researchClaimEvidenceUnits,
   researchFeedback,
   researchStatementCitations,
   researchStatements,
@@ -265,12 +267,9 @@ const statementRowSchema = z.object({
   createdAt: z.date(),
   id: z.uuid(),
   presentation: z.enum(["paragraph", "bullet"]),
-  rationale: z.string().min(1),
   section: z.enum(["answer", "key-points", "conflicting-evidence"]),
   statementIndex: z.number().int().nonnegative(),
-  status: z.enum(["supported", "partially-supported", "unsupported", "unverified"]),
   turnId: z.uuid(),
-  verifierModel: z.string().min(1),
 });
 const verificationEvidenceUnitSchema = z.object({
   citationNumber: z.number().int().positive(),
@@ -296,6 +295,22 @@ const claimVerificationResultSchema: z.ZodType<ClaimVerificationResult> = z.obje
 const statementCitationRowSchema = z.object({
   citationId: z.uuid(),
   citationPosition: z.number().int().nonnegative(),
+  statementId: z.uuid(),
+  turnId: z.uuid(),
+});
+const claimCheckRowSchema = z.object({
+  createdAt: z.date(),
+  id: z.uuid(),
+  rationale: z.string().min(1),
+  statementId: z.uuid(),
+  status: z.enum(["supported", "partially-supported", "unsupported", "unverified"]),
+  turnId: z.uuid(),
+  verifierModel: z.string().min(1),
+});
+const claimEvidenceUnitRowSchema = z.object({
+  checkId: z.uuid(),
+  citationId: z.uuid(),
+  evidencePosition: z.number().int().nonnegative(),
   outcome: z.enum([
     "not-evaluated",
     "supported",
@@ -315,10 +330,10 @@ const threadRowSchema = z.object({
   updatedAt: z.date(),
 });
 const turnRowSchema = z.object({
-  answerSchemaVersion: z.literal(1),
+  answerSchemaVersion: z.literal(2),
   completedAt: z.date(),
   id: z.uuid(),
-  answerContent: z.string().trim().min(1),
+  answerContent: z.string().trim().min(1).nullable(),
   outputState: z.literal("published"),
   question: z.string().min(1),
   retrievedContext: z.array(z.object({
@@ -518,6 +533,10 @@ export class ResearchStore {
     );
     abortSignal.throwIfAborted();
     const turnId = randomUUID();
+    const statements = isPublishedAnsweredDocument(normalized.answerDocument)
+      ? [...normalized.answerDocument.statements]
+      : [];
+    const statementIds = statements.map(() => randomUUID());
     const claimIds = normalized.claims.map(() => randomUUID());
     const sequence = await this.database.transaction(async (transaction) => {
       const threadRows = await transaction
@@ -573,66 +592,46 @@ export class ResearchStore {
         }
         await transaction.insert(citationRecords).values(citationValues);
       }
-      if (normalized.claims.length > 0) {
+      if (statements.length > 0) {
         const statementValues = [];
         const statementCitationValues = [];
-        const citationById = new Map(citations.map((citation) => {
-          return [citation.id, citation];
-        }));
-        for (let index = 0; index < normalized.claims.length; index += 1) {
-          const claim = normalized.claims[index];
-          const statement = isPublishedAnsweredDocument(normalized.answerDocument)
-            ? normalized.answerDocument.statements[index]
-            : undefined;
-          const claimId = claimIds[index];
-          if (claim === undefined || claimId === undefined || statement === undefined) {
-            throw new Error(`Missing normalized statement at index ${index}.`);
+        for (
+          let statementIndex = 0;
+          statementIndex < statements.length;
+          statementIndex += 1
+        ) {
+          const statement = statements[statementIndex];
+          const statementId = statementIds[statementIndex];
+          if (statement === undefined || statementId === undefined) {
+            throw new Error(
+              `Missing normalized statement at index ${statementIndex}.`,
+            );
           }
           statementValues.push({
             content: statement.content,
             createdAt: normalized.completedAt,
-            id: claimId,
+            id: statementId,
             presentation: statement.presentation,
-            rationale: claim.rationale,
             section: statement.section,
-            statementIndex: claim.claimIndex,
-            status: claim.status,
+            statementIndex,
             turnId,
-            verifierModel: claim.verifierModel,
           });
-          const evidenceUnitByCitationNumber = new Map(
-            claim.evidenceUnits.map((unit) => [unit.citationNumber, unit]),
-          );
           for (
             let citationPosition = 0;
             citationPosition < statement.citationIds.length;
             citationPosition += 1
           ) {
             const citationId = statement.citationIds[citationPosition];
-            const citation = citationId === undefined
-              ? undefined
-              : citationById.get(citationId);
-            const evidenceUnit = citation === undefined
-              ? undefined
-              : evidenceUnitByCitationNumber.get(citation.citationNumber);
-            if (
-              citationId === undefined
-              || citation === undefined
-              || evidenceUnit === undefined
-            ) {
+            if (citationId === undefined) {
               throw new Error(
-                `Missing verification evidence for statement ${index}, citation ${citationPosition}.`,
+                `Missing citation ${citationPosition} for statement ${statementIndex}.`,
               );
             }
             statementCitationValues.push({
               citationId,
               citationPosition,
-              outcome: evidenceUnit.outcome,
-              rationale: evidenceUnit.rationale,
-              statementId: claimId,
-              supportProbability: evidenceUnit.supportProbability,
+              statementId,
               turnId,
-              unitId: evidenceUnit.unitId,
             });
           }
         }
@@ -640,6 +639,72 @@ export class ResearchStore {
         await transaction
           .insert(researchStatementCitations)
           .values(statementCitationValues);
+      }
+      if (normalized.claims.length > 0) {
+        const checkValues = [];
+        const evidenceUnitValues = [];
+        const citationByNumber = new Map(citations.map((citation) => {
+          return [citation.citationNumber, citation];
+        }));
+        for (
+          let checkIndex = 0;
+          checkIndex < normalized.claims.length;
+          checkIndex += 1
+        ) {
+          const claim = normalized.claims[checkIndex];
+          const checkId = claimIds[checkIndex];
+          const statementId = claim === undefined
+            ? undefined
+            : statementIds[claim.claimIndex];
+          if (
+            claim === undefined
+            || checkId === undefined
+            || statementId === undefined
+          ) {
+            throw new Error(
+              `Missing normalized claim check at index ${checkIndex}.`,
+            );
+          }
+          checkValues.push({
+            createdAt: normalized.completedAt,
+            id: checkId,
+            rationale: claim.rationale,
+            statementId,
+            status: claim.status,
+            turnId,
+            verifierModel: claim.verifierModel,
+          });
+          for (
+            let evidencePosition = 0;
+            evidencePosition < claim.evidenceUnits.length;
+            evidencePosition += 1
+          ) {
+            const evidenceUnit = claim.evidenceUnits[evidencePosition];
+            const citation = evidenceUnit === undefined
+              ? undefined
+              : citationByNumber.get(evidenceUnit.citationNumber);
+            if (evidenceUnit === undefined || citation === undefined) {
+              throw new Error(
+                `Missing evidence unit ${evidencePosition} for claim ${claim.claimIndex}.`,
+              );
+            }
+            evidenceUnitValues.push({
+              checkId,
+              citationId: citation.id,
+              evidencePosition,
+              outcome: evidenceUnit.outcome,
+              rationale: evidenceUnit.rationale,
+              statementId,
+              supportProbability: evidenceUnit.supportProbability,
+              turnId,
+              unitId: evidenceUnit.unitId,
+            });
+          }
+        }
+        await transaction.insert(researchClaimChecks).values(checkValues);
+        await transaction
+          .insert(researchClaimEvidenceUnits)
+          .values(evidenceUnitValues);
       }
       abortSignal.throwIfAborted();
       await transaction
@@ -953,7 +1018,13 @@ export class ResearchStore {
     }
     const turns = rawTurns.map(decodeTurnRow);
     const turnIds = turns.map((turn) => turn.id);
-    const [rawCitations, rawStatements, rawStatementCitations] = await Promise.all([
+    const [
+      rawCitations,
+      rawStatements,
+      rawStatementCitations,
+      rawClaimChecks,
+      rawClaimEvidenceUnits,
+    ] = await Promise.all([
       this.database
         .select(citationRowSelection)
         .from(citationRecords)
@@ -976,16 +1047,36 @@ export class ResearchStore {
           asc(researchStatementCitations.statementId),
           asc(researchStatementCitations.citationPosition),
         ),
+      this.database
+        .select()
+        .from(researchClaimChecks)
+        .where(inArray(researchClaimChecks.turnId, turnIds)),
+      this.database
+        .select()
+        .from(researchClaimEvidenceUnits)
+        .where(inArray(researchClaimEvidenceUnits.turnId, turnIds))
+        .orderBy(
+          asc(researchClaimEvidenceUnits.checkId),
+          asc(researchClaimEvidenceUnits.evidencePosition),
+        ),
     ]);
     const decodedCitations = rawCitations.map(decodeCitationRow);
     const decodedStatements = rawStatements.map(decodeStatementRow);
     const decodedStatementCitations = rawStatementCitations.map(
       decodeStatementCitationRow,
     );
+    const decodedClaimChecks = rawClaimChecks.map(decodeClaimCheckRow);
+    const decodedClaimEvidenceUnits = rawClaimEvidenceUnits.map(
+      decodeClaimEvidenceUnitRow,
+    );
     const citationsByTurn = groupCitations(decodedCitations);
     const statementsByTurn = groupStatements(decodedStatements);
     const statementCitationsByTurn = groupStatementCitations(
       decodedStatementCitations,
+    );
+    const claimChecksByTurn = groupClaimChecks(decodedClaimChecks);
+    const claimEvidenceUnitsByTurn = groupClaimEvidenceUnits(
+      decodedClaimEvidenceUnits,
     );
     const sourceFiles = new Set<string>();
     for (const citation of decodedCitations) {
@@ -1006,6 +1097,8 @@ export class ResearchStore {
         rawTurnCitations,
         statementsByTurn.get(turn.id) ?? [],
         statementCitationsByTurn.get(turn.id) ?? [],
+        claimChecksByTurn.get(turn.id) ?? [],
+        claimEvidenceUnitsByTurn.get(turn.id) ?? [],
       );
       const reproducibility = await this.readReproducibility(
         turn.runConfiguration,
@@ -1427,6 +1520,26 @@ function decodeStatementCitationRow(
   return result.data;
 }
 
+function decodeClaimCheckRow(
+  value: unknown,
+): z.output<typeof claimCheckRowSchema> {
+  const result = claimCheckRowSchema.safeParse(value);
+  if (!result.success) {
+    throw new Error(`Invalid claim check row: ${result.error.message}`);
+  }
+  return result.data;
+}
+
+function decodeClaimEvidenceUnitRow(
+  value: unknown,
+): z.output<typeof claimEvidenceUnitRowSchema> {
+  const result = claimEvidenceUnitRowSchema.safeParse(value);
+  if (!result.success) {
+    throw new Error(`Invalid claim evidence unit row: ${result.error.message}`);
+  }
+  return result.data;
+}
+
 function decodeDocumentVersionRecord(value: unknown): DocumentVersionRecord {
   const result = documentVersionRowSchema.safeParse(value);
   if (!result.success) {
@@ -1489,6 +1602,36 @@ function groupStatementCitations(
   return grouped;
 }
 
+function groupClaimChecks(
+  checks: Array<z.output<typeof claimCheckRowSchema>>,
+): Map<string, Array<z.output<typeof claimCheckRowSchema>>> {
+  const grouped = new Map<
+    string,
+    Array<z.output<typeof claimCheckRowSchema>>
+  >();
+  for (const check of checks) {
+    const current = grouped.get(check.turnId) ?? [];
+    current.push(check);
+    grouped.set(check.turnId, current);
+  }
+  return grouped;
+}
+
+function groupClaimEvidenceUnits(
+  evidenceUnits: Array<z.output<typeof claimEvidenceUnitRowSchema>>,
+): Map<string, Array<z.output<typeof claimEvidenceUnitRowSchema>>> {
+  const grouped = new Map<
+    string,
+    Array<z.output<typeof claimEvidenceUnitRowSchema>>
+  >();
+  for (const evidenceUnit of evidenceUnits) {
+    const current = grouped.get(evidenceUnit.turnId) ?? [];
+    current.push(evidenceUnit);
+    grouped.set(evidenceUnit.turnId, current);
+  }
+  return grouped;
+}
+
 function toStoredCitation(
   citation: z.output<typeof citationRowSchema>,
   stale: boolean,
@@ -1533,6 +1676,8 @@ function buildPersistedTurnOutput(
   citationRows: readonly z.output<typeof citationRowSchema>[],
   statementRows: readonly z.output<typeof statementRowSchema>[],
   statementCitationRows: readonly z.output<typeof statementCitationRowSchema>[],
+  claimCheckRows: readonly z.output<typeof claimCheckRowSchema>[],
+  claimEvidenceUnitRows: readonly z.output<typeof claimEvidenceUnitRowSchema>[],
 ): {
   answerDocument: PublishedAnswerDocument;
   claims: StoredClaimCheck[];
@@ -1554,7 +1699,7 @@ function buildPersistedTurnOutput(
     current.push(link);
     linksByStatement.set(link.statementId, current);
   }
-  const published = buildPersistedStatementCollections(
+  const publishedStatements = buildPersistedStatements(
     turn.id,
     statementRows,
     linksByStatement,
@@ -1570,8 +1715,11 @@ function buildPersistedTurnOutput(
   }
   let answerDocument: PublishedAnswerDocument;
   if (publishedCitations.length === 0) {
-    if (published.statements.length > 0) {
+    if (publishedStatements.length > 0) {
       throw new Error(`Uncited turn ${turn.id} contains cited findings.`);
+    }
+    if (turn.answerContent === null) {
+      throw new Error(`Uncited turn ${turn.id} has no answer content.`);
     }
     answerDocument = decodePublishedAnswerDocument({
       citations: [],
@@ -1580,21 +1728,32 @@ function buildPersistedTurnOutput(
       statements: [],
     });
   } else {
+    if (turn.answerContent === null) {
+      throw new Error(`Cited turn ${turn.id} has no answer content.`);
+    }
     answerDocument = decodePublishedAnswerDocument({
       citations: publishedCitations,
       content: turn.answerContent,
       schemaVersion: turn.answerSchemaVersion,
-      statements: published.statements,
+      statements: publishedStatements,
     });
   }
-  validateTurnCollections(answerDocument, published.claims);
+  const claims = buildPersistedClaimChecks(
+    turn.id,
+    statementRows,
+    linksByStatement,
+    claimCheckRows,
+    claimEvidenceUnitRows,
+    citationById,
+  );
+  validateTurnCollections(answerDocument, claims);
   return {
     answerDocument,
-    claims: published.claims,
+    claims,
   };
 }
 
-function buildPersistedStatementCollections(
+function buildPersistedStatements(
   turnId: string,
   rows: readonly z.output<typeof statementRowSchema>[],
   linksByStatement: ReadonlyMap<
@@ -1602,12 +1761,8 @@ function buildPersistedStatementCollections(
     Array<z.output<typeof statementCitationRowSchema>>
   >,
   citationById: ReadonlyMap<string, z.output<typeof citationRowSchema>>,
-): {
-  claims: StoredClaimCheck[];
-  statements: PublishedAnswerStatement[];
-} {
+): PublishedAnswerStatement[] {
   const statements: PublishedAnswerStatement[] = [];
-  const claims: StoredClaimCheck[] = [];
   for (let index = 0; index < rows.length; index += 1) {
     const statement = rows[index];
     if (statement === undefined || statement.statementIndex !== index) {
@@ -1618,8 +1773,6 @@ function buildPersistedStatementCollections(
       throw new Error(`Statement ${statement.id} has no citations.`);
     }
     const citationIds: string[] = [];
-    const citationNumbers: number[] = [];
-    const evidenceUnits: ClaimVerificationResult["evidenceUnits"] = [];
     for (let citationPosition = 0; citationPosition < links.length; citationPosition += 1) {
       const link = links[citationPosition];
       if (link === undefined || link.citationPosition !== citationPosition) {
@@ -1632,14 +1785,6 @@ function buildPersistedStatementCollections(
         );
       }
       citationIds.push(citation.id);
-      citationNumbers.push(citation.citationNumber);
-      evidenceUnits.push({
-        citationNumber: citation.citationNumber,
-        outcome: link.outcome,
-        rationale: link.rationale,
-        supportProbability: link.supportProbability,
-        unitId: link.unitId,
-      });
     }
     statements.push({
       citationIds,
@@ -1647,20 +1792,104 @@ function buildPersistedStatementCollections(
       presentation: statement.presentation,
       section: statement.section,
     });
+  }
+  return statements;
+}
+
+function buildPersistedClaimChecks(
+  turnId: string,
+  statementRows: readonly z.output<typeof statementRowSchema>[],
+  linksByStatement: ReadonlyMap<
+    string,
+    Array<z.output<typeof statementCitationRowSchema>>
+  >,
+  checkRows: readonly z.output<typeof claimCheckRowSchema>[],
+  evidenceUnitRows: readonly z.output<typeof claimEvidenceUnitRowSchema>[],
+  citationById: ReadonlyMap<string, z.output<typeof citationRowSchema>>,
+): StoredClaimCheck[] {
+  const statementById = new Map<string, z.output<typeof statementRowSchema>>();
+  for (const statement of statementRows) {
+    statementById.set(statement.id, statement);
+  }
+  const evidenceUnitsByCheck = new Map<
+    string,
+    Array<z.output<typeof claimEvidenceUnitRowSchema>>
+  >();
+  for (const evidenceUnit of evidenceUnitRows) {
+    const current = evidenceUnitsByCheck.get(evidenceUnit.checkId) ?? [];
+    current.push(evidenceUnit);
+    evidenceUnitsByCheck.set(evidenceUnit.checkId, current);
+  }
+  const orderedChecks = [...checkRows];
+  orderedChecks.sort((left, right) => {
+    const leftStatement = statementById.get(left.statementId);
+    const rightStatement = statementById.get(right.statementId);
+    if (leftStatement === undefined || rightStatement === undefined) {
+      throw new Error(`Turn ${turnId} contains a check for a missing statement.`);
+    }
+    return leftStatement.statementIndex - rightStatement.statementIndex;
+  });
+  const claims: StoredClaimCheck[] = [];
+  for (const check of orderedChecks) {
+    const statement = statementById.get(check.statementId);
+    if (statement === undefined) {
+      throw new Error(`Claim check ${check.id} references a missing statement.`);
+    }
+    const statementLinks = linksByStatement.get(statement.id) ?? [];
+    const evidenceUnitRowsForCheck = evidenceUnitsByCheck.get(check.id) ?? [];
+    if (statementLinks.length !== evidenceUnitRowsForCheck.length) {
+      throw new Error(
+        `Claim check ${check.id} does not cover every statement citation.`,
+      );
+    }
+    const citationNumbers: number[] = [];
+    const evidenceUnits: ClaimVerificationResult["evidenceUnits"] = [];
+    for (
+      let evidencePosition = 0;
+      evidencePosition < evidenceUnitRowsForCheck.length;
+      evidencePosition += 1
+    ) {
+      const evidenceUnit = evidenceUnitRowsForCheck[evidencePosition];
+      const statementLink = statementLinks[evidencePosition];
+      if (
+        evidenceUnit === undefined
+        || evidenceUnit.evidencePosition !== evidencePosition
+        || statementLink === undefined
+        || evidenceUnit.citationId !== statementLink.citationId
+      ) {
+        throw new Error(
+          `Claim check ${check.id} has invalid evidence position ${evidencePosition}.`,
+        );
+      }
+      const citation = citationById.get(evidenceUnit.citationId);
+      if (citation === undefined) {
+        throw new Error(
+          `Claim check ${check.id} references missing citation ${evidenceUnit.citationId}.`,
+        );
+      }
+      citationNumbers.push(citation.citationNumber);
+      evidenceUnits.push({
+        citationNumber: citation.citationNumber,
+        outcome: evidenceUnit.outcome,
+        rationale: evidenceUnit.rationale,
+        supportProbability: evidenceUnit.supportProbability,
+        unitId: evidenceUnit.unitId,
+      });
+    }
     claims.push({
       citationNumbers,
       claim: statement.content,
       claimIndex: statement.statementIndex,
-      createdAt: statement.createdAt.toISOString(),
+      createdAt: check.createdAt.toISOString(),
       evidenceUnits,
-      id: statement.id,
-      rationale: statement.rationale,
-      status: statement.status,
-      turnId: statement.turnId,
-      verifierModel: statement.verifierModel,
+      id: check.id,
+      rationale: check.rationale,
+      status: check.status,
+      turnId: check.turnId,
+      verifierModel: check.verifierModel,
     });
   }
-  return { claims, statements };
+  return claims;
 }
 
 function buildStoredCitations(

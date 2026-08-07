@@ -52,7 +52,6 @@ import type {
 } from "./types.js";
 
 const CHAT_LEASE_HEARTBEAT_MS = 30_000;
-const CHAT_QUERY_EXPANSIONS = 0;
 const ignoreAnswerContent = (_content: AnswerContentSnapshot): void => undefined;
 
 export interface ChatMessageRequest {
@@ -142,6 +141,7 @@ export async function answerChatMessageWithRuntime(
       runtime.config,
       "chat",
       telemetrySink,
+      accepted.run.id,
     );
     telemetryStarted = true;
     runTelemetry.markStreamStarted();
@@ -379,7 +379,9 @@ function startChatRunLease(
 function buildChatRunConfiguration(
   runtime: ApplicationRuntime,
 ): ChatRunConfiguration {
-  const research = buildResearchRunConfiguration(runtime.config);
+  const research = buildResearchRunConfiguration(
+    createChatRetrievalConfig(runtime.config),
+  );
   return {
     ...research,
     models: {
@@ -389,21 +391,16 @@ function buildChatRunConfiguration(
       reranker: research.models.reranker,
       verifier: research.models.verifier,
     },
-    retrieval: {
-      ...research.retrieval,
-      answerTemperature: runtime.config.retrieval.chatTemperature,
-      queryExpansions: CHAT_QUERY_EXPANSIONS,
-    },
+    retrieval: research.retrieval,
   };
 }
 
-function createChatRetrievalConfig(config: AppConfig): AppConfig {
+export function createChatRetrievalConfig(config: AppConfig): AppConfig {
   return {
     ...config,
     retrieval: {
       ...config.retrieval,
       answerTemperature: config.retrieval.chatTemperature,
-      queryExpansions: CHAT_QUERY_EXPANSIONS,
     },
   };
 }

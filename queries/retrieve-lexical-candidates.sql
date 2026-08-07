@@ -28,6 +28,7 @@ WITH "query_scope" AS MATERIALIZED (
 SELECT
   candidates."bm25Score",
   candidates."document_id" AS "documentId",
+  publications."element_set_id" AS "elementSetId",
   CASE
     WHEN routes."evidence_mode" = 'parent-exact'
       THEN exact_evidence."evidence_content"
@@ -52,6 +53,9 @@ INNER JOIN "active_retrieval_routes" AS routes
   AND routes."generation_id" = candidates."generation_id"
   AND routes."representation_id" = candidates."representation_id"
   AND routes."source_file" = candidates."source_file"
+INNER JOIN "indexed_documents" AS publications
+  ON publications."document_id" = routes."document_id"
+  AND publications."source_file" = routes."source_file"
 LEFT JOIN "active_retrieval_evidence" AS direct_evidence
   ON routes."evidence_mode" = 'direct'
   AND direct_evidence."document_id" = routes."document_id"

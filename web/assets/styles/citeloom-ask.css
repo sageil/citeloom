@@ -89,22 +89,24 @@
 .answer-toolbar-speech { display: flex; align-items: center; }
 .answer-toolbar-speech audio { width: min(260px, 100%); height: 32px; }
 .answer-loading-badge, .answer-partial-badge { padding: 4px 8px; border: 1px solid var(--cyan-border); border-radius: 999px; color: var(--cyan); font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
-.answer-verification-verified, .answer-finding-verification-supported, .ask-citation-status-supported { color: #6ee7b7; }
-.answer-verification-review, .answer-finding-verification-unsupported, .ask-citation-status-unsupported { color: var(--warning); }
+.answer-verification-verified, .answer-finding-verification-supported { color: #6ee7b7; }
+.answer-verification-review, .answer-finding-verification-unsupported { color: var(--warning); }
 .answer-copy { padding-block: 20px 10px; }
 .answer-document-section-key-points { position: relative; margin-top: 28px; padding-left: 18px; border-top: 1px solid var(--border); counter-reset: finding; }
 .answer-document-section-key-points > h2 { margin: 0; padding: 14px 0 8px 2px; color: var(--muted); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
 .answer-document-section-key-points::before { position: absolute; top: 50px; bottom: 28px; left: 68px; width: 1px; background: rgba(125, 211, 252, 0.28); content: ""; }
 .answer-document-section-key-points ul { margin: 0; padding: 0; list-style: none; }
-.answer-document-section-key-points li, .answer-document-section-key-points .answer-statement-content { position: relative; display: grid; min-height: 76px; grid-template-columns: 1fr auto; gap: 7px; margin: 0; padding: 18px 38px 18px 86px; border-bottom: 1px solid var(--border); counter-increment: finding; }
-.answer-document-section-key-points li::before, .answer-document-section-key-points .answer-statement-content::before { position: absolute; top: 18px; left: 0; display: grid; width: 38px; height: 30px; place-items: center; border: 1px solid rgba(125, 211, 252, 0.28); border-radius: 4px; background: var(--cyan-subtle); color: #38bdf8; content: counter(finding, decimal-leading-zero); font-weight: 750; }
-.answer-document-section-key-points li::after, .answer-document-section-key-points .answer-statement-content::after { position: absolute; top: 29px; left: 62px; width: 11px; height: 11px; border: 2px solid #93c5fd; border-radius: 50%; background: var(--background); content: ""; }
+.answer-document-section-key-points .answer-statement-content { position: relative; display: grid; min-height: 76px; grid-template-columns: 1fr auto; gap: 7px; margin: 0; padding: 18px 38px 18px 86px; border-bottom: 1px solid var(--border); counter-increment: finding; }
+.answer-document-section-key-points .answer-statement-content::before { position: absolute; top: 18px; left: 0; display: grid; width: 38px; height: 30px; place-items: center; border: 1px solid rgba(125, 211, 252, 0.28); border-radius: 4px; background: var(--cyan-subtle); color: #38bdf8; content: counter(finding, decimal-leading-zero); font-weight: 750; }
+.answer-document-section-key-points .answer-statement-content::after { position: absolute; top: 29px; left: 62px; width: 11px; height: 11px; border: 2px solid #93c5fd; border-radius: 50%; background: var(--background); content: ""; }
 .answer-document-section-key-points .answer-markdown { grid-column: 1; }
 .statement-citations { display: flex; grid-column: 1; flex-wrap: wrap; gap: 4px; }
 .inline-citation { display: inline-flex; min-width: 24px; min-height: 22px; align-items: center; justify-content: center; padding: 2px 6px; border: 1px solid var(--cyan-border); border-radius: 6px; background: var(--cyan-subtle); color: var(--cyan-bright); font-size: 9px; font-weight: 700; }
 .inline-citation:hover, .inline-citation:focus-visible { border-color: var(--cyan); background: rgba(6, 182, 212, 0.14); outline: none; }
 .answer-finding-verification { grid-column: 2; grid-row: 1 / span 2; }
 .answer-document-section-key-points .answer-finding-verification { position: absolute; top: 23px; right: 0; color: var(--cyan-bright); }
+.ask-inline-evidence-body blockquote { width: 100%; margin: 0; padding: 14px; border-left: 3px solid var(--cyan); background: var(--surface-raised); font-size: 11px; line-height: 1.65; white-space: pre-wrap; }
+.ask-inline-evidence-body img { display: block; max-width: 100%; max-height: 360px; margin-inline: auto; object-fit: contain; }
 .ask-mode .answer-publication-details > .sources-list { display: none; }
 .answer-publication-details { padding-top: 6px; }
 .answer-feedback-grid, .answer-run-details { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
@@ -134,26 +136,6 @@
 .evidence-inspector-content { height: 100%; padding: 18px; overflow: auto; }
 .ask-mode .evidence-inspector { position: sticky; top: 0; grid-column: 3; grid-row: 1 / span 2; width: auto; height: calc(100vh - 116px); min-height: 620px; background: transparent; }
 .ask-mode .evidence-inspector-content { display: none; }
-.ask-citation-navigator { display: grid; height: 100%; grid-template-rows: auto 1fr 1fr; }
-.ask-citation-navigator > header, .ask-exact-evidence { padding: 14px; }
-.ask-citation-navigator > header h2, .ask-exact-evidence h3 { margin: 0; font-size: 13px; letter-spacing: 0; }
-.ask-citation-empty { display: grid; min-height: 0; place-content: center; gap: 7px; padding: 24px 14px; color: var(--muted); text-align: center; }
-.ask-citation-empty .citeloom-icon { width: 24px; height: 24px; margin-inline: auto; color: var(--cyan); }
-.ask-citation-empty strong { color: var(--text); font-size: 11px; }
-.ask-citation-empty p { margin: 0; font-size: 9px; line-height: 1.5; }
-.ask-citation-list, .ask-exact-evidence { min-height: 0; overflow-y: auto; border-top: 1px solid var(--border); }
-.ask-citation-list > button { display: grid; width: 100%; grid-template-columns: 22px 1fr; gap: 4px 8px; padding: 10px; border: 0; border-left: 2px solid transparent; background: transparent; color: var(--muted); text-align: left; }
-.ask-citation-list > button.selected { border-left-color: #a78bfa; background: rgba(139, 92, 246, 0.08); color: var(--text); }
-.ask-citation-number { display: grid; width: 20px; height: 20px; grid-row: 1 / span 2; place-items: center; border: 1px solid var(--cyan); border-radius: 5px; color: var(--cyan); }
-.ask-citation-copy { display: grid; min-width: 0; }
-.ask-citation-copy strong, .ask-citation-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ask-citation-copy strong { color: var(--text-soft); font-size: 10px; }
-.ask-citation-copy small { font-size: 9px; }
-.ask-citation-status { display: flex; align-items: center; gap: 4px; grid-column: 2; font-size: 8px; }
-.ask-citation-status .citeloom-icon { width: 10px; height: 10px; }
-.ask-exact-evidence header { display: grid; gap: 3px; }
-.ask-exact-evidence header span { color: var(--muted); font-size: 9px; }
-.ask-exact-evidence blockquote { width: 100%; max-height: 210px; margin: 10px 0 0; overflow: auto; padding: 12px; border-left: 2px solid var(--cyan); background: var(--surface-raised); font-size: 10px; line-height: 1.55; }
 .ask-inspect-source { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; color: var(--cyan); font-size: 10px; }
 
 .discovery-card-list, .discovery-groups { display: grid; gap: 14px; margin-top: 16px; }

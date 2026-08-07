@@ -253,17 +253,10 @@ export function createAnswerContentFromDocument(document) {
       sourceFile: citation.sourceFile,
     });
   }
-  const statements = [{
-    citationIds: [],
-    citationKeys: [],
-    content: document.content,
-    contentHtml: renderAnswerMarkdown(document.content),
-    presentation: "paragraph",
-    section: "answer",
-    verificationIndex: null,
-  }];
-  for (let statementIndex = 0; statementIndex < document.statements.length; statementIndex += 1) {
-    const statement = document.statements[statementIndex];
+  const statements = [];
+  const documentStatements = readCompletedAnswerStatements(document);
+  for (let statementIndex = 0; statementIndex < documentStatements.length; statementIndex += 1) {
+    const statement = documentStatements[statementIndex];
     if (statement === undefined) {
       continue;
     }
@@ -282,7 +275,9 @@ export function createAnswerContentFromDocument(document) {
       contentHtml: renderAnswerMarkdown(statement.content),
       presentation: statement.presentation,
       section: statement.section,
-      verificationIndex: statementIndex,
+      verificationIndex: document.citations.length === 0 || statementIndex === 0
+        ? null
+        : statementIndex - 1,
     });
   }
   return { citations, statements };
@@ -313,21 +308,13 @@ export function linkAnswerContentCitations(content, sources) {
 }
 
 export function linkAnswerContentVerification(content, sections, document) {
-  const expectedStatementCount = document.statements.length + 1;
-  if (content.statements.length !== expectedStatementCount) {
+  const documentStatements = readCompletedAnswerStatements(document);
+  if (content.statements.length !== documentStatements.length) {
     throw new Error("The streamed and completed answer statements do not match.");
   }
-  const answerStatement = content.statements[0];
-  if (
-    answerStatement === undefined
-    || answerStatement.content !== document.content
-    || answerStatement.section !== "answer"
-  ) {
-    throw new Error("The streamed and completed direct answers do not match.");
-  }
-  for (let index = 0; index < document.statements.length; index += 1) {
-    const streamedStatement = content.statements[index + 1];
-    const completedStatement = document.statements[index];
+  for (let index = 0; index < documentStatements.length; index += 1) {
+    const streamedStatement = content.statements[index];
+    const completedStatement = documentStatements[index];
     if (
       streamedStatement === undefined
       || completedStatement === undefined
@@ -335,8 +322,14 @@ export function linkAnswerContentVerification(content, sections, document) {
       || streamedStatement.presentation !== completedStatement.presentation
       || streamedStatement.section !== completedStatement.section
     ) {
-      throw new Error("The streamed and completed answer findings do not match.");
+      const message = index === 0
+        ? "The streamed and completed direct answers do not match."
+        : "The streamed and completed answer findings do not match.";
+      throw new Error(message);
     }
+  }
+  if (document.citations.length === 0) {
+    return;
   }
   const presentationStatementsByKey = new Map();
   for (const section of sections) {
@@ -346,29 +339,46 @@ export function linkAnswerContentVerification(content, sections, document) {
       }
     }
   }
-  const presentationStatements = [];
-  for (let index = 0; index < document.statements.length; index += 1) {
-    const completedStatement = document.statements[index];
+  const presentationStatements = new Map();
+  for (let index = 1; index < documentStatements.length; index += 1) {
+    const completedStatement = documentStatements[index];
     if (completedStatement === undefined) {
       throw new Error("The completed answer finding is unavailable.");
     }
-    const key = `${completedStatement.section}-${index + 1}`;
+    const key = `${completedStatement.section}-${index}`;
     const presentationStatement = presentationStatementsByKey.get(key);
     if (presentationStatement === undefined) {
       throw new Error("The rendered and completed answer findings do not match.");
     }
-    presentationStatements.push(presentationStatement);
+    presentationStatements.set(index, presentationStatement);
   }
-  for (let index = 0; index < document.statements.length; index += 1) {
-    const streamedStatement = content.statements[index + 1];
-    const presentationStatement = presentationStatements[index];
+  for (let index = 1; index < documentStatements.length; index += 1) {
+    const streamedStatement = content.statements[index];
+    const presentationStatement = presentationStatements.get(index);
     if (streamedStatement !== undefined) {
-      streamedStatement.verificationIndex = index;
+      streamedStatement.verificationIndex = index - 1;
     }
     if (presentationStatement !== undefined) {
-      presentationStatement.verificationIndex = index;
+      presentationStatement.verificationIndex = index - 1;
     }
   }
+}
+
+function readCompletedAnswerStatements(document) {
+  if (document.citations.length > 0) {
+    return [{
+      citationIds: [],
+      content: document.content,
+      presentation: "paragraph",
+      section: "answer",
+    }, ...document.statements];
+  }
+  return [{
+    citationIds: [],
+    content: document.content,
+    presentation: "paragraph",
+    section: "answer",
+  }];
 }
 
 export function buildAnswerContentSections(content) {

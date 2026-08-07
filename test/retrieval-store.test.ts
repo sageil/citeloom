@@ -9,6 +9,7 @@ import {
   readEmbedding,
 } from "../src/retrieval/indexing/index.js";
 import { rankRetrievalCandidates } from "../src/retrieval/indexing/query-store.js";
+import { createCandidateSourceAliases } from "../src/retrieval/ranking/rank-fusion.js";
 import {
   startRunTelemetry,
   type RunTelemetrySink,
@@ -71,6 +72,7 @@ describe("retrieval telemetry", () => {
         return [{
           bm25Score: 3,
           documentId,
+          elementSetId: "c".repeat(64),
           evidenceContent,
           evidenceRetrievalId: elementId,
           generationId: "00000000-0000-4000-8000-000000000001",
@@ -93,20 +95,29 @@ describe("retrieval telemetry", () => {
         sourceFile: "/documents/source.pdf",
       }],
     } as unknown as SourceDocumentStore;
-    const selectedRows = [{
+    const aliasRows = [{
+      documentId,
+      documentVersionId: "00000000-0000-4000-8000-000000000001",
+      elementSetId: "c".repeat(64),
+      evidenceContent,
+      evidenceRetrievalId: elementId,
+      parentId: elementId,
+      sourceFile: "/documents/source.pdf",
+    }];
+    const activeWindowRows = [{
       documentId,
       evidenceContent,
+      generationId: "00000000-0000-4000-8000-000000000001",
       id: elementId,
       nextRetrievalId: null,
       previousRetrievalId: null,
       sourceFile: "/documents/source.pdf",
-      versionId: "00000000-0000-4000-8000-000000000001",
     }];
     const databaseSelections = [
       [{ pointerCount: 1, representationCount: 1 }],
       [{ representationCount: 1 }],
-      selectedRows,
-      selectedRows,
+      aliasRows,
+      activeWindowRows,
     ];
     let databaseSelectionIndex = 0;
     const readNextDatabaseSelection = async (): Promise<unknown[]> => {
@@ -264,10 +275,15 @@ function buildDenseCandidate(parentId: string) {
   return {
     distance: 0.1,
     documentId: "a".repeat(64),
+    elementSetId: "b".repeat(64),
     evidenceContent: content,
     evidenceRetrievalId: parentId,
     parentId,
     representation: buildExactCandidateRepresentation(parentId, content),
+    sourceAliases: createCandidateSourceAliases({
+      evidenceRetrievalId: parentId,
+      sourceFile: "/documents/source.pdf",
+    }),
     sourceFile: "/documents/source.pdf",
   };
 }
@@ -277,10 +293,15 @@ function buildLexicalCandidate(parentId: string) {
   return {
     bm25Score: 1,
     documentId: "a".repeat(64),
+    elementSetId: "b".repeat(64),
     evidenceContent: content,
     evidenceRetrievalId: parentId,
     parentId,
     representation: buildExactCandidateRepresentation(parentId, content),
+    sourceAliases: createCandidateSourceAliases({
+      evidenceRetrievalId: parentId,
+      sourceFile: "/documents/source.pdf",
+    }),
     sourceFile: "/documents/source.pdf",
   };
 }

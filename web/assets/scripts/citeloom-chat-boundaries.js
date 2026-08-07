@@ -41,7 +41,6 @@ const evidenceUnitOutcomes = Object.freeze([
   "verifier-incompatible",
 ]);
 const findingSupportStatuses = Object.freeze([
-  "collectively-supported",
   "partially-supported",
   "supported",
   "unsupported",

@@ -27,10 +27,7 @@ export type ChatVerificationState =
   | "completed"
   | "failed";
 
-export interface ChatClaimVerificationResult
-  extends Omit<ClaimVerificationResult, "status"> {
-  status: ClaimVerificationResult["status"] | "collectively-supported";
-}
+export type ChatClaimVerificationResult = ClaimVerificationResult;
 
 export interface ChatMemorySelection {
   assistantMessageId: string;

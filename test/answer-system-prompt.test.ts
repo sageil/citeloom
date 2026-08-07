@@ -71,7 +71,9 @@ describe("answer system prompt", () => {
     expect(prompt).toContain(
       "A message remains an information request when it begins with a greeting",
     );
-    expect(prompt).toContain("Return answer.findings as an empty array.");
+    expect(prompt).toContain(
+      "Return answer.findings as an empty array.",
+    );
     expect(prompt).toContain(
       "If the request is clear but the supplied evidence cannot answer it, do not ask for clarification.",
     );
@@ -81,6 +83,12 @@ describe("answer system prompt", () => {
     expect(prompt).not.toContain("SOURCE_1");
     expect(prompt).not.toContain("answer.evidenceRefs");
     expect(prompt).toContain("answer.findings[].evidenceRefs");
+    expect(prompt).toContain(
+      "Cross-finding synthesis, implications, comparisons, conclusions, and answer-level qualifications belong only in answer.content.",
+    );
+    expect(prompt).toContain(
+      "Every evidence reference listed for a finding must independently support the finding's entire factual content",
+    );
     expect(prompt).toContain("PARTIAL-ANSWER EXAMPLE");
     expect(prompt).toContain(
       'Question: "Hello, can you identify the improvements in Measure Alpha and Measure Beta?"',

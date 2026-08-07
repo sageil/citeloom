@@ -389,6 +389,8 @@ function readRerankerCandidateIdentity(
     documentId: candidate.element.documentId,
     documentVersionId: candidate.documentVersionId,
     elementId: candidate.element.id,
+    elementSetId: candidate.provenance.elementSetId,
+    evidenceSha256: candidate.provenance.evidenceSha256,
     representativeRetrievalWindowId: candidate.element.id,
     sourceFile: candidate.element.sourceFile,
   };
@@ -402,6 +404,8 @@ function validateProvidedCandidateIdentity(
     identity.documentId !== candidate.element.documentId
     || identity.documentVersionId !== candidate.documentVersionId
     || identity.elementId !== candidate.element.id
+    || identity.elementSetId !== candidate.provenance.elementSetId
+    || identity.evidenceSha256 !== candidate.provenance.evidenceSha256
     || identity.sourceFile !== candidate.element.sourceFile
   ) {
     throw new Error(

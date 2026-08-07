@@ -1,0 +1,33 @@
+.evidence-window { position: fixed; z-index: 90; display: grid; width: min(760px, calc(100vw - 32px)); max-height: min(52vh, 520px); grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--cyan-border); border-radius: 9px; background: var(--surface); box-shadow: 0 18px 48px rgba(2, 8, 23, 0.5); }
+.evidence-window.pinned { border-color: var(--cyan); box-shadow: 0 16px 40px rgba(2, 8, 23, 0.42); }
+.evidence-window > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 12px 14px; border-bottom: 1px solid var(--border); cursor: grab; touch-action: none; user-select: none; }
+.evidence-window > header:active { cursor: grabbing; }
+.evidence-window > header > div:first-child { display: grid; min-width: 0; gap: 3px; }
+.evidence-window h3 { margin: 0; font-size: 13px; }
+.evidence-window header span { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.evidence-window-actions { display: flex; flex: 0 0 auto; gap: 6px; }
+.evidence-window-actions .button, .evidence-window-actions .icon-button { min-height: 28px; border-radius: 6px; font-size: 9px; }
+.evidence-window-actions .button { padding: 0 8px; }
+.evidence-window-actions .icon-button { width: 28px; }
+.evidence-window-pin[aria-pressed="true"] { border-color: var(--cyan); background: var(--cyan-subtle); color: var(--cyan-bright); }
+.evidence-window-body { min-height: 0; overflow: auto; padding: 14px; }
+.source-navigator { display: grid; height: 100%; min-height: 0; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+.source-navigator > header { padding: 14px; }
+.source-navigator > header h2 { margin: 0; font-size: 13px; letter-spacing: 0; }
+.source-navigator-empty { display: grid; min-height: 0; place-content: center; gap: 7px; padding: 24px 14px; color: var(--muted); text-align: center; }
+.source-navigator-empty .citeloom-icon { width: 24px; height: 24px; margin-inline: auto; color: var(--cyan); }
+.source-navigator-empty strong { color: var(--text); font-size: 11px; }
+.source-navigator-empty p { margin: 0; font-size: 9px; line-height: 1.5; }
+.source-navigator-list { min-height: 0; overflow-y: auto; border-top: 1px solid var(--border); }
+.source-navigator-list > button { display: grid; width: 100%; grid-template-columns: 22px 1fr; gap: 4px 8px; padding: 10px; border: 0; border-left: 2px solid transparent; background: transparent; color: var(--muted); text-align: left; }
+.source-navigator-list > button.selected { border-left-color: #a78bfa; background: rgba(139, 92, 246, 0.08); color: var(--text); }
+.source-navigator-number { display: grid; width: 20px; height: 20px; grid-row: 1 / span 2; place-items: center; border: 1px solid var(--cyan); border-radius: 5px; color: var(--cyan); }
+.source-navigator-copy { display: grid; min-width: 0; }
+.source-navigator-copy strong, .source-navigator-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-navigator-copy strong { color: var(--text-soft); font-size: 10px; }
+.source-navigator-copy small { font-size: 9px; }
+.source-navigator-status { display: flex; align-items: center; gap: 4px; grid-column: 2; font-size: 8px; }
+.source-navigator-status .citeloom-icon { width: 10px; height: 10px; }
+.source-navigator-status-supported { color: #6ee7b7; }
+.source-navigator-status-pending, .source-navigator-status-unverified { color: var(--muted); }
+.source-navigator-status-partially-supported, .source-navigator-status-unsupported { color: var(--warning); }

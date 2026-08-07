@@ -692,18 +692,11 @@ CREATE TABLE "research_feedback" (
 CREATE TABLE "research_statement_citations" (
 	"citation_id" uuid NOT NULL,
 	"citation_position" integer NOT NULL,
-	"outcome" "verification_outcome" NOT NULL,
-	"rationale" text NOT NULL,
 	"statement_id" uuid NOT NULL,
-	"support_probability" double precision,
 	"turn_id" uuid NOT NULL,
-	"unit_id" text NOT NULL,
 	CONSTRAINT "research_statement_citations_turn_id_statement_id_citation_position_pk" PRIMARY KEY("turn_id","statement_id","citation_position"),
-	CONSTRAINT "research_statement_citations_values_valid" CHECK ("research_statement_citations"."citation_position" >= 0
-        AND length(trim("research_statement_citations"."rationale")) > 0
-        AND length(trim("research_statement_citations"."unit_id")) > 0
-        AND ("research_statement_citations"."support_probability" IS NULL
-          OR ("research_statement_citations"."support_probability" >= 0 AND "research_statement_citations"."support_probability" <= 1)))
+	CONSTRAINT "research_statement_citations_identity_unique" UNIQUE("turn_id","statement_id","citation_id"),
+	CONSTRAINT "research_statement_citations_values_valid" CHECK ("research_statement_citations"."citation_position" >= 0)
 );
 --> statement-breakpoint
 CREATE TABLE "research_statements" (
@@ -711,17 +704,44 @@ CREATE TABLE "research_statements" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"id" uuid PRIMARY KEY NOT NULL,
 	"presentation" "answer_presentation" NOT NULL,
-	"rationale" text NOT NULL,
 	"section" "answer_section" NOT NULL,
 	"statement_index" integer NOT NULL,
+	"turn_id" uuid NOT NULL,
+	CONSTRAINT "research_statements_turn_identity_unique" UNIQUE("turn_id","id"),
+	CONSTRAINT "research_statements_values_valid" CHECK ("research_statements"."statement_index" >= 0
+        AND length(trim("research_statements"."content")) > 0)
+);
+--> statement-breakpoint
+CREATE TABLE "research_claim_checks" (
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"id" uuid PRIMARY KEY NOT NULL,
+	"rationale" text NOT NULL,
+	"statement_id" uuid NOT NULL,
 	"status" "claim_support_status" NOT NULL,
 	"turn_id" uuid NOT NULL,
 	"verifier_model" text NOT NULL,
-	CONSTRAINT "research_statements_turn_identity_unique" UNIQUE("turn_id","id"),
-	CONSTRAINT "research_statements_values_valid" CHECK ("research_statements"."statement_index" >= 0
-        AND length(trim("research_statements"."content")) > 0
-        AND length(trim("research_statements"."rationale")) > 0
-        AND length(trim("research_statements"."verifier_model")) > 0)
+	CONSTRAINT "research_claim_checks_turn_identity_unique" UNIQUE("turn_id","id"),
+	CONSTRAINT "research_claim_checks_statement_identity_unique" UNIQUE("turn_id","id","statement_id"),
+	CONSTRAINT "research_claim_checks_values_valid" CHECK (length(trim("research_claim_checks"."rationale")) > 0
+        AND length(trim("research_claim_checks"."verifier_model")) > 0)
+);
+--> statement-breakpoint
+CREATE TABLE "research_claim_evidence_units" (
+	"check_id" uuid NOT NULL,
+	"citation_id" uuid NOT NULL,
+	"evidence_position" integer NOT NULL,
+	"outcome" "verification_outcome" NOT NULL,
+	"rationale" text NOT NULL,
+	"statement_id" uuid NOT NULL,
+	"support_probability" double precision,
+	"turn_id" uuid NOT NULL,
+	"unit_id" text NOT NULL,
+	CONSTRAINT "research_claim_evidence_units_turn_id_check_id_evidence_position_pk" PRIMARY KEY("turn_id","check_id","evidence_position"),
+	CONSTRAINT "research_claim_evidence_units_values_valid" CHECK ("research_claim_evidence_units"."evidence_position" >= 0
+        AND length(trim("research_claim_evidence_units"."rationale")) > 0
+        AND length(trim("research_claim_evidence_units"."unit_id")) > 0
+        AND ("research_claim_evidence_units"."support_probability" IS NULL
+          OR ("research_claim_evidence_units"."support_probability" >= 0 AND "research_claim_evidence_units"."support_probability" <= 1)))
 );
 --> statement-breakpoint
 CREATE TABLE "research_threads" (
@@ -735,7 +755,7 @@ CREATE TABLE "research_turns" (
 	"answer_schema_version" integer NOT NULL,
 	"completed_at" timestamp with time zone NOT NULL,
 	"id" uuid PRIMARY KEY NOT NULL,
-	"answer_content" text NOT NULL,
+	"answer_content" text,
 	"question" text NOT NULL,
 	"output_state" "research_output_state" NOT NULL,
 	"retrieved_context" jsonb NOT NULL,
@@ -745,8 +765,8 @@ CREATE TABLE "research_turns" (
 	"scope" jsonb NOT NULL,
 	"sequence" integer NOT NULL,
 	"thread_id" uuid NOT NULL,
-	CONSTRAINT "research_turns_answer_schema_version_check" CHECK ("research_turns"."answer_schema_version" = 1),
-	CONSTRAINT "research_turns_answer_content_check" CHECK (length(trim("research_turns"."answer_content")) > 0)
+	CONSTRAINT "research_turns_answer_schema_version_check" CHECK ("research_turns"."answer_schema_version" = 2),
+	CONSTRAINT "research_turns_answer_content_check" CHECK ("research_turns"."answer_content" IS NULL OR length(trim("research_turns"."answer_content")) > 0)
 );
 --> statement-breakpoint
 CREATE TABLE "retrieval_chunks" (
@@ -1192,6 +1212,9 @@ ALTER TABLE "ingestion_jobs" ADD CONSTRAINT "ingestion_jobs_uploaded_by_user_id_
 ALTER TABLE "research_feedback" ADD CONSTRAINT "research_feedback_citation_id_citation_records_id_fk" FOREIGN KEY ("citation_id") REFERENCES "public"."citation_records"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "research_feedback" ADD CONSTRAINT "research_feedback_turn_id_research_turns_id_fk" FOREIGN KEY ("turn_id") REFERENCES "public"."research_turns"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "research_feedback" ADD CONSTRAINT "research_feedback_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "research_claim_checks" ADD CONSTRAINT "research_claim_checks_statement_fk" FOREIGN KEY ("turn_id","statement_id") REFERENCES "public"."research_statements"("turn_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "research_claim_evidence_units" ADD CONSTRAINT "research_claim_evidence_units_check_fk" FOREIGN KEY ("turn_id","check_id","statement_id") REFERENCES "public"."research_claim_checks"("turn_id","id","statement_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "research_claim_evidence_units" ADD CONSTRAINT "research_claim_evidence_units_statement_citation_fk" FOREIGN KEY ("turn_id","statement_id","citation_id") REFERENCES "public"."research_statement_citations"("turn_id","statement_id","citation_id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "research_statement_citations" ADD CONSTRAINT "research_statement_citations_citation_fk" FOREIGN KEY ("turn_id","citation_id") REFERENCES "public"."citation_records"("turn_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "research_statement_citations" ADD CONSTRAINT "research_statement_citations_statement_fk" FOREIGN KEY ("turn_id","statement_id") REFERENCES "public"."research_statements"("turn_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "research_statements" ADD CONSTRAINT "research_statements_turn_id_research_turns_id_fk" FOREIGN KEY ("turn_id") REFERENCES "public"."research_turns"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1264,7 +1287,8 @@ CREATE INDEX "ingestion_jobs_control_state_idx" ON "ingestion_jobs" USING btree 
 CREATE INDEX "ingestion_jobs_due_idx" ON "ingestion_jobs" USING btree ("state","next_attempt_at","updated_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "ingestion_jobs_docling_service_slot_idx" ON "ingestion_jobs" USING btree ("docling_service_instance_id","docling_service_slot") WHERE "ingestion_jobs"."docling_service_instance_id" IS NOT NULL;--> statement-breakpoint
 CREATE UNIQUE INDEX "research_feedback_user_target_idx" ON "research_feedback" USING btree ("user_id","dimension","target_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "research_statement_citations_identity_idx" ON "research_statement_citations" USING btree ("turn_id","statement_id","citation_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "research_claim_checks_statement_idx" ON "research_claim_checks" USING btree ("turn_id","statement_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "research_claim_evidence_units_identity_idx" ON "research_claim_evidence_units" USING btree ("turn_id","check_id","citation_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "research_statements_turn_index_idx" ON "research_statements" USING btree ("turn_id","statement_index");--> statement-breakpoint
 CREATE UNIQUE INDEX "research_turns_thread_sequence_idx" ON "research_turns" USING btree ("thread_id","sequence");--> statement-breakpoint
 CREATE UNIQUE INDEX "research_turns_run_idx" ON "research_turns" USING btree ("run_id");--> statement-breakpoint
@@ -1442,6 +1466,8 @@ RETURNS void
 LANGUAGE plpgsql
 AS $$
 DECLARE
+  "answer_content" text;
+  "claim_check_count" bigint;
   "citation_count" bigint;
   "citation_max" integer;
   "citation_min" integer;
@@ -1450,6 +1476,11 @@ DECLARE
   "statement_max" integer;
   "statement_min" integer;
 BEGIN
+  SELECT "turn"."answer_content"
+  INTO "answer_content"
+  FROM "research_turns" AS "turn"
+  WHERE "turn"."id" = "target_turn_id";
+
   SELECT count(*), min("citation_number"), max("citation_number")
   INTO "citation_count", "citation_min", "citation_max"
   FROM "citation_records"
@@ -1465,12 +1496,27 @@ BEGIN
   FROM "research_statement_citations"
   WHERE "turn_id" = "target_turn_id";
 
+  SELECT count(*)
+  INTO "claim_check_count"
+  FROM "research_claim_checks"
+  WHERE "turn_id" = "target_turn_id";
+
+  IF "answer_content" IS NULL THEN
+    RAISE EXCEPTION 'Research turn % has no answer content.', "target_turn_id"
+      USING ERRCODE = '23514';
+  END IF;
+
   IF "citation_count" = 0 AND "statement_count" = 0 AND "link_count" = 0 THEN
     RETURN;
   END IF;
 
   IF "citation_count" = 0 OR "statement_count" = 0 OR "link_count" = 0 THEN
     RAISE EXCEPTION 'Research turn % has incomplete published output.', "target_turn_id"
+      USING ERRCODE = '23514';
+  END IF;
+
+  IF "claim_check_count" <> "statement_count" THEN
+    RAISE EXCEPTION 'Research turn % has incomplete claim verification.', "target_turn_id"
       USING ERRCODE = '23514';
   END IF;
 
@@ -1528,6 +1574,42 @@ BEGIN
       OR max("citation_position") <> count(*) - 1
   ) THEN
     RAISE EXCEPTION 'Research turn % has non-contiguous statement citation positions.', "target_turn_id"
+      USING ERRCODE = '23514';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM "research_claim_checks" AS "claim_check"
+    WHERE
+      "claim_check"."turn_id" = "target_turn_id"
+      AND (
+        SELECT count(*)
+        FROM "research_statement_citations" AS "statement_citation"
+        WHERE
+          "statement_citation"."turn_id" = "claim_check"."turn_id"
+          AND "statement_citation"."statement_id" = "claim_check"."statement_id"
+      ) <> (
+        SELECT count(*)
+        FROM "research_claim_evidence_units" AS "evidence_unit"
+        WHERE
+          "evidence_unit"."turn_id" = "claim_check"."turn_id"
+          AND "evidence_unit"."check_id" = "claim_check"."id"
+      )
+  ) THEN
+    RAISE EXCEPTION 'Research turn % has incomplete claim verification evidence.', "target_turn_id"
+      USING ERRCODE = '23514';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM "research_claim_evidence_units"
+    WHERE "turn_id" = "target_turn_id"
+    GROUP BY "check_id"
+    HAVING
+      min("evidence_position") <> 0
+      OR max("evidence_position") <> count(*) - 1
+  ) THEN
+    RAISE EXCEPTION 'Research turn % has non-contiguous claim evidence positions.', "target_turn_id"
       USING ERRCODE = '23514';
   END IF;
 END;
@@ -1665,6 +1747,20 @@ DROP TRIGGER IF EXISTS "research_statement_citations_immutable_after_publication
 ON "research_statement_citations";
 CREATE TRIGGER "research_statement_citations_immutable_after_publication"
 BEFORE INSERT OR UPDATE OR DELETE ON "research_statement_citations"
+FOR EACH ROW
+EXECUTE FUNCTION "enforce_research_output_child_mutation"();
+
+DROP TRIGGER IF EXISTS "research_claim_checks_immutable_after_publication"
+ON "research_claim_checks";
+CREATE TRIGGER "research_claim_checks_immutable_after_publication"
+BEFORE INSERT OR UPDATE OR DELETE ON "research_claim_checks"
+FOR EACH ROW
+EXECUTE FUNCTION "enforce_research_output_child_mutation"();
+
+DROP TRIGGER IF EXISTS "research_claim_evidence_units_immutable_after_publication"
+ON "research_claim_evidence_units";
+CREATE TRIGGER "research_claim_evidence_units_immutable_after_publication"
+BEFORE INSERT OR UPDATE OR DELETE ON "research_claim_evidence_units"
 FOR EACH ROW
 EXECUTE FUNCTION "enforce_research_output_child_mutation"();
 

@@ -608,6 +608,77 @@
               </div>
             </div>
 
+            <div class="ask-evidence-layer">
+              <section
+                aria-labelledby="ask-inline-evidence-title"
+                class="evidence-window ask-inline-evidence"
+                :class="{ pinned: citationWindow.pinned }"
+                :style="askEvidencePanelStyle()"
+                role="region"
+                tabindex="-1"
+                x-cloak
+                x-ref="askEvidencePanel"
+                x-show="selectedCitation !== null"
+                @keydown.escape="closeEvidenceInspector()"
+                @resize.window="repositionAskEvidencePanel()"
+                @scroll.window="repositionAskEvidencePanel()"
+              >
+                <header
+                  title="Drag to move evidence"
+                  @lostpointercapture="finishAskEvidencePanelDrag($event)"
+                  @pointercancel="finishAskEvidencePanelDrag($event)"
+                  @pointerdown="beginAskEvidencePanelDrag($event)"
+                  @pointermove="continueAskEvidencePanelDrag($event)"
+                  @pointerup="finishAskEvidencePanelDrag($event)"
+                >
+                  <div>
+                    <h3 id="ask-inline-evidence-title">Exact evidence</h3>
+                    <span x-text="selectedCitationSummary()"></span>
+                  </div>
+                  <div class="evidence-window-actions">
+                    <button
+                      class="button evidence-window-pin"
+                      type="button"
+                      :aria-pressed="citationWindow.pinned.toString()"
+                      :title="citationWindow.pinned ? 'Return evidence above its citation' : 'Keep evidence at this viewport position while scrolling'"
+                      @click="togglePinnedCitation()"
+                      x-text="citationWindow.pinned ? 'Unpin' : 'Pin evidence'"
+                    ></button>
+                    <button class="icon-button" aria-label="Close exact evidence" type="button" @click="closeEvidenceInspector()">
+                      <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                        <use href="./assets/images/citeloom-icons.svg#citeloom-close"></use>
+                      </svg>
+                    </button>
+                  </div>
+                </header>
+                <div class="evidence-window-body ask-inline-evidence-body">
+                  <p class="field-error" role="alert" x-cloak x-show="citationError !== ''" x-text="citationError"></p>
+                  <p class="ask-citation-loading" x-cloak x-show="citationLoading">Refreshing evidence...</p>
+                  <template x-if="inspectedCitation !== null">
+                    <div>
+                      <template x-if="inspectedCitation.evidence.kind === 'image'">
+                        <img :alt="`Citation ${inspectedCitation.citationNumber} evidence`" :src="citationImageUrl()" />
+                      </template>
+                      <template x-if="inspectedCitation.evidence.kind !== 'image'">
+                        <blockquote x-text="citationEvidenceText()"></blockquote>
+                      </template>
+                      <a
+                        class="ask-inspect-source"
+                        rel="noopener noreferrer"
+                        target="_blank"
+                        :href="citationFileUrl()"
+                      >
+                        <span>Inspect source</span>
+                        <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                          <use href="./assets/images/citeloom-icons.svg#citeloom-external"></use>
+                        </svg>
+                      </a>
+                    </div>
+                  </template>
+                </div>
+              </section>
+            </div>
+
             <div class="answer-content answer-copy" x-cloak x-show="hasAnswerContent()">
               <template x-for="section in answerSections()" :key="section.key">
                 <section
@@ -618,67 +689,73 @@
                   <template x-for="block in section.blocks" :key="block.key">
                     <div>
                       <template x-if="block.kind === 'paragraph'">
-                        <div class="answer-statement-content">
-                          <div class="answer-markdown" x-html="block.statements[0].contentHtml"></div>
-                          <template x-if="section.key !== 'answer'">
-                            <span class="statement-citations">
-                              <template x-for="citation in block.statements[0].citations" :key="citation.key">
-                                <button
-                                  class="inline-citation"
-                                  type="button"
-                                  x-show="citation.citationNumber !== null"
-                                  :aria-label="citationLabel(citation)"
-                                  :disabled="citation.preview === true"
-                                  @click="citation.preview !== true &amp;&amp; inspectCitation(citation)"
-                                  x-text="`[${citation.citationNumber}]`"
-                                ></button>
-                              </template>
+                        <div class="answer-finding-item">
+                          <div class="answer-statement-content">
+                            <div class="answer-markdown" x-html="block.statements[0].contentHtml"></div>
+                            <template x-if="section.key !== 'answer'">
+                              <span class="statement-citations">
+                                <template x-for="citation in block.statements[0].citations" :key="citation.key">
+                                  <button
+                                    class="inline-citation"
+                                    type="button"
+                                    :data-evidence-citation-id="citation.id"
+                                    x-show="citation.citationNumber !== null"
+                                    :aria-label="citationLabel(citation)"
+                                    :disabled="citation.preview === true"
+                                    @click="citation.preview !== true &amp;&amp; inspectCitation(citation, $event.currentTarget)"
+                                    x-text="`[${citation.citationNumber}]`"
+                                  ></button>
+                                </template>
+                              </span>
+                            </template>
+                            <span
+                              class="answer-finding-verification"
+                              :class="`answer-finding-verification-${answerStatementStatus(block.statements[0])}`"
+                              :aria-label="answerStatementStatusLabel(block.statements[0])"
+                              :title="answerStatementVerificationDescription(block.statements[0])"
+                              role="img"
+                              x-cloak
+                              x-show="section.key === 'key-points'"
+                            >
+                              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                                <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+                              </svg>
                             </span>
-                          </template>
-                          <span
-                            class="answer-finding-verification"
-                            :class="`answer-finding-verification-${answerStatementStatus(block.statements[0])}`"
-                            :aria-label="answerStatementStatusLabel(block.statements[0])"
-                            :title="answerStatementVerificationDescription(block.statements[0])"
-                            role="img"
-                            x-cloak
-                            x-show="section.key === 'key-points'"
-                          >
-                            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                              <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
-                            </svg>
-                          </span>
+                          </div>
                         </div>
                       </template>
                       <template x-if="block.kind === 'bullets'">
                         <ul>
                           <template x-for="statement in block.statements" :key="statement.key">
-                            <li>
-                              <div class="answer-markdown" x-html="statement.contentHtml"></div>
-                              <span class="statement-citations">
-                                <template x-for="citation in statement.citations" :key="citation.key">
-                                  <button
-                                    class="inline-citation"
-                                    type="button"
-                                    x-show="citation.citationNumber !== null"
-                                    :aria-label="citationLabel(citation)"
-                                    :disabled="citation.preview === true"
-                                    @click="citation.preview !== true &amp;&amp; inspectCitation(citation)"
-                                    x-text="`[${citation.citationNumber}]`"
-                                  ></button>
-                                </template>
-                              </span>
-                              <span
-                                class="answer-finding-verification"
-                                :class="`answer-finding-verification-${answerStatementStatus(statement)}`"
-                                :aria-label="answerStatementStatusLabel(statement)"
-                                :title="answerStatementVerificationDescription(statement)"
-                                role="img"
-                              >
-                                <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                                  <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
-                                </svg>
-                              </span>
+                            <li class="answer-finding-item">
+                              <div class="answer-statement-content">
+                                <div class="answer-markdown" x-html="statement.contentHtml"></div>
+                                <span class="statement-citations">
+                                  <template x-for="citation in statement.citations" :key="citation.key">
+                                    <button
+                                      class="inline-citation"
+                                      type="button"
+                                      :data-evidence-citation-id="citation.id"
+                                      x-show="citation.citationNumber !== null"
+                                      :aria-label="citationLabel(citation)"
+                                      :disabled="citation.preview === true"
+                                      @click="citation.preview !== true &amp;&amp; inspectCitation(citation, $event.currentTarget)"
+                                      x-text="`[${citation.citationNumber}]`"
+                                    ></button>
+                                  </template>
+                                </span>
+                                <span
+                                  class="answer-finding-verification"
+                                  :class="`answer-finding-verification-${answerStatementStatus(statement)}`"
+                                  :aria-label="answerStatementStatusLabel(statement)"
+                                  :title="answerStatementVerificationDescription(statement)"
+                                  role="img"
+                                >
+                                  <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                                    <use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use>
+                                  </svg>
+                                </span>
+                              </div>
                             </li>
                           </template>
                         </ul>
@@ -722,7 +799,7 @@
                         <span x-text="source.citationNumber"></span>
                         <div>
                           <small x-text="sourceDetail(source)"></small>
-                          <button class="text-action" type="button" @click="inspectCitation(source)">Inspect exact evidence</button>
+                          <button class="text-action" type="button" @click="inspectCitation(source, $event.currentTarget)">Inspect exact evidence</button>
                         </div>
                       </article>
                     </template>
@@ -981,12 +1058,12 @@
     x-show="mode === 'ask' || selectedCitation !== null"
     @keydown.escape="closeEvidenceInspector()"
   >
-    <div class="ask-citation-navigator" x-cloak x-show="mode === 'ask'">
+    <div class="source-navigator" x-cloak x-show="mode === 'ask'">
       <header>
         <h2 x-text="`Sources (${answer?.sources.length ?? 0})`"></h2>
       </header>
       <div
-        class="ask-citation-empty"
+        class="source-navigator-empty"
         x-cloak
         x-show="answer === null || answer.sources.length === 0"
       >
@@ -997,7 +1074,7 @@
         <p>Citations become available as the answer is completed.</p>
       </div>
       <div
-        class="ask-citation-list"
+        class="source-navigator-list"
         x-cloak
         x-show="answer !== null && answer.sources.length > 0"
       >
@@ -1005,16 +1082,19 @@
           <button
             type="button"
             :class="{ selected: selectedCitation?.id === source.id }"
-            @click="inspectCitation(source)"
+            @click="inspectCitationFromNavigator(source)"
           >
-            <span class="ask-citation-number" x-text="source.citationNumber"></span>
-            <span class="ask-citation-copy">
+            <span class="source-navigator-number" x-text="source.citationNumber"></span>
+            <span class="source-navigator-copy">
               <strong x-text="citationNavigatorTitle(source)"></strong>
-              <small x-text="documentLocationLabel(source.sourceFile, source.pageNumbers)"></small>
+              <small
+                x-show="source.pageNumbers.length > 0"
+                x-text="documentLocationLabel(source.sourceFile, source.pageNumbers)"
+              ></small>
             </span>
             <span
-              class="ask-citation-status"
-              :class="`ask-citation-status-${answerCitationStatus(source.citationNumber)}`"
+              class="source-navigator-status"
+              :class="`source-navigator-status-${answerCitationStatus(source.citationNumber)}`"
             >
               <span x-text="citationNavigatorStatusLabel(source.citationNumber)"></span>
               <svg aria-hidden="true" class="citeloom-icon">
@@ -1024,39 +1104,6 @@
           </button>
         </template>
       </div>
-      <section
-        class="ask-exact-evidence"
-        x-cloak
-        x-show="selectedCitation !== null"
-      >
-        <header>
-          <h3>Exact evidence</h3>
-          <span x-text="selectedCitationSummary()"></span>
-        </header>
-        <p class="field-error" role="alert" x-cloak x-show="citationError !== ''" x-text="citationError"></p>
-        <p class="ask-citation-loading" x-cloak x-show="citationLoading">Refreshing evidence...</p>
-        <template x-if="inspectedCitation !== null">
-          <div>
-            <template x-if="inspectedCitation.evidence.kind === 'image'">
-              <img :alt="`Citation ${inspectedCitation.citationNumber} evidence`" :src="citationImageUrl()" />
-            </template>
-            <template x-if="inspectedCitation.evidence.kind !== 'image'">
-              <blockquote x-text="citationEvidenceText()"></blockquote>
-            </template>
-            <a
-              class="ask-inspect-source"
-              rel="noopener noreferrer"
-              target="_blank"
-              :href="citationFileUrl()"
-            >
-              <span>Inspect source</span>
-              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                <use href="./assets/images/citeloom-icons.svg#citeloom-external"></use>
-              </svg>
-            </a>
-          </div>
-        </template>
-      </section>
     </div>
     <div
       class="evidence-inspector-content"

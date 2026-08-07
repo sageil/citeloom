@@ -468,7 +468,7 @@ function buildPreparation(
     },
     skippedModes: [],
     telemetry: [{ caseId, trace: buildTrace(domain) }],
-    version: 13,
+    version: 14,
   }, `${domain} tuning preparation`);
 }
 
@@ -545,6 +545,7 @@ function buildCandidate(
   const evidenceContent = `Summary ${elementCharacter}`;
   const shared = {
     documentId: id(documentCharacter),
+    elementSetId: id(documentCharacter),
     evidenceContent,
     evidenceRetrievalId,
     elementId: id(elementCharacter),

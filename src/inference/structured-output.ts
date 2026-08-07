@@ -56,10 +56,14 @@ function assertProviderCompatibleSchema(
       `Structured output ${name} must reject additional root properties.`,
     );
   }
-  const paths = findSchemaKeywordPaths(schema, "oneOf");
-  if (paths.length > 0) {
+  const unsupportedKeywords = ["oneOf", "prefixItems"];
+  for (const keyword of unsupportedKeywords) {
+    const paths = findSchemaKeywordPaths(schema, keyword);
+    if (paths.length === 0) {
+      continue;
+    }
     throw new Error(
-      `Structured output ${name} uses unsupported oneOf at ${paths.join(", ")}.`,
+      `Structured output ${name} uses unsupported ${keyword} at ${paths.join(", ")}.`,
     );
   }
 }

@@ -3,7 +3,11 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import { publishedAnswerDocumentSchema } from "../src/answers/published-schema.js";
-import { readAnswerPresentation } from "../web/assets/scripts/citeloom-ask.js";
+import {
+  formatDocumentLocationLabel,
+  readAskEvidencePanelPlacement,
+  readAnswerPresentation,
+} from "../web/assets/scripts/citeloom-ask.js";
 import {
   buildSourceLocation,
   buildTableStructure,
@@ -39,8 +43,14 @@ describe("ask answer presentation", () => {
 
     expect(fragment).toContain("class=\"ask-composer-scope-chip\"");
     expect(fragment).toContain("class=\"answer-question-title\"");
-    expect(fragment).toContain("class=\"ask-citation-navigator\"");
-    expect(fragment).toContain("class=\"ask-exact-evidence\"");
+    expect(fragment).toContain("class=\"source-navigator\"");
+    expect(fragment).toContain("class=\"evidence-window ask-inline-evidence\"");
+    expect(fragment).toContain('x-ref="askEvidencePanel"');
+    expect(fragment).toContain('x-text="citationWindow.pinned ? \'Unpin\' : \'Pin evidence\'"');
+    expect(fragment).toContain(":style=\"askEvidencePanelStyle()\"");
+    expect(fragment).toContain("beginAskEvidencePanelDrag($event)");
+    expect(fragment).toContain(':data-evidence-citation-id="citation.id"');
+    expect(fragment).toContain('@click="inspectCitationFromNavigator(source)"');
     expect(fragment).toContain("class=\"research-thread-actions\"");
     expect(fragment).not.toContain("class=\"research-context-menu\"");
     expect(fragment).not.toContain("class=\"evidence-sources-pane\"");
@@ -52,6 +62,41 @@ describe("ask answer presentation", () => {
     );
     expect(stylesheet.split("\n").length).toBeLessThanOrEqual(200);
     expect(shellScript).toContain("this.activeView !== \"ask\"");
+  });
+
+  it("places exact evidence above its citation without covering it", () => {
+    const placement = readAskEvidencePanelPlacement(
+      { height: 22, left: 640, top: 700, width: 28 },
+      { height: 460, width: 760 },
+      { height: 900, width: 1440 },
+    );
+
+    expect(placement.top + placement.maxHeight).toBeLessThanOrEqual(690);
+    expect(placement.left).toBe(640);
+    expect(placement.left + placement.width).toBeLessThanOrEqual(1424);
+  });
+
+  it("preserves evidence panel height while its citation scrolls", () => {
+    const panel = { height: 274, width: 760 };
+    const viewport = { height: 900, width: 1440 };
+    const beforeScroll = readAskEvidencePanelPlacement(
+      { height: 22, left: 500, top: 300, width: 24 },
+      panel,
+      viewport,
+    );
+    const afterScroll = readAskEvidencePanelPlacement(
+      { height: 22, left: 500, top: 100, width: 24 },
+      panel,
+      viewport,
+    );
+
+    expect(afterScroll.maxHeight).toBe(beforeScroll.maxHeight);
+    expect(afterScroll.top).toBe(beforeScroll.top - 200);
+  });
+
+  it("omits unavailable page labels", () => {
+    expect(formatDocumentLocationLabel("source.html", [])).toBe("");
+    expect(formatDocumentLocationLabel("source.pdf", [4])).toBe("Page 4");
   });
 
   it("keeps finding verification labels accessible without repeating visible status text", async () => {
@@ -89,7 +134,7 @@ describe("ask answer presentation", () => {
         sourceFile: "source.pdf",
       }],
       content: "The answer cites a table.",
-      schemaVersion: 1,
+      schemaVersion: 2,
       statements: [{
         citationIds: [citationId],
         content: "The table supports the finding.",

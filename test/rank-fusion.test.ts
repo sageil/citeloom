@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   fuseRankedCandidates,
+  createCandidateSourceAliases,
+  selectStrongestUniqueEvidence,
   type DenseCandidate,
   type LexicalCandidate,
 } from "../src/retrieval/ranking/rank-fusion.js";
@@ -15,6 +17,7 @@ function dense(parentId: string, distance: number): DenseCandidate {
   return {
     distance,
     documentId: `${parentId}-document`,
+    elementSetId: `${parentId}-element-set`,
     evidenceContent: content,
     evidenceRetrievalId: retrievalWindowId,
     parentId,
@@ -22,6 +25,10 @@ function dense(parentId: string, distance: number): DenseCandidate {
       retrievalWindowId,
       content,
     ),
+    sourceAliases: createCandidateSourceAliases({
+      evidenceRetrievalId: retrievalWindowId,
+      sourceFile: `${parentId}.pdf`,
+    }),
     sourceFile: `${parentId}.pdf`,
   };
 }
@@ -32,6 +39,7 @@ function lexical(parentId: string, bm25Score: number): LexicalCandidate {
   return {
     bm25Score,
     documentId: `${parentId}-document`,
+    elementSetId: `${parentId}-element-set`,
     evidenceContent: content,
     evidenceRetrievalId: retrievalWindowId,
     parentId,
@@ -39,11 +47,101 @@ function lexical(parentId: string, bm25Score: number): LexicalCandidate {
       retrievalWindowId,
       content,
     ),
+    sourceAliases: createCandidateSourceAliases({
+      evidenceRetrievalId: retrievalWindowId,
+      sourceFile: `${parentId}.pdf`,
+    }),
     sourceFile: `${parentId}.pdf`,
   };
 }
 
 describe("reciprocal rank fusion", () => {
+  it("fills the budget with unique evidence and preserves source aliases", () => {
+    const first = dense("a", 0.1);
+    const alias = {
+      ...first,
+      evidenceRetrievalId: "a-alias-window",
+      sourceAliases: createCandidateSourceAliases({
+        evidenceRetrievalId: "a-alias-window",
+        sourceFile: "a-alias.pdf",
+      }),
+      sourceFile: "a-alias.pdf",
+    };
+
+    const selected = selectStrongestUniqueEvidence([
+      first,
+      alias,
+      dense("b", 0.2),
+      dense("c", 0.3),
+    ], 3);
+
+    expect(selected.map((candidate) => candidate.parentId))
+      .toEqual(["a", "b", "c"]);
+    expect(selected[0]?.sourceAliases).toEqual([
+      { evidenceRetrievalId: "a-window", sourceFile: "a.pdf" },
+      { evidenceRetrievalId: "a-alias-window", sourceFile: "a-alias.pdf" },
+    ]);
+    expect(first.sourceAliases).toEqual([
+      { evidenceRetrievalId: "a-window", sourceFile: "a.pdf" },
+    ]);
+  });
+
+  it("does not collapse evidence from different element sets", () => {
+    const first = dense("a", 0.1);
+    const differentElementSet = {
+      ...first,
+      elementSetId: "different-element-set",
+    };
+
+    const selected = selectStrongestUniqueEvidence(
+      [first, differentElementSet],
+      2,
+    );
+
+    expect(selected).toHaveLength(2);
+  });
+
+  it("fuses exact aliases across channels without losing channel evidence", () => {
+    const denseAlias = dense("shared-alias", 0.1);
+    const lexicalAlias = lexical("shared-alias", 8);
+    lexicalAlias.evidenceRetrievalId = "shared-alias-lexical-window";
+    lexicalAlias.sourceFile = "shared-alias-copy.pdf";
+    lexicalAlias.sourceAliases = createCandidateSourceAliases(lexicalAlias);
+
+    const results = fuseRankedCandidates([
+      {
+        candidates: [denseAlias],
+        channel: "dense",
+        queryIndex: 0,
+        weight: 1,
+      },
+      {
+        candidates: [lexicalAlias],
+        channel: "lexical",
+        queryIndex: 0,
+        weight: 1,
+      },
+    ], 60, 2);
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      bm25Score: 8,
+      denseDistance: 0.1,
+    });
+    expect(results[0]?.sourceAliases).toEqual([
+      {
+        evidenceRetrievalId: "shared-alias-window",
+        sourceFile: "shared-alias.pdf",
+      },
+      {
+        evidenceRetrievalId: "shared-alias-lexical-window",
+        sourceFile: "shared-alias-copy.pdf",
+      },
+    ]);
+    expect(results[0]?.representationHits.map((hit) => hit.channel))
+      .toEqual(["dense", "lexical"]);
+  });
+
   it("promotes candidates found by both retrievers", () => {
     const results = fuseRankedCandidates(
       [

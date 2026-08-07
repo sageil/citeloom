@@ -1,7 +1,9 @@
 export interface AnswerContextSelectionConfig {
   minimumLogGapMedianMultiplier: number;
   minimumScoreRatio: number;
-  policy: "relative-relevance-cliff-v2";
+  minimumTailGapFraction: number;
+  minimumTailScoreRatio: number;
+  policy: "relative-relevance-cliff-v3";
 }
 
 export interface ScoredCandidate {
@@ -16,7 +18,9 @@ export interface AnswerContextSelection {
 export const answerContextSelectionConfig: AnswerContextSelectionConfig = {
   minimumLogGapMedianMultiplier: 3,
   minimumScoreRatio: 3,
-  policy: "relative-relevance-cliff-v2",
+  minimumTailGapFraction: 0.5,
+  minimumTailScoreRatio: 1.25,
+  policy: "relative-relevance-cliff-v3",
 };
 
 export function selectAnswerContextCutoff(
@@ -74,9 +78,17 @@ export function selectAnswerContextCutoff(
   const medianMultiplier = medianLogGap > 0
     ? largestLogGap / medianLogGap
     : Number.POSITIVE_INFINITY;
+  const strongestScore = ranking[0]?.relevanceScore ?? 0;
+  const weakestScore = ranking[maximumSelected - 1]?.relevanceScore ?? 0;
+  const scoreRange = strongestScore - weakestScore;
+  const scoreGap = current.relevanceScore - next.relevanceScore;
+  const tailGapFraction = scoreRange > 0 ? scoreGap / scoreRange : 0;
+  const stronglySeparated = scoreRatio >= config.minimumScoreRatio;
+  const isolatedTail = scoreRatio >= config.minimumTailScoreRatio
+    && tailGapFraction >= config.minimumTailGapFraction;
   if (
     cutoffRank < maximumSelected
-    && scoreRatio >= config.minimumScoreRatio
+    && (stronglySeparated || isolatedTail)
     && medianMultiplier >= config.minimumLogGapMedianMultiplier
   ) {
     return { cutoffRank, reason: "relevance-cliff" };
@@ -103,6 +115,21 @@ function validateSelectionInput(
     || config.minimumScoreRatio <= 1
   ) {
     throw new Error("Minimum adjacent score ratio must be greater than one.");
+  }
+  if (
+    !Number.isFinite(config.minimumTailScoreRatio)
+    || config.minimumTailScoreRatio <= 1
+  ) {
+    throw new Error("Minimum tail score ratio must be greater than one.");
+  }
+  if (
+    !Number.isFinite(config.minimumTailGapFraction)
+    || config.minimumTailGapFraction <= 0
+    || config.minimumTailGapFraction > 1
+  ) {
+    throw new Error(
+      "Minimum tail gap fraction must be greater than zero and at most one.",
+    );
   }
   for (const candidate of ranking) {
     if (!Number.isFinite(candidate.relevanceScore)) {

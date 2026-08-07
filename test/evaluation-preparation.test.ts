@@ -34,7 +34,11 @@ import {
   serializeEvaluationResult,
   writeEvaluationResult,
 } from "../tools/evaluation/index.js";
-import type { FusedCandidate } from "../src/retrieval/ranking/rank-fusion.js";
+import {
+  createCandidateSourceAliases,
+  type FusedCandidate,
+} from "../src/retrieval/ranking/rank-fusion.js";
+import { createEvidenceSha256 } from "../src/retrieval/evidence-identity.js";
 import { selectRerankedContext } from "../src/retrieval/ranking/candidate-selection.js";
 import type { RerankedRetrieval } from "../src/retrieval/ranking/reranker.js";
 import {
@@ -226,6 +230,10 @@ describe("comparative evaluation preparation", () => {
         elementId("b"),
         "A distinct window from the same parent element.",
       ),
+      sourceAliases: createCandidateSourceAliases({
+        evidenceRetrievalId: elementId("b"),
+        sourceFile: "/documents/a.pdf",
+      }),
     };
     const inputs: PreparedCaseInputs = {
       queries: [
@@ -373,7 +381,7 @@ describe("comparative evaluation preparation", () => {
           timeToFirstTokenMs: null,
         },
       }],
-      version: 13,
+      version: 14,
     }, "telemetry test artifact");
 
     const result = scorePreparedEvaluation(artifact);
@@ -631,7 +639,7 @@ async function buildArtifact(): Promise<EvaluationPreparationArtifact> {
         timeToFirstTokenMs: null,
       },
     }],
-    version: 13,
+    version: 14,
   }, "test artifact");
 }
 
@@ -783,6 +791,7 @@ function buildDenseCandidate(character: string, distance: number) {
   return {
     distance,
     documentId: documentId(character),
+    elementSetId: documentId(character),
     evidenceContent: content,
     evidenceRetrievalId: retrievalWindowId,
     parentId: elementId(character),
@@ -790,6 +799,10 @@ function buildDenseCandidate(character: string, distance: number) {
       retrievalWindowId,
       content,
     ),
+    sourceAliases: createCandidateSourceAliases({
+      evidenceRetrievalId: retrievalWindowId,
+      sourceFile: `/documents/${character}.pdf`,
+    }),
     sourceFile: `/documents/${character}.pdf`,
   };
 }
@@ -800,6 +813,7 @@ function buildLexicalCandidate(character: string, bm25Score: number) {
   return {
     bm25Score,
     documentId: documentId(character),
+    elementSetId: documentId(character),
     evidenceContent: content,
     evidenceRetrievalId: retrievalWindowId,
     parentId: elementId(character),
@@ -807,6 +821,10 @@ function buildLexicalCandidate(character: string, bm25Score: number) {
       retrievalWindowId,
       content,
     ),
+    sourceAliases: createCandidateSourceAliases({
+      evidenceRetrievalId: retrievalWindowId,
+      sourceFile: `/documents/${character}.pdf`,
+    }),
     sourceFile: `/documents/${character}.pdf`,
   };
 }
@@ -849,6 +867,8 @@ function buildRerankedRetrieval(
         documentId: candidate.documentId,
         documentVersionId: input.documentVersionId,
         elementId: candidate.parentId,
+        elementSetId: candidate.elementSetId,
+        evidenceSha256: createEvidenceSha256(candidate.evidenceContent),
         representativeRetrievalWindowId: candidate.retrievalId,
         sourceFile: candidate.sourceFile,
       },
