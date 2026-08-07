@@ -12,6 +12,10 @@ function readViewport() {
   };
 }
 
+function hasRenderedBounds(bounds) {
+  return bounds.height > 0 && bounds.width > 0;
+}
+
 export function createEvidenceWindowState() {
   return {
     dragSession: null,
@@ -96,21 +100,30 @@ export function positionEvidenceWindow(
       state.trigger = null;
     } else {
       const triggerBounds = state.trigger.getBoundingClientRect();
-      if (state.position === null) {
+      if (!hasRenderedBounds(triggerBounds)) {
+        state.trigger = null;
+      } else {
         const availableHeight = Math.max(
           0,
           triggerBounds.top
             - evidenceWindowGap
             - evidenceWindowViewportPadding,
         );
-        state.size.height = Math.min(state.size.height, availableHeight);
+        if (availableHeight === 0) {
+          state.position = null;
+          return;
+        }
+        const availablePanelSize = {
+          height: Math.min(state.size.height, availableHeight),
+          width: state.size.width,
+        };
+        state.position = readEvidenceWindowPlacement(
+          triggerBounds,
+          availablePanelSize,
+          viewport,
+        );
+        return;
       }
-      state.position = readEvidenceWindowPlacement(
-        triggerBounds,
-        state.size,
-        viewport,
-      );
-      return;
     }
   }
   const availableWidth = Math.max(
@@ -223,7 +236,7 @@ export function findEvidenceCitationTrigger(
   viewportHeight = window.innerHeight,
 ) {
   const triggers = root.querySelectorAll("[data-evidence-citation-id]");
-  let firstMatch = null;
+  let firstRenderedMatch = null;
   for (const trigger of triggers) {
     if (!(trigger instanceof HTMLElement)) {
       continue;
@@ -237,15 +250,18 @@ export function findEvidenceCitationTrigger(
     ) {
       continue;
     }
-    if (firstMatch === null) {
-      firstMatch = trigger;
-    }
     const bounds = trigger.getBoundingClientRect();
+    if (!hasRenderedBounds(bounds)) {
+      continue;
+    }
+    if (firstRenderedMatch === null) {
+      firstRenderedMatch = trigger;
+    }
     if (bounds.top >= 0 && bounds.bottom <= viewportHeight) {
       return trigger;
     }
   }
-  return firstMatch;
+  return firstRenderedMatch;
 }
 
 export function revealEvidenceCitationTrigger(
@@ -256,7 +272,10 @@ export function revealEvidenceCitationTrigger(
   if (scrollContainer instanceof HTMLElement) {
     const containerBounds = scrollContainer.getBoundingClientRect();
     const targetBottom = containerBounds.bottom - evidenceWindowViewportPadding;
-    scrollContainer.scrollTop += triggerBounds.bottom - targetBottom;
+    scrollContainer.scrollTo({
+      behavior: "instant",
+      top: scrollContainer.scrollTop + triggerBounds.bottom - targetBottom,
+    });
     return;
   }
   const targetBottom = window.innerHeight - evidenceWindowViewportPadding;
