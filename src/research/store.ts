@@ -9,7 +9,6 @@ import {
   eq,
   inArray,
   isNotNull,
-  lte,
   max,
   or,
   sql,
@@ -37,6 +36,7 @@ import {
 import type {
   ClaimedVerificationJob,
 } from "../answers/verification-worker.js";
+import { researchVerificationJobQueue } from "../answers/verification-job-queue.js";
 import {
   verificationJobStateSchema,
 } from "../answers/verification-state.js";
@@ -95,7 +95,6 @@ const fusionSchema = z.object({
   originalQueryWeight: z.number().nonnegative(),
 }).strict();
 const RESEARCH_THREAD_TITLE_LOCK_ID = 1_384_921_704;
-const MINIMUM_VERIFICATION_JOB_LEASE_MS = 5 * 60 * 1_000;
 const runConfigurationSchema = z.object({
   embeddingSpaceId: z.string().min(1),
   models: z.object({
@@ -772,57 +771,21 @@ export class ResearchStore {
     currentTime: Date,
   ): Promise<ClaimedVerificationJob | null> {
     return this.database.transaction(async (transaction) => {
-      const rows = await transaction
-        .select({
-          attemptCount: researchVerificationJobs.attemptCount,
-          failureCount: researchVerificationJobs.failureCount,
-          turnId: researchVerificationJobs.turnId,
-        })
-        .from(researchVerificationJobs)
-        .where(or(
-          and(
-            eq(researchVerificationJobs.state, "pending"),
-            lte(researchVerificationJobs.availableAt, currentTime),
-          ),
-          and(
-            eq(researchVerificationJobs.state, "running"),
-            lte(researchVerificationJobs.leaseExpiresAt, currentTime),
-          ),
-        ))
-        .orderBy(
-          asc(researchVerificationJobs.availableAt),
-          asc(researchVerificationJobs.updatedAt),
-        )
-        .limit(1)
-        .for("update", { skipLocked: true });
-      const row = rows[0];
-      if (row === undefined) {
+      const lease = await researchVerificationJobQueue.claim(
+        transaction,
+        currentTime,
+        this.config.claimVerifier.timeoutMs,
+      );
+      if (lease === null) {
         return null;
       }
-      const nextAttemptCount = row.attemptCount + 1;
-      const claimed = await transaction
-        .update(researchVerificationJobs)
-        .set({
-          attemptCount: nextAttemptCount,
-          errorMessage: null,
-          leaseExpiresAt: this.nextVerificationLease(),
-          state: "running",
-          updatedAt: currentTime,
-        })
-        .where(eq(researchVerificationJobs.turnId, row.turnId))
-        .returning({ turnId: researchVerificationJobs.turnId });
-      if (claimed[0] === undefined) {
-        throw new Error(
-          `Could not claim Research verification job ${row.turnId}.`,
-        );
-      }
-      const claims = await this.readVerificationClaims(transaction, row.turnId);
-      const sources = await this.readVerificationSources(transaction, row.turnId);
+      const claims = await this.readVerificationClaims(transaction, lease.id);
+      const sources = await this.readVerificationSources(transaction, lease.id);
       return {
-        attemptCount: nextAttemptCount,
+        attemptCount: lease.attemptCount,
         claims,
-        failureCount: row.failureCount,
-        id: row.turnId,
+        failureCount: lease.failureCount,
+        id: lease.id,
         sources,
       };
     });
@@ -836,46 +799,22 @@ export class ResearchStore {
   ): Promise<boolean> {
     const normalizedClaims = z.array(claimVerificationResultSchema).parse(claims);
     return this.database.transaction(async (transaction) => {
-      const active = await transaction
-        .select({ turnId: researchVerificationJobs.turnId })
-        .from(researchVerificationJobs)
-        .where(and(
-          eq(researchVerificationJobs.turnId, turnId),
-          eq(researchVerificationJobs.attemptCount, attemptCount),
-          eq(researchVerificationJobs.state, "running"),
-        ))
-        .for("update")
-        .limit(1);
-      if (active[0] === undefined) {
-        return false;
-      }
-      await this.replaceVerificationResults(
+      return researchVerificationJobQueue.complete(
         transaction,
         turnId,
-        normalizedClaims,
+        attemptCount,
+        completedAt,
+        async () => {
+          await this.replaceVerificationResults(
+            transaction,
+            turnId,
+            normalizedClaims,
+          );
+          await transaction.execute(
+            sql`SELECT "assert_research_turn_output"(${turnId})`,
+          );
+        },
       );
-      await transaction.execute(
-        sql`SELECT "assert_research_turn_output"(${turnId})`,
-      );
-      const completed = await transaction
-        .update(researchVerificationJobs)
-        .set({
-          completedAt,
-          errorMessage: null,
-          leaseExpiresAt: null,
-          state: "completed",
-          updatedAt: completedAt,
-        })
-        .where(and(
-          eq(researchVerificationJobs.turnId, turnId),
-          eq(researchVerificationJobs.attemptCount, attemptCount),
-          eq(researchVerificationJobs.state, "running"),
-        ))
-        .returning({ turnId: researchVerificationJobs.turnId });
-      if (completed[0] === undefined) {
-        throw new Error(`Research verification job ${turnId} lost its lease.`);
-      }
-      return true;
     });
   }
 
@@ -885,52 +824,24 @@ export class ResearchStore {
     error: unknown,
     retryAt: Date | null,
   ): Promise<boolean> {
-    const now = new Date();
-    const rawMessage = error instanceof Error ? error.message : String(error);
-    const message = rawMessage.trim().slice(0, 4_000)
-      || "Automated evidence verification failed.";
-    const terminal = retryAt === null;
-    const settled = await this.database
-      .update(researchVerificationJobs)
-      .set({
-        availableAt: retryAt ?? now,
-        completedAt: terminal ? now : null,
-        errorMessage: message,
-        failureCount: sql`${researchVerificationJobs.failureCount} + 1`,
-        leaseExpiresAt: null,
-        state: terminal ? "failed" : "pending",
-        updatedAt: now,
-      })
-      .where(and(
-        eq(researchVerificationJobs.turnId, turnId),
-        eq(researchVerificationJobs.attemptCount, attemptCount),
-        eq(researchVerificationJobs.state, "running"),
-      ))
-      .returning({ turnId: researchVerificationJobs.turnId });
-    return settled[0] !== undefined;
+    return researchVerificationJobQueue.settleFailure(
+      this.database,
+      turnId,
+      attemptCount,
+      error,
+      retryAt,
+    );
   }
 
   public async releaseVerificationJob(
     turnId: string,
     attemptCount: number,
   ): Promise<boolean> {
-    const now = new Date();
-    const released = await this.database
-      .update(researchVerificationJobs)
-      .set({
-        availableAt: now,
-        errorMessage: null,
-        leaseExpiresAt: null,
-        state: "pending",
-        updatedAt: now,
-      })
-      .where(and(
-        eq(researchVerificationJobs.turnId, turnId),
-        eq(researchVerificationJobs.attemptCount, attemptCount),
-        eq(researchVerificationJobs.state, "running"),
-      ))
-      .returning({ turnId: researchVerificationJobs.turnId });
-    return released[0] !== undefined;
+    return researchVerificationJobQueue.release(
+      this.database,
+      turnId,
+      attemptCount,
+    );
   }
 
   public async readCitation(id: string): Promise<CitationEvidenceRecord | null> {
@@ -1139,14 +1050,6 @@ export class ResearchStore {
       turnId,
     });
     return this.readFeedbackAggregate(turnId, dimension, citationId, userId);
-  }
-
-  private nextVerificationLease(): Date {
-    const leaseMs = Math.max(
-      MINIMUM_VERIFICATION_JOB_LEASE_MS,
-      this.config.claimVerifier.timeoutMs + 60_000,
-    );
-    return new Date(Date.now() + leaseMs);
   }
 
   private async readVerificationClaims(

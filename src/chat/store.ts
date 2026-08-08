@@ -12,7 +12,6 @@ import {
   max,
   ne,
   notExists,
-  or,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -72,6 +71,7 @@ import {
 import type {
   ClaimedVerificationJob,
 } from "../answers/verification-worker.js";
+import { chatVerificationJobQueue } from "../answers/verification-job-queue.js";
 import { validateCitationSnapshot } from "../research/store.js";
 import type {
   ChatAssistantMessage,
@@ -89,7 +89,6 @@ import type {
 } from "./types.js";
 
 const CHAT_RUN_LEASE_MS = 2 * 60 * 1_000;
-const MINIMUM_VERIFICATION_JOB_LEASE_MS = 5 * 60 * 1_000;
 const SEMANTIC_MEMORY_PART_OVERSAMPLING = 64;
 const passiveAbortSignal = new AbortController().signal;
 const activeChatRunStates: ChatRunState[] = [
@@ -1056,61 +1055,24 @@ export class ChatStore {
     currentTime: Date,
   ): Promise<ClaimedVerificationJob | null> {
     return this.database.transaction(async (transaction) => {
-      const rows = await transaction
-        .select({
-          assistantMessageId: chatVerificationJobs.assistantMessageId,
-          attemptCount: chatVerificationJobs.attemptCount,
-          claims: chatMessages.claims,
-          failureCount: chatVerificationJobs.failureCount,
-        })
-        .from(chatVerificationJobs)
-        .innerJoin(
-          chatMessages,
-          eq(chatMessages.id, chatVerificationJobs.assistantMessageId),
-        )
-        .where(or(
-          and(
-            eq(chatVerificationJobs.state, "pending"),
-            lte(chatVerificationJobs.availableAt, currentTime),
-          ),
-          and(
-            eq(chatVerificationJobs.state, "running"),
-            lte(chatVerificationJobs.leaseExpiresAt, currentTime),
-          ),
-        ))
-        .orderBy(
-          asc(chatVerificationJobs.availableAt),
-          asc(chatVerificationJobs.updatedAt),
-        )
-        .limit(1)
-        .for("update", { skipLocked: true });
-      const row = rows[0];
-      if (row === undefined) {
+      const lease = await chatVerificationJobQueue.claim(
+        transaction,
+        currentTime,
+        this.config.claimVerifier.timeoutMs,
+      );
+      if (lease === null) {
         return null;
       }
-      const claims = claimVerificationResultsSchema.parse(row.claims);
-      const nextAttemptCount = row.attemptCount + 1;
-      const claimed = await transaction
-        .update(chatVerificationJobs)
-        .set({
-          attemptCount: nextAttemptCount,
-          errorMessage: null,
-          leaseExpiresAt: this.nextVerificationLease(),
-          state: "running",
-          updatedAt: currentTime,
-        })
-        .where(eq(
-          chatVerificationJobs.assistantMessageId,
-          row.assistantMessageId,
-        ))
-        .returning({
-          assistantMessageId: chatVerificationJobs.assistantMessageId,
-        });
-      if (claimed[0] === undefined) {
-        throw new Error(
-          `Could not claim Chat verification job ${row.assistantMessageId}.`,
-        );
+      const messageRows = await transaction
+        .select({ claims: chatMessages.claims })
+        .from(chatMessages)
+        .where(eq(chatMessages.id, lease.id))
+        .limit(1);
+      const message = messageRows[0];
+      if (message === undefined) {
+        throw new Error(`Chat verification message ${lease.id} was not found.`);
       }
+      const claims = claimVerificationResultsSchema.parse(message.claims);
       const citationRows = await transaction
         .select({
           citationNumber: chatCitationRecords.citationNumber,
@@ -1118,10 +1080,7 @@ export class ChatStore {
           sectionPath: chatCitationRecords.sectionPath,
         })
         .from(chatCitationRecords)
-        .where(eq(
-          chatCitationRecords.assistantMessageId,
-          row.assistantMessageId,
-        ))
+        .where(eq(chatCitationRecords.assistantMessageId, lease.id))
         .orderBy(asc(chatCitationRecords.citationNumber));
       const sources = citationRows.map((citation) => {
         return {
@@ -1138,10 +1097,10 @@ export class ChatStore {
         };
       });
       return {
-        attemptCount: nextAttemptCount,
+        attemptCount: lease.attemptCount,
         claims: answerClaims,
-        failureCount: row.failureCount,
-        id: row.assistantMessageId,
+        failureCount: lease.failureCount,
+        id: lease.id,
         sources,
       };
     });
@@ -1155,31 +1114,18 @@ export class ChatStore {
   ): Promise<boolean> {
     const normalizedClaims = claimVerificationResultsSchema.parse(claims);
     return this.database.transaction(async (transaction) => {
-      const completed = await transaction
-        .update(chatVerificationJobs)
-        .set({
-          completedAt,
-          errorMessage: null,
-          leaseExpiresAt: null,
-          state: "completed",
-          updatedAt: completedAt,
-        })
-        .where(and(
-          eq(chatVerificationJobs.assistantMessageId, assistantMessageId),
-          eq(chatVerificationJobs.attemptCount, attemptCount),
-          eq(chatVerificationJobs.state, "running"),
-        ))
-        .returning({
-          assistantMessageId: chatVerificationJobs.assistantMessageId,
-        });
-      if (completed[0] === undefined) {
-        return false;
-      }
-      await transaction
-        .update(chatMessages)
-        .set({ claims: normalizedClaims })
-        .where(eq(chatMessages.id, assistantMessageId));
-      return true;
+      return chatVerificationJobQueue.complete(
+        transaction,
+        assistantMessageId,
+        attemptCount,
+        completedAt,
+        async () => {
+          await transaction
+            .update(chatMessages)
+            .set({ claims: normalizedClaims })
+            .where(eq(chatMessages.id, assistantMessageId));
+        },
+      );
     });
   }
 
@@ -1189,56 +1135,24 @@ export class ChatStore {
     error: unknown,
     retryAt: Date | null,
   ): Promise<boolean> {
-    const now = new Date();
-    const rawMessage = error instanceof Error ? error.message : String(error);
-    const message = rawMessage.trim().slice(0, 4_000)
-      || "Automated evidence verification failed.";
-    const terminal = retryAt === null;
-    const settled = await this.database
-      .update(chatVerificationJobs)
-      .set({
-        availableAt: retryAt ?? now,
-        completedAt: terminal ? now : null,
-        errorMessage: message,
-        failureCount: sql`${chatVerificationJobs.failureCount} + 1`,
-        leaseExpiresAt: null,
-        state: terminal ? "failed" : "pending",
-        updatedAt: now,
-      })
-      .where(and(
-        eq(chatVerificationJobs.assistantMessageId, assistantMessageId),
-        eq(chatVerificationJobs.attemptCount, attemptCount),
-        eq(chatVerificationJobs.state, "running"),
-      ))
-      .returning({
-        assistantMessageId: chatVerificationJobs.assistantMessageId,
-      });
-    return settled[0] !== undefined;
+    return chatVerificationJobQueue.settleFailure(
+      this.database,
+      assistantMessageId,
+      attemptCount,
+      error,
+      retryAt,
+    );
   }
 
   public async releaseVerificationJob(
     assistantMessageId: string,
     attemptCount: number,
   ): Promise<boolean> {
-    const now = new Date();
-    const released = await this.database
-      .update(chatVerificationJobs)
-      .set({
-        availableAt: now,
-        errorMessage: null,
-        leaseExpiresAt: null,
-        state: "pending",
-        updatedAt: now,
-      })
-      .where(and(
-        eq(chatVerificationJobs.assistantMessageId, assistantMessageId),
-        eq(chatVerificationJobs.attemptCount, attemptCount),
-        eq(chatVerificationJobs.state, "running"),
-      ))
-      .returning({
-        assistantMessageId: chatVerificationJobs.assistantMessageId,
-      });
-    return released[0] !== undefined;
+    return chatVerificationJobQueue.release(
+      this.database,
+      assistantMessageId,
+      attemptCount,
+    );
   }
 
   public async readCitation(
@@ -1420,14 +1334,6 @@ export class ChatStore {
 
   private nextLease(): Date {
     return new Date(Date.now() + CHAT_RUN_LEASE_MS);
-  }
-
-  private nextVerificationLease(): Date {
-    const leaseMs = Math.max(
-      MINIMUM_VERIFICATION_JOB_LEASE_MS,
-      this.config.claimVerifier.timeoutMs + 60_000,
-    );
-    return new Date(Date.now() + leaseMs);
   }
 
   private async readMessages(runIds: string[]): Promise<ChatMessage[]> {

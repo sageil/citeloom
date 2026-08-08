@@ -1,5 +1,6 @@
 import { readEnum } from "./citeloom-boundaries.js";
 
+const verificationRefreshDelayMs = 800;
 const verificationStates = Object.freeze([
   "not-applicable",
   "pending",
@@ -50,4 +51,33 @@ export function verificationStatusLabel(state) {
 
 export function verificationProgressValue(state) {
   return state === "completed" ? 100 : null;
+}
+
+export function scheduleVerificationRefresh(page) {
+  clearVerificationRefresh(page);
+  if (!page.hasPendingVerification()) {
+    return;
+  }
+  page.verificationRefreshTimer = window.setTimeout(() => {
+    page.verificationRefreshTimer = null;
+    void page.refreshVerification();
+  }, verificationRefreshDelayMs);
+}
+
+export function clearVerificationRefresh(page) {
+  if (page.verificationRefreshTimer === null) {
+    return;
+  }
+  window.clearTimeout(page.verificationRefreshTimer);
+  page.verificationRefreshTimer = null;
+}
+
+export async function runVerificationRefresh(page, refresh) {
+  try {
+    await refresh();
+  } catch {
+    // Refresh is best effort. The published answer remains usable.
+  } finally {
+    scheduleVerificationRefresh(page);
+  }
 }

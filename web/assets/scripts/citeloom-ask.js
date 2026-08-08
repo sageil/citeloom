@@ -52,8 +52,11 @@ import { createDictationController } from "./citeloom-dictation.js";
 import { dispatchNotice } from "./citeloom-notices.js";
 import { requestConfirmation } from "./citeloom-confirmation.js";
 import {
+  clearVerificationRefresh as clearVerificationPolling,
   isVerificationPending,
   readVerificationState,
+  runVerificationRefresh,
+  scheduleVerificationRefresh as scheduleVerificationPolling,
   verificationLabel,
   verificationProgressValue,
   verificationStatusLabel,
@@ -2684,22 +2687,11 @@ export function registerPage(alpine) {
     },
 
     scheduleVerificationRefresh() {
-      this.clearVerificationRefresh();
-      if (!this.hasPendingVerification()) {
-        return;
-      }
-      this.verificationRefreshTimer = window.setTimeout(() => {
-        this.verificationRefreshTimer = null;
-        void this.refreshVerification();
-      }, 800);
+      scheduleVerificationPolling(this);
     },
 
     clearVerificationRefresh() {
-      if (this.verificationRefreshTimer === null) {
-        return;
-      }
-      window.clearTimeout(this.verificationRefreshTimer);
-      this.verificationRefreshTimer = null;
+      clearVerificationPolling(this);
     },
 
     async refreshVerification() {
@@ -2708,7 +2700,7 @@ export function registerPage(alpine) {
       if (threadId === "" || turnId === undefined) {
         return;
       }
-      try {
+      await runVerificationRefresh(this, async () => {
         const response = await fetch(
           `/api/research/threads/${encodeURIComponent(threadId)}`,
           { headers: { accept: "application/json" } },
@@ -2727,11 +2719,7 @@ export function registerPage(alpine) {
           applyResearchVerificationUpdate(this.answer, turn);
           this.thread = thread;
         }
-      } catch {
-        // Verification refresh is best effort. The published answer remains usable.
-      } finally {
-        this.scheduleVerificationRefresh();
-      }
+      });
     },
 
     answerStatementClaim(statement) {
