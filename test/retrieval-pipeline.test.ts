@@ -99,19 +99,12 @@ describe("atomic structured answer publication", () => {
     );
   });
 
-  it("verifies, persists, and then publishes one completed answer entity", async () => {
+  it("persists and publishes one answer with pending verification", async () => {
     const events: string[] = [];
     const answerModel = buildAnswerModel(
       buildVerifiableAnsweredDraft(["EVID_A"]),
     );
-    const verifier = new FakeHhemClient(0.5, async (items) => {
-      events.push("verify");
-      return items.map((item) => ({
-        id: item.id,
-        outcome: "scored" as const,
-        supportProbability: 0.9,
-      }));
-    });
+    const verifier = new FakeHhemClient();
     saveTurnMock.mockImplementation(async (input: SaveResearchTurnInput) => {
       events.push("persist");
       return buildSavedTurn(input);
@@ -129,7 +122,8 @@ describe("atomic structured answer publication", () => {
       stream.writer,
     );
 
-    expect(events).toEqual(["content", "verify", "persist", "publish"]);
+    expect(events).toEqual(["content", "persist", "publish"]);
+    expect(verifier.scoreCalls).toEqual([]);
     const contentUpdates = readChunks(stream.chunks, "data-answer-content");
     expect(contentUpdates).toHaveLength(1);
     expect(contentUpdates[0]?.data.citations).toEqual([
@@ -151,7 +145,7 @@ describe("atomic structured answer publication", () => {
           citationNumbers: [1],
           claim: "Revenue increased.",
           claimIndex: 0,
-          status: "supported",
+          status: "unverified",
         },
       ],
       matchedDocuments: [{
@@ -164,6 +158,7 @@ describe("atomic structured answer publication", () => {
         sourceCount: 1,
       }),
       turn: expect.objectContaining({ threadId }),
+      verificationState: "pending",
     });
     expect(readChunks(stream.chunks, "finish")).toHaveLength(1);
     expect(saveTurnMock).toHaveBeenCalledOnce();
@@ -178,13 +173,13 @@ describe("atomic structured answer publication", () => {
         {
           citationNumbers: [1],
           claim: "Revenue increased.",
-          status: "supported",
+          status: "unverified",
         },
       ],
     });
   });
 
-  it("keeps unsupported content and publishes advisory verification results", async () => {
+  it("publishes cited content before background verification", async () => {
     const verifier = new FakeHhemClient(0.5, async (items) => {
       return items.map((item) => ({
         id: item.id,
@@ -227,9 +222,8 @@ describe("atomic structured answer publication", () => {
     );
     expect(saved.answerDocument.statements.map((statement) => statement.content))
       .toEqual(["Revenue decreased."]);
-    expect(saved.claims.map((claim) => claim.status)).toEqual([
-      "partially-supported",
-    ]);
+    expect(saved.claims.map((claim) => claim.status)).toEqual(["unverified"]);
+    expect(verifier.scoreCalls).toEqual([]);
     expect(saved.claims).toEqual(published.claims.map((claim) => {
       const {
         createdAt: _createdAt,
@@ -296,13 +290,13 @@ describe("atomic structured answer publication", () => {
         {
           citationNumbers: [1, 2],
           claim: "Revenue increased.",
-          status: "partially-supported",
+          status: "unverified",
         },
       ],
     });
   });
 
-  it("publishes unsupported verification as advisory metadata", async () => {
+  it("publishes pending verification as advisory metadata", async () => {
     const verifier = new FakeHhemClient(0.5, async (items) => {
       return items.map((item) => ({
         id: item.id,
@@ -332,7 +326,7 @@ describe("atomic structured answer publication", () => {
     expect(saved.claims).toEqual([
       expect.objectContaining({
         claim: "Revenue increased.",
-        status: "unsupported",
+        status: "unverified",
       }),
     ]);
     expect(published?.answerDocument).toEqual(saved.answerDocument);
@@ -341,18 +335,8 @@ describe("atomic structured answer publication", () => {
     expect(JSON.stringify(published)).toContain("Revenue increased.");
   });
 
-  it("verifies and atomically publishes independently cited opposing findings", async () => {
-    const verifiedClaims: string[] = [];
-    const verifier = new FakeHhemClient(0.5, async (items) => {
-      for (const item of items) {
-        verifiedClaims.push(item.claim);
-      }
-      return items.map((item) => ({
-        id: item.id,
-        outcome: "scored" as const,
-        supportProbability: 0.9,
-      }));
-    });
+  it("publishes independently cited opposing findings before verification", async () => {
+    const verifier = new FakeHhemClient();
     const draft = {
       answer: {
         content: "The reports describe opposite revenue changes.",
@@ -376,11 +360,7 @@ describe("atomic structured answer publication", () => {
       stream.writer,
     );
 
-    expect(verifiedClaims).toContain("Revenue increased.");
-    expect(verifiedClaims).toContain("Revenue decreased.");
-    expect(verifiedClaims).not.toContain(
-      "The reports describe opposite revenue changes.",
-    );
+    expect(verifier.scoreCalls).toEqual([]);
     const published = readChunks(stream.chunks, "data-answer")[0]?.data;
     if (published === undefined) {
       throw new Error("Expected a published conflict answer.");
@@ -422,10 +402,9 @@ describe("atomic structured answer publication", () => {
     expect(readChunks(stream.chunks, "finish")).toEqual([]);
   });
 
-  it("completes after verifier failure while preserving the unverified answer", async () => {
-    const verifierError = new Error("verifier unavailable");
+  it("publishes without waiting for an unavailable verifier", async () => {
     const verifier = new FakeHhemClient(0.5, async () => {
-      throw verifierError;
+      throw new Error("verifier unavailable");
     });
     const stream = buildWriter();
 
@@ -438,6 +417,7 @@ describe("atomic structured answer publication", () => {
     );
 
     expect(saveTurnMock).toHaveBeenCalledOnce();
+    expect(verifier.scoreCalls).toEqual([]);
     expect(readChunks(stream.chunks, "data-answer")).toHaveLength(1);
     expect(readChunks(stream.chunks, "data-answer")[0]?.data.claims).toEqual([
       expect.objectContaining({
@@ -467,7 +447,7 @@ describe("atomic structured answer publication", () => {
     expect(readChunks(stream.chunks, "finish")).toHaveLength(1);
   });
 
-  it("does not run a collective finding verification request", async () => {
+  it("defers collective finding verification to the background job", async () => {
     let scoreRequestCount = 0;
     const verifier = new FakeHhemClient(0.5, async (items) => {
       scoreRequestCount += 1;
@@ -488,7 +468,7 @@ describe("atomic structured answer publication", () => {
       stream.writer,
     );
 
-    expect(scoreRequestCount).toBe(1);
+    expect(scoreRequestCount).toBe(0);
     expect(saveTurnMock).toHaveBeenCalledOnce();
     expect(readChunks(stream.chunks, "data-answer")).toHaveLength(1);
     expect(readChunks(stream.chunks, "finish")).toHaveLength(1);
@@ -769,6 +749,7 @@ function buildSavedTurn(input: SaveResearchTurnInput): ResearchTurn {
     scope: input.scope,
     sequence: 1,
     threadId: input.threadId,
+    verificationState: claims.length > 0 ? "pending" : "not-applicable",
   };
 }
 

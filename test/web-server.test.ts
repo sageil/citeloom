@@ -3150,6 +3150,7 @@ function createAnswerStream(
             threadId: "00000000-0000-4000-8000-000000000001",
             turnId: "00000000-0000-4000-8000-000000000005",
           },
+          verificationState: "not-applicable",
         },
         id: "answer",
         type: "data-answer",

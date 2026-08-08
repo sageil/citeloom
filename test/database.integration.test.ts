@@ -2442,13 +2442,13 @@ describe("PostgreSQL research records", () => {
         claimIndex: 0,
         evidenceUnits: [{
           citationNumber: 1,
-          outcome: "supported",
-          rationale: "The finding evidence directly supports the statement.",
-          supportProbability: 0.98,
+          outcome: "not-evaluated",
+          rationale: "Automated evidence verification is pending.",
+          supportProbability: null,
           unitId: "claim-0-citation-1",
         }],
-        rationale: "The finding evidence directly supports the statement.",
-        status: "supported",
+        rationale: "Automated evidence verification is pending.",
+        status: "unverified",
         verifierModel: config.claimVerifier.model,
       }],
       completedAt: new Date("2026-08-07T01:51:50.000Z"),
@@ -2473,9 +2473,11 @@ describe("PostgreSQL research records", () => {
         claim: "The report recommends a specific diagnostic test.",
       }),
     ]);
+    expect(turn.verificationState).toBe("pending");
     const reopened = await research.readThread(thread.id);
     expect(reopened?.turns[0]?.answerDocument).toEqual(turn.answerDocument);
     expect(reopened?.turns[0]?.claims).toEqual(turn.claims);
+    expect(reopened?.turns[0]?.verificationState).toBe("pending");
     expect(await session.database.select().from(researchStatements))
       .toHaveLength(1);
     expect(await session.database.select().from(researchStatementCitations))
@@ -2484,6 +2486,53 @@ describe("PostgreSQL research records", () => {
       .toHaveLength(1);
     expect(await session.database.select().from(researchClaimEvidenceUnits))
       .toHaveLength(1);
+    const firstClaim = await research.claimNextVerificationJob(
+      new Date(),
+    );
+    expect(firstClaim).toMatchObject({
+      attemptCount: 1,
+      claims: [{
+        citationNumbers: [1],
+        claim: "The report recommends a specific diagnostic test.",
+        claimIndex: 0,
+      }],
+      id: turn.id,
+      sources: [{ citationNumber: 1 }],
+    });
+    expect((await research.readThread(thread.id))?.turns[0]?.verificationState)
+      .toBe("running");
+    await expect(research.releaseVerificationJob(turn.id, 1))
+      .resolves.toBe(true);
+    expect((await research.readThread(thread.id))?.turns[0]?.verificationState)
+      .toBe("pending");
+    const resumedClaim = await research.claimNextVerificationJob(
+      new Date(Date.now() + 1_000),
+    );
+    expect(resumedClaim?.attemptCount).toBe(2);
+    await expect(research.completeVerificationJob(
+      turn.id,
+      2,
+      [{
+        citationNumbers: [1],
+        claim: "The report recommends a specific diagnostic test.",
+        claimIndex: 0,
+        evidenceUnits: [{
+          citationNumber: 1,
+          outcome: "supported",
+          rationale: "The finding evidence directly supports the statement.",
+          supportProbability: 0.98,
+          unitId: "claim-0-citation-1",
+        }],
+        rationale: "The finding evidence directly supports the statement.",
+        status: "supported",
+        verifierModel: config.claimVerifier.model,
+      }],
+      new Date("2026-08-07T01:51:53.000Z"),
+    )).resolves.toBe(true);
+    expect((await research.readThread(thread.id))?.turns[0]).toMatchObject({
+      claims: [{ status: "supported" }],
+      verificationState: "completed",
+    });
   });
 
   it("persists immutable evidence, versions, feedback, and reviewed development cases", async () => {

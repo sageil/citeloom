@@ -65,11 +65,13 @@ import {
   contentIdSchema,
   sourceRegionSchema,
 } from "../domain/validation.js";
+import type { ResearchRetrievalTrace } from "../research/types.js";
+import {
+  verificationJobStateSchema,
+} from "../answers/verification-state.js";
 import type {
-  AnswerClaim,
-  ResearchRetrievalTrace,
-} from "../research/types.js";
-import type { ClaimEvidenceSource } from "../answers/claim-verification.js";
+  ClaimedVerificationJob,
+} from "../answers/verification-worker.js";
 import { validateCitationSnapshot } from "../research/store.js";
 import type {
   ChatAssistantMessage,
@@ -225,13 +227,6 @@ const summaryRowSchema = z.object({
   title: z.string().trim().min(1),
   updatedAt: z.date(),
 });
-const verificationJobStateSchema = z.enum([
-  "pending",
-  "running",
-  "completed",
-  "failed",
-]);
-
 export interface AcceptedChatRun {
   conversation: {
     id: string;
@@ -274,14 +269,6 @@ export interface ChatSemanticMemoryHit {
   runId: string;
   score: number;
   sequence: number;
-}
-
-export interface ClaimedChatVerificationJob {
-  assistantMessageId: string;
-  attemptCount: number;
-  claims: AnswerClaim[];
-  failureCount: number;
-  sources: ClaimEvidenceSource[];
 }
 
 export interface PublishChatAssistantInput {
@@ -1067,7 +1054,7 @@ export class ChatStore {
 
   public async claimNextVerificationJob(
     currentTime: Date,
-  ): Promise<ClaimedChatVerificationJob | null> {
+  ): Promise<ClaimedVerificationJob | null> {
     return this.database.transaction(async (transaction) => {
       const rows = await transaction
         .select({
@@ -1151,10 +1138,10 @@ export class ChatStore {
         };
       });
       return {
-        assistantMessageId: row.assistantMessageId,
         attemptCount: nextAttemptCount,
         claims: answerClaims,
         failureCount: row.failureCount,
+        id: row.assistantMessageId,
         sources,
       };
     });

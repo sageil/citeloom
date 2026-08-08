@@ -546,7 +546,7 @@
                   class="answer-verification-status"
                   :class="`answer-verification-${answerVerificationState()}`"
                   x-cloak
-                  x-show="answer !== null"
+                  x-show="answer !== null &amp;&amp; answerVerificationVisible()"
                   :title="answerVerificationLabel()"
                   aria-live="polite"
                 >
@@ -557,7 +557,7 @@
                     <span class="answer-verification-label">Answer status</span>
                     <span
                       class="answer-verification-status-label"
-                      x-text="answerVerificationLabel()"
+                      x-text="answerVerificationStatusLabel()"
                     ></span>
                   </div>
                   <span
@@ -1235,7 +1235,7 @@
             </span>
             <span
               class="source-navigator-status"
-              :class="`source-navigator-status-${answerCitationStatus(source.citationNumber)}`"
+              :class="`source-navigator-status-${citationNavigatorStatus(source.citationNumber)}`"
             >
               <span x-text="citationNavigatorStatusLabel(source.citationNumber)"></span>
               <svg aria-hidden="true" class="citeloom-icon">

@@ -8,6 +8,7 @@ import type {
 import type {
   PublishedAnswerDocument,
 } from "../answers/published-schema.js";
+import type { EvidenceVerificationState } from "../answers/verification-state.js";
 import type { DocumentFormat } from "../documents/format.js";
 import type { QueryScope } from "../domain/query-scope.js";
 import type {
@@ -212,6 +213,7 @@ export interface ResearchTurn {
   scope: QueryScope;
   sequence: number;
   threadId: string;
+  verificationState: EvidenceVerificationState;
 }
 
 export interface ResearchThread {

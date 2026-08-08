@@ -1,4 +1,5 @@
 import type { PublishedAnswerDocument } from "../answers/published.js";
+import type { EvidenceVerificationState } from "../answers/verification-state.js";
 import type { QueryScope } from "../domain/query-scope.js";
 import type { SourceRegion } from "../domain/source-elements.js";
 import type {
@@ -20,12 +21,7 @@ export type ChatRunState =
 
 export type ChatMessageRole = "assistant" | "user";
 
-export type ChatVerificationState =
-  | "not-applicable"
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed";
+export type ChatVerificationState = EvidenceVerificationState;
 
 export type ChatClaimVerificationResult = ClaimVerificationResult;
 

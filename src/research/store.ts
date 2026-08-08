@@ -9,6 +9,7 @@ import {
   eq,
   inArray,
   isNotNull,
+  lte,
   max,
   or,
   sql,
@@ -30,8 +31,15 @@ import {
   researchStatements,
   researchThreads,
   researchTurns,
+  researchVerificationJobs,
   sourceElements,
 } from "../database/schema.js";
+import type {
+  ClaimedVerificationJob,
+} from "../answers/verification-worker.js";
+import {
+  verificationJobStateSchema,
+} from "../answers/verification-state.js";
 import type { MatchedDocument } from "../retrieval/document-retrieval.js";
 import {
   publishedAnswerDocumentSchema,
@@ -48,6 +56,7 @@ import { queryScopeSchema, type QueryScope } from "../domain/query-scope.js";
 import { RETRIEVAL_MODES } from "../retrieval/mode.js";
 import { QUESTION_PROCESSING_POLICY_ID } from "../domain/question.js";
 import type {
+  AnswerClaim,
   CitationEvidence,
   ClaimVerificationResult,
   DocumentVersionDifference,
@@ -63,6 +72,7 @@ import type {
   StoredCitationRecord,
   StoredClaimCheck,
 } from "./types.js";
+import type { ClaimEvidenceSource } from "../answers/claim-verification.js";
 import {
   SourceDocumentStore,
 } from "../documents/storage/source-document-store.js";
@@ -85,6 +95,7 @@ const fusionSchema = z.object({
   originalQueryWeight: z.number().nonnegative(),
 }).strict();
 const RESEARCH_THREAD_TITLE_LOCK_ID = 1_384_921_704;
+const MINIMUM_VERIFICATION_JOB_LEASE_MS = 5 * 60 * 1_000;
 const runConfigurationSchema = z.object({
   embeddingSpaceId: z.string().min(1),
   models: z.object({
@@ -186,6 +197,9 @@ const storedRetrievalTraceSchema = z.discriminatedUnion("version", [
   currentRetrievalTraceSchema,
 ]);
 const passiveAbortSignal = new AbortController().signal;
+type ResearchTransaction = Parameters<
+  Parameters<CiteLoomDatabase["transaction"]>[0]
+>[0];
 const evidenceSchema = z.discriminatedUnion("kind", [
   z.object({ excerpt: z.string().min(1), kind: z.literal("text") }).strict(),
   z.object({
@@ -701,6 +715,14 @@ export class ResearchStore {
         await transaction
           .insert(researchClaimEvidenceUnits)
           .values(evidenceUnitValues);
+        await transaction.insert(researchVerificationJobs).values({
+          attemptCount: 0,
+          availableAt: normalized.completedAt,
+          failureCount: 0,
+          state: "pending",
+          turnId,
+          updatedAt: normalized.completedAt,
+        });
       }
       abortSignal.throwIfAborted();
       await transaction
@@ -740,7 +762,175 @@ export class ResearchStore {
       scope: normalized.scope,
       sequence,
       threadId: normalized.threadId,
+      verificationState: normalized.claims.length > 0
+        ? "pending"
+        : "not-applicable",
     };
+  }
+
+  public async claimNextVerificationJob(
+    currentTime: Date,
+  ): Promise<ClaimedVerificationJob | null> {
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({
+          attemptCount: researchVerificationJobs.attemptCount,
+          failureCount: researchVerificationJobs.failureCount,
+          turnId: researchVerificationJobs.turnId,
+        })
+        .from(researchVerificationJobs)
+        .where(or(
+          and(
+            eq(researchVerificationJobs.state, "pending"),
+            lte(researchVerificationJobs.availableAt, currentTime),
+          ),
+          and(
+            eq(researchVerificationJobs.state, "running"),
+            lte(researchVerificationJobs.leaseExpiresAt, currentTime),
+          ),
+        ))
+        .orderBy(
+          asc(researchVerificationJobs.availableAt),
+          asc(researchVerificationJobs.updatedAt),
+        )
+        .limit(1)
+        .for("update", { skipLocked: true });
+      const row = rows[0];
+      if (row === undefined) {
+        return null;
+      }
+      const nextAttemptCount = row.attemptCount + 1;
+      const claimed = await transaction
+        .update(researchVerificationJobs)
+        .set({
+          attemptCount: nextAttemptCount,
+          errorMessage: null,
+          leaseExpiresAt: this.nextVerificationLease(),
+          state: "running",
+          updatedAt: currentTime,
+        })
+        .where(eq(researchVerificationJobs.turnId, row.turnId))
+        .returning({ turnId: researchVerificationJobs.turnId });
+      if (claimed[0] === undefined) {
+        throw new Error(
+          `Could not claim Research verification job ${row.turnId}.`,
+        );
+      }
+      const claims = await this.readVerificationClaims(transaction, row.turnId);
+      const sources = await this.readVerificationSources(transaction, row.turnId);
+      return {
+        attemptCount: nextAttemptCount,
+        claims,
+        failureCount: row.failureCount,
+        id: row.turnId,
+        sources,
+      };
+    });
+  }
+
+  public async completeVerificationJob(
+    turnId: string,
+    attemptCount: number,
+    claims: readonly ClaimVerificationResult[],
+    completedAt: Date,
+  ): Promise<boolean> {
+    const normalizedClaims = z.array(claimVerificationResultSchema).parse(claims);
+    return this.database.transaction(async (transaction) => {
+      const active = await transaction
+        .select({ turnId: researchVerificationJobs.turnId })
+        .from(researchVerificationJobs)
+        .where(and(
+          eq(researchVerificationJobs.turnId, turnId),
+          eq(researchVerificationJobs.attemptCount, attemptCount),
+          eq(researchVerificationJobs.state, "running"),
+        ))
+        .for("update")
+        .limit(1);
+      if (active[0] === undefined) {
+        return false;
+      }
+      await this.replaceVerificationResults(
+        transaction,
+        turnId,
+        normalizedClaims,
+      );
+      await transaction.execute(
+        sql`SELECT "assert_research_turn_output"(${turnId})`,
+      );
+      const completed = await transaction
+        .update(researchVerificationJobs)
+        .set({
+          completedAt,
+          errorMessage: null,
+          leaseExpiresAt: null,
+          state: "completed",
+          updatedAt: completedAt,
+        })
+        .where(and(
+          eq(researchVerificationJobs.turnId, turnId),
+          eq(researchVerificationJobs.attemptCount, attemptCount),
+          eq(researchVerificationJobs.state, "running"),
+        ))
+        .returning({ turnId: researchVerificationJobs.turnId });
+      if (completed[0] === undefined) {
+        throw new Error(`Research verification job ${turnId} lost its lease.`);
+      }
+      return true;
+    });
+  }
+
+  public async settleVerificationFailure(
+    turnId: string,
+    attemptCount: number,
+    error: unknown,
+    retryAt: Date | null,
+  ): Promise<boolean> {
+    const now = new Date();
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const message = rawMessage.trim().slice(0, 4_000)
+      || "Automated evidence verification failed.";
+    const terminal = retryAt === null;
+    const settled = await this.database
+      .update(researchVerificationJobs)
+      .set({
+        availableAt: retryAt ?? now,
+        completedAt: terminal ? now : null,
+        errorMessage: message,
+        failureCount: sql`${researchVerificationJobs.failureCount} + 1`,
+        leaseExpiresAt: null,
+        state: terminal ? "failed" : "pending",
+        updatedAt: now,
+      })
+      .where(and(
+        eq(researchVerificationJobs.turnId, turnId),
+        eq(researchVerificationJobs.attemptCount, attemptCount),
+        eq(researchVerificationJobs.state, "running"),
+      ))
+      .returning({ turnId: researchVerificationJobs.turnId });
+    return settled[0] !== undefined;
+  }
+
+  public async releaseVerificationJob(
+    turnId: string,
+    attemptCount: number,
+  ): Promise<boolean> {
+    const now = new Date();
+    const released = await this.database
+      .update(researchVerificationJobs)
+      .set({
+        availableAt: now,
+        errorMessage: null,
+        leaseExpiresAt: null,
+        state: "pending",
+        updatedAt: now,
+      })
+      .where(and(
+        eq(researchVerificationJobs.turnId, turnId),
+        eq(researchVerificationJobs.attemptCount, attemptCount),
+        eq(researchVerificationJobs.state, "running"),
+      ))
+      .returning({ turnId: researchVerificationJobs.turnId });
+    return released[0] !== undefined;
   }
 
   public async readCitation(id: string): Promise<CitationEvidenceRecord | null> {
@@ -951,6 +1141,220 @@ export class ResearchStore {
     return this.readFeedbackAggregate(turnId, dimension, citationId, userId);
   }
 
+  private nextVerificationLease(): Date {
+    const leaseMs = Math.max(
+      MINIMUM_VERIFICATION_JOB_LEASE_MS,
+      this.config.claimVerifier.timeoutMs + 60_000,
+    );
+    return new Date(Date.now() + leaseMs);
+  }
+
+  private async readVerificationClaims(
+    transaction: ResearchTransaction,
+    turnId: string,
+  ): Promise<AnswerClaim[]> {
+    const statementRows = await transaction
+      .select({
+        claim: researchStatements.content,
+        claimIndex: researchStatements.statementIndex,
+        statementId: researchStatements.id,
+      })
+      .from(researchClaimChecks)
+      .innerJoin(
+        researchStatements,
+        and(
+          eq(researchStatements.id, researchClaimChecks.statementId),
+          eq(researchStatements.turnId, researchClaimChecks.turnId),
+        ),
+      )
+      .where(eq(researchClaimChecks.turnId, turnId))
+      .orderBy(asc(researchStatements.statementIndex));
+    if (statementRows.length === 0) {
+      throw new Error(`Research verification job ${turnId} has no claims.`);
+    }
+    const citationRows = await transaction
+      .select({
+        citationNumber: citationRecords.citationNumber,
+        statementId: researchStatementCitations.statementId,
+      })
+      .from(researchStatementCitations)
+      .innerJoin(
+        citationRecords,
+        and(
+          eq(citationRecords.id, researchStatementCitations.citationId),
+          eq(citationRecords.turnId, researchStatementCitations.turnId),
+        ),
+      )
+      .where(eq(researchStatementCitations.turnId, turnId))
+      .orderBy(
+        asc(researchStatementCitations.statementId),
+        asc(researchStatementCitations.citationPosition),
+      );
+    const citationNumbersByStatement = new Map<string, number[]>();
+    for (const row of citationRows) {
+      const citationNumbers = citationNumbersByStatement.get(row.statementId)
+        ?? [];
+      citationNumbers.push(row.citationNumber);
+      citationNumbersByStatement.set(row.statementId, citationNumbers);
+    }
+    const claims: AnswerClaim[] = [];
+    for (const row of statementRows) {
+      claims.push({
+        citationNumbers: citationNumbersByStatement.get(row.statementId) ?? [],
+        claim: row.claim,
+        claimIndex: row.claimIndex,
+      });
+    }
+    return claims;
+  }
+
+  private async readVerificationSources(
+    transaction: ResearchTransaction,
+    turnId: string,
+  ): Promise<ClaimEvidenceSource[]> {
+    const rows = await transaction
+      .select({
+        citationNumber: citationRecords.citationNumber,
+        evidence: citationRecords.evidence,
+        sectionPath: citationRecords.sectionPath,
+      })
+      .from(citationRecords)
+      .where(eq(citationRecords.turnId, turnId))
+      .orderBy(asc(citationRecords.citationNumber));
+    const sources: ClaimEvidenceSource[] = [];
+    for (const row of rows) {
+      sources.push({
+        citationNumber: row.citationNumber,
+        evidence: row.evidence,
+        sectionPath: row.sectionPath,
+      });
+    }
+    return sources;
+  }
+
+  private async replaceVerificationResults(
+    transaction: ResearchTransaction,
+    turnId: string,
+    claims: readonly ClaimVerificationResult[],
+  ): Promise<void> {
+    const expectedClaims = await this.readVerificationClaims(
+      transaction,
+      turnId,
+    );
+    const expectedByIndex = new Map<number, AnswerClaim>();
+    for (const claim of expectedClaims) {
+      expectedByIndex.set(claim.claimIndex, claim);
+    }
+    if (expectedByIndex.size !== claims.length) {
+      throw new Error(
+        `Research verification job ${turnId} returned an incomplete claim set.`,
+      );
+    }
+    const checkRows = await transaction
+      .select({
+        checkId: researchClaimChecks.id,
+        claimIndex: researchStatements.statementIndex,
+        statementId: researchClaimChecks.statementId,
+      })
+      .from(researchClaimChecks)
+      .innerJoin(
+        researchStatements,
+        and(
+          eq(researchStatements.id, researchClaimChecks.statementId),
+          eq(researchStatements.turnId, researchClaimChecks.turnId),
+        ),
+      )
+      .where(eq(researchClaimChecks.turnId, turnId));
+    const checksByIndex = new Map<number, {
+      checkId: string;
+      statementId: string;
+    }>();
+    for (const row of checkRows) {
+      checksByIndex.set(row.claimIndex, {
+        checkId: row.checkId,
+        statementId: row.statementId,
+      });
+    }
+    const citationRows = await transaction
+      .select({
+        citationNumber: citationRecords.citationNumber,
+        id: citationRecords.id,
+      })
+      .from(citationRecords)
+      .where(eq(citationRecords.turnId, turnId));
+    const citationByNumber = new Map<number, string>();
+    for (const row of citationRows) {
+      citationByNumber.set(row.citationNumber, row.id);
+    }
+    await transaction
+      .delete(researchClaimEvidenceUnits)
+      .where(eq(researchClaimEvidenceUnits.turnId, turnId));
+    const evidenceUnitValues = [];
+    const seenClaimIndexes = new Set<number>();
+    for (const claim of claims) {
+      const expected = expectedByIndex.get(claim.claimIndex);
+      const check = checksByIndex.get(claim.claimIndex);
+      if (
+        expected === undefined
+        || check === undefined
+        || seenClaimIndexes.has(claim.claimIndex)
+        || expected.claim !== claim.claim
+        || !isDeepStrictEqual(expected.citationNumbers, claim.citationNumbers)
+      ) {
+        throw new Error(
+          `Research verification result ${claim.claimIndex} does not match turn ${turnId}.`,
+        );
+      }
+      seenClaimIndexes.add(claim.claimIndex);
+      await transaction
+        .update(researchClaimChecks)
+        .set({
+          rationale: claim.rationale,
+          status: claim.status,
+          verifierModel: claim.verifierModel,
+        })
+        .where(and(
+          eq(researchClaimChecks.id, check.checkId),
+          eq(researchClaimChecks.turnId, turnId),
+        ));
+      for (
+        let evidencePosition = 0;
+        evidencePosition < claim.evidenceUnits.length;
+        evidencePosition += 1
+      ) {
+        const evidenceUnit = claim.evidenceUnits[evidencePosition];
+        const citationId = evidenceUnit === undefined
+          ? undefined
+          : citationByNumber.get(evidenceUnit.citationNumber);
+        if (
+          evidenceUnit === undefined
+          || citationId === undefined
+          || !claim.citationNumbers.includes(evidenceUnit.citationNumber)
+        ) {
+          throw new Error(
+            `Research verification evidence ${evidencePosition} does not match claim ${claim.claimIndex}.`,
+          );
+        }
+        evidenceUnitValues.push({
+          checkId: check.checkId,
+          citationId,
+          evidencePosition,
+          outcome: evidenceUnit.outcome,
+          rationale: evidenceUnit.rationale,
+          statementId: check.statementId,
+          supportProbability: evidenceUnit.supportProbability,
+          turnId,
+          unitId: evidenceUnit.unitId,
+        });
+      }
+    }
+    if (evidenceUnitValues.length > 0) {
+      await transaction
+        .insert(researchClaimEvidenceUnits)
+        .values(evidenceUnitValues);
+    }
+  }
+
   private async readFeedbackAggregate(
     turnId: string,
     dimension: FeedbackDimension,
@@ -1020,6 +1424,7 @@ export class ResearchStore {
       rawStatementCitations,
       rawClaimChecks,
       rawClaimEvidenceUnits,
+      rawVerificationJobs,
     ] = await Promise.all([
       this.database
         .select(citationRowSelection)
@@ -1055,6 +1460,13 @@ export class ResearchStore {
           asc(researchClaimEvidenceUnits.checkId),
           asc(researchClaimEvidenceUnits.evidencePosition),
         ),
+      this.database
+        .select({
+          state: researchVerificationJobs.state,
+          turnId: researchVerificationJobs.turnId,
+        })
+        .from(researchVerificationJobs)
+        .where(inArray(researchVerificationJobs.turnId, turnIds)),
     ]);
     const decodedCitations = rawCitations.map(decodeCitationRow);
     const decodedStatements = rawStatements.map(decodeStatementRow);
@@ -1074,6 +1486,16 @@ export class ResearchStore {
     const claimEvidenceUnitsByTurn = groupClaimEvidenceUnits(
       decodedClaimEvidenceUnits,
     );
+    const verificationStateByTurn = new Map<
+      string,
+      z.infer<typeof verificationJobStateSchema>
+    >();
+    for (const row of rawVerificationJobs) {
+      verificationStateByTurn.set(
+        row.turnId,
+        verificationJobStateSchema.parse(row.state),
+      );
+    }
     const sourceFiles = new Set<string>();
     for (const citation of decodedCitations) {
       sourceFiles.add(citation.sourceFile);
@@ -1115,6 +1537,8 @@ export class ResearchStore {
         scope: turn.scope,
         sequence: turn.sequence,
         threadId: turn.threadId,
+        verificationState: verificationStateByTurn.get(turn.id)
+          ?? (output.claims.length > 0 ? "completed" : "not-applicable"),
       });
     }
     return results;

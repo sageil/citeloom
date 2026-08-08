@@ -9,6 +9,7 @@ import {
 } from "./content-snapshot.js";
 import { contentIdSchema } from "../domain/validation.js";
 import type { ChatMessageResponse } from "../chat/types.js";
+import { evidenceVerificationStateSchema } from "./verification-state.js";
 
 export const matchedDocumentSchema = z.object({
   documentId: contentIdSchema,
@@ -66,6 +67,7 @@ export const streamedAnswerSchema = z.object({
   matchedDocuments: z.array(matchedDocumentSchema),
   runDetails: streamedRunDetailsSchema.nullable(),
   turn: streamedResearchTurnSchema,
+  verificationState: evidenceVerificationStateSchema,
 }).strict();
 
 export type StreamedAnswer = z.output<typeof streamedAnswerSchema>;

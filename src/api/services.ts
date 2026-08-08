@@ -179,6 +179,9 @@ import {
 import {
   processNextChatVerificationWithRuntime,
 } from "../chat/verification-dispatcher.js";
+import {
+  processNextResearchVerificationWithRuntime,
+} from "../research/verification-dispatcher.js";
 import { ChatStore } from "../chat/store.js";
 import type {
   ChatConversation,
@@ -243,6 +246,9 @@ export interface RuntimeWebServices {
   ) => Promise<BulkIngestResult>;
   listDocumentVersions: (sourceFile: string) => Promise<DocumentVersionRecord[]>;
   processNextChatVerification?: (
+    abortSignal: AbortSignal,
+  ) => Promise<boolean>;
+  processNextResearchVerification?: (
     abortSignal: AbortSignal,
   ) => Promise<boolean>;
   listChatConversations?: (
@@ -901,6 +907,9 @@ function createRuntimeWebServices(
     },
     processNextChatVerification: async (abortSignal) => {
       return processNextChatVerificationWithRuntime(runtime, abortSignal);
+    },
+    processNextResearchVerification: async (abortSignal) => {
+      return processNextResearchVerificationWithRuntime(runtime, abortSignal);
     },
     ingest: async (documents, options, duplicateSourceRoot, uploadedByUserId) => {
       return ingestStagedDocumentsWithRuntime(

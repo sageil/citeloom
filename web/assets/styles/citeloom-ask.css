@@ -118,17 +118,16 @@
 .answer-verification-status-label { color: var(--cyan-bright); font-size: 10px; font-weight: 600; white-space: nowrap; }
 .answer-verification-progress { position: relative; display: block; width: clamp(120px, 28vw, 320px); height: 4px; margin-left: 16px; overflow: hidden; border-radius: 999px; background: rgba(148, 163, 184, 0.2); }
 .answer-verification-progress > span { position: absolute; inset: 0 auto 0 0; display: block; border-radius: inherit; }
-.answer-verification-checking .answer-verification-progress > span { width: 48%; animation: answer-verification-progress 1.2s infinite ease-in-out; background: var(--cyan); }
-.answer-verification-verified .answer-verification-progress > span { width: 100%; background: linear-gradient(90deg, var(--cyan), var(--success)); }
-.answer-verification-review .answer-verification-progress > span { width: 100%; background: var(--warning); }
-.answer-verification-unavailable .answer-verification-progress > span { width: 100%; background: var(--muted); }
+.answer-verification-pending .answer-verification-progress > span, .answer-verification-running .answer-verification-progress > span { width: 48%; animation: answer-verification-progress 1.2s infinite ease-in-out; background: var(--cyan); }
+.answer-verification-completed .answer-verification-progress > span { width: 100%; background: linear-gradient(90deg, var(--cyan), var(--success)); }
+.answer-verification-failed .answer-verification-progress > span { width: 100%; background: var(--danger); }
 .answer-header-toolbar .answer-toolbar-action { min-height: 30px; padding-inline: 10px; border-color: var(--cyan-border); background: transparent; color: var(--cyan); font-size: 10px; }
 .answer-loading-badge, .answer-partial-badge { padding: 4px 8px; border: 1px solid var(--cyan-border); border-radius: 999px; color: var(--cyan); font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
-.answer-verification-verified, .answer-finding-verification-supported { color: #6ee7b7; }
-.answer-verification-verified .answer-verification-status-label { color: #6ee7b7; }
-.answer-verification-review, .answer-finding-verification-unsupported { color: var(--warning); }
-.answer-verification-review .answer-verification-status-label { color: var(--warning); }
-.answer-verification-unavailable .answer-verification-status-label { color: var(--muted); }
+.answer-verification-completed, .answer-finding-verification-supported { color: #6ee7b7; }
+.answer-verification-completed .answer-verification-status-label { color: #6ee7b7; }
+.answer-verification-failed { color: var(--danger-soft); }
+.answer-verification-failed .answer-verification-status-label { color: var(--danger-soft); }
+.answer-finding-verification-unsupported { color: var(--warning); }
 
 @keyframes answer-verification-progress {
   from { transform: translateX(-100%); }
@@ -285,5 +284,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .answer-verification-checking .answer-verification-progress > span { width: 55%; animation: none; }
+  .answer-verification-pending .answer-verification-progress > span, .answer-verification-running .answer-verification-progress > span { width: 55%; animation: none; }
 }

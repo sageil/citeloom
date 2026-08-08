@@ -94,7 +94,7 @@ describe("application embedding dimensions", () => {
     ]);
   });
 
-  it("keeps the complete greenfield schema in the only migration", async () => {
+  it("keeps the complete vector schema in the baseline migration", async () => {
     const drizzleDirectory = new URL("../drizzle/", import.meta.url);
     const migrationFiles: string[] = [];
     const sqlFiles: string[] = [];
@@ -109,9 +109,13 @@ describe("application embedding dimensions", () => {
     sqlFiles.sort();
     expect(sqlFiles).toEqual([
       "0000_citeloom_schema.sql",
+      "0001_add_research_verification_jobs.sql",
       "bootstrap.sql",
     ]);
-    expect(migrationFiles).toEqual(["0000_citeloom_schema.sql"]);
+    expect(migrationFiles).toEqual([
+      "0000_citeloom_schema.sql",
+      "0001_add_research_verification_jobs.sql",
+    ]);
 
     const migration = await readFile(
       new URL("0000_citeloom_schema.sql", drizzleDirectory),
@@ -134,6 +138,6 @@ describe("application embedding dimensions", () => {
       "utf8",
     );
     expect(journal).toContain('"tag": "0000_citeloom_schema"');
-    expect(journal).not.toContain('"idx": 1');
+    expect(journal).toContain('"tag": "0001_add_research_verification_jobs"');
   });
 });

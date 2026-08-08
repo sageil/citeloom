@@ -41,6 +41,12 @@ import {
 } from "./citeloom-dictation.js";
 import { dispatchNotice } from "./citeloom-notices.js";
 import { requestConfirmation } from "./citeloom-confirmation.js";
+import {
+  isVerificationPending,
+  verificationLabel,
+  verificationProgressValue,
+  verificationStatusLabel,
+} from "./citeloom-verification.js";
 const chatSwitcherRequestEvent = "citeloom:chat-switcher-request";
 const chatEvidenceSpeechOptions = {
   audioRefName: "chatEvidenceSpeechAudio",
@@ -664,35 +670,11 @@ export function registerPage(alpine) {
     },
 
     verificationLabel(state) {
-      if (state === "pending") {
-        return "Evidence validation is queued";
-      }
-      if (state === "running") {
-        return "Validating evidence";
-      }
-      if (state === "completed") {
-        return "Evidence validation complete";
-      }
-      if (state === "failed") {
-        return "Evidence validation could not be completed";
-      }
-      return "Evidence validation is not required";
+      return verificationLabel(state);
     },
 
     verificationStatusLabel(state) {
-      if (state === "pending") {
-        return "Queued";
-      }
-      if (state === "running") {
-        return "Checking evidence";
-      }
-      if (state === "completed") {
-        return "Verified";
-      }
-      if (state === "failed") {
-        return "Check failed";
-      }
-      return "";
+      return verificationStatusLabel(state);
     },
 
     conversationVerificationState() {
@@ -714,7 +696,7 @@ export function registerPage(alpine) {
     },
 
     conversationVerificationProgressValue() {
-      return this.conversationVerificationState() === "completed" ? 100 : null;
+      return verificationProgressValue(this.conversationVerificationState());
     },
 
     prepareSpeechForConversation() {
@@ -1905,10 +1887,7 @@ export function registerPage(alpine) {
         for (const message of run.messages) {
           if (
             message.role === "assistant"
-            && (
-              message.verificationState === "pending"
-              || message.verificationState === "running"
-            )
+            && isVerificationPending(message.verificationState)
           ) {
             return true;
           }

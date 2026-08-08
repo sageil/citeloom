@@ -52,6 +52,13 @@ import { createDictationController } from "./citeloom-dictation.js";
 import { dispatchNotice } from "./citeloom-notices.js";
 import { requestConfirmation } from "./citeloom-confirmation.js";
 import {
+  isVerificationPending,
+  readVerificationState,
+  verificationLabel,
+  verificationProgressValue,
+  verificationStatusLabel,
+} from "./citeloom-verification.js";
+import {
   readAskAnswerDocument,
   readPublishedAnswerEvidence,
   readPublishedSourceRegions,
@@ -340,6 +347,10 @@ function readStreamedAnswer(value) {
     matchedDocuments: readMatchedDocuments(answer.matchedDocuments),
     runDetails: readRunDetails(answer.runDetails),
     turn: readAnswerTurn(answer.turn),
+    verificationState: readVerificationState(
+      answer.verificationState,
+      "answer verification state",
+    ),
   };
 }
 
@@ -387,6 +398,10 @@ function readResearchTurn(value, label) {
     scope: readScope(turn.scope),
     sequence: readPositiveInteger(turn.sequence, `${label} sequence`),
     threadId: readNonEmptyString(turn.threadId, `${label} thread id`),
+    verificationState: readVerificationState(
+      turn.verificationState,
+      `${label} verification state`,
+    ),
   };
 }
 
@@ -625,7 +640,21 @@ function buildHistoricalAnswer(turn) {
       threadId: turn.threadId,
       turnId: turn.id,
     },
+    verificationState: turn.verificationState,
   };
+}
+
+function applyResearchVerificationUpdate(answer, turn) {
+  if (answer.turn.turnId !== turn.id) {
+    return;
+  }
+  answer.verificationState = turn.verificationState;
+  if (
+    turn.verificationState === "completed"
+    || turn.verificationState === "failed"
+  ) {
+    answer.claims = turn.claims;
+  }
 }
 
 function readErrorMessage(error, fallback) {
@@ -792,6 +821,7 @@ export function registerPage(alpine) {
     threadsError: "",
     threadsLoading: false,
     turnId: "",
+    verificationRefreshTimer: null,
 
     async initialize() {
       this.initializeDictationController();
@@ -863,6 +893,7 @@ export function registerPage(alpine) {
       this.pushToTalkAltHeld = false;
       this.pushToTalkBlockedUntilRelease = false;
       this.stopRequest();
+      this.clearVerificationRefresh();
       this.citationAbortController?.abort();
       this.resetCitationInspectorSize();
       this.dictationController?.destroy();
@@ -927,6 +958,7 @@ export function registerPage(alpine) {
     },
 
     clearAnswerPresentation() {
+      this.clearVerificationRefresh();
       this.answer = null;
       this.streamedAnswerContent = createEmptyAnswerContent();
       this.answerContentSections = [];
@@ -944,6 +976,7 @@ export function registerPage(alpine) {
       this.streamedAnswerContent = content;
       this.answerContentSections = buildAnswerContentSections(content);
       this.historicalAnswerVisible = true;
+      this.scheduleVerificationRefresh();
     },
 
     applyStreamedAnswerUpdate(update) {
@@ -963,6 +996,7 @@ export function registerPage(alpine) {
       );
       linkAnswerContentCitations(this.streamedAnswerContent, answer.sources);
       this.answer = answer;
+      this.scheduleVerificationRefresh();
     },
 
     async selectResearchThread(threadId) {
@@ -2605,63 +2639,99 @@ export function registerPage(alpine) {
     },
 
     citationNavigatorStatusLabel(citationNumber) {
+      if (isVerificationPending(this.answerVerificationState())) {
+        return "Checking";
+      }
       const status = this.answerCitationStatus(citationNumber);
       if (status === "supported") {
         return "Verified";
       }
       if (status === "partially-supported" || status === "unsupported") {
-        return "Review";
+        return "Needs review";
       }
-      return "Checking";
+      return "Unverified";
+    },
+
+    citationNavigatorStatus(citationNumber) {
+      if (isVerificationPending(this.answerVerificationState())) {
+        return "pending";
+      }
+      return this.answerCitationStatus(citationNumber);
     },
 
     answerVerificationState() {
-      if (this.answer === null || this.answer.claims.length === 0) {
-        return "unavailable";
-      }
-      let hasPendingCheck = false;
-      let hasUnverifiedClaim = false;
-      for (const claim of this.answer.claims) {
-        if (
-          claim.status === "unsupported"
-          || claim.status === "partially-supported"
-        ) {
-          return "review";
-        }
-        if (claim.status !== "unverified") {
-          continue;
-        }
-        if (claim.rationale === "Automated evidence verification is pending.") {
-          hasPendingCheck = true;
-        } else {
-          hasUnverifiedClaim = true;
-        }
-      }
-      if (hasPendingCheck) {
-        return "checking";
-      }
-      if (hasUnverifiedClaim) {
-        return "unavailable";
-      }
-      return "verified";
+      return this.answer?.verificationState ?? "not-applicable";
+    },
+
+    answerVerificationVisible() {
+      return this.answerVerificationState() !== "not-applicable";
     },
 
     answerVerificationLabel() {
-      const state = this.answerVerificationState();
-      if (state === "verified") {
-        return "Verified";
-      }
-      if (state === "review") {
-        return "Review evidence";
-      }
-      if (state === "checking") {
-        return "Checking evidence";
-      }
-      return "Verification unavailable";
+      return verificationLabel(this.answerVerificationState());
+    },
+
+    answerVerificationStatusLabel() {
+      return verificationStatusLabel(this.answerVerificationState());
     },
 
     answerVerificationProgressValue() {
-      return this.answerVerificationState() === "checking" ? null : 100;
+      return verificationProgressValue(this.answerVerificationState());
+    },
+
+    hasPendingVerification() {
+      return isVerificationPending(this.answerVerificationState());
+    },
+
+    scheduleVerificationRefresh() {
+      this.clearVerificationRefresh();
+      if (!this.hasPendingVerification()) {
+        return;
+      }
+      this.verificationRefreshTimer = window.setTimeout(() => {
+        this.verificationRefreshTimer = null;
+        void this.refreshVerification();
+      }, 800);
+    },
+
+    clearVerificationRefresh() {
+      if (this.verificationRefreshTimer === null) {
+        return;
+      }
+      window.clearTimeout(this.verificationRefreshTimer);
+      this.verificationRefreshTimer = null;
+    },
+
+    async refreshVerification() {
+      const threadId = this.threadId;
+      const turnId = this.answer?.turn.turnId;
+      if (threadId === "" || turnId === undefined) {
+        return;
+      }
+      try {
+        const response = await fetch(
+          `/api/research/threads/${encodeURIComponent(threadId)}`,
+          { headers: { accept: "application/json" } },
+        );
+        const thread = await readJsonResponse(
+          response,
+          "Research verification refresh",
+          readResearchThread,
+        );
+        const turn = thread.turns.find((candidate) => candidate.id === turnId);
+        if (
+          turn !== undefined
+          && this.threadId === threadId
+          && this.answer?.turn.turnId === turnId
+        ) {
+          applyResearchVerificationUpdate(this.answer, turn);
+          this.thread = thread;
+        }
+      } catch {
+        // Verification refresh is best effort. The published answer remains usable.
+      } finally {
+        this.scheduleVerificationRefresh();
+      }
     },
 
     answerStatementClaim(statement) {
@@ -2678,14 +2748,11 @@ export function registerPage(alpine) {
 
     answerStatementStatusLabel(statement) {
       const claim = this.answerStatementClaim(statement);
-      if (claim === null) {
-        return this.answer === null ? "Checking evidence" : "Not verified";
-      }
-      if (
-        claim.status === "unverified"
-        && claim.rationale === "Automated evidence verification is pending."
-      ) {
+      if (isVerificationPending(this.answerVerificationState())) {
         return "Checking evidence";
+      }
+      if (claim === null) {
+        return "Not verified";
       }
       if (claim.status === "supported") {
         return "Verified";

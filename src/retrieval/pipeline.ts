@@ -23,7 +23,6 @@ import {
   streamAnswerQuestion,
   UnexpectedAnswerFinishReasonError,
   type AnswerResult,
-  type GeneratedAnswerResult,
 } from "../answers/inference.js";
 import { AnswerCapacityError } from "../answers/context-budget.js";
 import {
@@ -71,7 +70,6 @@ import type {
   QueryScope,
   ResolvedQueryScopeTarget,
 } from "../domain/query-scope.js";
-import type { ClaimVerificationResult } from "../research/types.js";
 import type {
   CurrentResearchRetrievalTrace,
   ResearchRetrievalTrace,
@@ -854,18 +852,13 @@ export async function writeStreamedAnswer(
     receiveAnswerContent(
       createPublishedAnswerContentSnapshot(result.answerDocument),
     );
-    let claimChecks: ClaimVerificationResult[] = [];
-    if (result.outcome === "answered" && result.claims.length > 0) {
-      reportProgress("Scoring cited claims with advisory HHEM checks");
-      claimChecks = await verifyAdvisoryClaimChecks(
-        prepared,
-        result,
-        databaseSession.database,
-        researchRunId,
-        abortSignal,
-        runTelemetry,
-      );
-    }
+    const claimChecks = result.outcome === "answered"
+      ? createPendingAnswerClaimChecks(
+        prepared.models,
+        result.claims,
+        result.answerDocument.citations,
+      )
+      : [];
     abortSignal.throwIfAborted();
     const turn = await researchStore.saveTurn({
       answerDocument: result.answerDocument,
@@ -898,6 +891,7 @@ export async function writeStreamedAnswer(
         threadId: turn.threadId,
         turnId: turn.id,
       },
+      verificationState: turn.verificationState,
     };
     writer.write({
       data: streamedAnswer,
@@ -925,58 +919,6 @@ export async function writeStreamedAnswer(
     }
     throw error;
   }
-}
-
-async function verifyAdvisoryClaimChecks(
-  prepared: PreparedRetrieval,
-  result: GeneratedAnswerResult,
-  database: CiteLoomDatabase,
-  researchRunId: string,
-  abortSignal: AbortSignal,
-  runTelemetry: RunTelemetry,
-): Promise<ClaimVerificationResult[]> {
-  try {
-    const verified = await verifyPublishedAnswerClaims(
-      prepared.models,
-      result.answerDocument,
-      result.claims,
-      prepared.answerScheduler,
-      abortSignal,
-      runTelemetry,
-    );
-    return verified.claims;
-  } catch (error: unknown) {
-    abortSignal.throwIfAborted();
-    await reportAdvisoryAnswerFailure(
-      database,
-      error,
-      researchRunId,
-    );
-    return createPendingAnswerClaimChecks(
-      prepared.models,
-      result.claims,
-      result.answerDocument.citations,
-    );
-  }
-}
-
-async function reportAdvisoryAnswerFailure(
-  database: CiteLoomDatabase,
-  error: unknown,
-  runId: string,
-): Promise<void> {
-  const reporter = new ApplicationErrorReporter(database);
-  await reporter.report(error, {
-    category: "claim-verification",
-    code: "answer_claim_verification_failed",
-    instance: hostname(),
-    operation: "verify-answer-claims",
-    origin: "inference-provider",
-    retryable: null,
-    runId,
-    service: "web",
-    severity: "warning",
-  });
 }
 
 function readRetrievalModeLabel(mode: RetrievalMode): string {

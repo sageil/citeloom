@@ -154,6 +154,16 @@ export const chatVerificationJobState = pgEnum(
   ],
 );
 
+export const researchVerificationJobState = pgEnum(
+  "research_verification_job_state",
+  [
+    "pending",
+    "running",
+    "completed",
+    "failed",
+  ],
+);
+
 export const inferenceWorkload = pgEnum("inference_workload", [
   "offline-tool",
   "ingestion",
@@ -1596,6 +1606,68 @@ export const researchTurns = pgTable(
       table.sequence,
     ),
     uniqueIndex("research_turns_run_idx").on(table.runId),
+  ],
+);
+
+export const researchVerificationJobs = pgTable(
+  "research_verification_jobs",
+  {
+    turnId: uuid("turn_id")
+      .primaryKey()
+      .references(() => researchTurns.id, { onDelete: "cascade" }),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    availableAt: timestamp("available_at", {
+      mode: "date",
+      withTimezone: true,
+    })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    errorMessage: text("error_message"),
+    failureCount: integer("failure_count").notNull().default(0),
+    leaseExpiresAt: timestamp("lease_expires_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    state: researchVerificationJobState("state").notNull().default("pending"),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "research_verification_jobs_counts_check",
+      sql`${table.attemptCount} >= 0 AND ${table.failureCount} >= 0`,
+    ),
+    check(
+      "research_verification_jobs_state_check",
+      sql`(
+          ${table.state} = 'pending'
+          AND ${table.completedAt} IS NULL
+          AND ${table.leaseExpiresAt} IS NULL
+        ) OR (
+          ${table.state} = 'running'
+          AND ${table.completedAt} IS NULL
+          AND ${table.leaseExpiresAt} IS NOT NULL
+        ) OR (
+          ${table.state} IN ('completed', 'failed')
+          AND ${table.completedAt} IS NOT NULL
+          AND ${table.leaseExpiresAt} IS NULL
+        )`,
+    ),
+    check(
+      "research_verification_jobs_error_check",
+      sql`(${table.state} = 'failed' AND ${table.errorMessage} IS NOT NULL)
+        OR ${table.state} <> 'failed'`,
+    ),
+    index("research_verification_jobs_dispatch_idx").on(
+      table.state,
+      table.availableAt,
+      table.leaseExpiresAt,
+    ),
   ],
 );
 

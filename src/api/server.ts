@@ -217,34 +217,39 @@ export async function buildWebServer(
       await cancellationReconciliation;
     }
   });
-  const chatVerificationController = new AbortController();
-  let chatVerificationDispatch: Promise<void> | null = null;
-  const dispatchChatVerifications = (): void => {
+  const verificationController = new AbortController();
+  let verificationDispatch: Promise<void> | null = null;
+  const dispatchVerifications = (): void => {
     if (
-      chatVerificationController.signal.aborted
-      || chatVerificationDispatch !== null
+      verificationController.signal.aborted
+      || verificationDispatch !== null
     ) {
       return;
     }
-    chatVerificationDispatch = services.run(async (runtime) => {
-      if (runtime.processNextChatVerification === undefined) {
-        return;
-      }
+    verificationDispatch = services.run(async (runtime) => {
       let processed = true;
-      while (processed && !chatVerificationController.signal.aborted) {
-        processed = await runtime.processNextChatVerification(
-          chatVerificationController.signal,
-        );
+      while (processed && !verificationController.signal.aborted) {
+        const researchProcessed = runtime.processNextResearchVerification === undefined
+          ? false
+          : await runtime.processNextResearchVerification(
+            verificationController.signal,
+          );
+        const chatProcessed = runtime.processNextChatVerification === undefined
+          ? false
+          : await runtime.processNextChatVerification(
+            verificationController.signal,
+          );
+        processed = researchProcessed || chatProcessed;
       }
     }).catch(async (error: unknown) => {
-      if (chatVerificationController.signal.aborted) {
+      if (verificationController.signal.aborted) {
         return;
       }
       const result = await services.reportApplicationError(error, {
         category: "background-task",
-        code: "chat_verification_dispatch_failed",
+        code: "claim_verification_dispatch_failed",
         instance: hostname(),
-        operation: "dispatch-chat-verification",
+        operation: "dispatch-claim-verification",
         origin: "background-task",
         retryable: true,
         service: "web",
@@ -252,23 +257,23 @@ export async function buildWebServer(
       });
       server.log.error(
         { errorId: result.id },
-        "Could not dispatch Chat verification.",
+        "Could not dispatch claim verification.",
       );
     }).finally(() => {
-      chatVerificationDispatch = null;
+      verificationDispatch = null;
     });
   };
-  const chatVerificationTimer = setInterval(
-    dispatchChatVerifications,
+  const verificationTimer = setInterval(
+    dispatchVerifications,
     500,
   );
-  chatVerificationTimer.unref();
-  dispatchChatVerifications();
+  verificationTimer.unref();
+  dispatchVerifications();
   server.addHook("onClose", async () => {
-    clearInterval(chatVerificationTimer);
-    chatVerificationController.abort();
-    if (chatVerificationDispatch !== null) {
-      await chatVerificationDispatch;
+    clearInterval(verificationTimer);
+    verificationController.abort();
+    if (verificationDispatch !== null) {
+      await verificationDispatch;
     }
   });
   if (closeOwnedServices !== null) {
