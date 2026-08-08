@@ -1541,7 +1541,14 @@ export function registerPage(alpine) {
       let latestMessage = null;
       for (const run of this.conversation.runs) {
         for (const message of run.messages) {
-          if (message.role !== "assistant" || message.citations.length === 0) {
+          if (message.role !== "assistant") {
+            continue;
+          }
+          if (message.streaming === true) {
+            latestMessage = null;
+            continue;
+          }
+          if (message.citations.length === 0) {
             continue;
           }
           if (message.id === this.activeEvidenceMessageId) {

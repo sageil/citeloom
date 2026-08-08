@@ -387,7 +387,7 @@
 
 .chat-verification-progress-completed span {
   width: 100%;
-  background: var(--success);
+  background: linear-gradient(90deg, var(--cyan), var(--success));
 }
 
 .chat-verification-progress-failed span {
