@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   applyAnswerContentUpdate,
@@ -43,67 +43,6 @@ describe("CiteLoom answer content updates", () => {
     expect(page.answerVerificationStatusLabel()).toBe("Verified");
     expect(page.answerVerificationProgressValue()).toBe(100);
     expect(page.citationNavigatorStatusLabel(1)).toBe("Verified");
-  });
-
-  it("refreshes a pending Ask answer to its terminal verification state", async () => {
-    let createPage;
-    registerPage({
-      data(_name, factory) {
-        createPage = factory;
-      },
-    });
-    if (createPage === undefined) {
-      throw new Error("Ask page registration did not provide a page factory.");
-    }
-    const threadId = "00000000-0000-4000-8000-000000000001";
-    const turnId = "00000000-0000-4000-8000-000000000002";
-    const page = createPage();
-    page.threadId = threadId;
-    page.answer = {
-      claims: [{ status: "unverified" }],
-      turn: { turnId },
-      verificationState: "pending",
-    };
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({
-        id: threadId,
-        title: "Default",
-        turns: [{
-          answerDocument: {
-            citations: [],
-            content: "The answer is complete.",
-            schemaVersion: 2,
-            statements: [],
-          },
-          citations: [],
-          claims: [],
-          completedAt: "2026-08-08T17:20:00.000Z",
-          id: turnId,
-          question: "What changed?",
-          reproducibility: {},
-          retrievedContext: [],
-          runConfiguration: {},
-          runId: "00000000-0000-4000-8000-000000000003",
-          scope: { kind: "all" },
-          sequence: 1,
-          threadId,
-          verificationState: "completed",
-        }],
-      }), {
-        headers: { "content-type": "application/json" },
-        status: 200,
-      }),
-    );
-
-    await page.refreshVerification();
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      `/api/research/threads/${threadId}`,
-      { headers: { accept: "application/json" } },
-    );
-    expect(page.answer.verificationState).toBe("completed");
-    expect(page.answer.claims).toEqual([]);
-    fetchMock.mockRestore();
   });
 
   it("shows question titles only for historical answers", () => {

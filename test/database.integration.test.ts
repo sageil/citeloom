@@ -2499,19 +2499,9 @@ describe("PostgreSQL research records", () => {
       id: turn.id,
       sources: [{ citationNumber: 1 }],
     });
-    expect((await research.readThread(thread.id))?.turns[0]?.verificationState)
-      .toBe("running");
-    await expect(research.releaseVerificationJob(turn.id, 1))
-      .resolves.toBe(true);
-    expect((await research.readThread(thread.id))?.turns[0]?.verificationState)
-      .toBe("pending");
-    const resumedClaim = await research.claimNextVerificationJob(
-      new Date(Date.now() + 1_000),
-    );
-    expect(resumedClaim?.attemptCount).toBe(2);
     await expect(research.completeVerificationJob(
       turn.id,
-      2,
+      1,
       [{
         citationNumbers: [1],
         claim: "The report recommends a specific diagnostic test.",

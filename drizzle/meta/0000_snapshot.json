@@ -1,5 +1,5 @@
 {
-  "id": "05408695-f25c-4880-baf4-fdd40bb6a9ad",
+  "id": "2dbd8856-c906-4d26-8490-88d221175c92",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -6072,6 +6072,269 @@
       },
       "isRLSEnabled": false
     },
+    "public.research_claim_checks": {
+      "name": "research_claim_checks",
+      "schema": "",
+      "columns": {
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "rationale": {
+          "name": "rationale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "statement_id": {
+          "name": "statement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "claim_support_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "turn_id": {
+          "name": "turn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verifier_model": {
+          "name": "verifier_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "research_claim_checks_statement_idx": {
+          "name": "research_claim_checks_statement_idx",
+          "columns": [
+            {
+              "expression": "turn_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "statement_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "research_claim_checks_statement_fk": {
+          "name": "research_claim_checks_statement_fk",
+          "tableFrom": "research_claim_checks",
+          "tableTo": "research_statements",
+          "columnsFrom": [
+            "turn_id",
+            "statement_id"
+          ],
+          "columnsTo": [
+            "turn_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "research_claim_checks_turn_identity_unique": {
+          "name": "research_claim_checks_turn_identity_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "turn_id",
+            "id"
+          ]
+        },
+        "research_claim_checks_statement_identity_unique": {
+          "name": "research_claim_checks_statement_identity_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "turn_id",
+            "id",
+            "statement_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "research_claim_checks_values_valid": {
+          "name": "research_claim_checks_values_valid",
+          "value": "length(trim(\"research_claim_checks\".\"rationale\")) > 0\n        AND length(trim(\"research_claim_checks\".\"verifier_model\")) > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.research_claim_evidence_units": {
+      "name": "research_claim_evidence_units",
+      "schema": "",
+      "columns": {
+        "check_id": {
+          "name": "check_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "citation_id": {
+          "name": "citation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evidence_position": {
+          "name": "evidence_position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "verification_outcome",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rationale": {
+          "name": "rationale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "statement_id": {
+          "name": "statement_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "support_probability": {
+          "name": "support_probability",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "turn_id": {
+          "name": "turn_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unit_id": {
+          "name": "unit_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "research_claim_evidence_units_identity_idx": {
+          "name": "research_claim_evidence_units_identity_idx",
+          "columns": [
+            {
+              "expression": "turn_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "check_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "citation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "research_claim_evidence_units_check_fk": {
+          "name": "research_claim_evidence_units_check_fk",
+          "tableFrom": "research_claim_evidence_units",
+          "tableTo": "research_claim_checks",
+          "columnsFrom": [
+            "turn_id",
+            "check_id",
+            "statement_id"
+          ],
+          "columnsTo": [
+            "turn_id",
+            "id",
+            "statement_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "research_claim_evidence_units_statement_citation_fk": {
+          "name": "research_claim_evidence_units_statement_citation_fk",
+          "tableFrom": "research_claim_evidence_units",
+          "tableTo": "research_statement_citations",
+          "columnsFrom": [
+            "turn_id",
+            "statement_id",
+            "citation_id"
+          ],
+          "columnsTo": [
+            "turn_id",
+            "statement_id",
+            "citation_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "research_claim_evidence_units_turn_id_check_id_evidence_position_pk": {
+          "name": "research_claim_evidence_units_turn_id_check_id_evidence_position_pk",
+          "columns": [
+            "turn_id",
+            "check_id",
+            "evidence_position"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "research_claim_evidence_units_values_valid": {
+          "name": "research_claim_evidence_units_values_valid",
+          "value": "\"research_claim_evidence_units\".\"evidence_position\" >= 0\n        AND length(trim(\"research_claim_evidence_units\".\"rationale\")) > 0\n        AND length(trim(\"research_claim_evidence_units\".\"unit_id\")) > 0\n        AND (\"research_claim_evidence_units\".\"support_probability\" IS NULL\n          OR (\"research_claim_evidence_units\".\"support_probability\" >= 0 AND \"research_claim_evidence_units\".\"support_probability\" <= 1))"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.research_feedback": {
       "name": "research_feedback",
       "schema": "",
@@ -6231,73 +6494,20 @@
           "primaryKey": false,
           "notNull": true
         },
-        "outcome": {
-          "name": "outcome",
-          "type": "verification_outcome",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "rationale": {
-          "name": "rationale",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "statement_id": {
           "name": "statement_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "support_probability": {
-          "name": "support_probability",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
         "turn_id": {
           "name": "turn_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "unit_id": {
-          "name": "unit_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
         }
       },
-      "indexes": {
-        "research_statement_citations_identity_idx": {
-          "name": "research_statement_citations_identity_idx",
-          "columns": [
-            {
-              "expression": "turn_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "statement_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "citation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "research_statement_citations_citation_fk": {
           "name": "research_statement_citations_citation_fk",
@@ -6340,12 +6550,22 @@
           ]
         }
       },
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "research_statement_citations_identity_unique": {
+          "name": "research_statement_citations_identity_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "turn_id",
+            "statement_id",
+            "citation_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "research_statement_citations_values_valid": {
           "name": "research_statement_citations_values_valid",
-          "value": "\"research_statement_citations\".\"citation_position\" >= 0\n        AND length(trim(\"research_statement_citations\".\"rationale\")) > 0\n        AND length(trim(\"research_statement_citations\".\"unit_id\")) > 0\n        AND (\"research_statement_citations\".\"support_probability\" IS NULL\n          OR (\"research_statement_citations\".\"support_probability\" >= 0 AND \"research_statement_citations\".\"support_probability\" <= 1))"
+          "value": "\"research_statement_citations\".\"citation_position\" >= 0"
         }
       },
       "isRLSEnabled": false
@@ -6380,12 +6600,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "rationale": {
-          "name": "rationale",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "section": {
           "name": "section",
           "type": "answer_section",
@@ -6399,22 +6613,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "status": {
-          "name": "status",
-          "type": "claim_support_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
         "turn_id": {
           "name": "turn_id",
           "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "verifier_model": {
-          "name": "verifier_model",
-          "type": "text",
           "primaryKey": false,
           "notNull": true
         }
@@ -6472,7 +6673,7 @@
       "checkConstraints": {
         "research_statements_values_valid": {
           "name": "research_statements_values_valid",
-          "value": "\"research_statements\".\"statement_index\" >= 0\n        AND length(trim(\"research_statements\".\"content\")) > 0\n        AND length(trim(\"research_statements\".\"rationale\")) > 0\n        AND length(trim(\"research_statements\".\"verifier_model\")) > 0"
+          "value": "\"research_statements\".\"statement_index\" >= 0\n        AND length(trim(\"research_statements\".\"content\")) > 0"
         }
       },
       "isRLSEnabled": false
@@ -6542,7 +6743,7 @@
           "name": "answer_content",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "question": {
           "name": "question",
@@ -6659,11 +6860,139 @@
       "checkConstraints": {
         "research_turns_answer_schema_version_check": {
           "name": "research_turns_answer_schema_version_check",
-          "value": "\"research_turns\".\"answer_schema_version\" = 1"
+          "value": "\"research_turns\".\"answer_schema_version\" = 2"
         },
         "research_turns_answer_content_check": {
           "name": "research_turns_answer_content_check",
-          "value": "length(trim(\"research_turns\".\"answer_content\")) > 0"
+          "value": "\"research_turns\".\"answer_content\" IS NULL OR length(trim(\"research_turns\".\"answer_content\")) > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.research_verification_jobs": {
+      "name": "research_verification_jobs",
+      "schema": "",
+      "columns": {
+        "turn_id": {
+          "name": "turn_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "attempt_count": {
+          "name": "attempt_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "available_at": {
+          "name": "available_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_message": {
+          "name": "error_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_count": {
+          "name": "failure_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "lease_expires_at": {
+          "name": "lease_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "research_verification_job_state",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "research_verification_jobs_dispatch_idx": {
+          "name": "research_verification_jobs_dispatch_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "available_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lease_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "research_verification_jobs_turn_id_research_turns_id_fk": {
+          "name": "research_verification_jobs_turn_id_research_turns_id_fk",
+          "tableFrom": "research_verification_jobs",
+          "tableTo": "research_turns",
+          "columnsFrom": [
+            "turn_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "research_verification_jobs_counts_check": {
+          "name": "research_verification_jobs_counts_check",
+          "value": "\"research_verification_jobs\".\"attempt_count\" >= 0 AND \"research_verification_jobs\".\"failure_count\" >= 0"
+        },
+        "research_verification_jobs_state_check": {
+          "name": "research_verification_jobs_state_check",
+          "value": "(\n          \"research_verification_jobs\".\"state\" = 'pending'\n          AND \"research_verification_jobs\".\"completed_at\" IS NULL\n          AND \"research_verification_jobs\".\"lease_expires_at\" IS NULL\n        ) OR (\n          \"research_verification_jobs\".\"state\" = 'running'\n          AND \"research_verification_jobs\".\"completed_at\" IS NULL\n          AND \"research_verification_jobs\".\"lease_expires_at\" IS NOT NULL\n        ) OR (\n          \"research_verification_jobs\".\"state\" IN ('completed', 'failed')\n          AND \"research_verification_jobs\".\"completed_at\" IS NOT NULL\n          AND \"research_verification_jobs\".\"lease_expires_at\" IS NULL\n        )"
+        },
+        "research_verification_jobs_error_check": {
+          "name": "research_verification_jobs_error_check",
+          "value": "(\"research_verification_jobs\".\"state\" = 'failed' AND \"research_verification_jobs\".\"error_message\" IS NOT NULL)\n        OR \"research_verification_jobs\".\"state\" <> 'failed'"
         }
       },
       "isRLSEnabled": false
@@ -9100,6 +9429,16 @@
       "values": [
         "building",
         "published"
+      ]
+    },
+    "public.research_verification_job_state": {
+      "name": "research_verification_job_state",
+      "schema": "public",
+      "values": [
+        "pending",
+        "running",
+        "completed",
+        "failed"
       ]
     },
     "public.telemetry_run_kind": {

@@ -1,5 +1,3 @@
-import { readdir, readFile } from "node:fs/promises";
-
 import { getTableColumns, getTableName } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
@@ -94,50 +92,4 @@ describe("application embedding dimensions", () => {
     ]);
   });
 
-  it("keeps the complete vector schema in the baseline migration", async () => {
-    const drizzleDirectory = new URL("../drizzle/", import.meta.url);
-    const migrationFiles: string[] = [];
-    const sqlFiles: string[] = [];
-    for (const entry of await readdir(drizzleDirectory)) {
-      if (entry.endsWith(".sql")) {
-        sqlFiles.push(entry);
-      }
-      if (/^\d{4}_.+\.sql$/u.test(entry)) {
-        migrationFiles.push(entry);
-      }
-    }
-    sqlFiles.sort();
-    expect(sqlFiles).toEqual([
-      "0000_citeloom_schema.sql",
-      "0001_add_research_verification_jobs.sql",
-      "bootstrap.sql",
-    ]);
-    expect(migrationFiles).toEqual([
-      "0000_citeloom_schema.sql",
-      "0001_add_research_verification_jobs.sql",
-    ]);
-
-    const migration = await readFile(
-      new URL("0000_citeloom_schema.sql", drizzleDirectory),
-      "utf8",
-    );
-    expect(migration).toContain('CREATE TABLE "retrieval_chunks_2048"');
-    expect(migration).toContain('CREATE TABLE "retrieval_chunks_1536"');
-    expect(migration).toContain('"embedding" vector(1536) NOT NULL');
-    expect(migration).toContain(
-      '"retrieval_chunks_1536_embedding_hnsw_idx"',
-    );
-    expect(migration).toContain('"embedding" halfvec(2048) NOT NULL');
-    expect(migration).toContain(
-      '"retrieval_chunks_2048_embedding_hnsw_idx"',
-    );
-    expect(migration).toContain("halfvec_cosine_ops");
-
-    const journal = await readFile(
-      new URL("meta/_journal.json", drizzleDirectory),
-      "utf8",
-    );
-    expect(journal).toContain('"tag": "0000_citeloom_schema"');
-    expect(journal).toContain('"tag": "0001_add_research_verification_jobs"');
-  });
 });

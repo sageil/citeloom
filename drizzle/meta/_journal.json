@@ -8,13 +8,6 @@
       "when": 1785857467531,
       "tag": "0000_citeloom_schema",
       "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1786209605250,
-      "tag": "0001_add_research_verification_jobs",
-      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,7 @@ CREATE TYPE "public"."ingestion_indexing_activity" AS ENUM('preparing', 'describ
 CREATE TYPE "public"."ingestion_phase" AS ENUM('discovered', 'normalized', 'indexed');--> statement-breakpoint
 CREATE TYPE "public"."ingestion_state" AS ENUM('pending', 'running', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."research_output_state" AS ENUM('building', 'published');--> statement-breakpoint
+CREATE TYPE "public"."research_verification_job_state" AS ENUM('pending', 'running', 'completed', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."telemetry_run_kind" AS ENUM('answer', 'benchmark', 'chat', 'retrieval', 'search');--> statement-breakpoint
 CREATE TYPE "public"."telemetry_run_outcome" AS ENUM('success', 'error', 'abort');--> statement-breakpoint
 CREATE TYPE "public"."telemetry_stage_outcome" AS ENUM('success', 'error', 'abort', 'fallback');--> statement-breakpoint
@@ -772,6 +773,34 @@ CREATE TABLE "research_turns" (
 	CONSTRAINT "research_turns_answer_content_check" CHECK ("research_turns"."answer_content" IS NULL OR length(trim("research_turns"."answer_content")) > 0)
 );
 --> statement-breakpoint
+CREATE TABLE "research_verification_jobs" (
+	"turn_id" uuid PRIMARY KEY NOT NULL,
+	"attempt_count" integer DEFAULT 0 NOT NULL,
+	"available_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"completed_at" timestamp with time zone,
+	"error_message" text,
+	"failure_count" integer DEFAULT 0 NOT NULL,
+	"lease_expires_at" timestamp with time zone,
+	"state" "research_verification_job_state" DEFAULT 'pending' NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "research_verification_jobs_counts_check" CHECK ("research_verification_jobs"."attempt_count" >= 0 AND "research_verification_jobs"."failure_count" >= 0),
+	CONSTRAINT "research_verification_jobs_state_check" CHECK ((
+          "research_verification_jobs"."state" = 'pending'
+          AND "research_verification_jobs"."completed_at" IS NULL
+          AND "research_verification_jobs"."lease_expires_at" IS NULL
+        ) OR (
+          "research_verification_jobs"."state" = 'running'
+          AND "research_verification_jobs"."completed_at" IS NULL
+          AND "research_verification_jobs"."lease_expires_at" IS NOT NULL
+        ) OR (
+          "research_verification_jobs"."state" IN ('completed', 'failed')
+          AND "research_verification_jobs"."completed_at" IS NOT NULL
+          AND "research_verification_jobs"."lease_expires_at" IS NULL
+        )),
+	CONSTRAINT "research_verification_jobs_error_check" CHECK (("research_verification_jobs"."state" = 'failed' AND "research_verification_jobs"."error_message" IS NOT NULL)
+        OR "research_verification_jobs"."state" <> 'failed')
+);
+--> statement-breakpoint
 CREATE TABLE "retrieval_chunks" (
 	"document_id" varchar(64) NOT NULL,
 	"embedding_space_id" text NOT NULL,
@@ -1222,6 +1251,7 @@ ALTER TABLE "research_statement_citations" ADD CONSTRAINT "research_statement_ci
 ALTER TABLE "research_statement_citations" ADD CONSTRAINT "research_statement_citations_statement_fk" FOREIGN KEY ("turn_id","statement_id") REFERENCES "public"."research_statements"("turn_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "research_statements" ADD CONSTRAINT "research_statements_turn_id_research_turns_id_fk" FOREIGN KEY ("turn_id") REFERENCES "public"."research_turns"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "research_turns" ADD CONSTRAINT "research_turns_thread_id_research_threads_id_fk" FOREIGN KEY ("thread_id") REFERENCES "public"."research_threads"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "research_verification_jobs" ADD CONSTRAINT "research_verification_jobs_turn_id_research_turns_id_fk" FOREIGN KEY ("turn_id") REFERENCES "public"."research_turns"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "retrieval_chunks" ADD CONSTRAINT "retrieval_chunks_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "retrieval_chunks_1024" ADD CONSTRAINT "retrieval_chunks_1024_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "retrieval_chunks_1536" ADD CONSTRAINT "retrieval_chunks_1536_embedding_space_id_embedding_spaces_id_fk" FOREIGN KEY ("embedding_space_id") REFERENCES "public"."embedding_spaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -1295,6 +1325,7 @@ CREATE UNIQUE INDEX "research_claim_evidence_units_identity_idx" ON "research_cl
 CREATE UNIQUE INDEX "research_statements_turn_index_idx" ON "research_statements" USING btree ("turn_id","statement_index");--> statement-breakpoint
 CREATE UNIQUE INDEX "research_turns_thread_sequence_idx" ON "research_turns" USING btree ("thread_id","sequence");--> statement-breakpoint
 CREATE UNIQUE INDEX "research_turns_run_idx" ON "research_turns" USING btree ("run_id");--> statement-breakpoint
+CREATE INDEX "research_verification_jobs_dispatch_idx" ON "research_verification_jobs" USING btree ("state","available_at","lease_expires_at");--> statement-breakpoint
 CREATE INDEX "retrieval_chunks_document_id_idx" ON "retrieval_chunks" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
 CREATE INDEX "retrieval_chunks_embedding_hnsw_idx" ON "retrieval_chunks" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
 CREATE INDEX "retrieval_chunks_1024_document_idx" ON "retrieval_chunks_1024" USING btree ("embedding_space_id","generation_id","document_id");--> statement-breakpoint
@@ -1710,6 +1741,50 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION "enforce_research_verification_mutation"()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  "current_state" "research_output_state";
+  "target_turn_id" uuid;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    "target_turn_id" := OLD."turn_id";
+  ELSE
+    "target_turn_id" := NEW."turn_id";
+  END IF;
+
+  SELECT "output_state"
+  INTO "current_state"
+  FROM "research_turns"
+  WHERE "id" = "target_turn_id";
+
+  IF NOT FOUND AND TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+
+  IF "current_state" = 'building' OR (
+    "current_state" = 'published'
+    AND EXISTS (
+      SELECT 1
+      FROM "research_verification_jobs"
+      WHERE
+        "turn_id" = "target_turn_id"
+        AND "state" = 'running'
+    )
+  ) THEN
+    IF TG_OP = 'DELETE' THEN
+      RETURN OLD;
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  RAISE EXCEPTION 'Published research verification is immutable without a running job for turn %.', "target_turn_id"
+    USING ERRCODE = '23514';
+END;
+$$;
+
 DROP TRIGGER IF EXISTS "research_turns_insert_state"
 ON "research_turns";
 CREATE TRIGGER "research_turns_insert_state"
@@ -1758,14 +1833,14 @@ ON "research_claim_checks";
 CREATE TRIGGER "research_claim_checks_immutable_after_publication"
 BEFORE INSERT OR UPDATE OR DELETE ON "research_claim_checks"
 FOR EACH ROW
-EXECUTE FUNCTION "enforce_research_output_child_mutation"();
+EXECUTE FUNCTION "enforce_research_verification_mutation"();
 
 DROP TRIGGER IF EXISTS "research_claim_evidence_units_immutable_after_publication"
 ON "research_claim_evidence_units";
 CREATE TRIGGER "research_claim_evidence_units_immutable_after_publication"
 BEFORE INSERT OR UPDATE OR DELETE ON "research_claim_evidence_units"
 FOR EACH ROW
-EXECUTE FUNCTION "enforce_research_output_child_mutation"();
+EXECUTE FUNCTION "enforce_research_verification_mutation"();
 
 CREATE OR REPLACE FUNCTION "protect_embedding_input_format_records"()
 RETURNS trigger AS $embedding_input_format_immutability$
