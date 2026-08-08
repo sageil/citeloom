@@ -62,6 +62,21 @@ function readFiniteNumber(value, label) {
   return value;
 }
 
+function readProbability(value, label) {
+  const probability = readFiniteNumber(value, label);
+  if (probability < 0 || probability > 1) {
+    throw new Error(`The ${label} response is invalid.`);
+  }
+  return probability;
+}
+
+function readNullableProbability(value, label) {
+  if (value === null) {
+    return null;
+  }
+  return readProbability(value, label);
+}
+
 function readNullableFiniteNumber(value, label) {
   if (value === null) {
     return null;
@@ -228,10 +243,12 @@ export {
   readNullableNonEmptyString,
   readNullableNonNegativeInteger,
   readNullablePositiveInteger,
+  readNullableProbability,
   readNullableString,
   readNullableTimestamp,
   readPlainObject,
   readPositiveInteger,
+  readProbability,
   readString,
   readTimestamp,
   readUIMessageStream,

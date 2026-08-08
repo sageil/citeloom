@@ -9,6 +9,7 @@ import {
   readNullableNonNegativeInteger,
   readPlainObject as readObject,
   readPositiveInteger,
+  readProbability,
   readUIMessageStream,
 } from "./citeloom-boundaries.js";
 import {
@@ -23,6 +24,7 @@ import {
 } from "./citeloom-answer-content.js";
 import { requestAnswerSpeech } from "./citeloom-answer-speech.js";
 import { createEvidenceSpeechControls } from "./citeloom-evidence-speech.js";
+import { buildEvidenceScoreScale } from "./citeloom-evidence-score.js";
 import {
   buildCitationPresentation,
   buildCitationPresentations,
@@ -54,6 +56,7 @@ import { requestConfirmation } from "./citeloom-confirmation.js";
 import {
   clearVerificationRefresh as clearVerificationPolling,
   isVerificationPending,
+  readVerificationEvidenceUnits,
   readVerificationState,
   runVerificationRefresh,
   scheduleVerificationRefresh as scheduleVerificationPolling,
@@ -186,8 +189,16 @@ function readAskDashboard(value) {
     dashboard.inferenceRuntime,
     "inference runtime",
   );
+  const claimVerifier = readObject(
+    inferenceRuntime.claimVerifier,
+    "claim verifier",
+  );
   return {
     availableTagFacets,
+    claimVerifierSupportThreshold: readProbability(
+      claimVerifier.supportThreshold,
+      "claim verifier support threshold",
+    ),
     inferenceRuntimeName: readNonEmptyString(
       inferenceRuntime.name,
       "inference runtime name",
@@ -257,12 +268,15 @@ function buildAnswerSources(citations) {
 
 function readClaim(value, label) {
   const claim = readObject(value, label);
+  const evidence = readVerificationEvidenceUnits(
+    claim.evidenceUnits,
+    claim.citationNumbers,
+    label,
+  );
   return {
-    citationNumbers: readPositiveIntegerArray(
-      claim.citationNumbers,
-      `${label} citation numbers`,
-    ),
+    citationNumbers: evidence.citationNumbers,
     claim: readNonEmptyString(claim.claim, `${label} text`),
+    evidenceUnits: evidence.evidenceUnits,
     id: readNonEmptyString(claim.id, `${label} id`),
     rationale: readNonEmptyString(claim.rationale, `${label} rationale`),
     status: readEnum(claim.status, claimStatuses, `${label} status`),
@@ -768,6 +782,7 @@ export function registerPage(alpine) {
     citationImageDimensions: null,
     citationLoading: false,
     citationWindow: createEvidenceWindowState(),
+    claimVerifierSupportThreshold: null,
     creatingThread: false,
     dashboardError: "",
     dashboardRefreshListener: null,
@@ -916,6 +931,8 @@ export function registerPage(alpine) {
           readAskDashboard,
         );
         this.availableTagFacets = snapshot.availableTagFacets;
+        this.claimVerifierSupportThreshold =
+          snapshot.claimVerifierSupportThreshold;
         this.retainAvailableSelectedTags();
         this.inferenceRuntimeName = snapshot.inferenceRuntimeName;
         this.queryableDocumentCount = snapshot.queryableDocumentCount;
@@ -2814,6 +2831,16 @@ export function registerPage(alpine) {
         return "";
       }
       return this.citationSourceSummary(this.selectedCitation);
+    },
+
+    selectedEvidenceScoreScale() {
+      const citationNumber = this.selectedCitation?.citationNumber ?? null;
+      const claims = this.answer?.claims ?? [];
+      return buildEvidenceScoreScale(
+        claims,
+        citationNumber,
+        this.claimVerifierSupportThreshold,
+      );
     },
 
     citationSourceSummary(citation) {

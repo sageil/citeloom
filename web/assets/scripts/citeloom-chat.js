@@ -7,11 +7,12 @@ import {
   createEmptyAnswerContent,
 } from "./citeloom-answer-content.js";
 import { requestAnswerSpeech } from "./citeloom-answer-speech.js";
+import { buildEvidenceScoreScale } from "./citeloom-evidence-score.js";
 import { createEvidenceSpeechControls } from "./citeloom-evidence-speech.js";
 import {
   readChatConversation,
+  readChatDashboard,
   readChatMessageStream,
-  readChatSpeechFeatures,
   readChatSummaries,
   readCreatedChat,
 } from "./citeloom-chat-boundaries.js";
@@ -290,6 +291,7 @@ export function registerPage(alpine) {
     chatSwitcherOpen: false,
     chatSwitcherRequestListener: null,
     chatSwitcherReturnFocus: null,
+    claimVerifierSupportThreshold: null,
     conversation: null,
     conversations: [],
     dictationController: null,
@@ -332,7 +334,7 @@ export function registerPage(alpine) {
     speechAudioLoading: false,
     speechAudioPlaying: false,
     speechAudioUrl: "",
-    speechSettingsRefreshListener: null,
+    dashboardSettingsRefreshListener: null,
     speechToTextEnabled: false,
     textToSpeechEnabled: false,
     textToSpeechPreloadEnabled: false,
@@ -457,8 +459,8 @@ export function registerPage(alpine) {
       this.chatSwitcherRequestListener = () => {
         this.openChatSwitcher();
       };
-      this.speechSettingsRefreshListener = () => {
-        void this.loadSpeechFeatures();
+      this.dashboardSettingsRefreshListener = () => {
+        void this.loadDashboardSettings();
       };
       window.addEventListener(
         chatSwitcherRequestEvent,
@@ -466,11 +468,11 @@ export function registerPage(alpine) {
       );
       window.addEventListener(
         "citeloom:settings-revision",
-        this.speechSettingsRefreshListener,
+        this.dashboardSettingsRefreshListener,
       );
       await Promise.all([
         this.refreshConversations(),
-        this.loadSpeechFeatures(),
+        this.loadDashboardSettings(),
       ]);
       if (this.conversations.length > 0) {
         await this.selectConversation(this.conversations[0].id);
@@ -486,10 +488,10 @@ export function registerPage(alpine) {
           this.chatSwitcherRequestListener,
         );
       }
-      if (this.speechSettingsRefreshListener !== null) {
+      if (this.dashboardSettingsRefreshListener !== null) {
         window.removeEventListener(
           "citeloom:settings-revision",
-          this.speechSettingsRefreshListener,
+          this.dashboardSettingsRefreshListener,
         );
       }
       this.newChatCatalogController?.abort();
@@ -501,20 +503,22 @@ export function registerPage(alpine) {
       this.resetCitationPanel();
     },
 
-    async loadSpeechFeatures() {
+    async loadDashboardSettings() {
       try {
         const response = await fetch("/api/dashboard", {
           headers: { accept: "application/json" },
         });
-        const features = await readJsonResponse(
+        const snapshot = await readJsonResponse(
           response,
           "Dashboard request",
-          readChatSpeechFeatures,
+          readChatDashboard,
         );
-        this.speechToTextEnabled = features.speechToTextEnabled;
-        this.textToSpeechEnabled = features.textToSpeechEnabled;
+        this.claimVerifierSupportThreshold =
+          snapshot.claimVerifierSupportThreshold;
+        this.speechToTextEnabled = snapshot.speechToTextEnabled;
+        this.textToSpeechEnabled = snapshot.textToSpeechEnabled;
         this.textToSpeechPreloadEnabled =
-          features.textToSpeechPreloadEnabled;
+          snapshot.textToSpeechPreloadEnabled;
         if (!this.textToSpeechEnabled) {
           this.resetChatSpeechAudio();
           this.resetEvidenceSpeechPlayback();
@@ -530,7 +534,7 @@ export function registerPage(alpine) {
       } catch (error) {
         const message = error instanceof Error
           ? error.message
-          : "Chat speech configuration could not be loaded.";
+          : "Chat configuration could not be loaded.";
         this.speechAudioError = message;
         dispatchNotice("error", message);
       }
@@ -1661,6 +1665,16 @@ export function registerPage(alpine) {
       const title = this.sourceTitle(this.selectedCitation.sourceFile);
       const location = this.sourcePageLabel(this.selectedCitation);
       return location === "" ? title : `${title} · ${location}`;
+    },
+
+    selectedEvidenceScoreScale() {
+      const citationNumber = this.selectedCitation?.citationNumber ?? null;
+      const claims = this.sourceSidebarMessage()?.claims ?? [];
+      return buildEvidenceScoreScale(
+        claims,
+        citationNumber,
+        this.claimVerifierSupportThreshold,
+      );
     },
 
     openCitation(citation, trigger, message = null) {

@@ -36,6 +36,7 @@ export interface DashboardResponse {
     claimVerifier: {
       model: string;
       name: string;
+      supportThreshold: number;
     };
     name: string;
     queryExpansionModel: string | null;
@@ -123,6 +124,7 @@ export async function buildDashboardResponse(
       claimVerifier: {
         model: effectiveConfig.claimVerifier.model,
         name: effectiveConfig.claimVerifier.runtimeName,
+        supportThreshold: effectiveConfig.claimVerifier.supportThreshold,
       },
       name: effectiveConfig.inference.answer.runtimeName,
       queryExpansionModel:

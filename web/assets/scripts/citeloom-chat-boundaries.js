@@ -7,6 +7,7 @@ import {
   readNullableNonEmptyString,
   readPlainObject,
   readPositiveInteger,
+  readProbability,
   readUIMessageStream,
 } from "./citeloom-boundaries.js";
 import {
@@ -21,6 +22,7 @@ import {
   readChatAnswerDocument,
   readPublishedAnswerEvidence,
 } from "./citeloom-published-answer.js";
+import { readVerificationEvidenceUnits } from "./citeloom-verification.js";
 
 const chatRunStates = Object.freeze([
   "accepted",
@@ -34,12 +36,6 @@ const chatRunStates = Object.freeze([
   "canceled",
 ]);
 const chatMessageRoles = Object.freeze(["assistant", "user"]);
-const evidenceUnitOutcomes = Object.freeze([
-  "not-evaluated",
-  "supported",
-  "unsupported",
-  "verifier-incompatible",
-]);
 const findingSupportStatuses = Object.freeze([
   "partially-supported",
   "supported",
@@ -70,10 +66,22 @@ export function readChatSummaries(value) {
   });
 }
 
-export function readChatSpeechFeatures(value) {
+export function readChatDashboard(value) {
   const dashboard = readPlainObject(value, "dashboard");
   const features = readPlainObject(dashboard.features, "dashboard features");
+  const inferenceRuntime = readPlainObject(
+    dashboard.inferenceRuntime,
+    "dashboard inference runtime",
+  );
+  const claimVerifier = readPlainObject(
+    inferenceRuntime.claimVerifier,
+    "dashboard claim verifier",
+  );
   return {
+    claimVerifierSupportThreshold: readProbability(
+      claimVerifier.supportThreshold,
+      "claim verifier support threshold",
+    ),
     speechToTextEnabled: readBoolean(
       features.speechToText,
       "speech-to-text feature",
@@ -241,12 +249,13 @@ function readChatFindingChecks(value, answerDocument) {
       throw new Error(`${label} does not match its answer statement.`);
     }
     checkedStatementIndexes.add(claimIndex);
+    const evidence = readVerificationEvidenceUnits(
+      candidate.evidenceUnits,
+      candidate.citationNumbers,
+      label,
+    );
     checks.push({
-      evidenceUnits: readChatEvidenceUnits(
-        candidate.evidenceUnits,
-        candidate.citationNumbers,
-        label,
-      ),
+      evidenceUnits: evidence.evidenceUnits,
       claimIndex,
       status: readEnum(
         candidate.status,
@@ -256,46 +265,6 @@ function readChatFindingChecks(value, answerDocument) {
     });
   }
   return checks;
-}
-
-function readChatEvidenceUnits(value, citationNumberValue, label) {
-  const citationNumberValues = readArray(
-    citationNumberValue,
-    `${label} citation numbers`,
-  );
-  const citationNumbers = citationNumberValues.map((citationNumber) => {
-    return readPositiveInteger(citationNumber, `${label} citation number`);
-  });
-  const values = readArray(value, `${label} evidence units`);
-  const evidenceUnits = [];
-  const seenCitationNumbers = new Set();
-  for (let index = 0; index < values.length; index += 1) {
-    const unitLabel = `${label} evidence unit ${index + 1}`;
-    const candidate = readPlainObject(values[index], unitLabel);
-    const citationNumber = readPositiveInteger(
-      candidate.citationNumber,
-      `${unitLabel} citation number`,
-    );
-    if (
-      seenCitationNumbers.has(citationNumber)
-      || !citationNumbers.includes(citationNumber)
-    ) {
-      throw new Error(`${unitLabel} has an invalid citation number.`);
-    }
-    seenCitationNumbers.add(citationNumber);
-    evidenceUnits.push({
-      citationNumber,
-      outcome: readEnum(
-        candidate.outcome,
-        evidenceUnitOutcomes,
-        `${unitLabel} outcome`,
-      ),
-    });
-  }
-  if (seenCitationNumbers.size !== citationNumbers.length) {
-    throw new Error(`${label} is missing citation evidence results.`);
-  }
-  return evidenceUnits;
 }
 
 function readChatCitation(value) {

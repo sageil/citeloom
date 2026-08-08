@@ -1,4 +1,11 @@
-import { readEnum } from "./citeloom-boundaries.js";
+import {
+  readArray,
+  readEnum,
+  readNonEmptyString,
+  readNullableProbability,
+  readPlainObject,
+  readPositiveInteger,
+} from "./citeloom-boundaries.js";
 
 const verificationRefreshDelayMs = 800;
 const verificationStates = Object.freeze([
@@ -8,9 +15,71 @@ const verificationStates = Object.freeze([
   "completed",
   "failed",
 ]);
+const evidenceUnitOutcomes = Object.freeze([
+  "not-evaluated",
+  "supported",
+  "unsupported",
+  "verifier-incompatible",
+]);
 
 export function readVerificationState(value, label) {
   return readEnum(value, verificationStates, label);
+}
+
+export function readVerificationEvidenceUnits(
+  value,
+  citationNumberValue,
+  label,
+) {
+  const citationNumberValues = readArray(
+    citationNumberValue,
+    `${label} citation numbers`,
+  );
+  const citationNumbers = [];
+  for (const citationNumberValue of citationNumberValues) {
+    citationNumbers.push(readPositiveInteger(
+      citationNumberValue,
+      `${label} citation number`,
+    ));
+  }
+
+  const values = readArray(value, `${label} evidence units`);
+  const evidenceUnits = [];
+  const seenCitationNumbers = new Set();
+  for (let index = 0; index < values.length; index += 1) {
+    const unitLabel = `${label} evidence unit ${index + 1}`;
+    const candidate = readPlainObject(values[index], unitLabel);
+    const citationNumber = readPositiveInteger(
+      candidate.citationNumber,
+      `${unitLabel} citation number`,
+    );
+    if (
+      seenCitationNumbers.has(citationNumber)
+      || !citationNumbers.includes(citationNumber)
+    ) {
+      throw new Error(`${unitLabel} has an invalid citation number.`);
+    }
+    const supportProbability = readNullableProbability(
+      candidate.supportProbability,
+      `${unitLabel} support probability`,
+    );
+    readNonEmptyString(candidate.rationale, `${unitLabel} rationale`);
+    readNonEmptyString(candidate.unitId, `${unitLabel} ID`);
+    seenCitationNumbers.add(citationNumber);
+    evidenceUnits.push({
+      citationNumber,
+      outcome: readEnum(
+        candidate.outcome,
+        evidenceUnitOutcomes,
+        `${unitLabel} outcome`,
+      ),
+      supportProbability,
+    });
+  }
+  if (seenCitationNumbers.size !== citationNumbers.length) {
+    throw new Error(`${label} is missing citation evidence results.`);
+  }
+  return { citationNumbers, evidenceUnits };
 }
 
 export function isVerificationPending(state) {

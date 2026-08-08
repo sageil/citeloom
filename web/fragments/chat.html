@@ -486,8 +486,39 @@
       @pointermove="continueCitationPanelDrag($event)"
       @pointerup="finishCitationPanelDrag($event)"
     >
-      <div>
-        <h3 class="section-kicker" id="chat-evidence-title">Exact evidence</h3>
+      <div class="evidence-window-heading">
+        <div class="evidence-window-title-row">
+          <h3 class="section-kicker" id="chat-evidence-title">Exact evidence</h3>
+          <template x-if="selectedEvidenceScoreScale() !== null">
+            <span
+              class="evidence-score-scale"
+              role="img"
+              :aria-label="selectedEvidenceScoreScale().ariaLabel"
+            >
+              <span class="evidence-score-scale-label">HHEM</span>
+              <span class="evidence-score-scale-track" aria-hidden="true">
+                <span class="evidence-score-scale-line"></span>
+                <span
+                  class="evidence-score-scale-threshold"
+                  :class="`evidence-score-align-${selectedEvidenceScoreScale().thresholdAlignment}`"
+                  :style="{ '--evidence-score-position': selectedEvidenceScoreScale().thresholdPosition }"
+                >
+                  <span class="evidence-score-scale-threshold-label" x-text="`GLOBAL ${selectedEvidenceScoreScale().thresholdLabel}`"></span>
+                </span>
+                <template x-for="marker in selectedEvidenceScoreScale().markers" :key="marker.position">
+                  <span
+                    class="evidence-score-scale-marker"
+                    :class="[`evidence-score-${marker.status}`, `evidence-score-align-${marker.alignment}`]"
+                    :style="{ '--evidence-score-position': marker.position }"
+                    :title="`HHEM ${marker.label}`"
+                  >
+                    <span class="evidence-score-scale-marker-label" x-text="marker.label"></span>
+                  </span>
+                </template>
+              </span>
+            </span>
+          </template>
+        </div>
         <span x-text="selectedCitationSummary()"></span>
       </div>
       <div class="evidence-window-actions">
