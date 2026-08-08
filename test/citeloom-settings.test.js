@@ -241,6 +241,22 @@ describe("CiteLoom embedding-space settings", () => {
   });
 });
 
+describe("CiteLoom provider reasoning settings", () => {
+  it("renders a provider-level reasoning control that governs thinking mode", async () => {
+    const fragment = await readFile(
+      new URL("../web/fragments/settings.html", import.meta.url),
+      "utf8",
+    );
+
+    expect(fragment).toContain("providerSendReasoningOptions()");
+    expect(fragment).toContain("writeProviderSendReasoningOptions");
+    expect(fragment).toContain(':disabled="!providerSendReasoningOptions()"');
+    expect(fragment).toContain(
+      ':disabled="!featureSendReasoningOptions(selectedFeatureCapability)"',
+    );
+  });
+});
+
 function createSettingsPage({ reactiveResetState = false } = {}) {
   let pageFactory = null;
   const rawValues = new WeakMap();

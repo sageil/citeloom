@@ -71,7 +71,6 @@ describe("comparative evaluation preparation", () => {
 
     const cases = await prepareEvaluationCasesWithExecutor(
       dataset,
-      provenance,
       ["bm25", "dense", "hybrid", "hybrid-reranked"],
       config,
       executor,
@@ -140,7 +139,6 @@ describe("comparative evaluation preparation", () => {
 
     const cases = await prepareEvaluationCasesWithExecutor(
       dataset,
-      provenance,
       ["hybrid"],
       config,
       executor,
@@ -195,7 +193,6 @@ describe("comparative evaluation preparation", () => {
 
     const cases = await prepareEvaluationCasesWithExecutor(
       dataset,
-      provenance,
       ["hybrid"],
       config,
       executor,
@@ -219,7 +216,6 @@ describe("comparative evaluation preparation", () => {
 
   it("keeps distinct prepared evidence from one canonical parent", async () => {
     const dataset = buildDataset();
-    const provenance = buildProvenance(dataset);
     const config = buildConfig();
     const first = buildDenseCandidate("a", 0.1);
     const second = {
@@ -254,7 +250,6 @@ describe("comparative evaluation preparation", () => {
 
     const cases = await prepareEvaluationCasesWithExecutor(
       dataset,
-      provenance,
       ["hybrid-reranked"],
       config,
       executor,
@@ -271,7 +266,6 @@ describe("comparative evaluation preparation", () => {
 
   it("fails when a method attempts to mutate fixed candidate rankings", async () => {
     const dataset = buildDataset();
-    const provenance = buildProvenance(dataset);
     const config = buildConfig();
     const inputs = buildPreparedInputs();
     const executor: EvaluationPreparationExecutor = {
@@ -292,7 +286,6 @@ describe("comparative evaluation preparation", () => {
 
     await expect(prepareEvaluationCasesWithExecutor(
       dataset,
-      provenance,
       ["hybrid-reranked"],
       config,
       executor,
@@ -617,7 +610,6 @@ async function buildArtifact(): Promise<EvaluationPreparationArtifact> {
   };
   const cases = await prepareEvaluationCasesWithExecutor(
     dataset,
-    provenance,
     ["bm25", "dense", "hybrid", "hybrid-reranked"],
     config,
     executor,

@@ -83,6 +83,7 @@ export interface ProviderConnection {
   customAdapters: CustomProviderAdapters;
   maximumParallelRequests: number;
   name: string | null;
+  sendReasoningOptions: boolean;
   thinkingMode: LanguageThinkingMode;
   answer: ProviderModelConnection;
   chat?: ProviderModelConnection | undefined;
@@ -163,6 +164,7 @@ export interface ProviderConnectionConfiguration {
   customAdapters: CustomProviderAdapters;
   maximumParallelRequests: number;
   name: string | null;
+  sendReasoningOptions: boolean;
   thinkingMode: LanguageThinkingMode;
   answer: ProviderModelConfiguration;
   chat?: ProviderModelConfiguration | undefined;
@@ -233,6 +235,7 @@ export interface ResolvedLanguageProvider extends ResolvedProviderCapability {
   adaptiveContextEnabled: boolean;
   adapter: LanguageModelAdapter;
   contextCapacityTokens: number;
+  sendReasoningOptions: boolean;
   thinkingMode: LanguageThinkingMode;
 }
 
@@ -402,6 +405,7 @@ const providerConnectionSchema = z.object({
   }).strict(),
   maximumParallelRequests: z.number().int().min(1).max(16),
   name: z.string().trim().min(1).max(100).nullable(),
+  sendReasoningOptions: z.boolean().default(true),
   thinkingMode: languageThinkingModeSchema,
   answer: providerModelConnectionSchema,
   chat: providerModelConnectionSchema.optional(),
@@ -454,6 +458,7 @@ const providerConnectionConfigurationInputSchema = z.object({
   }).strict(),
   maximumParallelRequests: z.number().int().min(1).max(16),
   name: z.string().trim().min(1).max(100).nullable(),
+  sendReasoningOptions: z.boolean().default(true),
   thinkingMode: languageThinkingModeSchema,
   answer: z.object({
     baseUrl: httpUrlSchema.nullable(),
@@ -569,6 +574,7 @@ export function readProviderConnectionConfiguration(
     queryExpansion: readModelConfiguration(connection.queryExpansion),
     maximumParallelRequests: connection.maximumParallelRequests,
     name: connection.name,
+    sendReasoningOptions: connection.sendReasoningOptions,
     thinkingMode: connection.thinkingMode,
     reranking: readCapabilityConfiguration(connection.reranking),
     speechToText: readCapabilityConfiguration(connection.speechToText),
@@ -657,17 +663,17 @@ export function resolveLanguageProvider(
       `The selected ${formatCapability(capability)} provider has an invalid adapter.`,
     );
   }
+  const connection = requireProviderConnection(settings, provider.providerId);
   return {
     ...provider,
-    adaptiveContextEnabled:
-      requireProviderConnection(settings, provider.providerId)
-        .adaptiveContextEnabled,
+    adaptiveContextEnabled: connection.adaptiveContextEnabled,
     adapter: provider.adapter,
     contextCapacityTokens: readEffectiveModelContextCapacity(
       settings,
       provider.providerId,
       capability,
     ),
+    sendReasoningOptions: connection.sendReasoningOptions,
     thinkingMode: readEffectiveThinkingMode(
       settings,
       provider.providerId,

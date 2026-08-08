@@ -423,7 +423,6 @@ function buildPreparation(
         { embeddingSha256: calculateJsonSha256([2]), text: `${domain} expansion one` },
         { embeddingSha256: calculateJsonSha256([3]), text: `${domain} expansion two` },
       ],
-      queryGenerationSeed: 1,
       question: `${domain} question`,
       relevantDocumentIds: [],
       relevantElementIds: [relevantElementId],

@@ -26,7 +26,7 @@ describe("evaluation question deduplication", () => {
     const result = await regenerateDuplicateQuestions(
       cases,
       elements,
-      { domain: "finance", seed: "stable-seed" },
+      { domain: "finance" },
       buildModelRegistry(evaluationModel),
       new TaskLimiter(1),
       (message) => progress.push(message),
@@ -56,7 +56,7 @@ describe("evaluation question deduplication", () => {
     await expect(regenerateDuplicateQuestions(
       cases,
       elements,
-      { domain: "finance", seed: "stable-seed" },
+      { domain: "finance" },
       buildModelRegistry(evaluationModel),
       new TaskLimiter(1),
       () => undefined,

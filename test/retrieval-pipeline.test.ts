@@ -582,18 +582,16 @@ function buildPrepared(
   const scheduler = new TaskLimiter(1);
   return {
     generationSettings: {
-      answer: { seed: 1, temperature: 0 },
-      queryExpansion: { seed: 2, temperature: 0 },
-      seedMode: "stable",
+      answer: { temperature: 0 },
+      queryExpansion: { temperature: 0 },
     },
     answerScheduler: scheduler,
     models: buildModelRegistry(answerModel, verifier),
     rerankingScheduler: scheduler,
     retrievalTrace: {
       generation: {
-        answer: { seed: 1, temperature: 0 },
-        queryExpansion: { seed: 2, temperature: 0 },
-        seedMode: "stable",
+        answer: { temperature: 0 },
+        queryExpansion: { temperature: 0 },
       },
       orderedSources: [],
       queries: [{ kind: "original", text: "What changed?" }],

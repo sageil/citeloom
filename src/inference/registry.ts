@@ -374,6 +374,9 @@ function buildLanguageThinkingProviderOptions(
   config: LanguageInferenceConfig,
   thinkingMode: LanguageInferenceConfig["thinkingMode"],
 ): LanguageModelV4CallOptions["providerOptions"] {
+  if (!config.sendReasoningOptions) {
+    return undefined;
+  }
   if (config.adapter === "openai-codex-language") {
     return buildOpenAICodexProviderOptions(thinkingMode);
   }
@@ -387,6 +390,9 @@ function buildLanguageReasoning(
   config: LanguageInferenceConfig,
   thinkingMode: LanguageInferenceConfig["thinkingMode"],
 ): LanguageModelV4CallOptions["reasoning"] | undefined {
+  if (!config.sendReasoningOptions) {
+    return undefined;
+  }
   if (
     isOpenAICompatibleLanguageAdapter(config.adapter)
     || thinkingMode === "auto"
@@ -483,7 +489,6 @@ function transformDeepSeekRequestBody(
 ): OpenAICompatibleRequestBody {
   const transformedBody = { ...requestBody };
   translateDeepSeekStructuredOutput(transformedBody);
-  delete transformedBody.seed;
   if (transformedBody.reasoning_effort === "none") {
     delete transformedBody.reasoning_effort;
     transformedBody.thinking = { type: "disabled" };

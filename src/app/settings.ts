@@ -115,7 +115,6 @@ const runtimeSettingKeySchema = z.enum([
   "expansionQueryWeight",
   "findSourcesPassagesPerDocument",
   "findSourcesResults",
-  "generationSeedMode",
   "lexicalWeight",
   "maxAttempts",
   "maxDocumentMegabytes",
@@ -224,15 +223,15 @@ const embeddingDimensionOptions = SUPPORTED_EMBEDDING_DIMENSIONS.map(
 );
 
 export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
-  setting("claimVerifierRuntimeName", "Answers and citation checks", "Citation checker name", "text", "The name shown for the service that checks whether citations support an answer."),
-  setting("claimVerifierBaseUrl", "Answers and citation checks", "Citation checker address", "url", "The address of the service that checks whether citations support an answer."),
-  numberSetting("claimVerifierSupportThreshold", "Answers and citation checks", "Supported citation score", "The lowest score CiteLoom shows as supported. The recommended value is 0.50.", 0, 1, 0.01),
-  numberSetting("claimVerifierTimeoutSeconds", "Answers and citation checks", "Citation check timeout", "How long CiteLoom waits for citation checks to finish.", 1, 3_600, 1, "seconds"),
-  featureSetting(numberSetting("answerTemperature", "Answers and citation checks", "Temperature", "How much Ask responses may vary between runs.", 0, 2, 0.01), "answer"),
-  featureSetting(numberSetting("answerTimeoutSeconds", "Answers and citation checks", "Answer timeout", "How long CiteLoom waits for an answer to finish.", 1, 3_600, 1, "seconds"), "answer"),
-  featureSetting(numberSetting("answerMinimumOutputTokens", "Answers and citation checks", "Minimum answer space", "The space CiteLoom requires before starting an answer. If less space is available, the request stops instead of returning a cut-off answer.", 1, 262_144, 1, "tokens"), "answer"),
-  featureSetting(numberSetting("answerProviderSafetyMarginTokens", "Answers and citation checks", "Reserved model space", "Space kept free so the selected provider can add its required instructions without exceeding the model limit.", 0, 262_144, 1, "tokens"), "answer"),
-  featureSetting(numberSetting("chatTemperature", "Answers and citation checks", "Temperature", "How much Chat responses may vary between runs.", 0, 2, 0.01), "chat"),
+  setting("claimVerifierRuntimeName", "Hughes Hallucination Evaluation Model", "Citation checker name", "text", "The name shown for the service that checks whether citations support an answer."),
+  setting("claimVerifierBaseUrl", "Hughes Hallucination Evaluation Model", "Citation checker address", "url", "The address of the service that checks whether citations support an answer."),
+  numberSetting("claimVerifierSupportThreshold", "Hughes Hallucination Evaluation Model", "Supported citation score", "The lowest score CiteLoom shows as supported. The recommended value is 0.50.", 0, 1, 0.01),
+  numberSetting("claimVerifierTimeoutSeconds", "Hughes Hallucination Evaluation Model", "Citation check timeout", "How long CiteLoom waits for citation checks to finish.", 1, 3_600, 1, "seconds"),
+  featureSetting(numberSetting("answerTemperature", "Hughes Hallucination Evaluation Model", "Temperature", "How much Ask responses may vary between runs.", 0, 2, 0.01), "answer"),
+  featureSetting(numberSetting("answerTimeoutSeconds", "Hughes Hallucination Evaluation Model", "Answer timeout", "How long CiteLoom waits for an answer to finish.", 1, 3_600, 1, "seconds"), "answer"),
+  featureSetting(numberSetting("answerMinimumOutputTokens", "Hughes Hallucination Evaluation Model", "Minimum answer space", "The space CiteLoom requires before starting an answer. If less space is available, the request stops instead of returning a cut-off answer.", 1, 262_144, 1, "tokens"), "answer"),
+  featureSetting(numberSetting("answerProviderSafetyMarginTokens", "Hughes Hallucination Evaluation Model", "Reserved model space", "Space kept free so the selected provider can add its required instructions without exceeding the model limit.", 0, 262_144, 1, "tokens"), "answer"),
+  featureSetting(numberSetting("chatTemperature", "Hughes Hallucination Evaluation Model", "Temperature", "How much Chat responses may vary between runs.", 0, 2, 0.01), "chat"),
   featureSetting(selectSetting("embeddingDimensions", "Embedding space", "Vector dimensions", "The application-wide vector size stored and searched in this embedding space.", embeddingDimensionOptions), "embedding"),
   featureSetting(selectSetting("embeddingInputFormatId", "Embedding space", "Search text format", "The application-wide text format used for document and query embeddings in this space.", []), "embedding"),
   featureSetting(selectSetting("retrievalWindowPolicy", "Embedding space", "Document section method", "How CiteLoom keeps nearby document content together for search.", [
@@ -290,10 +289,6 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   panelSetting(positiveIntegerSetting("retrievalCandidates", "Search and answers", "Matching sections reviewed", "CiteLoom collects up to this many unique matching sections before reranking them. Lower values can miss relevant evidence, while higher values search more broadly but take longer.", "sections"), searchSizePanel),
   positiveIntegerSetting("findSourcesResults", "Search and answers", "Documents displayed", "How many matching documents appear at once. Keyword results continue on additional pages. Similar-content results show up to this number.", "documents"),
   positiveIntegerSetting("findSourcesPassagesPerDocument", "Search and answers", "Excerpts shown per document", "How many matching excerpts appear inside each Find Sources document result. This changes only what Find Sources displays.", "excerpts"),
-  selectSetting("generationSeedMode", "Search and answers", "Repeatable answers", "Choose whether compatible models should try to return the same wording for the same request.", [
-    { label: "Stable", value: "stable" },
-    { label: "Random", value: "random" },
-  ]),
   panelSetting(selectSetting("searchMethod", "Search and answers", "Search method", "Choose how CiteLoom finds document sections for Ask and Chat.", [
     { label: "Hybrid - Recommended", value: "hybrid" },
     { label: "Keyword", value: "bm25" },
@@ -418,7 +413,6 @@ export const runtimeSettingChangeExamples = {
   queryExpansionTemperature: "Set this to 0 for the most repeatable expansions. Raise it to allow more variation in generated search wording.",
   answerTemperature: "Raise this for more varied Ask responses. Lower it for more repeatable responses.",
   chatTemperature: "Raise this for more varied Chat responses. Lower it for more repeatable responses.",
-  generationSeedMode: "Stable asks compatible models for repeatable answers. Random allows the wording to vary. Some models ignore this setting.",
   denseWeight: "Raise this relative to Exact-word matches to favor results with similar meaning, even when their wording differs.",
   lexicalWeight: "Raise this relative to Semantic similarity to favor matching words, names, codes, and phrases.",
   originalQueryWeight: "Raise this relative to First expansion influence to favor results found using the original question.",
@@ -1250,6 +1244,7 @@ function configureProviderConnection(
     ),
     maximumParallelRequests: configuration.maximumParallelRequests,
     name: configuration.name,
+    sendReasoningOptions: configuration.sendReasoningOptions,
     thinkingMode: configuration.thinkingMode,
     reranking: configureCapabilityConnection(
       current.reranking,

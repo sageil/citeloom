@@ -20,5 +20,3 @@ Use installed Engineering OS skills when their activation conditions apply.
   A sentence must not be split across multiple lines unless the Markdown structure requires it.
   Preserve normal Markdown structure for headings, lists, tables, blockquotes, and code fences.
   Before finalizing Markdown edits, review the diff and fix any newly added sentence-wrapped prose.
-
-Do not load every skill for every task. Use the narrowest set that materially improves the outcome.

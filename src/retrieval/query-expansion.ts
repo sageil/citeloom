@@ -17,7 +17,6 @@ import {
 import { createProcessingQuestion } from "../domain/question.js";
 
 export interface QueryExpansionGenerationSettings {
-  seed: number | null;
   temperature: number;
 }
 
@@ -189,13 +188,9 @@ function normalizeQueryExpansions(
 }
 
 function buildSamplingSettings(settings: QueryExpansionGenerationSettings): {
-  seed?: number;
   temperature: number;
 } {
-  if (settings.seed === null) {
-    return { temperature: settings.temperature };
-  }
-  return { seed: settings.seed, temperature: settings.temperature };
+  return { temperature: settings.temperature };
 }
 
 export function decodeQueryExpansions(

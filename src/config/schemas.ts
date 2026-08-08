@@ -117,7 +117,6 @@ export const runtimeSettingsSchema = z.object({
   queryExpansionTemperature: z.number().min(0).max(2),
   answerTemperature: z.number().min(0).max(2),
   chatTemperature: z.number().min(0).max(2),
-  generationSeedMode: z.enum(["random", "stable"]),
   rerankDiscoveryMinimumScore: z.number().min(-1_000).max(1_000),
   rerankTimeoutSeconds: z.number().int().min(1).max(3_600),
   retrievalCandidates: z.number().int().min(1),

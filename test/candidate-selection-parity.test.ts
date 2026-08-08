@@ -487,7 +487,6 @@ function buildPreparedCase(
       embeddingSha256: "0".repeat(64),
       text: question,
     }],
-    queryGenerationSeed: 1,
     question,
     relevantDocumentIds: [],
     relevantElementIds: [selection.selected[0]?.parentId ?? parentId("f")],

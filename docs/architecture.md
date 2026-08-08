@@ -169,10 +169,10 @@ If the original Docling instance no longer recognizes a saved task, the worker c
 Completed checkpoints remain available when the worker schedules a retry.
 
 Standard is the default conversion pipeline.
-For eligible Standard PDFs, the supplied Docling service converts bounded page ranges, saves each completed range, and assembles the final document only after all ranges succeed.
+For eligible Standard PDFs, Docling service converts bounded page ranges, saves each completed range, and assembles the final document only after all ranges succeed.
 This lets a replacement Docling process continue from the next incomplete range.
 
-VLM processing renders each PDF page as an in-memory PNG inside Docling and sends that page with the configured prompt to the selected provider's image-capable chat endpoint.
+VLM processing (disabled by default) renders each PDF page as an in-memory PNG inside Docling and sends that page with the configured prompt to the selected provider's image-capable chat endpoint.
 The page image is not persisted as a separate source file.
 VLM conversion retains CiteLoom's remote task-ID recovery, but it does not use the Standard pipeline's page-range checkpoints or partial-document assembly.
 If Docling no longer recognizes a VLM task, the unchanged source is submitted as a new task.
@@ -199,8 +199,6 @@ TOC entries remain unavailable to answer generation and citation publication.
 Reranking can improve answer and citation accuracy by using a specialized relevance model to reorder candidates before CiteLoom selects the answer context.
 
 Each answer run uses the configured sampling temperatures.
-In stable seed mode, CiteLoom derives separate seeds for Query Expansion and answer generation from the normalized original question and the sorted IDs of the selected documents.
-In random mode, the model provider chooses the sampling randomness.
 
 ```mermaid
 sequenceDiagram

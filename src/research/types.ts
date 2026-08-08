@@ -110,7 +110,6 @@ export interface ResearchRunConfiguration {
     candidateK: number;
     fusion: RankFusionConfig;
     mode: RetrievalMode;
-    generationSeedMode: "random" | "stable";
     queryExpansions: number;
     queryExpansionTemperature: number;
     rrfK: number;
@@ -122,9 +121,8 @@ export interface ResearchRunConfiguration {
 
 interface ResearchRetrievalTraceGeneration {
   generation: {
-    answer: { seed: number | null; temperature: number };
-    queryExpansion: { seed: number | null; temperature: number };
-    seedMode: "random" | "stable";
+    answer: { temperature: number };
+    queryExpansion: { temperature: number };
   };
 }
 

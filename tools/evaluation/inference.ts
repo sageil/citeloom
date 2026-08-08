@@ -32,7 +32,6 @@ type EvaluationContentPart = FilePart | TextPart;
 interface EvaluationElementRequest {
   domain: string;
   element: SourceElement;
-  seed: number;
 }
 
 interface EvaluationCompletion {
@@ -50,7 +49,6 @@ export interface EvaluationRelevanceRequest {
   element: RetrievalSourceElement;
   evidenceContent: string;
   question: string;
-  seed: number;
 }
 
 export async function generateEvaluationQuestion(
@@ -72,7 +70,6 @@ export async function generateEvaluationQuestion(
     const runGeneration = (abortSignal: AbortSignal) => requestEvaluationText(
       models,
       content,
-      request.seed,
       createQuestionGenerationSystemPrompt(request.domain),
       "citeloom.evaluation-question",
       finishMetric,
@@ -110,7 +107,6 @@ export async function judgeEvaluationRelevance(
     const runGeneration = (abortSignal: AbortSignal) => requestEvaluationText(
       models,
       content,
-      request.seed,
       createRelevanceSystemPrompt(),
       "citeloom.evaluation-relevance",
       finishMetric,
@@ -131,7 +127,6 @@ export async function judgeEvaluationRelevance(
 async function requestEvaluationText(
   models: EvaluationModelRegistry,
   content: UserContent,
-  seed: number,
   system: string,
   telemetryFunctionId: string,
   recordCompletion: (completion: EvaluationCompletion) => void,
@@ -156,7 +151,6 @@ async function requestEvaluationText(
           outputTokens: event.usage.outputTokens ?? null,
         });
       },
-      seed,
       system,
       telemetry,
     });

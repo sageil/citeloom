@@ -113,7 +113,6 @@ export function normalizeOpenAICodexResponsesBody(
   }
   const normalized = { ...decoded.data };
   delete normalized.max_output_tokens;
-  delete normalized.seed;
   delete normalized.temperature;
   delete normalized.top_p;
   normalized.store = false;

@@ -8,7 +8,6 @@ import {
 } from "./source-element-fixture.js";
 import {
   belongsToEvaluationSplit,
-  createEvaluationModelSeed,
   mergePooledEvaluationCandidates,
   readPortableSourceFile,
   selectEvaluationElements,
@@ -89,29 +88,6 @@ describe("evaluation sampling", () => {
     expect(pooled).toHaveLength(2);
     expect(pooled[0]?.methods).toEqual(["bm25", "dense", "hybrid"]);
     expect(pooled[1]?.methods).toEqual(["dense"]);
-  });
-
-  it("derives stable purpose-specific model seeds", () => {
-    const first = createEvaluationModelSeed(
-      "stable-seed",
-      "question",
-      "element-1",
-    );
-    const second = createEvaluationModelSeed(
-      "stable-seed",
-      "question",
-      "element-1",
-    );
-    const relevance = createEvaluationModelSeed(
-      "stable-seed",
-      "relevance",
-      "element-1",
-    );
-
-    expect(second).toBe(first);
-    expect(relevance).not.toBe(first);
-    expect(first).toBeGreaterThanOrEqual(0);
-    expect(first).toBeLessThan(2_147_483_647);
   });
 
   it("records source provenance relative to the working directory", () => {

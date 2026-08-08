@@ -123,7 +123,6 @@ const preparedCaseSchema = z.object({
   id: evaluationStableNameSchema,
   judgments: z.array(evaluationJudgmentSchema).min(1),
   metadata: evaluationCaseMetadataSchema,
-  queryGenerationSeed: z.number().int().nonnegative(),
   queries: z.array(preparedQuerySchema).min(1),
   question: z.string().trim().min(1).max(8_000),
   relevantDocumentIds: z.array(contentIdSchema),

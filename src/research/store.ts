@@ -101,7 +101,6 @@ const runConfigurationSchema = z.object({
     mode: z.enum([...RETRIEVAL_MODES, "hybrid-reranked"]).transform((mode) => {
       return mode === "hybrid-reranked" ? "hybrid" : mode;
     }),
-    generationSeedMode: z.enum(["random", "stable"]).default("random"),
     queryExpansions: z.number().int().nonnegative(),
     queryExpansionTemperature: z.number().min(0).max(2).default(0.1),
     rrfK: z.number().int().positive(),
@@ -113,14 +112,11 @@ const runConfigurationSchema = z.object({
 const retrievalTraceGenerationSchema = z.object({
   generation: z.object({
     answer: z.object({
-      seed: z.number().int().nonnegative().nullable(),
       temperature: z.number().min(0).max(2),
     }).strict(),
     queryExpansion: z.object({
-      seed: z.number().int().nonnegative().nullable(),
       temperature: z.number().min(0).max(2),
     }).strict(),
-    seedMode: z.enum(["random", "stable"]),
   }).strict(),
 });
 const previousRetrievalTraceQueriesSchema = z.object({
@@ -1306,7 +1302,6 @@ export function buildResearchRunConfiguration(
       candidateK: config.retrieval.candidateK,
       fusion: { ...config.retrieval.fusion },
       mode: config.retrieval.mode,
-      generationSeedMode: config.retrieval.generationSeedMode,
       queryExpansions: config.retrieval.queryExpansions,
       queryExpansionTemperature: config.retrieval.queryExpansionTemperature,
       rrfK: config.retrieval.rrfK,

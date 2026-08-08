@@ -28,7 +28,6 @@ import {
   type EvaluationModelRegistry,
 } from "./models.js";
 import { regenerateDuplicateQuestions } from "./question-deduplicator.js";
-import { createEvaluationModelSeed } from "./seed.js";
 import { InferenceCoordinator } from "../../src/inference/coordinator.js";
 import { retrieveIndexedDocuments } from "../../src/retrieval/pipeline.js";
 import { SourceDocumentStore } from "../../src/documents/storage/source-document-store.js";
@@ -157,11 +156,6 @@ export async function generateEvaluationDataset(
             domain: options.domain,
             element,
             excludedQuestions: [],
-            seed: createEvaluationModelSeed(
-              options.seed,
-              "question",
-              element.id,
-            ),
           },
         );
         return {
@@ -190,7 +184,7 @@ export async function generateEvaluationDataset(
     const uniqueCases = await regenerateDuplicateQuestions(
       cases,
       selectedElements,
-      { domain: options.domain, seed: options.seed },
+      { domain: options.domain },
       models,
       scheduler,
       reportProgress,
@@ -204,7 +198,6 @@ export async function generateEvaluationDataset(
         models,
         scheduler,
         reportProgress,
-        options.seed,
       );
     }
     return {
@@ -267,8 +260,6 @@ export function selectEvaluationElements(
   }
   return selected;
 }
-
-export { createEvaluationModelSeed } from "./seed.js";
 
 async function readDocumentElements(
   store: SourceDocumentStore,
@@ -384,7 +375,6 @@ async function enrichEvaluationCases(
   models: EvaluationModelRegistry,
   scheduler: TaskScheduler,
   reportProgress: (message: string) => void,
-  seed: string,
 ): Promise<BenchmarkEvaluationCase[]> {
   const enriched: BenchmarkEvaluationCase[] = [];
   for (let caseIndex = 0; caseIndex < cases.length; caseIndex += 1) {
@@ -420,11 +410,6 @@ async function enrichEvaluationCases(
             element,
             evidenceContent: candidate.retrieved.evidenceContent,
             question: evaluationCase.question,
-            seed: createEvaluationModelSeed(
-              seed,
-              "relevance",
-              `${evaluationCase.id}:${element.id}`,
-            ),
           },
         );
       },

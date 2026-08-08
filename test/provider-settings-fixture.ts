@@ -357,6 +357,7 @@ function createProviderConnection(baseUrl: string | null): ProviderConnection {
     embedding: createModelConnection(null, null),
     maximumParallelRequests: 1,
     name: null,
+    sendReasoningOptions: true,
     thinkingMode: "disabled",
     reranking: createCapabilityConnection(),
     speechToText: createCapabilityConnection(),

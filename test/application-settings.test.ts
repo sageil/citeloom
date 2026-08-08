@@ -70,6 +70,7 @@ describe("provider settings changes", () => {
     );
     configuration.answer.contextCapacityTokens = 16_384;
     configuration.maximumParallelRequests = 3;
+    configuration.sendReasoningOptions = false;
     configuration.speechToText.model = "configured-stt";
 
     const updated = applyProviderSettingsChanges(
@@ -82,6 +83,7 @@ describe("provider settings changes", () => {
     expect(updatedGroq.apiToken).toBe("stored-secret");
     expect(updatedGroq.answer.contextCapacityTokens).toBe(16_384);
     expect(updatedGroq.maximumParallelRequests).toBe(3);
+    expect(updatedGroq.sendReasoningOptions).toBe(false);
     expect(updatedGroq.speechToText.model).toBe("configured-stt");
   });
 

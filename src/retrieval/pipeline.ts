@@ -509,11 +509,7 @@ async function prepareRetrievalWithResources(
     throw error;
   }
   runTelemetry.setScopeSize(scopeTargets.length);
-  let generationSettings = createTurnGenerationSettings(
-    config.retrieval,
-    question.processing,
-    scopeTargets,
-  );
+  const generationSettings = createTurnGenerationSettings(config.retrieval);
   abortSignal.throwIfAborted();
   if (scopeTargets.length === 0) {
     runTelemetry.setQueryVariantCount(0);
@@ -590,11 +586,6 @@ async function prepareRetrievalWithResources(
       config.embeddingSpace.id,
     );
     runTelemetry.setScopeSize(scopeTargets.length);
-    generationSettings = createTurnGenerationSettings(
-      config.retrieval,
-      question.processing,
-      scopeTargets,
-    );
     retrieval = await runRetrievalAttempt(scopeTargets);
   }
   abortSignal.throwIfAborted();
@@ -633,36 +624,7 @@ export async function prepareRetrievalQueries(
   generationSettings: QueryExpansionGenerationSettings,
   runTelemetry: RunTelemetry = noopRunTelemetry,
 ): Promise<RetrievalQuery[]> {
-  return prepareRetrievalQuerySeedsWithGenerationSettings(
-    config,
-    models,
-    question,
-    [{ kind: "original", text: question }],
-    reportProgress,
-    embeddingScheduler,
-    queryExpansionScheduler,
-    abortSignal,
-    generationSettings,
-    runTelemetry,
-  );
-}
-
-export async function prepareRetrievalQueriesWithSeed(
-  config: AppConfig,
-  models: InferenceModelRegistry,
-  question: string,
-  reportProgress: (message: string) => void,
-  embeddingScheduler: TaskScheduler,
-  queryExpansionScheduler: TaskScheduler | null,
-  abortSignal: AbortSignal,
-  generationSeed: number,
-  runTelemetry: RunTelemetry = noopRunTelemetry,
-): Promise<RetrievalQuery[]> {
-  const generationSettings: QueryExpansionGenerationSettings = {
-    seed: generationSeed,
-    temperature: 0,
-  };
-  return prepareRetrievalQuerySeedsWithGenerationSettings(
+  return prepareRetrievalQueryInputsWithGenerationSettings(
     config,
     models,
     question,
@@ -687,15 +649,15 @@ async function prepareQuestionRetrievalQueries(
   generationSettings: QueryExpansionGenerationSettings | undefined,
   runTelemetry: RunTelemetry,
 ): Promise<RetrievalQuery[]> {
-  const seeds: RetrievalQuerySeed[] = [];
+  const queryInputs: RetrievalQueryInput[] = [];
   for (const query of question.retrievalQueries) {
-    seeds.push({ kind: query.kind, text: query.text });
+    queryInputs.push({ kind: query.kind, text: query.text });
   }
-  return prepareRetrievalQuerySeedsWithGenerationSettings(
+  return prepareRetrievalQueryInputsWithGenerationSettings(
     config,
     models,
     question.processing,
-    seeds,
+    queryInputs,
     reportProgress,
     embeddingScheduler,
     queryExpansionScheduler,
@@ -707,16 +669,16 @@ async function prepareQuestionRetrievalQueries(
 
 type RetrievalQueryKind = NonNullable<RetrievalQuery["kind"]>;
 
-interface RetrievalQuerySeed {
+interface RetrievalQueryInput {
   kind: RetrievalQueryKind;
   text: string;
 }
 
-async function prepareRetrievalQuerySeedsWithGenerationSettings(
+async function prepareRetrievalQueryInputsWithGenerationSettings(
   config: AppConfig,
   models: InferenceModelRegistry,
   question: string,
-  seeds: readonly RetrievalQuerySeed[],
+  queryInputs: readonly RetrievalQueryInput[],
   reportProgress: (message: string) => void,
   embeddingScheduler: TaskScheduler,
   queryExpansionScheduler: TaskScheduler | null,
@@ -724,22 +686,22 @@ async function prepareRetrievalQuerySeedsWithGenerationSettings(
   generationSettings: QueryExpansionGenerationSettings | undefined,
   runTelemetry: RunTelemetry,
 ): Promise<RetrievalQuery[]> {
-  const querySeeds = await buildRetrievalQueries(
+  const preparedInputs = await buildRetrievalQueries(
     config,
     models,
     question,
-    seeds,
+    queryInputs,
     reportProgress,
     queryExpansionScheduler,
     abortSignal,
     generationSettings,
     runTelemetry,
   );
-  runTelemetry.setQueryVariantCount(querySeeds.length);
+  runTelemetry.setQueryVariantCount(preparedInputs.length);
   return embedRetrievalQueries(
     config,
     models,
-    querySeeds,
+    preparedInputs,
     reportProgress,
     embeddingScheduler,
     abortSignal,
@@ -751,19 +713,19 @@ async function buildRetrievalQueries(
   config: AppConfig,
   models: InferenceModelRegistry,
   question: string,
-  seeds: readonly RetrievalQuerySeed[],
+  queryInputs: readonly RetrievalQueryInput[],
   reportProgress: (message: string) => void,
   queryExpansionScheduler: TaskScheduler | null,
   abortSignal: AbortSignal,
   generationSettings: QueryExpansionGenerationSettings | undefined,
   runTelemetry: RunTelemetry,
-): Promise<RetrievalQuerySeed[]> {
-  if (seeds.length === 0) {
-    throw new Error("Retrieval requires at least one query seed.");
+): Promise<RetrievalQueryInput[]> {
+  if (queryInputs.length === 0) {
+    throw new Error("Retrieval requires at least one query input.");
   }
-  const querySeeds = [...seeds];
+  const preparedInputs = [...queryInputs];
   if (config.retrieval.queryExpansions <= 0) {
-    return querySeeds;
+    return preparedInputs;
   }
   if (queryExpansionScheduler === null || models.queryExpansion === null) {
     throw new Error(
@@ -782,7 +744,7 @@ async function buildRetrievalQueries(
       runTelemetry,
     );
     for (const expansion of expansions) {
-      querySeeds.push({ kind: "expansion", text: expansion });
+      preparedInputs.push({ kind: "expansion", text: expansion });
     }
   } catch (error: unknown) {
     abortSignal.throwIfAborted();
@@ -790,13 +752,13 @@ async function buildRetrievalQueries(
       `Query Expansion was unavailable, so retrieval is using the original question: ${readErrorMessage(error)}`,
     );
   }
-  return querySeeds;
+  return preparedInputs;
 }
 
 async function embedRetrievalQueries(
   config: AppConfig,
   models: InferenceModelRegistry,
-  querySeeds: readonly RetrievalQuerySeed[],
+  queryInputs: readonly RetrievalQueryInput[],
   reportProgress: (message: string) => void,
   embeddingScheduler: TaskScheduler,
   abortSignal: AbortSignal,
@@ -804,19 +766,19 @@ async function embedRetrievalQueries(
 ): Promise<RetrievalQuery[]> {
   let embeddings: number[][] = [];
   if (retrievalModeUsesDense(config.retrieval.mode)) {
-    reportProgress(`Embedding ${querySeeds.length} search queries`);
+    reportProgress(`Embedding ${queryInputs.length} search queries`);
     embeddings = await embedQuestions(
       models,
-      querySeeds.map((query) => query.text),
+      queryInputs.map((query) => query.text),
       embeddingScheduler,
       abortSignal,
       runTelemetry,
     );
   }
   const queries: RetrievalQuery[] = [];
-  for (let index = 0; index < querySeeds.length; index += 1) {
-    const seed = querySeeds[index];
-    if (seed === undefined) {
+  for (let index = 0; index < queryInputs.length; index += 1) {
+    const queryInput = queryInputs[index];
+    if (queryInput === undefined) {
       throw new Error(`Missing retrieval query at index ${index}.`);
     }
     let embedding: number[] | null = null;
@@ -826,7 +788,11 @@ async function embedRetrievalQueries(
         throw new Error(`Missing retrieval query embedding at index ${index}.`);
       }
     }
-    queries.push({ embedding, kind: seed.kind, text: seed.text });
+    queries.push({
+      embedding,
+      kind: queryInput.kind,
+      text: queryInput.text,
+    });
     abortSignal.throwIfAborted();
   }
   return queries;

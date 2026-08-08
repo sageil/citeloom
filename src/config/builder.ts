@@ -112,7 +112,6 @@ export function buildAppConfig(
       lexicalWeight: settings.lexicalWeight,
       originalQueryWeight: settings.originalQueryWeight,
     },
-    generationSeedMode: settings.generationSeedMode,
     mode: settings.searchMethod,
     queryExpansions: settings.queryExpansions,
     queryExpansionTemperature: settings.queryExpansionTemperature,
@@ -474,6 +473,7 @@ function buildLanguageInferenceConfig(
     model: provider.model,
     providerId: provider.providerId,
     runtimeName: provider.runtimeName,
+    sendReasoningOptions: provider.sendReasoningOptions,
     thinkingMode: provider.thinkingMode,
     timeoutMs,
   };

@@ -17,7 +17,6 @@ describe("OpenAI Codex Responses transport", () => {
         input: [{ content: "Question", role: "user" }],
         max_output_tokens: 1_000,
         model: "gpt-5.6-terra",
-        seed: 42,
         store: true,
         stream: false,
         temperature: 0.2,

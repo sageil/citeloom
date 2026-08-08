@@ -1,7 +1,6 @@
 import type { TaskScheduler } from "../../src/shared/concurrency.js";
 import type { SourceElement } from "../../src/domain/source-elements.js";
 import { generateEvaluationQuestion } from "./inference.js";
-import { createEvaluationModelSeed } from "./seed.js";
 import type { EvaluationModelRegistry } from "./models.js";
 
 const MAX_UNIQUE_QUESTION_ATTEMPTS = 4;
@@ -13,7 +12,6 @@ interface EvaluationQuestionCase {
 
 export interface EvaluationQuestionDeduplicationOptions {
   domain: string;
-  seed: string;
 }
 
 export async function regenerateDuplicateQuestions<
@@ -79,11 +77,6 @@ async function regenerateDuplicateQuestion<
       domain: options.domain,
       element,
       excludedQuestions: readEvaluationQuestions(uniqueCases),
-      seed: createEvaluationModelSeed(
-        options.seed,
-        "question",
-        `${element.id}:duplicate:${attempt}`,
-      ),
     });
     normalized = normalizeEvaluationQuestion(question);
   }

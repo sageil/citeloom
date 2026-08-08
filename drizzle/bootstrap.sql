@@ -271,6 +271,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "sendReasoningOptions": true,
           "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
@@ -327,6 +328,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "sendReasoningOptions": true,
           "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
@@ -383,6 +385,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "sendReasoningOptions": true,
           "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
@@ -439,6 +442,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "sendReasoningOptions": true,
           "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
@@ -495,6 +499,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "sendReasoningOptions": true,
           "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
@@ -551,6 +556,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "sendReasoningOptions": true,
           "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
@@ -607,6 +613,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "sendReasoningOptions": false,
           "thinkingMode": "auto",
           "reranking": {
             "apiToken": null,
@@ -664,6 +671,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "sendReasoningOptions": true,
           "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
@@ -720,6 +728,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "sendReasoningOptions": true,
           "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
@@ -776,6 +785,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "sendReasoningOptions": true,
           "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
@@ -832,6 +842,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "sendReasoningOptions": true,
           "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
@@ -888,6 +899,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "sendReasoningOptions": true,
           "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
@@ -944,6 +956,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
+          "sendReasoningOptions": true,
           "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
@@ -1052,7 +1065,6 @@ WITH canonical_settings AS (
       "expansionQueryWeight": 1,
       "findSourcesPassagesPerDocument": 3,
       "findSourcesResults": 10,
-      "generationSeedMode": "stable",
       "lexicalWeight": 1,
       "maxAttempts": 3,
       "maxDocumentMegabytes": 100,

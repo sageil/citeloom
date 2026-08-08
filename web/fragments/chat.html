@@ -636,131 +636,195 @@
         />
       </label>
 
-      <div class="chat-source-browser">
-        <section class="chat-source-picker" aria-label="Choose chat documents">
-          <button
-            class="chat-source-all"
-            type="button"
-            :class="{ active: newChatScopeMode === 'all' }"
-            :aria-pressed="(newChatScopeMode === 'all').toString()"
-            @click="setNewChatScopeMode('all')"
-          >
-            <span>
-              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
-              <strong>All documents</strong>
-            </span>
-            <small x-text="newChatTotalDocuments"></small>
-          </button>
-
-          <div class="segmented-control chat-source-tabs" role="tablist" aria-label="Choose by tags or documents">
+      <section class="chat-scope-selector" aria-labelledby="new-chat-scope-title">
+        <h2 id="new-chat-scope-title">Choose sources</h2>
+        <div class="chat-scope-list" role="radiogroup" aria-label="Chat source scope">
+          <div class="chat-scope-card" :class="{ active: newChatScopeMode === 'all' }">
             <button
-              role="tab"
+              class="chat-scope-card-trigger"
               type="button"
-              :aria-selected="(newChatScopeMode !== 'documents').toString()"
-              :class="{ active: newChatScopeMode !== 'documents' }"
+              role="radio"
+              :aria-checked="(newChatScopeMode === 'all').toString()"
+              @click="setNewChatScopeMode('all')"
+            >
+              <span class="chat-scope-radio" aria-hidden="true"></span>
+              <svg aria-hidden="true" class="citeloom-icon chat-scope-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
+              <span class="chat-scope-card-copy">
+                <strong>All documents</strong>
+                <small x-text="`Use all ${newChatTotalDocuments} indexed ${newChatTotalDocuments === 1 ? 'document' : 'documents'}`"></small>
+              </span>
+            </button>
+          </div>
+
+          <div class="chat-scope-card" :class="{ active: newChatScopeMode === 'tags' }">
+            <button
+              class="chat-scope-card-trigger"
+              type="button"
+              role="radio"
+              :aria-checked="(newChatScopeMode === 'tags').toString()"
+              :aria-expanded="(newChatScopeMode === 'tags').toString()"
+              aria-controls="new-chat-tag-options"
               @click="setNewChatScopeMode('tags')"
-            >Tags</button>
+            >
+              <span class="chat-scope-radio" aria-hidden="true"></span>
+              <svg aria-hidden="true" class="citeloom-icon chat-scope-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg>
+              <span class="chat-scope-card-copy">
+                <strong>Documents with selected tags</strong>
+                <small>Build a scope from the tags in your document library</small>
+              </span>
+              <svg aria-hidden="true" class="citeloom-icon chat-scope-caret"><use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use></svg>
+            </button>
+            <div class="chat-scope-details" id="new-chat-tag-options" x-show="newChatScopeMode === 'tags'">
+              <div class="chat-scope-details-header">
+                <div>
+                  <strong>Select tags</strong>
+                  <small>Includes documents matching any selected tag.</small>
+                </div>
+                <button type="button" x-show="newChatSelectedTags.length > 0" @click="clearNewChatTags()">Clear</button>
+              </div>
+              <label class="chat-scope-search">
+                <span class="visually-hidden">Search tags</span>
+                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-search"></use></svg>
+                <input type="search" placeholder="Search tags" x-model="newChatTagSearch" />
+              </label>
+              <div class="chat-scope-tag-list">
+                <template x-for="facet in filteredNewChatTags" :key="facet.tag">
+                  <button
+                    class="chat-scope-tag-row"
+                    type="button"
+                    :aria-pressed="isNewChatTagSelected(facet.tag).toString()"
+                    @click="toggleNewChatTag(facet.tag)"
+                  >
+                    <span class="chat-scope-checkbox" :class="{ checked: isNewChatTagSelected(facet.tag) }">
+                      <svg aria-hidden="true" class="citeloom-icon" x-show="isNewChatTagSelected(facet.tag)"><use href="./assets/images/citeloom-icons.svg#citeloom-check"></use></svg>
+                    </span>
+                    <span x-text="facet.tag"></span>
+                    <small x-text="facet.count"></small>
+                  </button>
+                </template>
+                <p class="chat-scope-empty" x-show="!newChatCatalogLoading &amp;&amp; filteredNewChatTags.length === 0">No tags match this search.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="chat-scope-card" :class="{ active: newChatScopeMode === 'documents' }">
             <button
-              role="tab"
+              class="chat-scope-card-trigger"
               type="button"
-              :aria-selected="(newChatScopeMode === 'documents').toString()"
-              :class="{ active: newChatScopeMode === 'documents' }"
+              role="radio"
+              :aria-checked="(newChatScopeMode === 'documents').toString()"
+              :aria-expanded="(newChatScopeMode === 'documents').toString()"
+              aria-controls="new-chat-document-options"
               @click="setNewChatScopeMode('documents')"
-            >Documents</button>
-          </div>
-
-          <div class="chat-source-options" x-show="newChatScopeMode !== 'documents'">
-            <label class="chat-source-search">
-              <span class="visually-hidden">Search tags</span>
-              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-search"></use></svg>
-              <input type="search" placeholder="Search tags" x-model="newChatTagSearch" />
-            </label>
-            <div class="chat-source-option-list">
-              <template x-for="facet in filteredNewChatTags" :key="facet.tag">
+            >
+              <span class="chat-scope-radio" aria-hidden="true"></span>
+              <svg aria-hidden="true" class="citeloom-icon chat-scope-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-search"></use></svg>
+              <span class="chat-scope-card-copy">
+                <strong>Specific documents</strong>
+                <small>Search and choose individual files</small>
+              </span>
+              <svg aria-hidden="true" class="citeloom-icon chat-scope-caret"><use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use></svg>
+            </button>
+            <div class="chat-scope-details" id="new-chat-document-options" x-show="newChatScopeMode === 'documents'">
+              <label class="chat-scope-search">
+                <span class="visually-hidden">Search documents</span>
+                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-search"></use></svg>
+                <input
+                  type="search"
+                  placeholder="Search documents"
+                  x-model="newChatDocumentSearch"
+                  @input.debounce.250ms="loadNewChatDocumentOptions()"
+                />
+              </label>
+              <div class="chat-scope-filters" aria-label="Filter documents by tag">
                 <button
-                  class="chat-source-option"
                   type="button"
-                  :aria-pressed="isNewChatTagSelected(facet.tag).toString()"
-                  @click="toggleNewChatTag(facet.tag)"
-                >
-                  <span class="chat-source-checkbox" :class="{ checked: isNewChatTagSelected(facet.tag) }">
-                    <svg aria-hidden="true" class="citeloom-icon" x-show="isNewChatTagSelected(facet.tag)"><use href="./assets/images/citeloom-icons.svg#citeloom-check"></use></svg>
-                  </span>
-                  <span x-text="facet.tag"></span>
-                  <small x-text="facet.count"></small>
-                </button>
-              </template>
-              <p class="chat-source-empty" x-show="!newChatCatalogLoading &amp;&amp; filteredNewChatTags.length === 0">No tags match this search.</p>
+                  :class="{ active: newChatDocumentTag === '' }"
+                  :aria-pressed="(newChatDocumentTag === '').toString()"
+                  @click="setNewChatDocumentTag('')"
+                >All</button>
+                <template x-for="facet in newChatTagOptions" :key="facet.tag">
+                  <button
+                    type="button"
+                    :class="{ active: newChatDocumentTag === facet.tag }"
+                    :aria-pressed="(newChatDocumentTag === facet.tag).toString()"
+                    @click="setNewChatDocumentTag(facet.tag)"
+                  >
+                    <span x-text="facet.tag"></span>
+                    <small x-text="facet.count"></small>
+                  </button>
+                </template>
+              </div>
+              <div class="chat-scope-bulk-actions">
+                <button type="button" :disabled="newChatDocumentOptions.length === 0" @click="selectNewChatDocumentOptions()">Select shown</button>
+                <button type="button" x-show="newChatSelectedDocuments.length > 0" @click="clearNewChatDocuments()">Clear</button>
+              </div>
+              <div class="chat-scope-document-list">
+                <template x-for="document in newChatDocumentOptions" :key="document.sourceFile">
+                  <button
+                    class="chat-scope-document-row"
+                    type="button"
+                    :aria-pressed="isNewChatDocumentSelected(document.sourceFile).toString()"
+                    :title="document.sourceFile"
+                    @click="toggleNewChatDocument(document)"
+                  >
+                    <span class="chat-scope-checkbox" :class="{ checked: isNewChatDocumentSelected(document.sourceFile) }">
+                      <svg aria-hidden="true" class="citeloom-icon" x-show="isNewChatDocumentSelected(document.sourceFile)"><use href="./assets/images/citeloom-icons.svg#citeloom-check"></use></svg>
+                    </span>
+                    <svg aria-hidden="true" class="citeloom-icon chat-scope-document-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
+                    <span class="truncate" x-text="sourceTitle(document.sourceFile)"></span>
+                    <span class="chat-scope-document-tags">
+                      <template x-for="tag in newChatDocumentTags(document)" :key="tag">
+                        <small x-text="tag"></small>
+                      </template>
+                    </span>
+                  </button>
+                </template>
+                <p class="chat-scope-empty" x-show="!newChatCatalogLoading &amp;&amp; newChatDocumentOptions.length === 0">No documents match these filters.</p>
+                <button
+                  class="chat-scope-load-more"
+                  type="button"
+                  x-show="newChatCanLoadMoreDocuments"
+                  :disabled="newChatCatalogLoading"
+                  @click="loadNewChatDocumentOptions({ append: true })"
+                >Load more documents</button>
+              </div>
             </div>
           </div>
+        </div>
 
-          <div class="chat-source-options" x-show="newChatScopeMode === 'documents'">
-            <label class="chat-source-search">
-              <span class="visually-hidden">Search documents</span>
-              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-search"></use></svg>
-              <input
-                type="search"
-                placeholder="Search documents"
-                x-model="newChatDocumentSearch"
-                @input.debounce.250ms="loadNewChatDocumentOptions()"
-              />
-            </label>
-            <div class="chat-source-option-list">
-              <template x-for="document in newChatDocumentOptions" :key="document.sourceFile">
-                <button
-                  class="chat-source-option document"
-                  type="button"
-                  :aria-pressed="isNewChatDocumentSelected(document.sourceFile).toString()"
-                  :title="document.sourceFile"
-                  @click="toggleNewChatDocument(document)"
-                >
-                  <span class="chat-source-checkbox" :class="{ checked: isNewChatDocumentSelected(document.sourceFile) }">
-                    <svg aria-hidden="true" class="citeloom-icon" x-show="isNewChatDocumentSelected(document.sourceFile)"><use href="./assets/images/citeloom-icons.svg#citeloom-check"></use></svg>
-                  </span>
-                  <span x-text="sourceTitle(document.sourceFile)"></span>
-                </button>
-              </template>
-              <p class="chat-source-empty" x-show="!newChatCatalogLoading &amp;&amp; newChatDocumentOptions.length === 0">No documents match this search.</p>
-              <button
-                class="chat-source-load-more"
-                type="button"
-                x-show="newChatCanLoadMoreDocuments"
-                :disabled="newChatCatalogLoading"
-                @click="loadNewChatDocumentOptions({ append: true })"
-              >Load more</button>
-            </div>
-          </div>
+        <section class="chat-scope-summary" aria-live="polite">
+          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use></svg>
+          <span>
+            <strong x-text="newChatScopeSummaryTitle"></strong>
+            <small x-text="newChatScopeSummaryDetail"></small>
+          </span>
         </section>
 
-        <section class="chat-included-documents" aria-label="Included documents">
-          <header>
-            <h2>Included documents</h2>
-          </header>
-          <label class="chat-source-search included">
-            <span class="visually-hidden">Search included documents</span>
-            <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-search"></use></svg>
-            <input
-              type="search"
-              placeholder="Search included documents"
-              x-model="newChatIncludedSearch"
-              @input.debounce.250ms="newChatScopeMode === 'documents' || loadNewChatPreview()"
-            />
-          </label>
-          <div class="chat-included-list">
+        <button
+          class="chat-scope-review-toggle"
+          type="button"
+          :disabled="newChatIncludedDocuments.length === 0"
+          :aria-expanded="newChatReviewOpen.toString()"
+          aria-controls="new-chat-included-documents"
+          @click="newChatReviewOpen = !newChatReviewOpen"
+        >
+          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg>
+          <span x-text="newChatReviewOpen ? 'Hide included documents' : 'Review included documents'"></span>
+        </button>
+        <div class="chat-scope-review" id="new-chat-included-documents" x-show="newChatReviewOpen">
+          <div class="chat-scope-document-list">
             <template x-for="document in newChatIncludedDocuments" :key="document.sourceFile">
-              <div class="chat-included-row">
-                <span class="chat-source-checkbox checked" aria-hidden="true">
-                  <svg class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-check"></use></svg>
-                </span>
-                <svg aria-hidden="true" class="citeloom-icon chat-included-document-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
-                <span class="truncate chat-included-name" :title="document.sourceFile" x-text="sourceTitle(document.sourceFile)"></span>
-                <span class="chat-included-tags">
+              <div class="chat-scope-document-row review">
+                <svg aria-hidden="true" class="citeloom-icon chat-scope-document-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
+                <span class="truncate" :title="document.sourceFile" x-text="sourceTitle(document.sourceFile)"></span>
+                <span class="chat-scope-document-tags">
                   <template x-for="tag in newChatDocumentTags(document)" :key="tag">
                     <small x-text="tag"></small>
                   </template>
                 </span>
                 <button
-                  class="chat-included-remove"
+                  class="chat-scope-remove"
                   type="button"
                   x-show="newChatScopeMode === 'documents'"
                   :aria-label="`Remove ${sourceTitle(document.sourceFile)}`"
@@ -770,25 +834,16 @@
                 </button>
               </div>
             </template>
-            <p class="chat-source-empty included" x-show="!newChatPreviewLoading &amp;&amp; newChatIncludedDocuments.length === 0">
-              <span x-show="newChatScopeMode === 'tags'">Select at least one tag.</span>
-              <span x-show="newChatScopeMode === 'documents'">Select at least one document.</span>
-              <span x-show="newChatScopeMode === 'all'">No indexed documents are available.</span>
-            </p>
             <button
-              class="chat-source-load-more"
+              class="chat-scope-load-more"
               type="button"
               x-show="newChatCanLoadMorePreview"
               :disabled="newChatPreviewLoading"
               @click="loadNewChatPreview({ append: true })"
-            >Load more</button>
+            >Load more included documents</button>
           </div>
-          <footer>
-            <strong x-text="`${newChatIncludedTotal} ${newChatIncludedTotal === 1 ? 'document' : 'documents'} included`"></strong>
-            <button type="button" x-show="newChatScopeMode !== 'all'" @click="clearNewChatSelection()">Clear selection</button>
-          </footer>
-        </section>
-      </div>
+        </div>
+      </section>
 
       <p class="chat-modal-error" role="alert" x-show="newChatErrorMessage !== ''" x-text="newChatErrorMessage"></p>
 

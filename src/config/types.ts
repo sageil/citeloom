@@ -53,6 +53,7 @@ export interface LanguageInferenceConfig extends ProviderRuntimeConfig {
   adapter: LanguageModelAdapter;
   contextCapacityTokens: number;
   model: string;
+  sendReasoningOptions: boolean;
   thinkingMode: LanguageThinkingMode;
   timeoutMs: number;
 }
@@ -278,7 +279,6 @@ export interface RetrievalConfig {
   candidateK: number;
   chatTemperature: number;
   fusion: RankFusionConfig;
-  generationSeedMode: "random" | "stable";
   mode: RetrievalMode;
   queryExpansionTemperature: number;
   queryExpansions: number;
@@ -339,7 +339,6 @@ export interface RuntimeSettings {
   expansionQueryWeight: number;
   findSourcesPassagesPerDocument: number;
   findSourcesResults: number;
-  generationSeedMode: "random" | "stable";
   lexicalWeight: number;
   maxAttempts: number;
   maxDocumentMegabytes: number;

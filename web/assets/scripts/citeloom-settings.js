@@ -549,6 +549,10 @@ function readProviderConfiguration(value, adapterOptions) {
       configuration.maximumParallelRequests,
     ),
     name: readNullableNonEmptyString(configuration.name, "provider name"),
+    sendReasoningOptions: readBoolean(
+      configuration.sendReasoningOptions,
+      "provider reasoning control state",
+    ),
     thinkingMode: readEnum(
       configuration.thinkingMode,
       thinkingModes,
@@ -2197,7 +2201,7 @@ export function registerPage(alpine) {
       }
       const descriptions = {
         Docling: "Choose how Docling reads and converts uploaded documents.",
-        "Answers and citation checks": "Choose answer limits and how CiteLoom reports citation support.",
+        "Hughes Hallucination Evaluation Model": "Choose answer limits and how CiteLoom reports citation support.",
         "Document processing": "Choose upload limits, processing time, and how many documents CiteLoom handles at once.",
         "Search and answers": "Choose how widely CiteLoom searches and how much source material it can use in an answer.",
         "Embedding model": "Choose how CiteLoom converts document content and questions into representations used for semantic search.",
@@ -2498,6 +2502,15 @@ export function registerPage(alpine) {
         ?? "disabled";
     },
 
+    featureSendReasoningOptions(capability) {
+      if (!this.capabilitySupportsThinking(capability)) {
+        return false;
+      }
+      return this.featureConnection(capability)
+        ?.configuration.sendReasoningOptions
+        ?? true;
+    },
+
     featureDefaultContextCapacityTokens(capability) {
       if (!this.capabilityHasModelContext(capability)) {
         return null;
@@ -2719,6 +2732,18 @@ export function registerPage(alpine) {
     providerThinkingMode() {
       return this.selectedProviderConnection?.configuration.thinkingMode
         ?? "disabled";
+    },
+
+    providerSendReasoningOptions() {
+      return this.selectedProviderConnection
+        ?.configuration.sendReasoningOptions
+        ?? true;
+    },
+
+    writeProviderSendReasoningOptions(value) {
+      this.updateSelectedProviderConfiguration((configuration) => {
+        configuration.sendReasoningOptions = value === true;
+      });
     },
 
     writeProviderThinkingMode(value) {

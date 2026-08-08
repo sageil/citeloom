@@ -74,6 +74,24 @@ describe("provider profiles", () => {
     expect(parsed.routing.answer).toBe("database-provider");
   });
 
+  it("defaults provider reasoning controls to enabled at the settings boundary", () => {
+    const providers = createTestProviderSettings();
+    const {
+      sendReasoningOptions: _sendReasoningOptions,
+      ...connectionWithoutReasoningControl
+    } = providers.connections.lmstudio;
+
+    const parsed = parseProviderSettings({
+      ...providers,
+      connections: {
+        ...providers.connections,
+        lmstudio: connectionWithoutReasoningControl,
+      },
+    });
+
+    expect(parsed.connections.lmstudio?.sendReasoningOptions).toBe(true);
+  });
+
   it("allows an unused catalog provider to have no connection", () => {
     const providers = createTestProviderSettings();
     const { openrouter: _unused, ...connections } = providers.connections;
@@ -362,6 +380,32 @@ describe("provider profiles", () => {
     expect(config.inference.chat.thinkingMode).toBe("enabled");
     expect(queryExpansion.thinkingMode).toBe("enabled");
     expect(config.inference.indexing.thinkingMode).toBe("disabled");
+  });
+
+  it("applies the provider reasoning-control policy to every language feature", () => {
+    const runtimeSettings = createTestRuntimeSettings();
+    const providers = createTestProviderSettings();
+    providers.connections.lmstudio.sendReasoningOptions = false;
+    const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
+
+    const config = buildAppConfig(
+      startup.database,
+      runtimeSettings,
+      1,
+      providers,
+      startup.doclingServices,
+      startup.sourceContent,
+      TEST_EMBEDDING_INPUT_FORMAT,
+    );
+    const queryExpansion = config.inference.queryExpansion;
+    if (queryExpansion === null) {
+      throw new Error("Expected query expansion to be configured.");
+    }
+
+    expect(config.inference.answer.sendReasoningOptions).toBe(false);
+    expect(config.inference.chat.sendReasoningOptions).toBe(false);
+    expect(queryExpansion.sendReasoningOptions).toBe(false);
+    expect(config.inference.indexing.sendReasoningOptions).toBe(false);
   });
 
   it("switches text-to-speech by route while retaining both connections", () => {

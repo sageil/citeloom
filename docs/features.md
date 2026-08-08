@@ -129,7 +129,6 @@ Administrators can also configure how many matching sections are reviewed, how m
 
 Optional Query Expansion creates up to four alternative searches for a question.
 Optional search ranking reorders the strongest candidates from any search method with a dedicated relevance model.
-Stable seed mode asks compatible providers for repeatable Query Expansion results and answer text, while random mode omits those deterministic seeds.
 
 Document table-of-contents routing can use stored headings as an additional way to reach relevant branches in long documents.
 Headings improve routing but are never answer evidence or citations.

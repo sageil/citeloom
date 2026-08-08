@@ -119,6 +119,7 @@ function buildConfig(model: string): LanguageInferenceConfig {
     model,
     providerId: "ollama",
     runtimeName: "Ollama",
+    sendReasoningOptions: true,
     thinkingMode: "disabled",
     timeoutMs: 10_000,
   };

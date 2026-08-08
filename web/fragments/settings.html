@@ -302,13 +302,13 @@
               </label>
               <label class="form-field" x-cloak x-show="capabilitySupportsThinking(selectedFeatureCapability)">
                 <span>Thinking mode for this feature</span>
-                <select :value="featureThinkingModeOverride(selectedFeatureCapability) ?? ''" @change="writeFeatureThinkingModeOverride(selectedFeatureCapability, $event.target.value)">
+                <select :disabled="!featureSendReasoningOptions(selectedFeatureCapability)" :value="featureThinkingModeOverride(selectedFeatureCapability) ?? ''" @change="writeFeatureThinkingModeOverride(selectedFeatureCapability, $event.target.value)">
                   <option value="">Inherit provider setting</option>
                   <option value="disabled">Disabled</option>
                   <option value="enabled">Enabled</option>
                   <option value="auto">Provider API default</option>
                 </select>
-                <small x-text="featureThinkingModeOverride(selectedFeatureCapability) === null ? `Uses the provider setting: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.` : `Uses this feature setting: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.`"></small>
+                <small x-text="!featureSendReasoningOptions(selectedFeatureCapability) ? 'The selected provider omits reasoning controls.' : (featureThinkingModeOverride(selectedFeatureCapability) === null ? `Uses the provider setting: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.` : `Uses this feature setting: ${featureEffectiveThinkingMode(selectedFeatureCapability)}.`)"></small>
               </label>
               <template x-if="selectedFeatureCapability === 'textToSpeech'">
                 <label class="form-field">
@@ -547,14 +547,23 @@
                 <input max="16" min="1" step="1" type="number" :disabled="providerAdaptiveContextEnabled()" :value="providerMaximumParallelRequests() ?? 1" @change="writeProviderMaximumParallelRequests($event.target.value)" />
                 <small>Higher values may reduce waiting when the provider has spare capacity, but they increase load and can cause rate-limit errors. This does not improve answer quality.</small>
               </label>
+              <div class="form-field" x-cloak x-show="providerSupportsThinking()">
+                <span>Send reasoning controls</span>
+                <label class="toggle-control settings-toggle-control">
+                  <input type="checkbox" :checked="providerSendReasoningOptions()" @change="writeProviderSendReasoningOptions($event.target.checked)" />
+                  <span class="toggle-track" aria-hidden="true"><span></span></span>
+                  <span><strong x-text="providerSendReasoningOptions() ? 'Enabled' : 'Off'"></strong></span>
+                </label>
+                <small>When off, CiteLoom omits reasoning controls and uses the provider's model defaults.</small>
+              </div>
               <label class="form-field" x-cloak x-show="providerSupportsThinking()">
                 <span>Default thinking mode</span>
-                <select :value="providerThinkingMode()" @change="writeProviderThinkingMode($event.target.value)">
+                <select :disabled="!providerSendReasoningOptions()" :value="providerThinkingMode()" @change="writeProviderThinkingMode($event.target.value)">
                   <option value="disabled">Disabled</option>
                   <option value="enabled">Enabled</option>
                   <option value="auto">Provider API default</option>
                 </select>
-                <small>Used for this provider's language features unless a feature has its own setting. Disabled is the default.</small>
+                <small>Used for this provider's language features unless a feature has its own setting.</small>
               </label>
               <div class="form-field" x-cloak x-show="selectedProviderSupportsAdaptiveContext()">
                 <span>Automatic context size</span>
@@ -619,6 +628,10 @@
                 <strong x-text="providerAdaptiveContextEnabled() ? 'Enabled' : 'Off'"></strong>
               </div>
               <div x-cloak x-show="providerSupportsThinking()">
+                <span>Reasoning controls</span>
+                <strong x-text="providerSendReasoningOptions() ? 'Enabled' : 'Off'"></strong>
+              </div>
+              <div x-cloak x-show="providerSupportsThinking() && providerSendReasoningOptions()">
                 <span>Thinking mode</span>
                 <strong x-text="providerThinkingMode()"></strong>
               </div>

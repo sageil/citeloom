@@ -912,13 +912,9 @@ export function createAnswerModelOutput(
 }
 
 function buildAnswerSamplingSettings(settings: AppliedGenerationSettings): {
-  seed?: number;
   temperature: number;
 } {
-  if (settings.seed === null) {
-    return { temperature: settings.temperature };
-  }
-  return { seed: settings.seed, temperature: settings.temperature };
+  return { temperature: settings.temperature };
 }
 
 function requireCompletedAnswerGeneration(finishReason: string | null): void {

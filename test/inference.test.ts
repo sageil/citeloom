@@ -314,7 +314,6 @@ describe("evaluation question generation", () => {
         domain: "finance",
         element: buildTextElement(),
         excludedQuestions: ["How much did revenue increase?"],
-        seed: 42,
       },
     );
 
@@ -442,13 +441,13 @@ describe("query expansion boundary", () => {
       2,
       new TaskLimiter(1),
       new AbortController().signal,
-      { seed: 42, temperature: 0 },
+      { temperature: 0 },
     );
 
     expect(expansions).toEqual([]);
   });
 
-  it("applies deterministic generation settings for prepared evaluations", async () => {
+  it("applies configured generation temperature for prepared evaluations", async () => {
     const expansionModel = new MockLanguageModelV4({
       doGenerate: buildTextGeneration(JSON.stringify({
         queries: ["fixed expansion"],
@@ -461,11 +460,11 @@ describe("query expansion boundary", () => {
       1,
       new TaskLimiter(1),
       new AbortController().signal,
-      { seed: 42, temperature: 0 },
+      { temperature: 0 },
     );
 
     expect(expansions).toEqual(["fixed expansion"]);
-    expect(expansionModel.doGenerateCalls[0]?.seed).toBe(42);
+    expect(expansionModel.doGenerateCalls[0]?.seed).toBeUndefined();
     expect(expansionModel.doGenerateCalls[0]?.temperature).toBe(0);
   });
 });
@@ -692,6 +691,39 @@ describe("createInferenceModelRegistry", () => {
     });
   });
 
+  it("omits reasoning controls when the provider configuration disables them", async () => {
+    let requestBody: unknown = null;
+    const fetchMock = vi.fn((_input: string | URL | Request, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body));
+      return Promise.resolve(createOpenAIChatResponse("Hello"));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const runtimeSettings = createTestRuntimeSettings();
+    const startup = readEqualWeightTestConfig({ runtime: runtimeSettings });
+    const providers = createTestProviderSettings();
+    providers.connections.lmstudio.sendReasoningOptions = false;
+    providers.connections.lmstudio.thinkingMode = "disabled";
+    const config = buildAppConfig(
+      startup.database,
+      runtimeSettings,
+      1,
+      providers,
+      startup.doclingServices,
+      startup.sourceContent,
+      TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
+    );
+    const models = createInferenceModelRegistry(config);
+
+    await generateText({
+      maxRetries: 0,
+      model: models.answer,
+      prompt: "Hello",
+    });
+
+    expect(requestBody).not.toHaveProperty("reasoning");
+    expect(requestBody).not.toHaveProperty("reasoning_effort");
+  });
+
   it("uses DeepSeek's OpenAI-compatible request contract", async () => {
     const requestBodies: unknown[] = [];
     const fetchMock = vi.fn((input: string | URL | Request, init?: RequestInit) => {
@@ -755,7 +787,6 @@ describe("createInferenceModelRegistry", () => {
         )),
       }),
       prompt: "Return an uncited response.",
-      seed: 42,
     });
 
     expect(result.output).toEqual({
@@ -783,7 +814,6 @@ describe("createInferenceModelRegistry", () => {
     expect(JSON.stringify(requestBodies[0])).toContain("evidenceRefs");
     expect(JSON.stringify(requestBodies[0])).toContain("EVID_A");
     expect(requestBodies[0]).not.toHaveProperty("reasoning_effort");
-    expect(requestBodies[0]).not.toHaveProperty("seed");
   });
 
   it("uses prompted JSON for OpenRouter Answer and Chat streaming", async () => {
@@ -914,7 +944,7 @@ describe("createInferenceModelRegistry", () => {
       1,
       new TaskLimiter(1),
       new AbortController().signal,
-      { seed: 42, temperature: 0 },
+      { temperature: 0 },
     );
 
     expect(result.output).toEqual({ description: "Description" });
@@ -1024,7 +1054,7 @@ describe("createInferenceModelRegistry", () => {
       [buildRetrievedElement("a", "b")],
       new TaskLimiter(1),
       new AbortController().signal,
-      { seed: 1, temperature: 0 },
+      { temperature: 0 },
       undefined,
       { receiveAnswerContent: (content) => previews.push(content) },
     );
@@ -1085,7 +1115,7 @@ describe("createInferenceModelRegistry", () => {
       [buildRetrievedElement("a", "b")],
       new TaskLimiter(1),
       new AbortController().signal,
-      { seed: 1, temperature: 0 },
+      { temperature: 0 },
     );
 
     expect(readPublishedDirectAnswerContent(result.answerDocument)).toBe(
@@ -1539,7 +1569,7 @@ describe("buildAnswerContent", () => {
 });
 
 describe("answer generation", () => {
-  const generationSettings = { seed: 42, temperature: 0 };
+  const generationSettings = { temperature: 0 };
 
   it("generates an uncited response when retrieval returns no evidence", async () => {
     const answerModel = buildAnswerModel({
@@ -1621,6 +1651,7 @@ describe("answer generation", () => {
       type: "json",
     });
     expect(answerModel.doGenerateCalls[0]?.maxOutputTokens).toBeUndefined();
+    expect(answerModel.doGenerateCalls[0]?.seed).toBeUndefined();
   });
 
   it("reports provider length exhaustion for an incomplete structured response", async () => {

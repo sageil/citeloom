@@ -173,6 +173,7 @@ describe("database administrator bootstrap", () => {
           contextCapacityTokens: 256_000,
           model: "mistral-large-2512",
         },
+        sendReasoningOptions: false,
         speechToText: {
           model: "voxtral-mini-latest",
         },

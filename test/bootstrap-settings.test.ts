@@ -18,4 +18,17 @@ describe("application settings bootstrap", () => {
       '"application_settings"."settings"#>\'{runtime,answerMaximumOutputTokens}\'\n    IS NOT NULL',
     );
   });
+
+  it("configures reasoning controls per provider", () => {
+    const connectionsStart = bootstrapSql.indexOf('"connections": {');
+    const mistralStart = bootstrapSql.indexOf('"mistral": {', connectionsStart);
+    const ollamaStart = bootstrapSql.indexOf('"ollama": {', mistralStart);
+    const mistralConnection = bootstrapSql.slice(mistralStart, ollamaStart);
+
+    expect(connectionsStart).toBeGreaterThan(-1);
+    expect(mistralStart).toBeGreaterThan(connectionsStart);
+    expect(ollamaStart).toBeGreaterThan(mistralStart);
+    expect(mistralConnection).toContain('"sendReasoningOptions": false');
+    expect(bootstrapSql.match(/"sendReasoningOptions": true/gu)).toHaveLength(12);
+  });
 });

@@ -14,6 +14,7 @@ const config: LanguageInferenceConfig = {
   contextCapacityTokens: 32_768,
   model: "answer-model",
   runtimeName: "LM Studio",
+  sendReasoningOptions: true,
   thinkingMode: "disabled",
   timeoutMs: 1_000,
 };

@@ -301,16 +301,9 @@ At `0`, CiteLoom searches only the original wording and does not ask a model to 
 Values from `1` through `4` allow additional search wording and should be enabled only after a controlled comparison shows better search and answer quality on the intended documents.
 Query Expansion, Ask, and Chat each use their own temperature setting.
 `queryExpansionTemperature`, `answerTemperature`, and `chatTemperature` default to `0` for the most repeatable provider behavior.
-`generationSeedMode` defaults to `stable`.
-In this mode, CiteLoom derives separate nonnegative seeds for Query Expansion and answer generation from the normalized original question and the sorted IDs of the selected documents.
-Set the mode to `random` to omit those seeds and let the provider choose the sampling randomness.
-
-Stable mode sends the same temperature and seed for the same question and document scope.
-Exact text can still vary when a provider ignores seeds or uses nondeterministic model operations.
-Changing the document scope also changes the derived seeds.
 When search ranking scores are equal, CiteLoom keeps a consistent order.
 
-Every new research turn saves its generated queries, ordered source results, temperatures, and seeds in a retrieval trace.
+Every new research turn saves its generated queries, ordered source results, and temperatures in a retrieval trace.
 Older turns created before traces were added remain readable but may not have one.
 Asking the same question again creates a new run that can reflect changed documents, settings, models, or provider behavior.
 Opening an existing turn reads the saved answer, citations, run settings, and retrieval trace without running the question again.

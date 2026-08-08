@@ -33,7 +33,7 @@ describe("application search method harness", () => {
         new TaskLimiter(1),
         null,
         new AbortController().signal,
-        { seed: 1, temperature: 0 },
+        { temperature: 0 },
       );
 
       expect(embedding.doEmbedCalls).toHaveLength(

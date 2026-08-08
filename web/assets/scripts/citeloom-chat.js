@@ -73,6 +73,23 @@ function appendUniqueNewChatDocuments(current, additions) {
   return documents;
 }
 
+async function fetchNewChatDocumentCatalog(options) {
+  const parameters = new URLSearchParams({
+    collection: options.collection,
+    page: String(options.page),
+    pageSize: "100",
+    search: options.search,
+    sort: "name-asc",
+    status: "queryable",
+    tag: options.tag,
+  });
+  const response = await fetch(`/api/documents?${parameters.toString()}`, {
+    headers: { accept: "application/json" },
+    signal: options.signal,
+  });
+  return readJsonResponse(response, options.label, readDocumentCatalog);
+}
+
 function createPendingChatRun(conversation, requestId, content) {
   let sequence = 1;
   for (const run of conversation.runs) {
@@ -280,15 +297,16 @@ export function registerPage(alpine) {
     newChatDocumentOptions: [],
     newChatDocumentPage: 1,
     newChatDocumentSearch: "",
+    newChatDocumentTag: "",
     newChatDocumentTotal: 0,
     newChatErrorMessage: "",
-    newChatIncludedSearch: "",
     newChatOpen: false,
     newChatPreviewController: null,
     newChatPreviewDocuments: [],
     newChatPreviewLoading: false,
     newChatPreviewPage: 1,
     newChatPreviewTotal: 0,
+    newChatReviewOpen: false,
     newChatScopeMode: "all",
     newChatSelectedDocuments: [],
     newChatSelectedTags: [],
@@ -356,18 +374,10 @@ export function registerPage(alpine) {
     },
 
     get newChatIncludedDocuments() {
-      if (this.newChatScopeMode !== "documents") {
-        return this.newChatPreviewDocuments;
-      }
-      const query = this.newChatIncludedSearch.trim().toLocaleLowerCase();
-      if (query === "") {
+      if (this.newChatScopeMode === "documents") {
         return this.newChatSelectedDocuments;
       }
-      return this.newChatSelectedDocuments.filter((document) => {
-        return this.sourceTitle(document.sourceFile)
-          .toLocaleLowerCase()
-          .includes(query);
-      });
+      return this.newChatPreviewDocuments;
     },
 
     get newChatIncludedTotal() {
@@ -375,6 +385,62 @@ export function registerPage(alpine) {
         return this.newChatSelectedDocuments.length;
       }
       return this.newChatPreviewTotal;
+    },
+
+    get newChatScopeSummaryTitle() {
+      const count = this.newChatIncludedTotal;
+      const documentLabel = count === 1 ? "document" : "documents";
+      if (this.newChatScopeMode === "tags") {
+        if (this.newChatSelectedTags.length === 0) {
+          return "Select one or more tags";
+        }
+        const tagLabel = this.newChatSelectedTags.length === 1
+          ? "tag"
+          : "tags";
+        return `${count} ${documentLabel} match the selected ${tagLabel}`;
+      }
+      if (this.newChatScopeMode === "documents") {
+        if (count === 0) {
+          return "Select one or more documents";
+        }
+        return `${count} ${documentLabel} selected`;
+      }
+      return `${count} ${documentLabel} included`;
+    },
+
+    get newChatScopeSummaryDetail() {
+      if (this.newChatScopeMode === "tags") {
+        if (this.newChatSelectedTags.length === 0) {
+          return "Documents matching any selected tag will be included.";
+        }
+        return this.newChatSelectedTags.join(" • ");
+      }
+      if (this.newChatScopeMode === "documents") {
+        if (this.newChatSelectedDocuments.length === 0) {
+          return "Search and choose individual files.";
+        }
+        const tagCounts = new Map();
+        let untaggedCount = 0;
+        for (const document of this.newChatSelectedDocuments) {
+          if (document.tags.length === 0) {
+            untaggedCount += 1;
+            continue;
+          }
+          for (const tag of document.tags) {
+            const currentCount = tagCounts.get(tag) ?? 0;
+            tagCounts.set(tag, currentCount + 1);
+          }
+        }
+        const summaryParts = [];
+        for (const [tag, count] of tagCounts) {
+          summaryParts.push(`${tag} ${count}`);
+        }
+        if (untaggedCount > 0) {
+          summaryParts.push(`untagged ${untaggedCount}`);
+        }
+        return summaryParts.join(" • ");
+      }
+      return "All queryable documents";
     },
 
     async initialize() {
@@ -828,14 +894,15 @@ export function registerPage(alpine) {
       this.newChatDocumentOptions = [];
       this.newChatDocumentPage = 1;
       this.newChatDocumentSearch = "";
+      this.newChatDocumentTag = "";
       this.newChatDocumentTotal = 0;
       this.newChatErrorMessage = "";
-      this.newChatIncludedSearch = "";
       this.newChatPreviewController = null;
       this.newChatPreviewDocuments = [];
       this.newChatPreviewLoading = false;
       this.newChatPreviewPage = 1;
       this.newChatPreviewTotal = 0;
+      this.newChatReviewOpen = false;
       this.newChatScopeMode = "all";
       this.newChatSelectedDocuments = [];
       this.newChatSelectedTags = [];
@@ -850,8 +917,8 @@ export function registerPage(alpine) {
         return;
       }
       this.newChatScopeMode = mode;
-      this.newChatIncludedSearch = "";
       this.newChatErrorMessage = "";
+      this.newChatReviewOpen = false;
       if (mode === "documents") {
         this.newChatPreviewController?.abort();
         this.newChatPreviewDocuments = [];
@@ -875,8 +942,14 @@ export function registerPage(alpine) {
       } else {
         this.newChatSelectedTags = [...this.newChatSelectedTags, tag].sort();
       }
-      this.newChatIncludedSearch = "";
       this.newChatErrorMessage = "";
+      void this.loadNewChatPreview();
+    },
+
+    clearNewChatTags() {
+      this.newChatSelectedTags = [];
+      this.newChatErrorMessage = "";
+      this.newChatReviewOpen = false;
       void this.loadNewChatPreview();
     },
 
@@ -903,19 +976,41 @@ export function registerPage(alpine) {
       this.newChatErrorMessage = "";
     },
 
+    selectNewChatDocumentOptions() {
+      const selectedDocuments = appendUniqueNewChatDocuments(
+        this.newChatSelectedDocuments,
+        this.newChatDocumentOptions,
+      );
+      selectedDocuments.sort((left, right) => {
+        return this.sourceTitle(left.sourceFile).localeCompare(
+          this.sourceTitle(right.sourceFile),
+        );
+      });
+      this.newChatSelectedDocuments = selectedDocuments;
+      this.newChatErrorMessage = "";
+    },
+
+    clearNewChatDocuments() {
+      this.newChatSelectedDocuments = [];
+      this.newChatErrorMessage = "";
+      this.newChatReviewOpen = false;
+    },
+
+    setNewChatDocumentTag(tag) {
+      if (this.newChatDocumentTag === tag) {
+        return;
+      }
+      this.newChatDocumentTag = tag;
+      void this.loadNewChatDocumentOptions();
+    },
+
     removeNewChatDocument(sourceFile) {
       this.newChatSelectedDocuments = this.newChatSelectedDocuments.filter(
         (document) => document.sourceFile !== sourceFile,
       );
-    },
-
-    clearNewChatSelection() {
-      this.newChatScopeMode = "all";
-      this.newChatSelectedDocuments = [];
-      this.newChatSelectedTags = [];
-      this.newChatIncludedSearch = "";
-      this.newChatErrorMessage = "";
-      void this.loadNewChatPreview();
+      if (this.newChatSelectedDocuments.length === 0) {
+        this.newChatReviewOpen = false;
+      }
     },
 
     newChatScope() {
@@ -943,25 +1038,16 @@ export function registerPage(alpine) {
       const controller = new AbortController();
       this.newChatCatalogController = controller;
       this.newChatCatalogLoading = true;
-      const parameters = new URLSearchParams({
+      const request = {
         collection: "all",
-        page: String(page),
-        pageSize: "100",
+        label: "Chat documents",
+        page,
         search: this.newChatDocumentSearch.trim(),
-        sort: "name-asc",
-        status: "queryable",
-        tag: "",
-      });
+        signal: controller.signal,
+        tag: this.newChatDocumentTag,
+      };
       try {
-        const response = await fetch(`/api/documents?${parameters.toString()}`, {
-          headers: { accept: "application/json" },
-          signal: controller.signal,
-        });
-        const catalog = await readJsonResponse(
-          response,
-          "Chat documents",
-          readDocumentCatalog,
-        );
+        const catalog = await fetchNewChatDocumentCatalog(request);
         if (controller.signal.aborted) {
           return;
         }
@@ -1012,25 +1098,16 @@ export function registerPage(alpine) {
       const collection = this.newChatScopeMode === "tags"
         ? `tags:${this.newChatSelectedTags.join(",")}`
         : "all";
-      const parameters = new URLSearchParams({
+      const request = {
         collection,
-        page: String(page),
-        pageSize: "100",
-        search: this.newChatIncludedSearch.trim(),
-        sort: "name-asc",
-        status: "queryable",
+        label: "Chat document preview",
+        page,
+        search: "",
+        signal: controller.signal,
         tag: "",
-      });
+      };
       try {
-        const response = await fetch(`/api/documents?${parameters.toString()}`, {
-          headers: { accept: "application/json" },
-          signal: controller.signal,
-        });
-        const catalog = await readJsonResponse(
-          response,
-          "Chat document preview",
-          readDocumentCatalog,
-        );
+        const catalog = await fetchNewChatDocumentCatalog(request);
         if (controller.signal.aborted) {
           return;
         }

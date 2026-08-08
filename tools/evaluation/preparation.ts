@@ -52,7 +52,7 @@ import {
   rerankRetrievedElementsWithResponse,
   type RerankedRetrieval,
 } from "../../src/retrieval/ranking/reranker.js";
-import { prepareRetrievalQueriesWithSeed } from "../../src/retrieval/pipeline.js";
+import { prepareRetrievalQueries } from "../../src/retrieval/pipeline.js";
 import {
   loadRetrievalCandidates,
   queryRetrievalCandidateRankings,
@@ -103,7 +103,6 @@ export interface PreparedCaseInputs {
 export interface EvaluationPreparationExecutor {
   prepareCase: (
     evaluationCase: BenchmarkEvaluationCase,
-    generationSeed: number,
     runTelemetry: RunTelemetry,
   ) => Promise<PreparedCaseInputs>;
   rerank: (
@@ -190,10 +189,6 @@ export async function prepareComparativeEvaluation(
       reportProgress(
         `Preparing fixed inputs for ${evaluationCase.id}: ${evaluationCase.question}`,
       );
-      const generationSeed = createQueryGenerationSeed(
-        provenance.dataset.sha256,
-        evaluationCase.id,
-      );
       const telemetrySink = evaluationConfig.inferenceMetrics.enabled
         ? new DatabaseRunTelemetrySink(runtime.session.database)
         : null;
@@ -208,7 +203,6 @@ export async function prepareComparativeEvaluation(
       try {
         preparedCase = await prepareEvaluationCase(
           evaluationCase,
-          generationSeed,
           modes.available,
           evaluationConfig,
           executor,
@@ -331,15 +325,10 @@ export async function prepareAnswerThresholdCalibration(
       );
       const positiveScope = [...scopeTargets];
       const negativeScope = [...negativeScopeTargets];
-      const generationSeed = createQueryGenerationSeed(
-        provenance.dataset.sha256,
-        evaluationCase.id,
-      );
       reportProgress(`Calibrating answerable scope for ${evaluationCase.id}`);
       const positive = await prepareAnswerThresholdAssessment(
         config,
         evaluationCase,
-        generationSeed,
         positiveScope,
         runtime,
         reportProgress,
@@ -348,7 +337,6 @@ export async function prepareAnswerThresholdCalibration(
       const negative = await prepareAnswerThresholdAssessment(
         config,
         evaluationCase,
-        generationSeed,
         negativeScope,
         runtime,
         reportProgress,
@@ -415,7 +403,6 @@ function assertEvaluationDatasetPathClassification(
 
 export async function prepareEvaluationCasesWithExecutor(
   dataset: BenchmarkEvaluationDataset,
-  provenance: EvaluationProvenance,
   availableModes: EvaluationRetrievalMode[],
   config: AppConfig,
   executor: EvaluationPreparationExecutor,
@@ -423,13 +410,8 @@ export async function prepareEvaluationCasesWithExecutor(
 ): Promise<PreparedEvaluationCase[]> {
   const cases: PreparedEvaluationCase[] = [];
   for (const evaluationCase of dataset.cases) {
-    const generationSeed = createQueryGenerationSeed(
-      provenance.dataset.sha256,
-      evaluationCase.id,
-    );
     cases.push(await prepareEvaluationCase(
       evaluationCase,
-      generationSeed,
       availableModes,
       config,
       executor,
@@ -543,7 +525,6 @@ function createCaseExecutor(
   const documentStore = new SourceDocumentStore(runtime.session.database);
   const prepareCase: EvaluationPreparationExecutor["prepareCase"] = (
     evaluationCase,
-    generationSeed,
     runTelemetry,
   ) => prepareEvaluationCaseInputs(
     config,
@@ -551,7 +532,6 @@ function createCaseExecutor(
     runtime,
     reportProgress,
     evaluationCase,
-    generationSeed,
     runTelemetry,
   );
   const rerank: EvaluationPreparationExecutor["rerank"] = (
@@ -576,7 +556,6 @@ function createCaseExecutor(
 async function prepareAnswerThresholdAssessment(
   config: AppConfig,
   evaluationCase: BenchmarkEvaluationCase,
-  generationSeed: number,
   scopeTargets: ResolvedQueryScopeTarget[],
   runtime: EvaluationRuntime,
   reportProgress: (message: string) => void,
@@ -600,7 +579,6 @@ async function prepareAnswerThresholdAssessment(
     );
     const inputs = await executor.prepareCase(
       evaluationCase,
-      generationSeed,
       runTelemetry,
     );
     validatePreparedQueries(inputs.queries, evaluationCase.id);
@@ -697,10 +675,9 @@ async function prepareEvaluationCaseInputs(
   runtime: EvaluationRuntime,
   reportProgress: (message: string) => void,
   evaluationCase: BenchmarkEvaluationCase,
-  generationSeed: number,
   runTelemetry: RunTelemetry,
 ): Promise<PreparedCaseInputs> {
-  const queries = await prepareRetrievalQueriesWithSeed(
+  const queries = await prepareRetrievalQueries(
     config,
     runtime.models,
     evaluationCase.question,
@@ -708,7 +685,7 @@ async function prepareEvaluationCaseInputs(
     runtime.embeddingScheduler,
     runtime.queryExpansionScheduler,
     passiveAbortSignal,
-    generationSeed,
+    { temperature: config.retrieval.queryExpansionTemperature },
     runTelemetry,
   );
   const rankings = await queryRetrievalCandidateRankings(
@@ -853,7 +830,6 @@ async function hydrateEvaluationCandidates(
 
 async function prepareEvaluationCase(
   evaluationCase: BenchmarkEvaluationCase,
-  generationSeed: number,
   availableModes: EvaluationRetrievalMode[],
   config: AppConfig,
   executor: EvaluationPreparationExecutor,
@@ -862,7 +838,6 @@ async function prepareEvaluationCase(
 ): Promise<PreparedEvaluationCase> {
   const inputs = await executor.prepareCase(
     evaluationCase,
-    generationSeed,
     runTelemetry,
   );
   validatePreparedQueries(inputs.queries, evaluationCase.id);
@@ -893,7 +868,6 @@ async function prepareEvaluationCase(
     judgments: structuredClone(evaluationCase.judgments),
     metadata: structuredClone(evaluationCase.metadata),
     queries: serializeQueries(inputs.queries),
-    queryGenerationSeed: generationSeed,
     question: evaluationCase.question,
     relevantDocumentIds: [...evaluationCase.relevantDocumentIds],
     relevantElementIds: [...evaluationCase.relevantElementIds],
@@ -1241,9 +1215,4 @@ function readAvailableModes(config: AppConfig): {
     available.push(mode);
   }
   return { available, skipped };
-}
-
-function createQueryGenerationSeed(datasetSha256: string, caseId: string): number {
-  const digest = calculateSha256(`${datasetSha256}:query-expansion:${caseId}`);
-  return Number.parseInt(digest.slice(0, 8), 16) % 2_147_483_647;
 }
