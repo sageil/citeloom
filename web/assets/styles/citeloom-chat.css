@@ -875,7 +875,6 @@
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: 12px;
-  background: rgba(11, 16, 32, 0.99);
   box-shadow: 0 26px 90px rgba(0, 0, 0, 0.5);
 }
 
@@ -1110,7 +1109,6 @@
   gap: 18px;
   padding: 26px;
   overflow-y: auto;
-  background: var(--surface);
   font-family: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
 }
 
@@ -1814,7 +1812,7 @@
     position: sticky;
     bottom: -18px;
     padding: 14px 0 0;
-    background: var(--surface);
+    background: var(--background);
   }
 }
 

@@ -202,47 +202,83 @@
     </div>
 
     <div class="system-health-capacity-snapshot">
-      <h2>Capacity snapshot</h2>
-      <div class="capacity-snapshot-grid">
-        <div class="capacity-snapshot-item">
-          <span aria-hidden="true">
-            <svg class="citeloom-icon">
-              <use href="./assets/images/citeloom-icons.svg#citeloom-queue"></use>
-            </svg>
-          </span>
-          <div>
-            <small>Queue</small>
-            <strong x-text="systemHealth.queueLength">0</strong>
-            <span>active jobs</span>
-          </div>
-        </div>
-        <div class="capacity-snapshot-item">
-          <span aria-hidden="true">
-            <svg class="citeloom-icon">
-              <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
-            </svg>
-          </span>
-          <div>
-            <small>Workers</small>
-            <strong x-text="systemHealth.workerCount">0</strong>
-            <span x-text="systemHealth.workerState">available</span>
-          </div>
-        </div>
-        <template x-for="resource in systemHealth.inference" :key="resource.providerId">
-          <div class="capacity-snapshot-item">
+      <section class="runtime-capacity" aria-labelledby="runtime-capacity-title">
+        <h2 id="runtime-capacity-title">Runtime capacity</h2>
+        <dl class="runtime-capacity-list">
+          <div class="runtime-capacity-item">
             <span aria-hidden="true">
               <svg class="citeloom-icon">
-                <use :href="providerIconHref(resource.providerId)"></use>
+                <use href="./assets/images/citeloom-icons.svg#citeloom-queue"></use>
               </svg>
             </span>
             <div>
-              <small x-text="resource.name"></small>
-              <strong x-text="`${resource.activeSlots}/${resource.capacity}`"></strong>
-              <span>active</span>
+              <dt>Queue</dt>
+              <dd>
+                <strong x-text="systemHealth.queueLength">0</strong>
+                <span>active jobs</span>
+              </dd>
             </div>
           </div>
-        </template>
-      </div>
+          <div class="runtime-capacity-item">
+            <span aria-hidden="true">
+              <svg class="citeloom-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+              </svg>
+            </span>
+            <div>
+              <dt>Workers</dt>
+              <dd>
+                <strong x-text="systemHealth.workerCount">0</strong>
+                <span x-text="systemHealth.workerState">available</span>
+              </dd>
+            </div>
+          </div>
+        </dl>
+      </section>
+
+      <section class="provider-capacity" aria-labelledby="provider-capacity-title">
+        <h2 id="provider-capacity-title">Provider capacity</h2>
+        <div class="provider-capacity-list">
+          <template x-for="resource in visibleProviderCapacity" :key="resource.providerId">
+            <div class="provider-capacity-item">
+              <span aria-hidden="true">
+                <svg class="citeloom-icon">
+                  <use :href="providerIconHref(resource.providerId)"></use>
+                </svg>
+              </span>
+              <strong class="provider-capacity-name" x-text="resource.name"></strong>
+              <span class="provider-capacity-usage">
+                <strong x-text="resource.activeSlots">0</strong>
+                of
+                <strong x-text="resource.capacity">1</strong>
+                slots in use
+              </span>
+            </div>
+          </template>
+          <p
+            class="provider-capacity-empty"
+            x-cloak
+            x-show="systemHealthHasData &amp;&amp; systemHealth.inference.length === 0"
+          >No provider limits configured.</p>
+          <button
+            class="provider-capacity-disclosure"
+            type="button"
+            :aria-expanded="providerCapacityExpanded.toString()"
+            @click="toggleProviderCapacity()"
+            x-cloak
+            x-show="providerCapacityAdditionalCount &gt; 0"
+          >
+            <svg
+              aria-hidden="true"
+              class="citeloom-icon citeloom-small-icon"
+              :class="{ expanded: providerCapacityExpanded }"
+            >
+              <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+            </svg>
+            <span x-text="providerCapacityDisclosureLabel"></span>
+          </button>
+        </div>
+      </section>
     </div>
   </section>
 

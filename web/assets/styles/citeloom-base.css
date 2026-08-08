@@ -295,8 +295,11 @@ textarea:focus-visible,
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: 16px;
-  background: var(--surface-raised);
   box-shadow: 0 30px 100px rgba(0, 0, 0, 0.5);
+}
+
+:is([role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]) {
+  background: var(--background);
 }
 
 .dialog > header {

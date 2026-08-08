@@ -166,9 +166,6 @@
   width: min(520px, 100%);
   padding: 24px;
   overflow: visible;
-  background:
-    radial-gradient(circle at top left, var(--cyan-subtle), transparent 42%),
-    rgba(10, 16, 31, 0.98);
   font-family: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
   animation: citeloom-confirmation-enter 140ms ease-out;
 }

@@ -29,6 +29,7 @@ const telemetryWorkloads = Object.freeze([
   "maintenance",
 ]);
 const workerStates = Object.freeze(["idle", "starting", "stopped", "working"]);
+const providerCapacityPreviewCount = 3;
 
 function readSystemHealthDashboard(dashboard, system, queue) {
   const workers = readWorkerStatuses(system.workers);
@@ -299,9 +300,33 @@ function buildEmptySystemHealth() {
 
 export function registerPage(alpine) {
   alpine.data("citeloomSystemHealthPage", () => ({
+    providerCapacityExpanded: false,
     snapshotListener: null,
     systemHealth: buildEmptySystemHealth(),
     systemHealthHasData: false,
+
+    get providerCapacityAdditionalCount() {
+      return Math.max(
+        0,
+        this.systemHealth.inference.length - providerCapacityPreviewCount,
+      );
+    },
+
+    get providerCapacityDisclosureLabel() {
+      if (this.providerCapacityExpanded) {
+        return "Show fewer provider limits";
+      }
+      const count = this.providerCapacityAdditionalCount;
+      const label = count === 1 ? "limit" : "limits";
+      return `View ${count} additional provider ${label}`;
+    },
+
+    get visibleProviderCapacity() {
+      if (this.providerCapacityExpanded) {
+        return this.systemHealth.inference;
+      }
+      return this.systemHealth.inference.slice(0, providerCapacityPreviewCount);
+    },
 
     get telemetryTables() {
       const tables = [];
@@ -423,6 +448,10 @@ export function registerPage(alpine) {
         ? "brain"
         : "database";
       return `./assets/images/citeloom-icons.svg#citeloom-${icon}`;
+    },
+
+    toggleProviderCapacity() {
+      this.providerCapacityExpanded = !this.providerCapacityExpanded;
     },
   }));
 }

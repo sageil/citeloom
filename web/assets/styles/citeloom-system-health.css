@@ -43,7 +43,7 @@
 
 .system-health-summary {
   display: grid;
-  grid-template-columns: minmax(340px, 0.36fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
@@ -52,13 +52,20 @@
 .system-health-diagnostics {
   display: grid;
   align-content: start;
-  padding: 16px 20px;
-  border-right: 1px solid var(--border);
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
 }
 
 .system-health-status-list > .status-row {
-  padding: 10px 0;
+  align-items: center;
+  padding: 0;
   border-bottom: 0;
+}
+
+.system-health-status-list > .status-row > div {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
 }
 
 .system-health-diagnostic-summary {
@@ -194,50 +201,52 @@
 }
 
 .system-health-diagnostics-dialog {
-  width: min(720px, 100%);
+  width: min(680px, 100%);
   overflow-y: auto;
-  padding: 0 20px;
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.36);
 }
 
 .system-health-diagnostics-dialog > header {
   align-items: center;
-  min-height: 62px;
+  min-height: 58px;
+  padding: 0 20px;
   border-bottom: 1px solid var(--border);
 }
 
 .system-health-diagnostics-dialog > header h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .system-health-diagnostics-dialog .icon-button {
-  border: 0;
+  width: 34px;
+  min-height: 34px;
+  border-color: var(--border);
+  border-radius: 7px;
   background: transparent;
 }
 
 .diagnostics-readiness-option {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 24px minmax(0, 1fr);
   align-items: center;
-  gap: 14px;
-  padding: 18px 6px;
+  gap: 12px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--border);
 }
 
 .diagnostics-option-icon {
   display: grid;
-  width: 46px;
-  height: 46px;
-  border: 1px solid rgba(6, 182, 212, 0.28);
-  border-radius: 50%;
+  width: 24px;
+  height: 24px;
   color: var(--cyan);
-  background: var(--cyan-subtle);
   place-items: center;
 }
 
 .diagnostics-option-icon .citeloom-icon {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
 }
 
 .diagnostics-readiness-option h3,
@@ -263,7 +272,7 @@
 .diagnostics-live-options {
   min-width: 0;
   margin: 0;
-  padding: 18px 6px 0;
+  padding: 16px 20px 0;
   border: 0;
 }
 
@@ -277,7 +286,7 @@
 }
 
 .diagnostics-live-options > p {
-  margin: 6px 0 8px;
+  margin: 6px 0 10px;
 }
 
 .diagnostics-live-option {
@@ -285,7 +294,8 @@
   grid-template-columns: 20px 28px minmax(0, 1fr);
   align-items: start;
   gap: 12px;
-  padding: 14px 0;
+  min-height: 68px;
+  padding: 13px 0;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
@@ -325,7 +335,9 @@
 .diagnostics-dialog-actions {
   align-items: center;
   justify-content: space-between;
-  min-height: 68px;
+  min-height: 64px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
 }
 
 .diagnostics-dialog-actions > p {
@@ -339,12 +351,25 @@
   gap: 10px;
 }
 
-.system-health-capacity-snapshot {
-  min-width: 0;
-  padding: 16px 14px;
+.diagnostics-dialog-actions .button {
+  min-height: 36px;
+  font-size: 11px;
 }
 
-.system-health-capacity-snapshot > h2,
+.diagnostics-dialog-actions .button.primary:not(:disabled) {
+  border-color: rgba(6, 182, 212, 0.8);
+  background: var(--cyan);
+  color: #041018;
+}
+
+.system-health-capacity-snapshot {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.34fr) minmax(0, 1fr);
+  min-width: 0;
+}
+
+.runtime-capacity > h2,
+.provider-capacity > h2,
 .system-health-telemetry > h2,
 .system-health-detail-panel > h2 {
   margin: 0;
@@ -355,61 +380,145 @@
   text-transform: uppercase;
 }
 
-.capacity-snapshot-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  margin-top: 10px;
-  border: 1px solid var(--border);
+.runtime-capacity,
+.provider-capacity {
+  min-width: 0;
+  padding: 16px 20px;
 }
 
-.capacity-snapshot-item {
+.provider-capacity {
+  border-left: 1px solid var(--border);
+}
+
+.runtime-capacity-list {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  margin: 12px 0 0;
+}
+
+.runtime-capacity-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
   align-items: center;
   min-width: 0;
-  min-height: 58px;
-  gap: 9px;
-  padding: 9px 11px;
-  border-right: 1px solid var(--border);
+  min-height: 54px;
+  gap: 12px;
 }
 
-.capacity-snapshot-item:last-child {
-  border-right: 0;
-}
-
-.capacity-snapshot-item > span {
+.runtime-capacity-item > span,
+.provider-capacity-item > span:first-child {
   color: var(--cyan);
 }
 
-.capacity-snapshot-item div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 2px 8px;
+.runtime-capacity-item > span .citeloom-icon {
+  width: 30px;
+  height: 30px;
 }
 
-.capacity-snapshot-item small {
+.runtime-capacity-item > div {
+  display: grid;
+  gap: 3px;
+}
+
+.runtime-capacity-item dt {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.runtime-capacity-item dd {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+}
+
+.runtime-capacity-item dd strong {
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 580;
+}
+
+.runtime-capacity-item dd span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.provider-capacity-list {
+  margin-top: 8px;
+}
+
+.provider-capacity-item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 44px;
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.provider-capacity-item > span:first-child .citeloom-icon {
+  width: 19px;
+  height: 19px;
+}
+
+.provider-capacity-name {
   overflow: hidden;
   color: var(--muted);
-  font-size: 9px;
-  letter-spacing: 0.07em;
+  font-size: 11px;
+  font-weight: 540;
+  letter-spacing: 0.06em;
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
-.capacity-snapshot-item strong {
-  grid-row: 1 / 3;
-  grid-column: 2;
-  font-size: 19px;
+.provider-capacity-usage {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
-.capacity-snapshot-item div > span {
-  overflow: hidden;
+.provider-capacity-usage strong {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.provider-capacity-empty {
+  margin: 14px 0 4px;
   color: var(--muted);
-  font-size: 9px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 11px;
+}
+
+.provider-capacity-disclosure {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 40px;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.provider-capacity-disclosure:hover,
+.provider-capacity-disclosure:focus-visible {
+  color: var(--cyan);
+}
+
+.provider-capacity-disclosure .citeloom-icon {
+  color: var(--cyan);
+  transition: transform 120ms ease;
+}
+
+.provider-capacity-disclosure .citeloom-icon.expanded {
+  transform: rotate(90deg);
 }
 
 .system-health-telemetry {
@@ -553,25 +662,8 @@
 }
 
 @media (max-width: 1100px) {
-  .system-health-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .system-health-diagnostics {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .capacity-snapshot-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .capacity-snapshot-item:nth-child(3) {
-    border-right: 0;
-  }
-
-  .capacity-snapshot-item:nth-child(n + 4) {
-    border-top: 1px solid var(--border);
+  .system-health-capacity-snapshot {
+    grid-template-columns: minmax(220px, 0.4fr) minmax(0, 1fr);
   }
 }
 
@@ -587,6 +679,25 @@
     margin-top: 0;
   }
 
+  .system-health-status-list > .status-row > div {
+    align-items: start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .system-health-capacity-snapshot {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-capacity {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+
+  .runtime-capacity-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .system-health-detail-grid {
     grid-template-columns: 1fr;
     gap: 14px;
@@ -598,13 +709,12 @@
 
   .system-health-diagnostics-dialog {
     max-height: calc(100vh - 20px);
-    padding: 0 14px;
   }
 
   .diagnostics-dialog-actions {
     align-items: stretch;
     flex-direction: column;
-    padding: 12px 0;
+    padding: 12px 14px;
   }
 
   .diagnostics-dialog-actions > div {
@@ -613,17 +723,22 @@
 }
 
 @media (max-width: 520px) {
-  .capacity-snapshot-grid {
+  .runtime-capacity,
+  .provider-capacity {
+    padding: 14px;
+  }
+
+  .runtime-capacity-list {
     grid-template-columns: 1fr;
   }
 
-  .capacity-snapshot-item,
-  .capacity-snapshot-item:nth-child(3) {
-    border-right: 0;
+  .provider-capacity-item {
+    grid-template-columns: 22px minmax(0, 1fr);
+    padding: 8px 0;
   }
 
-  .capacity-snapshot-item:nth-child(n + 2) {
-    border-top: 1px solid var(--border);
+  .provider-capacity-usage {
+    grid-column: 2;
   }
 
   .system-health-detail-row {

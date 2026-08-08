@@ -775,7 +775,6 @@
   flex-direction: column;
   padding: 28px;
   border-left: 1px solid var(--border-strong);
-  background: #0b1120;
   box-shadow: -24px 0 60px rgba(0, 0, 0, 0.3);
 }
 
