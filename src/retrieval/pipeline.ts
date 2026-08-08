@@ -24,6 +24,7 @@ import {
   UnexpectedAnswerFinishReasonError,
   type AnswerResult,
 } from "../answers/inference.js";
+import { UnusableAnswerContentError } from "../answers/draft.js";
 import { AnswerCapacityError } from "../answers/context-budget.js";
 import {
   readInferenceApiFailure,
@@ -185,6 +186,7 @@ function readQuestionInput(question: string | QuestionInput): QuestionInput {
 
 type AnswerStreamFailure =
   | { kind: "answer-capacity" }
+  | { kind: "answer-content" }
   | { kind: "answer-finish" }
   | { kind: "answer-invalid" }
   | { kind: "answer-length" }
@@ -979,6 +981,8 @@ function readDirectAnswerStreamFailure(
       return { kind: "reranking-timeout", message: error.message };
     case error instanceof AnswerCapacityError:
       return { kind: "answer-capacity" };
+    case error instanceof UnusableAnswerContentError:
+      return { kind: "answer-content" };
     case error instanceof AnswerGenerationLengthError:
       return { kind: "answer-length" };
     case error instanceof InvalidAnswerDraftError:
@@ -1003,6 +1007,8 @@ function formatAnswerStreamFailure(failure: AnswerStreamFailure): string {
       return failure.message;
     case "answer-capacity":
       return "The selected answer model cannot fit the answer instructions and retrieved evidence. Increase its configured context capacity or select a model with a larger context window.";
+    case "answer-content":
+      return "The generated response did not contain usable answer content.";
     case "answer-length":
       return "The answer provider exhausted its generation or context length before completing the answer. Try a model with more available context or reduce the amount of evidence supplied.";
     case "answer-finish":
@@ -1083,6 +1089,7 @@ function readAnswerFailureOrigin(failure: AnswerStreamFailure) {
     case "provider":
     case "answer-timeout":
     case "answer-finish":
+    case "answer-content":
     case "answer-invalid":
     case "answer-length":
     case "reranking-timeout":
@@ -1105,6 +1112,7 @@ function readAnswerFailureRetryability(
     case "settings-changed":
       return true;
     case "answer-capacity":
+    case "answer-content":
     case "answer-length":
       return false;
     case "answer-finish":
@@ -1142,6 +1150,8 @@ function readAnswerFailureCategory(failure: AnswerStreamFailure): string {
       return "inference-scheduler";
     case "answer-capacity":
       return "answer-capacity";
+    case "answer-content":
+      return "inference-provider-response";
     case "answer-length":
       return "inference-provider-finish";
     case "answer-finish":
@@ -1170,6 +1180,8 @@ function readAnswerFailureCode(
       return "inference_settings_changed";
     case "answer-capacity":
       return "answer_context_capacity_exceeded";
+    case "answer-content":
+      return "answer_provider_unusable_content";
     case "answer-length":
       return "answer_provider_length_reached";
     case "answer-finish":
@@ -1205,6 +1217,7 @@ function readSafeAnswerFailureMessage(
     case "reranking-timeout":
       return truncateAnswerFailureMessage(failure.message);
     case "answer-capacity":
+    case "answer-content":
     case "answer-finish":
     case "answer-invalid":
     case "answer-length":

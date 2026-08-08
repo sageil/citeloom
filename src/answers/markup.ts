@@ -93,6 +93,7 @@ export interface ParsedAnswerMarkup {
 
 interface AnswerMarkupParseContext {
   blocks: AnswerMarkdownBlock[];
+  citationsEnabled: boolean;
   citations: AnswerCitationSpan[];
   definitions: Map<string, CitationReplacement>;
   markdown: string;
@@ -134,7 +135,13 @@ export class AnswerMarkupError extends Error {
 }
 
 export function parseAnswerMarkup(markdown: string): ParsedAnswerMarkup {
-  return parseAnswerMarkupBoundary(markdown, null);
+  return parseAnswerMarkupBoundary(markdown, null, true);
+}
+
+export function parseStructuredAnswerMarkup(
+  markdown: string,
+): ParsedAnswerMarkup {
+  return parseAnswerMarkupBoundary(markdown, null, false);
 }
 
 export function parseGeneratedAnswerMarkup(
@@ -144,7 +151,7 @@ export function parseGeneratedAnswerMarkup(
   if (!Number.isSafeInteger(maximumCitationNumber) || maximumCitationNumber < 1) {
     throw new Error("Generated answers require at least one available citation source.");
   }
-  return parseAnswerMarkupBoundary(markdown, maximumCitationNumber);
+  return parseAnswerMarkupBoundary(markdown, maximumCitationNumber, true);
 }
 
 export function renderAnswerMarkupSpeech(markdown: string): string {
@@ -198,6 +205,7 @@ function normalizeAnswerSpeechWhitespace(value: string): string {
 function parseAnswerMarkupBoundary(
   value: string,
   maximumCitationNumber: number | null,
+  citationsEnabled: boolean,
 ): ParsedAnswerMarkup {
   const markdown = value.trim();
   if (markdown === "") {
@@ -209,6 +217,7 @@ function parseAnswerMarkupBoundary(
   });
   const context: AnswerMarkupParseContext = {
     blocks: [],
+    citationsEnabled,
     citations: [],
     definitions: new Map(),
     markdown,
@@ -249,7 +258,11 @@ function appendBlock(
         kind: "paragraph",
         quoteDepth,
         ...ranges,
-        spans: parseInlineChildren(node.children, context, true),
+        spans: parseInlineChildren(
+          node.children,
+          context,
+          context.citationsEnabled,
+        ),
       });
       return;
     case "heading":
@@ -257,7 +270,11 @@ function appendBlock(
         depth: node.depth,
         kind: "heading",
         ...ranges,
-        spans: parseInlineChildren(node.children, context, true),
+        spans: parseInlineChildren(
+          node.children,
+          context,
+          context.citationsEnabled,
+        ),
       });
       return;
     case "list":
@@ -347,7 +364,11 @@ function appendListBlocks(
           removalStart: itemRemovalRange.start,
           sourceEnd: sourceRange.end,
           sourceStart: sourceRange.start,
-          spans: parseInlineChildren(child.children, context, true),
+          spans: parseInlineChildren(
+            child.children,
+            context,
+            context.citationsEnabled,
+          ),
         });
         continue;
       }
@@ -365,7 +386,11 @@ function parseTableCell(
   cell: TableCell,
   context: AnswerMarkupParseContext,
 ): AnswerInlineSpan[] {
-  return parseInlineChildren(cell.children, context, true);
+  return parseInlineChildren(
+    cell.children,
+    context,
+    context.citationsEnabled,
+  );
 }
 
 function parseInlineChildren(
@@ -427,7 +452,9 @@ function appendInlineNode(
       if (node.type === "linkReference") {
         context.preservedLinkReferenceIdentifiers.add(node.identifier);
       }
-      rejectCitationLikeLink(node, context);
+      if (citationsEnabled) {
+        rejectCitationLikeLink(node, context);
+      }
       for (const child of node.children) {
         appendInlineNode(child, context, false, spans);
       }

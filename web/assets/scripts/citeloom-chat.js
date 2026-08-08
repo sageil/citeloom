@@ -178,6 +178,38 @@ function updatePendingChatAnswer(conversation, runId, answerContentUpdate) {
   return replaceChatRun(conversation, { ...run, messages });
 }
 
+function failPendingChatRun(conversation, runId, errorMessage) {
+  const run = conversation.runs.find((candidate) => candidate.id === runId);
+  if (run === undefined || run.state !== "generating") {
+    return conversation;
+  }
+  const messages = [];
+  for (const message of run.messages) {
+    if (message.role === "assistant" && message.streaming === true) {
+      messages.push({
+        ...message,
+        streaming: false,
+        verificationState: "not-applicable",
+      });
+      continue;
+    }
+    messages.push(message);
+  }
+  return replaceChatRun(conversation, {
+    ...run,
+    completedAt: new Date().toISOString(),
+    errorMessage,
+    messages,
+    state: "failed",
+  });
+}
+
+function readChatErrorMessage(error, fallback) {
+  return error instanceof Error && error.message !== ""
+    ? error.message
+    : fallback;
+}
+
 function applyChatVerificationUpdate(conversation, refreshedConversation) {
   const refreshedMessages = new Map();
   for (const run of refreshedConversation.runs) {
@@ -1381,13 +1413,23 @@ export function registerPage(alpine) {
           },
         );
       } catch (error) {
-        this.reportError(error, "The response could not be generated.");
+        const message = this.reportError(
+          error,
+          "The response could not be generated.",
+        );
+        if (
+          !completed
+          && this.conversation?.id === conversationId
+        ) {
+          this.conversation = failPendingChatRun(
+            this.conversation,
+            requestId,
+            message,
+          );
+        }
       } finally {
         this.busy = false;
         await this.refreshConversations();
-        if (!completed) {
-          await this.selectConversation(conversationId);
-        }
         this.focusMessageComposer();
       }
     },
@@ -1471,6 +1513,9 @@ export function registerPage(alpine) {
     citationVerificationDescription(message, statement, citationKey) {
       const citation = this.citationForKey(message, citationKey);
       if (citation?.preview === true) {
+        if (message.verificationState === "not-applicable") {
+          return "Source identified before response generation stopped. Evidence verification was not completed.";
+        }
         const source = this.sourceTitle(citation.sourceFile);
         return `Source identified from ${source}. Evidence verification starts when the answer is complete.`;
       }
@@ -1579,8 +1624,13 @@ export function registerPage(alpine) {
 
     sourceNavigatorStatus(citation) {
       const message = this.sourceSidebarMessage();
-      if (message === null || citation.preview === true) {
+      if (message === null) {
         return "pending";
+      }
+      if (citation.preview === true) {
+        return message.verificationState === "not-applicable"
+          ? "unverified"
+          : "pending";
       }
       let matched = false;
       let pending = false;
@@ -2022,9 +2072,10 @@ export function registerPage(alpine) {
     },
 
     reportError(error, fallback) {
-      const message = error instanceof Error ? error.message : fallback;
+      const message = readChatErrorMessage(error, fallback);
       this.errorMessage = message;
       dispatchNotice("error", message);
+      return message;
     },
   }));
 }

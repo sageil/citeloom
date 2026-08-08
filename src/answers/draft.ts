@@ -15,7 +15,9 @@ export const ANSWER_DRAFT_SECTIONS = [
 
 export const ANSWER_PRESENTATIONS = ["paragraph", "bullet"] as const;
 
-const numericCitationDecorationPattern = /(?:[\[【]\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\s*[\]】]|\(\s*(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\s*\)|\b(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\b)/gi;
+const bracketedNumericCitationDecorationPattern = /(^|[^\p{L}\p{N}_])(?:\[[^\]\r\n]*\d[^\]\r\n]*\]|【[^】\r\n]*\d[^】\r\n]*】)(?=$|[^\p{L}\p{N}_])/gimu;
+const unclosedNumericCitationDecorationPattern = /(^|[^\p{L}\p{N}_])\[(?=[^\]\r\n]*\d)[^\]\r\n]+$/gimu;
+const namedNumericCitationDecorationPattern = /(?:\(\s*(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\s*\)|\b(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\b)/gi;
 const evidenceReferenceDecorationPattern = /(?:[\[【]\s*EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\s*[\]】]|\(\s*(?:(?:evidence\s+)?references?\s+)?EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\s*\)|\b(?:(?:evidence\s+)?references?\s+)?EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\b)/gi;
 const sourceReferenceDecorationPattern = /(?:[\[【]\s*SOURCE_\d+(?:\s*(?:,|-|\u2013|to)\s*SOURCE_\d+)*\s*[\]】]|\(\s*(?:(?:source\s+)?references?\s+)?SOURCE_\d+(?:\s*(?:,|-|\u2013|to)\s*SOURCE_\d+)*\s*\)|\b(?:source\s+)?references?\s*SOURCE_\d+(?:\s*(?:,|-|\u2013|to)\s*SOURCE_\d+)*\b|\bSOURCE_\d+\b)/gi;
 export const answerSectionSchema = z.enum(ANSWER_SECTIONS);
@@ -109,6 +111,13 @@ export class AnswerDraftDecodeError extends Error {
   ) {
     super(message);
     this.name = "AnswerDraftDecodeError";
+  }
+}
+
+export class UnusableAnswerContentError extends Error {
+  public constructor() {
+    super("The generated response did not contain usable answer content.");
+    this.name = "UnusableAnswerContentError";
   }
 }
 
@@ -392,15 +401,7 @@ export function decodeAnswerModelResponse(
   if (modelResult.data.answer.findings.length === 0) {
     const content = readNormalizedModelText(modelResult.data.answer.content);
     if (content === null) {
-      throw new AnswerDraftDecodeError(
-        "Invalid answer model response: an uncited response requires content.",
-        "invalid-content",
-        [{
-          message: "An uncited response must contain a greeting, clarification question, or evidence limitation.",
-          path: "answer.content",
-        }],
-        0,
-      );
+      throw new UnusableAnswerContentError();
     }
     return { content, status: "uncited" };
   }
@@ -408,15 +409,7 @@ export function decodeAnswerModelResponse(
   const normalized = structuredClone(modelResult.data);
   const answerContent = readNormalizedModelText(normalized.answer.content);
   if (answerContent === null) {
-    throw new AnswerDraftDecodeError(
-      "Invalid answer model response: no valid direct answer remained.",
-      "invalid-content",
-      [{
-        message: "An answered response must contain a valid plain-text direct answer.",
-        path: "answer.content",
-      }],
-      0,
-    );
+    throw new UnusableAnswerContentError();
   }
   const normalizedFindings: AnswerModelStatement[] = [];
   for (const finding of normalized.answer.findings) {
@@ -434,15 +427,7 @@ export function decodeAnswerModelResponse(
     }
   }
   if (normalizedFindings.length === 0) {
-    throw new AnswerDraftDecodeError(
-      "Invalid answer model response: no valid finding remained.",
-      "invalid-content",
-      [{
-        message: "A grounded response must contain at least one valid finding.",
-        path: "answer.findings",
-      }],
-      0,
-    );
+    throw new UnusableAnswerContentError();
   }
   const statements: AnswerDraftStatement[] = [{
     content: answerContent,
@@ -488,8 +473,11 @@ function uniqueEvidenceReferences(
 }
 
 export function normalizeAnswerModelText(value: string): string {
-  const withoutNumericCitations = value.replace(
-    numericCitationDecorationPattern,
+  const withoutBracketedCitations = value
+    .replace(bracketedNumericCitationDecorationPattern, "$1")
+    .replace(unclosedNumericCitationDecorationPattern, "$1");
+  const withoutNumericCitations = withoutBracketedCitations.replace(
+    namedNumericCitationDecorationPattern,
     " ",
   );
   const withoutCitationDecorations = withoutNumericCitations.replace(

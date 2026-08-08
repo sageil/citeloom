@@ -4,6 +4,7 @@ import {
   AnswerDraftDecodeError,
   decodeAnswerDraft,
   normalizeAnswerModelText,
+  UnusableAnswerContentError,
   type AnswerDraftStatement,
   type EvidenceReference,
 } from "../answers/draft.js";
@@ -104,18 +105,25 @@ function decodeChatAnswerModelResponse(
     );
   }
   const response = result.data as ChatAnswerModelResponse;
+  const answerContent = normalizeAnswerModelText(response.answer.content);
+  if (answerContent === "") {
+    throw new UnusableAnswerContentError();
+  }
   if (response.answer.topics.length === 0) {
     return {
       draft: {
-        content: normalizeAnswerModelText(response.answer.content),
+        content: answerContent,
         status: "uncited",
       },
       verificationStatementIndexes: [],
     };
   }
   const statements: AnswerDraftStatement[] = [];
-  statements.push(createAnswerStatement(response.answer));
-  appendAnswerTopics(statements, response.answer.topics);
+  statements.push(createAnswerStatement(answerContent));
+  const topicCount = appendAnswerTopics(statements, response.answer.topics);
+  if (topicCount === 0) {
+    throw new UnusableAnswerContentError();
+  }
   const draft = decodeAnswerDraft(
     {
       conflictGroups: [],
@@ -133,9 +141,13 @@ function decodeChatAnswerModelResponse(
 function appendAnswerTopics(
   statements: AnswerDraftStatement[],
   topics: readonly ChatAnswerTopic[],
-): void {
+): number {
+  let topicCount = 0;
   for (const topic of topics) {
     const normalizedContent = normalizeAnswerModelText(topic.content);
+    if (normalizedContent === "") {
+      continue;
+    }
     const atomicStatements = readAtomicAnswerStatements(normalizedContent);
     const evidenceRefs = normalizeSourceReferences(topic.source_refs);
     for (const atomicStatement of atomicStatements) {
@@ -145,15 +157,17 @@ function appendAnswerTopics(
         presentation: "bullet",
         section: "answer",
       });
+      topicCount += 1;
     }
   }
+  return topicCount;
 }
 
 function createAnswerStatement(
-  answer: ChatAnswerPoint,
+  content: string,
 ): AnswerDraftStatement {
   return {
-    content: normalizeAnswerModelText(answer.content),
+    content,
     evidenceRefs: [],
     presentation: "paragraph",
     section: "answer",
