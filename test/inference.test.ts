@@ -53,6 +53,7 @@ import {
 } from "./config-fixture.js";
 import { createTestProviderSettings } from "./provider-settings-fixture.js";
 import {
+  AnswerGenerationLengthError,
   answerQuestion,
   buildAnswerContent,
   InvalidAnswerDraftError,
@@ -1619,6 +1620,40 @@ describe("answer generation", () => {
     expect(answerModel.doGenerateCalls[0]?.responseFormat).toMatchObject({
       type: "json",
     });
+    expect(answerModel.doGenerateCalls[0]?.maxOutputTokens).toBeUndefined();
+  });
+
+  it("reports provider length exhaustion for an incomplete structured response", async () => {
+    const answerModel = new MockLanguageModelV4({
+      doGenerate: buildTextGeneration('{"answer":', "length"),
+      modelId: "answer-model:answer",
+    });
+
+    await expect(answerQuestion(
+      buildModelRegistry(answerModel),
+      "What changed?",
+      [buildRetrievedElement("a", "b")],
+      new TaskLimiter(1),
+      generationSettings,
+    )).rejects.toBeInstanceOf(AnswerGenerationLengthError);
+  });
+
+  it("reports provider length exhaustion for a decodable structured response", async () => {
+    const answerModel = new MockLanguageModelV4({
+      doGenerate: buildTextGeneration(
+        JSON.stringify(buildAnsweredDraft("Revenue increased.", ["EVID_A"])),
+        "length",
+      ),
+      modelId: "answer-model:answer",
+    });
+
+    await expect(answerQuestion(
+      buildModelRegistry(answerModel),
+      "What changed?",
+      [buildRetrievedElement("a", "b")],
+      new TaskLimiter(1),
+      generationSettings,
+    )).rejects.toBeInstanceOf(AnswerGenerationLengthError);
   });
 
   it("does not request correction for missing presentation metadata", async () => {
@@ -2329,7 +2364,7 @@ function buildModelRegistry(model: LanguageModelV4): EvaluationModelRegistry {
       middleware: simulateStreamingMiddleware(),
       model,
     }),
-    answerBudget: { maximumOutputTokens: 16_384, minimumOutputTokens: 256, providerSafetyMarginTokens: 0 },
+    answerBudget: { minimumOutputTokens: 256, providerSafetyMarginTokens: 0 },
     readAnswerCapabilities: async () => buildTestModelCapabilities(),
     claimVerifier: new FakeHhemClient(),
     documentEmbedding: embedding,

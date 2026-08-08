@@ -613,7 +613,7 @@ function buildModelRegistry(
       middleware: simulateStreamingMiddleware(),
       model: answerModel,
     }),
-    answerBudget: { maximumOutputTokens: 16_384, minimumOutputTokens: 256, providerSafetyMarginTokens: 0 },
+    answerBudget: { minimumOutputTokens: 256, providerSafetyMarginTokens: 0 },
     readAnswerCapabilities: async () => buildTestModelCapabilities(),
     claimVerifier: verifier,
     documentEmbedding: embedding,

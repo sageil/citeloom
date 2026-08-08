@@ -184,25 +184,12 @@ An application restart or saved settings change creates a new runtime and discov
 MLX and fixed-context GGUF requests do not inspect `/api/ps`.
 Adaptive GGUF requests inspect `/api/ps` before inference so CiteLoom can reuse an already larger resident runner instead of requesting a smaller reload.
 
-For a bounded answer, CiteLoom calculates the requested context as:
-
-```text
-conservative input upper bound + maximum answer output + provider safety margin
-```
-
-CiteLoom uses a 65,536-token floor unless the model maximum reported by Ollama is smaller, and it never requests more than that model maximum.
+CiteLoom uses the configured minimum answer space and provider safety margin when deciding how much retrieved evidence can fit in the request.
+For adaptive Ollama Ask and Chat requests, CiteLoom requests the model maximum reported by Ollama.
 The configured context capacity remains the fixed fallback when CiteLoom cannot inspect Ollama or Ollama reports an unsupported model format.
 For a recognized MLX model, the configured capacity bounds CiteLoom's prompt budget while Ollama manages the runner's dynamic context.
-
-These examples assume Ollama reports a model maximum of at least 131,072 tokens and use the fresh-install 20,000-token answer output limit and 2,048-token safety margin:
-
-| Request | Calculation | Requested context |
-| --- | --- | --- |
-| Answer with a 27,544-token conservative input bound | `27,544 + 20,000 + 2,048 = 49,592` | `65,536`, because the calculated requirement is below the floor |
-| Answer with a 50,000-token conservative input bound | `50,000 + 20,000 + 2,048 = 72,048` | `72,048` |
-| Small answer while a 131,072-token runner is resident | Requirement is below `65,536`, but the resident runner is larger | Reuse `131,072`; a resident runner is never shrunk |
-| Query Expansion | CiteLoom assigns the adaptive floor directly rather than using answer-output variables | `65,536` |
-| Summary, vision request, tool request, reasoning request, or answer without an output limit | CiteLoom cannot establish the same bounded answer requirement | The model maximum reported by Ollama |
+Query Expansion uses the adaptive 65,536-token floor, capped by the model maximum.
+Summary, vision, tool, and reasoning requests use the model maximum.
 
 Automatic context size requires CiteLoom's Ollama provider limit and Ollama's `OLLAMA_NUM_PARALLEL` setting to both be `1`.
 Use a dedicated Ollama endpoint, or coordinate every client that can load the same model, because another client can change the resident runner.

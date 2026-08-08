@@ -7,12 +7,6 @@ import {
 } from "../../domain/validation.js";
 
 export const discoveryMatchKindSchema = z.enum(["keyword", "semantic"]);
-export const discoverySearchStatusSchema = z.enum([
-  "complete",
-  "degraded",
-  "disabled",
-  "unavailable",
-]);
 
 export const sourceDiscoveryRequestSchema = z.object({
   includeRelated: z.boolean(),
@@ -25,7 +19,7 @@ const sourceDiscoveryPassageSchema = z.object({
   excerpt: z.string().min(1),
   id: contentIdSchema,
   kind: z.enum(["image", "table", "text"]),
-  matchKinds: z.array(discoveryMatchKindSchema).min(1),
+  matchKind: discoveryMatchKindSchema,
   pageNumbers: z.array(z.number().int().positive()),
   regions: z.array(sourceRegionSchema),
   sectionPath: z.array(z.string().min(1)),
@@ -33,38 +27,44 @@ const sourceDiscoveryPassageSchema = z.object({
 
 const sourceDiscoveryDocumentSchema = z.object({
   documentId: contentIdSchema,
-  matchKinds: z.array(discoveryMatchKindSchema).min(1),
   matchingPassageCount: z.number().int().positive(),
   passages: z.array(sourceDiscoveryPassageSchema).min(1),
   sourceFile: z.string().min(1),
 }).strict();
 
-const sourceDiscoverySectionShape = {
+const exactDiscoveryPageSchema = z.object({
   documents: z.array(sourceDiscoveryDocumentSchema),
-  status: discoverySearchStatusSchema,
-  warning: z.string().min(1).nullable(),
-};
-
-const keywordDiscoverySectionSchema = z.object({
-  ...sourceDiscoverySectionShape,
   page: z.number().int().positive(),
   pageSize: z.number().int().positive(),
   totalDocuments: z.number().int().nonnegative(),
 }).strict();
 
-const relatedDiscoverySectionSchema = z.object({
-  ...sourceDiscoverySectionShape,
+const exactDiscoveryResultSchema = exactDiscoveryPageSchema.extend({
+  kind: z.literal("exact"),
+}).strict();
+
+const relatedDiscoveryResultSchema = z.object({
+  documents: z.array(sourceDiscoveryDocumentSchema),
   limit: z.number().int().positive(),
+  matchedPassageCount: z.number().int().nonnegative(),
+  reviewedPassageCount: z.number().int().nonnegative(),
+}).strict();
+
+const exactAndRelatedDiscoveryResultSchema = z.object({
+  exact: exactDiscoveryPageSchema,
+  kind: z.literal("exact-and-related"),
+  related: relatedDiscoveryResultSchema,
 }).strict();
 
 export const sourceDiscoveryResponseSchema = z.object({
-  keyword: keywordDiscoverySectionSchema,
   query: z.string().min(1),
-  related: relatedDiscoverySectionSchema,
+  results: z.discriminatedUnion("kind", [
+    exactDiscoveryResultSchema,
+    exactAndRelatedDiscoveryResultSchema,
+  ]),
 }).strict();
 
 export type DiscoveryMatchKind = z.output<typeof discoveryMatchKindSchema>;
-export type DiscoverySearchStatus = z.output<typeof discoverySearchStatusSchema>;
 export type SourceDiscoveryDocument = z.output<typeof sourceDiscoveryDocumentSchema>;
 export type SourceDiscoveryPassage = z.output<typeof sourceDiscoveryPassageSchema>;
 export type SourceDiscoveryRequest = z.output<typeof sourceDiscoveryRequestSchema>;

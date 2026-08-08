@@ -4,7 +4,6 @@ import type { RetrievedElement } from "../retrieval/document-retrieval.js";
 import type { LanguageModelCapabilities } from "../inference/model-capabilities.js";
 
 export interface AnswerBudgetConfiguration {
-  maximumOutputTokens: number;
   minimumOutputTokens: number;
   providerSafetyMarginTokens: number;
 }
@@ -31,7 +30,6 @@ export interface AnswerRequestBudget {
   decisions: AnswerContextDecision[];
   expandedRetrievalWindowIds: string[];
   inputTokenUpperBound: number;
-  outputBudgetTokens: number;
   providerSafetyMarginTokens: number;
   selected: RetrievedElement[];
 }
@@ -142,18 +140,12 @@ export function planAnswerRequest(
     expandedRetrievalWindowIds.push(item.provenance.retrievalWindowId);
     inputTokenUpperBound += additionalTokens;
   }
-  const remainingCapacity = capacityAfterSafety - inputTokenUpperBound;
-  const outputBudgetTokens = Math.min(
-    configuration.maximumOutputTokens,
-    remainingCapacity,
-  );
   return {
     availableInputTokens,
     contextCapacityTokens: capabilities.contextCapacityTokens,
     decisions,
     expandedRetrievalWindowIds,
     inputTokenUpperBound,
-    outputBudgetTokens,
     providerSafetyMarginTokens: configuration.providerSafetyMarginTokens,
     selected,
   };
@@ -178,10 +170,7 @@ function countPartTokens(
 }
 
 function validateConfiguration(configuration: AnswerBudgetConfiguration): void {
-  const values = [
-    configuration.maximumOutputTokens,
-    configuration.minimumOutputTokens,
-  ];
+  const values = [configuration.minimumOutputTokens];
   if (values.some((value) => !Number.isInteger(value) || value < 1)) {
     throw new Error("Answer budget configuration values must be positive integers.");
   }
@@ -190,8 +179,5 @@ function validateConfiguration(configuration: AnswerBudgetConfiguration): void {
     || configuration.providerSafetyMarginTokens < 0
   ) {
     throw new Error("Provider safety margin must be a nonnegative integer.");
-  }
-  if (configuration.maximumOutputTokens < configuration.minimumOutputTokens) {
-    throw new Error("Maximum answer output must be at least the minimum output reserve.");
   }
 }

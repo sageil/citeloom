@@ -190,12 +190,12 @@ export class InvalidAnswerDraftError extends Error {
   }
 }
 
-export class AnswerOutputTokenLimitError extends Error {
-  public constructor(public readonly outputTokenLimit: number) {
+export class AnswerGenerationLengthError extends Error {
+  public constructor() {
     super(
-      `Answer generation reached the ${outputTokenLimit}-token output limit before producing a valid structured response.`,
+      "The provider exhausted its generation or context length before producing a complete structured response.",
     );
-    this.name = "AnswerOutputTokenLimitError";
+    this.name = "AnswerGenerationLengthError";
   }
 }
 
@@ -415,7 +415,6 @@ async function generateAnswer(
         contextCapacityTokens: budget.contextCapacityTokens,
         failureReason: null,
         inputTokenUpperBound: budget.inputTokenUpperBound,
-        outputBudgetTokens: budget.outputBudgetTokens,
         providerSafetyMarginTokens: budget.providerSafetyMarginTokens,
         requests: [],
         responseDiagnostics: [],
@@ -453,7 +452,6 @@ async function generateAnswer(
           requestSignal,
           generationSettings,
           recordCompletion,
-          budget,
           adaptiveContext,
           prompt.systemPrompt,
           prompt.responseContract,
@@ -465,11 +463,7 @@ async function generateAnswer(
           inputTokens: result.usage.inputTokens ?? null,
           outputTokens: result.usage.outputTokens ?? null,
         };
-        if (!isExpectedAnswerFinishReason(initialCompletion.finishReason)) {
-          throw new UnexpectedAnswerFinishReasonError(
-            initialCompletion.finishReason,
-          );
-        }
+        requireCompletedAnswerGeneration(initialCompletion.finishReason);
         initialResponse = decodeAnswerResponse(
           result.output,
           allowedEvidenceRefs,
@@ -481,14 +475,7 @@ async function generateAnswer(
         }
         initialCompletion = readAnswerCompletion(error, completion);
         finishMetricOnce(initialCompletion);
-        if (initialCompletion.finishReason === "length") {
-          throw new AnswerOutputTokenLimitError(budget.outputBudgetTokens);
-        }
-        if (!isExpectedAnswerFinishReason(initialCompletion.finishReason)) {
-          throw new UnexpectedAnswerFinishReasonError(
-            initialCompletion.finishReason,
-          );
-        }
+        requireCompletedAnswerGeneration(initialCompletion.finishReason);
         initialResponse = {
           draft: null,
           failure: createInvalidJsonResponse(error),
@@ -597,7 +584,6 @@ async function generateAnswer(
         contextCapacityTokens: error.contextCapacityTokens,
         failureReason: error.failureReason,
         inputTokenUpperBound: null,
-        outputBudgetTokens: null,
         providerSafetyMarginTokens: error.providerSafetyMarginTokens,
         requests: [],
         responseDiagnostics: [],
@@ -617,7 +603,7 @@ async function generateAnswer(
       throw error;
     }
     if (
-      error instanceof AnswerOutputTokenLimitError
+      error instanceof AnswerGenerationLengthError
       || error instanceof InvalidAnswerDraftError
     ) {
       await stage.finish(createTelemetryStageResult(
@@ -678,7 +664,6 @@ async function correctAnswerDraft(
       requestSignal,
       generationSettings,
       () => undefined,
-      budget,
       adaptiveContext,
       prompt.systemPrompt,
       prompt.responseContract,
@@ -691,23 +676,16 @@ async function correctAnswerDraft(
   } catch (error: unknown) {
     if (NoObjectGeneratedError.isInstance(error)) {
       const completion = readAnswerCompletion(error, null);
-      if (completion.finishReason === "length") {
-        throw new AnswerOutputTokenLimitError(budget.outputBudgetTokens);
-      }
-      if (isExpectedAnswerFinishReason(completion.finishReason)) {
-        return {
-          draft: null,
-          failure: createInvalidJsonResponse(error),
-          responseSha256: hashResponse(error.text ?? null),
-        };
-      }
-      throw new UnexpectedAnswerFinishReasonError(completion.finishReason);
+      requireCompletedAnswerGeneration(completion.finishReason);
+      return {
+        draft: null,
+        failure: createInvalidJsonResponse(error),
+        responseSha256: hashResponse(error.text ?? null),
+      };
     }
     throw error;
   }
-  if (!isExpectedAnswerFinishReason(result.finishReason)) {
-    throw new UnexpectedAnswerFinishReasonError(result.finishReason);
-  }
+  requireCompletedAnswerGeneration(result.finishReason);
   return decodeAnswerResponse(
     result.output,
     allowedEvidenceRefs,
@@ -827,7 +805,6 @@ async function requestAnswerDraft(
   abortSignal: AbortSignal,
   generationSettings: AppliedGenerationSettings,
   recordCompletion: (completion: AnswerCompletion) => void,
-  budget: AnswerRequestBudget,
   adaptiveContext: AdaptiveAnswerContext | null,
   systemPrompt: string,
   responseContract: AnswerResponseContract,
@@ -862,7 +839,6 @@ async function requestAnswerDraft(
       ...(providerOptions === null ? {} : { providerOptions }),
       abortSignal: signals.requestSignal,
       maxRetries: 1,
-      maxOutputTokens: budget.outputBudgetTokens,
       messages: [{ content, role: "user" }],
       model: models.answer,
       onError: ({ error }) => {
@@ -945,8 +921,13 @@ function buildAnswerSamplingSettings(settings: AppliedGenerationSettings): {
   return { seed: settings.seed, temperature: settings.temperature };
 }
 
-function isExpectedAnswerFinishReason(finishReason: string | null): boolean {
-  return finishReason === "stop" || finishReason === "length";
+function requireCompletedAnswerGeneration(finishReason: string | null): void {
+  if (finishReason === "length") {
+    throw new AnswerGenerationLengthError();
+  }
+  if (finishReason !== "stop") {
+    throw new UnexpectedAnswerFinishReasonError(finishReason);
+  }
 }
 
 export function buildAnswerContent(

@@ -22,6 +22,7 @@ import {
   readAnswerContentUpdate,
 } from "./citeloom-answer-content.js";
 import { requestAnswerSpeech } from "./citeloom-answer-speech.js";
+import { createEvidenceSpeechControls } from "./citeloom-evidence-speech.js";
 import {
   buildCitationPresentation,
   buildCitationPresentations,
@@ -62,12 +63,25 @@ const claimStatuses = Object.freeze([
   "unverified",
 ]);
 const discoveryMatchKinds = Object.freeze(["keyword", "semantic"]);
-const discoveryStatuses = Object.freeze([
-  "complete",
-  "degraded",
-  "disabled",
-  "unavailable",
-]);
+const discoveryResultKinds = Object.freeze(["exact", "exact-and-related"]);
+const askEvidenceSpeechOptions = {
+  audioRefName: "askEvidenceSpeechAudio",
+  beforePlay(page) {
+    const answerAudio = page.$refs.answerSpeechAudio;
+    if (answerAudio instanceof HTMLAudioElement) {
+      answerAudio.pause();
+    }
+  },
+  readCitation(page) {
+    return page.citationLoading ? null : page.inspectedCitation;
+  },
+  readEvidenceText(page) {
+    return page.citationEvidenceText();
+  },
+  reportError(message) {
+    dispatchNotice("error", message);
+  },
+};
 const evidenceKinds = Object.freeze(["image", "table", "text"]);
 const feedbackDimensions = Object.freeze([
   "answer-usefulness",
@@ -140,15 +154,6 @@ function readPositiveIntegerArray(value, label) {
   const result = [];
   for (const item of values) {
     result.push(readPositiveInteger(item, `${label} item`));
-  }
-  return result;
-}
-
-function readStringEnumArray(value, allowedValues, label) {
-  const values = readArray(value, label);
-  const result = [];
-  for (const item of values) {
-    result.push(readEnum(item, allowedValues, `${label} item`));
   }
   return result;
 }
@@ -405,10 +410,10 @@ function readDiscoveryPassage(value, label) {
     excerpt: readNonEmptyString(passage.excerpt, `${label} excerpt`),
     id: readNonEmptyString(passage.id, `${label} id`),
     kind: readEnum(passage.kind, evidenceKinds, `${label} kind`),
-    matchKinds: readStringEnumArray(
-      passage.matchKinds,
+    matchKind: readEnum(
+      passage.matchKind,
       discoveryMatchKinds,
-      `${label} match kinds`,
+      `${label} match kind`,
     ),
     pageNumbers: readPositiveIntegerArray(
       passage.pageNumbers,
@@ -433,11 +438,6 @@ function readDiscoveryDocument(value, label) {
   }
   return {
     documentId: readNonEmptyString(document.documentId, `${label} document id`),
-    matchKinds: readStringEnumArray(
-      document.matchKinds,
-      discoveryMatchKinds,
-      `${label} match kinds`,
-    ),
     matchingPassageCount: readPositiveInteger(
       document.matchingPassageCount,
       `${label} matching excerpt count`,
@@ -459,51 +459,63 @@ function readDiscoveryDocuments(value, label) {
   return documents;
 }
 
-function readDiscoveryResponse(value) {
-  const response = readObject(value, "source discovery");
-  const keyword = readObject(response.keyword, "keyword discovery");
-  const related = readObject(response.related, "related discovery");
+function readExactDiscoveryPage(value, label) {
+  const exact = readObject(value, label);
   return {
-    keyword: {
-      documents: readDiscoveryDocuments(
-        keyword.documents,
-        "keyword discovery documents",
-      ),
-      page: readPositiveInteger(keyword.page, "keyword discovery page"),
-      pageSize: readPositiveInteger(
-        keyword.pageSize,
-        "keyword discovery page size",
-      ),
-      status: readEnum(
-        keyword.status,
-        discoveryStatuses,
-        "keyword discovery status",
-      ),
-      totalDocuments: readNonNegativeInteger(
-        keyword.totalDocuments,
-        "keyword discovery total",
-      ),
-      warning: readNullableNonEmptyString(
-        keyword.warning,
-        "keyword discovery warning",
-      ),
-    },
-    query: readNonEmptyString(response.query, "source discovery query"),
-    related: {
-      documents: readDiscoveryDocuments(
-        related.documents,
-        "related discovery documents",
-      ),
-      limit: readPositiveInteger(related.limit, "related discovery limit"),
-      status: readEnum(
-        related.status,
-        discoveryStatuses,
-        "related discovery status",
-      ),
-      warning: readNullableNonEmptyString(
-        related.warning,
-        "related discovery warning",
-      ),
+    documents: readDiscoveryDocuments(exact.documents, `${label} documents`),
+    page: readPositiveInteger(exact.page, `${label} page`),
+    pageSize: readPositiveInteger(exact.pageSize, `${label} page size`),
+    totalDocuments: readNonNegativeInteger(
+      exact.totalDocuments,
+      `${label} total`,
+    ),
+  };
+}
+
+function readRelatedDiscoveryResults(value) {
+  const related = readObject(value, "related discovery results");
+  return {
+    documents: readDiscoveryDocuments(
+      related.documents,
+      "related discovery documents",
+    ),
+    limit: readPositiveInteger(related.limit, "related discovery limit"),
+    matchedPassageCount: readNonNegativeInteger(
+      related.matchedPassageCount,
+      "related discovery matched passage count",
+    ),
+    reviewedPassageCount: readNonNegativeInteger(
+      related.reviewedPassageCount,
+      "related discovery reviewed passage count",
+    ),
+  };
+}
+
+export function readDiscoveryResponse(value) {
+  const response = readObject(value, "source discovery");
+  const results = readObject(response.results, "source discovery results");
+  const kind = readEnum(
+    results.kind,
+    discoveryResultKinds,
+    "source discovery result kind",
+  );
+  const query = readNonEmptyString(response.query, "source discovery query");
+  if (kind === "exact") {
+    const exact = readExactDiscoveryPage(results, "exact discovery");
+    return {
+      query,
+      results: {
+        ...exact,
+        kind,
+      },
+    };
+  }
+  return {
+    query,
+    results: {
+      exact: readExactDiscoveryPage(results.exact, "exact discovery"),
+      kind,
+      related: readRelatedDiscoveryResults(results.related),
     },
   };
 }
@@ -731,7 +743,6 @@ export function registerPage(alpine) {
     discoveryResult: null,
     discoveryPageAbortController: null,
     discoveryPageLoading: false,
-    discoveryMatchFilter: "all",
     discoveryScope: null,
     discoveryStatus: "",
     dictationController: null,
@@ -745,6 +756,7 @@ export function registerPage(alpine) {
     inferenceRuntimeName: "the configured inference runtime",
     inspectedCitation: null,
     expandedDiscoveryResultKeys: [],
+    ...createEvidenceSpeechControls(askEvidenceSpeechOptions),
     historicalAnswerVisible: false,
     mode: "ask",
     newThreadTitle: "",
@@ -855,6 +867,7 @@ export function registerPage(alpine) {
       this.resetCitationInspectorSize();
       this.dictationController?.destroy();
       this.dictationController = null;
+      this.resetEvidenceSpeechPlayback();
       this.resetSpeechAudio();
     },
 
@@ -875,6 +888,9 @@ export function registerPage(alpine) {
         this.speechToTextEnabled = snapshot.speechToTextEnabled;
         this.textToSpeechEnabled = snapshot.textToSpeechEnabled;
         this.textToSpeechPreloadEnabled = snapshot.textToSpeechPreloadEnabled;
+        if (!this.textToSpeechEnabled) {
+          this.resetEvidenceSpeechPlayback();
+        }
         if (!this.speechToTextEnabled) {
           this.cancelDictation();
         }
@@ -1410,7 +1426,6 @@ export function registerPage(alpine) {
       this.operation = "search";
       this.discoveryStatus = "Searching indexed sources.";
       this.discoveryResult = null;
-      this.discoveryMatchFilter = "all";
       this.expandedDiscoveryResultKeys = [];
       this.requestError = "";
       if (clearSelection) {
@@ -1459,25 +1474,44 @@ export function registerPage(alpine) {
     },
 
     runDiscoveryPage(direction) {
+      const exact = this.discoveryExactResults();
       if (
-        this.discoveryResult === null
+        exact === null
         || this.discoveryScope === null
         || this.operation !== null
         || this.discoveryPageLoading
       ) {
         return;
       }
-      const currentPage = this.discoveryResult.keyword.page;
+      const currentPage = exact.page;
       const pageOffset = direction === "previous" ? -1 : 1;
       const requestedPage = currentPage + pageOffset;
-      if (requestedPage < 1 || requestedPage > this.discoveryTotalPages()) {
+      this.goToDiscoveryPage(requestedPage);
+    },
+
+    goToDiscoveryPage(requestedPage) {
+      const exact = this.discoveryExactResults();
+      if (
+        exact === null
+        || this.discoveryScope === null
+        || this.operation !== null
+        || this.discoveryPageLoading
+        || requestedPage === exact.page
+        || requestedPage < 1
+        || requestedPage > this.discoveryTotalPages()
+      ) {
         return;
       }
       void this.loadDiscoveryPage(requestedPage);
     },
 
     async loadDiscoveryPage(keywordPage) {
-      if (this.discoveryResult === null || this.discoveryScope === null) {
+      const exact = this.discoveryExactResults();
+      if (
+        this.discoveryResult === null
+        || exact === null
+        || this.discoveryScope === null
+      ) {
         return;
       }
       this.discoveryPageAbortController?.abort();
@@ -1508,11 +1542,26 @@ export function registerPage(alpine) {
           readDiscoveryResponse,
         );
         if (!controller.signal.aborted) {
-          this.discoveryResult = {
-            keyword: pageResult.keyword,
-            query: completedResult.query,
-            related: completedResult.related,
-          };
+          if (pageResult.results.kind !== "exact") {
+            throw new Error("The exact-match page response has the wrong result kind.");
+          }
+          if (completedResult.results.kind === "exact-and-related") {
+            this.discoveryResult = {
+              query: pageResult.query,
+              results: {
+                exact: {
+                  documents: pageResult.results.documents,
+                  page: pageResult.results.page,
+                  pageSize: pageResult.results.pageSize,
+                  totalDocuments: pageResult.results.totalDocuments,
+                },
+                kind: "exact-and-related",
+                related: completedResult.results.related,
+              },
+            };
+          } else {
+            this.discoveryResult = pageResult;
+          }
           this.initializeDiscoveryExpansion(this.discoveryResult);
           this.discoveryStatus = `Keyword results page ${keywordPage} loaded. ${this.discoverySummary()}`;
         }
@@ -1551,6 +1600,7 @@ export function registerPage(alpine) {
       if (source.preview === true) {
         return;
       }
+      this.resetEvidenceSpeechPlayback();
       this.citationAbortController?.abort();
       const controller = new AbortController();
       this.citationAbortController = controller;
@@ -1854,6 +1904,7 @@ export function registerPage(alpine) {
     closeEvidenceInspector() {
       this.citationAbortController?.abort();
       this.citationAbortController = null;
+      this.resetEvidenceSpeechPlayback();
       resetEvidenceWindow(this.citationWindow);
       this.inspectedCitation = null;
       this.citationError = "";
@@ -2136,158 +2187,174 @@ export function registerPage(alpine) {
       return `${sourceCount} ${noun}`;
     },
 
-    discoveryGroups() {
+    discoveryExactResults() {
       if (this.discoveryResult === null) {
+        return null;
+      }
+      if (this.discoveryResult.results.kind === "exact") {
+        return this.discoveryResult.results;
+      }
+      return this.discoveryResult.results.exact;
+    },
+
+    discoveryRelatedResults() {
+      if (this.discoveryResult?.results.kind !== "exact-and-related") {
+        return null;
+      }
+      return this.discoveryResult.results.related;
+    },
+
+    discoveryRelatedDocuments() {
+      const exact = this.discoveryExactResults();
+      const related = this.discoveryRelatedResults();
+      if (exact === null || related === null) {
+        return [];
+      }
+      const exactPassageKeys = new Set();
+      for (const document of exact.documents) {
+        for (const passage of document.passages) {
+          exactPassageKeys.add(this.discoveryPassageKey(document, passage));
+        }
+      }
+      const documents = [];
+      for (const document of related.documents) {
+        const passages = [];
+        for (const passage of document.passages) {
+          const passageKey = this.discoveryPassageKey(document, passage);
+          if (!exactPassageKeys.has(passageKey)) {
+            passages.push(passage);
+          }
+        }
+        if (passages.length === 0) {
+          continue;
+        }
+        const removedPassageCount = document.passages.length - passages.length;
+        documents.push({
+          documentId: document.documentId,
+          matchingPassageCount: Math.max(
+            passages.length,
+            document.matchingPassageCount - removedPassageCount,
+          ),
+          passages,
+          sourceFile: document.sourceFile,
+        });
+      }
+      return documents;
+    },
+
+    discoveryGroups() {
+      const exact = this.discoveryExactResults();
+      if (exact === null) {
         return [];
       }
       const groups = [{
-        documents: this.discoveryResult.keyword.documents,
-        key: "keyword",
+        description: "BM25 keyword matches",
+        entries: this.discoveryEntries("exact", exact.documents),
+        key: "exact",
+        title: "Exact matches",
+        totalDocuments: exact.totalDocuments,
       }];
-      if (this.discoveryResult.related.status !== "disabled") {
-        const relatedDocuments = this.discoveryResult.related.documents;
+      const related = this.discoveryRelatedResults();
+      if (related !== null) {
+        const relatedDocuments = this.discoveryRelatedDocuments();
         groups.push({
-          documents: relatedDocuments,
+          description: "Dense retrieval, reranked",
+          entries: this.discoveryEntries("related", relatedDocuments),
           key: "related",
+          title: "Related by meaning",
+          totalDocuments: relatedDocuments.length,
         });
       }
       return groups;
     },
 
-    discoveryVisibleGroups() {
-      const groups = this.discoveryGroups();
-      if (this.discoveryMatchFilter === "all") {
-        return groups;
-      }
-      const visibleGroups = [];
-      for (const group of groups) {
-        const documents = [];
-        for (const document of group.documents) {
-          if (document.matchKinds.includes(this.discoveryMatchFilter)) {
-            documents.push(document);
-          }
-        }
-        visibleGroups.push({ documents, key: group.key });
-      }
-      return visibleGroups;
-    },
-
-    discoveryVisibleEntries() {
+    discoveryEntries(lane, documents) {
       const entries = [];
-      const groups = this.discoveryVisibleGroups();
-      let nonEmptyGroupCount = 0;
-      for (const group of groups) {
-        if (group.documents.length > 0) {
-          nonEmptyGroupCount += 1;
-        }
-      }
-      for (const group of groups) {
-        for (let index = 0; index < group.documents.length; index += 1) {
-          const document = group.documents[index];
-          entries.push({
-            document,
-            groupKey: group.key,
-            groupLabel: group.key === "keyword" ? "Keyword matches" : "Semantic matches",
-            key: this.discoveryResultKey(group.key, document),
-            rank: this.discoveryDocumentRank(group.key, index),
-            showGroupLabel: nonEmptyGroupCount > 1 && index === 0,
-          });
-        }
+      for (let index = 0; index < documents.length; index += 1) {
+        const document = documents[index];
+        entries.push({
+          document,
+          key: this.discoveryResultKey(lane, document),
+          lane,
+          rank: this.discoveryDocumentRank(lane, index),
+        });
       }
       return entries;
     },
 
     discoveryOrderLabel() {
-      let nonEmptyGroupCount = 0;
-      for (const group of this.discoveryVisibleGroups()) {
-        if (group.documents.length > 0) {
-          nonEmptyGroupCount += 1;
-        }
+      if (this.discoveryResult?.results.kind === "exact-and-related") {
+        return "Exact matches first, then related by meaning";
       }
-      return nonEmptyGroupCount > 1
-        ? "Best matches first within each type"
-        : "Best matches first";
+      return "Best exact matches first";
     },
 
-    discoveryHasVisibleResults() {
-      return this.discoveryVisibleEntries().length > 0;
+    discoveryGroupCountLabel(group) {
+      const noun = group.totalDocuments === 1 ? "document" : "documents";
+      return `${group.totalDocuments} ${noun}`;
     },
 
-    changeDiscoveryMatchFilter(filter) {
-      if (filter !== "all" && filter !== "keyword" && filter !== "semantic") {
-        return;
+    discoveryGroupEmptyMessage(group) {
+      if (group.key === "related") {
+        return "No related passages passed the configured relevance threshold.";
       }
-      this.discoveryMatchFilter = filter;
-      const firstEntry = this.discoveryVisibleEntries()[0];
-      this.expandedDiscoveryResultKeys = firstEntry === undefined
-        ? []
-        : [firstEntry.key];
+      return "No exact keyword matches were found.";
     },
 
-    discoveryFilterEmptyMessage() {
-      if (this.discoveryMatchFilter === "semantic") {
-        if (this.discoveryResult?.related.status === "unavailable") {
-          return "Semantic search is unavailable.";
-        }
-        return "No semantic matches passed the relevance threshold.";
-      }
-      if (this.discoveryMatchFilter === "keyword") {
-        if (this.discoveryResult?.keyword.status === "unavailable") {
-          return "Keyword search is unavailable.";
-        }
-        return "No keyword matches were found in the selected scope.";
-      }
-      return "No relevant sources were found in the selected scope.";
+    discoveryResultKey(lane, document) {
+      return `${lane}\u0000${this.discoveryDocumentKey(document)}`;
     },
 
-    discoveryResultKey(groupKey, document) {
-      return `${groupKey}\u0000${this.discoveryDocumentKey(document)}`;
-    },
-
-    discoveryDocumentRank(groupKey, index) {
-      if (groupKey !== "keyword" || this.discoveryResult === null) {
+    discoveryDocumentRank(lane, index) {
+      if (lane !== "exact") {
         return index + 1;
       }
-      const keyword = this.discoveryResult.keyword;
-      return ((keyword.page - 1) * keyword.pageSize) + index + 1;
+      const exact = this.discoveryExactResults();
+      if (exact === null) {
+        return index + 1;
+      }
+      return ((exact.page - 1) * exact.pageSize) + index + 1;
     },
 
     initializeDiscoveryExpansion(result) {
-      const firstKeyword = result.keyword.documents[0];
-      if (firstKeyword !== undefined) {
+      const exact = result.results.kind === "exact"
+        ? result.results
+        : result.results.exact;
+      const firstDocument = exact.documents[0];
+      if (firstDocument !== undefined) {
         this.expandedDiscoveryResultKeys = [
-          this.discoveryResultKey("keyword", firstKeyword),
+          this.discoveryResultKey("exact", firstDocument),
         ];
         return;
       }
-      const firstRelated = result.related.documents[0];
-      if (firstRelated !== undefined) {
-        this.expandedDiscoveryResultKeys = [
-          this.discoveryResultKey("related", firstRelated),
-        ];
-        return;
+      if (result.results.kind === "exact-and-related") {
+        const firstRelatedDocument = result.results.related.documents[0];
+        if (firstRelatedDocument !== undefined) {
+          this.expandedDiscoveryResultKeys = [
+            this.discoveryResultKey("related", firstRelatedDocument),
+          ];
+          return;
+        }
       }
       this.expandedDiscoveryResultKeys = [];
     },
 
-    discoveryDocumentExpanded(groupKey, document) {
-      const key = this.discoveryResultKey(groupKey, document);
-      return this.expandedDiscoveryResultKeys.includes(key);
+    discoveryDocumentExpanded(entry) {
+      return this.expandedDiscoveryResultKeys.includes(entry.key);
     },
 
-    toggleDiscoveryDocumentExpanded(groupKey, document) {
-      const key = this.discoveryResultKey(groupKey, document);
+    toggleDiscoveryDocumentExpanded(entry) {
       const expandedKeys = [];
       let removed = false;
       for (const expandedKey of this.expandedDiscoveryResultKeys) {
-        if (expandedKey === key) {
+        if (expandedKey === entry.key) {
           removed = true;
           continue;
         }
         expandedKeys.push(expandedKey);
       }
       if (!removed) {
-        expandedKeys.push(key);
+        expandedKeys.push(entry.key);
       }
       this.expandedDiscoveryResultKeys = expandedKeys;
     },
@@ -2296,59 +2363,99 @@ export function registerPage(alpine) {
       this.selectedDiscoveryDocuments = [];
     },
 
-    discoveryWarnings() {
-      if (this.discoveryResult === null) {
-        return [];
-      }
-      const warnings = [];
-      if (this.discoveryResult.keyword.warning !== null) {
-        warnings.push(this.discoveryResult.keyword.warning);
-      }
-      if (this.discoveryResult.related.warning !== null) {
-        warnings.push(this.discoveryResult.related.warning);
-      }
-      return warnings;
-    },
-
     discoveryHasResults() {
-      if (this.discoveryResult === null) {
+      const exact = this.discoveryExactResults();
+      if (exact === null) {
         return false;
       }
-      return this.discoveryResult.keyword.documents.length > 0
-        || this.discoveryResult.related.documents.length > 0;
+      if (exact.documents.length > 0) {
+        return true;
+      }
+      return this.discoveryRelatedDocuments().length > 0;
     },
 
     discoverySummary() {
       if (this.discoveryResult === null) {
         return "";
       }
-      const keywordCount = this.discoveryResult.keyword.totalDocuments;
-      const keywordLabel = keywordCount === 1
-        ? "keyword-matched document"
-        : "keyword-matched documents";
-      if (this.discoveryResult.related.status === "disabled") {
-        return `${keywordCount} ${keywordLabel}. Semantic matches were not searched.`;
+      const results = this.discoveryResult.results;
+      const exact = this.discoveryExactResults();
+      if (exact === null) {
+        return "";
       }
-      const relatedCount = this.discoveryResult.related.documents.length;
-      const relatedLabel = relatedCount === 1 ? "semantic match" : "semantic matches";
-      return `${keywordCount} ${keywordLabel} and ${relatedCount} ${relatedLabel}.`;
+      const exactNoun = exact.totalDocuments === 1 ? "document" : "documents";
+      if (results.kind === "exact") {
+        return `${exact.totalDocuments} exact-match ${exactNoun}.`;
+      }
+      const relatedDocuments = this.discoveryRelatedDocuments();
+      const relatedNoun = relatedDocuments.length === 1 ? "document" : "documents";
+      return `${exact.totalDocuments} exact-match ${exactNoun} and ${relatedDocuments.length} related ${relatedNoun}.`;
     },
 
     discoveryTotalPages() {
-      if (this.discoveryResult === null) {
+      const exact = this.discoveryExactResults();
+      if (exact === null) {
         return 1;
       }
       return Math.max(
         1,
         Math.ceil(
-          this.discoveryResult.keyword.totalDocuments
-          / this.discoveryResult.keyword.pageSize,
+          exact.totalDocuments / exact.pageSize,
         ),
       );
     },
 
+    discoveryPageNumbers() {
+      const exact = this.discoveryExactResults();
+      if (exact === null) {
+        return [];
+      }
+      const totalPages = this.discoveryTotalPages();
+      const currentPage = exact.page;
+      const maximumStart = Math.max(1, totalPages - 2);
+      const start = Math.min(Math.max(1, currentPage - 1), maximumStart);
+      const end = Math.min(totalPages, start + 2);
+      const pages = [];
+      for (let page = start; page <= end; page += 1) {
+        pages.push(page);
+      }
+      return pages;
+    },
+
+    discoveryPageSummary() {
+      const exact = this.discoveryExactResults();
+      if (exact === null) {
+        return "";
+      }
+      if (exact.totalDocuments === 0) {
+        return "Showing 0 of 0 sources";
+      }
+      const first = ((exact.page - 1) * exact.pageSize) + 1;
+      const last = Math.min(
+        exact.page * exact.pageSize,
+        exact.totalDocuments,
+      );
+      return `Showing ${first}-${last} of ${exact.totalDocuments} exact matches`;
+    },
+
+    discoveryCurrentPage() {
+      return this.discoveryExactResults()?.page ?? 1;
+    },
+
+    discoveryPassageMatchLabel(passage) {
+      return passage.matchKind === "keyword" ? "Keyword" : "Semantic";
+    },
+
+    discoveryRankLabel(rank) {
+      return String(rank).padStart(2, "0");
+    },
+
     discoveryDocumentKey(document) {
       return `${document.documentId}\u0000${document.sourceFile}`;
+    },
+
+    discoveryPassageKey(document, passage) {
+      return `${this.discoveryDocumentKey(document)}\u0000${passage.id}`;
     },
 
     discoveryDocumentSelected(document) {
@@ -2740,6 +2847,9 @@ export function registerPage(alpine) {
     },
 
     discoveryExcerptSegments(passage) {
+      if (passage.matchKind !== "keyword") {
+        return [{ highlighted: false, key: `${passage.id}:0`, text: passage.excerpt }];
+      }
       const query = this.discoveryResult?.query.trim() ?? "";
       if (query === "") {
         return [{ highlighted: false, key: `${passage.id}:0`, text: passage.excerpt }];

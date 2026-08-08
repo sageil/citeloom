@@ -106,7 +106,6 @@ function createQueryExpansionRuntime(
   const model = wrapLanguageModel({
     middleware: defaultSettingsMiddleware({
       settings: buildLanguageModelSettings(
-        null,
         0.1,
         thinkingProviderOptions,
         reasoning,
@@ -182,7 +181,6 @@ export function createInferenceModelRegistry(
   const answerModel = wrapLanguageModel({
     middleware: defaultSettingsMiddleware({
       settings: buildLanguageModelSettings(
-        null,
         0.1,
         answerThinkingProviderOptions,
         answerReasoning,
@@ -194,7 +192,6 @@ export function createInferenceModelRegistry(
   const chatModel = wrapLanguageModel({
     middleware: defaultSettingsMiddleware({
       settings: buildLanguageModelSettings(
-        null,
         0.1,
         chatThinkingProviderOptions,
         chatReasoning,
@@ -206,7 +203,6 @@ export function createInferenceModelRegistry(
   const indexingModel = wrapLanguageModel({
     middleware: defaultSettingsMiddleware({
       settings: buildLanguageModelSettings(
-        null,
         0.1,
         indexingThinkingProviderOptions,
         indexingReasoning,
@@ -283,14 +279,12 @@ export function createInferenceModelRegistry(
   return {
     answer: registry.languageModel("inference:answer"),
     answerBudget: {
-      maximumOutputTokens: config.inference.answerBudget.maximumOutputTokens,
       minimumOutputTokens: config.inference.answerBudget.minimumOutputTokens,
       providerSafetyMarginTokens:
         config.inference.answerBudget.providerSafetyMarginTokens,
     },
     chat: registry.languageModel("inference:chat"),
     chatBudget: {
-      maximumOutputTokens: config.inference.answerBudget.maximumOutputTokens,
       minimumOutputTokens: config.inference.answerBudget.minimumOutputTokens,
       providerSafetyMarginTokens:
         config.inference.answerBudget.providerSafetyMarginTokens,
@@ -775,15 +769,11 @@ function createOllamaProvider(config: ProviderRuntimeConfig) {
 }
 
 function buildLanguageModelSettings(
-  maxOutputTokens: number | null,
   temperature: number,
   providerOptions: LanguageModelV4CallOptions["providerOptions"],
   reasoning: LanguageModelV4CallOptions["reasoning"] | undefined,
 ): Partial<LanguageModelV4CallOptions> {
   const settings: Partial<LanguageModelV4CallOptions> = { temperature };
-  if (maxOutputTokens !== null) {
-    settings.maxOutputTokens = maxOutputTokens;
-  }
   if (providerOptions !== undefined) {
     settings.providerOptions = providerOptions;
   }

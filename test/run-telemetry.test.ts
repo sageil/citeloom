@@ -67,7 +67,6 @@ describe("run telemetry", () => {
       contextCapacityTokens: 16_384,
       failureReason: null,
       inputTokenUpperBound: 3_000,
-      outputBudgetTokens: 1_384,
       providerSafetyMarginTokens: 2_000,
       requests: [],
       responseDiagnostics: [],
@@ -263,7 +262,6 @@ describe("run telemetry", () => {
     expect(sink.completions[0]).toMatchObject({
       answerBudget: {
         contextCapacityTokens: 16_384,
-        outputBudgetTokens: 1_384,
         requests: [{
           evidence: [{
             context: {

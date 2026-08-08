@@ -67,7 +67,6 @@ export const TEST_PLAIN_EMBEDDING_INPUT_FORMAT = Object.freeze(
 );
 
 const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
-  answerMaximumOutputTokens: 8_192,
   answerMinimumOutputTokens: 256,
   answerProviderSafetyMarginTokens: 2_048,
   answerTemperature: 0,

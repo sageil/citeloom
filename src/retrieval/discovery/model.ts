@@ -6,7 +6,6 @@ import type {
 } from "../../domain/source-elements.js";
 import type {
   DiscoveryMatchKind,
-  DiscoverySearchStatus,
   SourceDiscoveryDocument,
   SourceDiscoveryPassage,
   SourceDiscoveryRequest,
@@ -25,63 +24,78 @@ export interface KeywordDiscoveryPage {
   totalDocuments: number;
 }
 
-export interface DiscoverySectionState {
-  status: DiscoverySearchStatus;
-  warning: string | null;
+export interface BuildKeywordSourceDiscoveryResponseInput {
+  keywordPage: KeywordDiscoveryPage;
+  request: SourceDiscoveryRequest;
+  settings: SourceDiscoveryConfig;
 }
 
-export interface BuildSourceDiscoveryResponseInput {
-  keyword: DiscoverySectionState;
+export interface BuildExactAndRelatedSourceDiscoveryResponseInput {
   keywordPage: KeywordDiscoveryPage;
-  lexicalDocumentKeys: Set<string>;
-  related: DiscoverySectionState;
-  relatedElements: RetrievedElement[];
+  matchedElements: RetrievedElement[];
   request: SourceDiscoveryRequest;
+  reviewedPassageCount: number;
   settings: SourceDiscoveryConfig;
 }
 
 interface MutableDiscoveryDocument {
   documentId: string;
-  matchKinds: Set<DiscoveryMatchKind>;
   matchingPassageCount: number;
   passages: SourceDiscoveryPassage[];
   sourceFile: string;
 }
 
-export function buildSourceDiscoveryResponse(
-  input: BuildSourceDiscoveryResponseInput,
+export function buildKeywordSourceDiscoveryResponse(
+  input: BuildKeywordSourceDiscoveryResponseInput,
 ): SourceDiscoveryResponse {
-  const semanticElementIds = readSemanticElementIds(input.relatedElements);
-  const semanticDocumentKeys = readSemanticDocumentKeys(input.relatedElements);
   const keywordDocuments = buildKeywordDocuments(
     input.keywordPage.matches,
     input.request.query,
-    semanticElementIds,
-    semanticDocumentKeys,
-  );
-  const relatedDocuments = buildRelatedDocuments(
-    input.relatedElements,
-    input.lexicalDocumentKeys,
-    input.request.query,
-    input.settings.resultsPerGroup,
-    input.settings.passagesPerDocument,
   );
 
   return {
-    keyword: {
+    query: input.request.query,
+    results: {
       documents: keywordDocuments,
+      kind: "exact",
       page: input.request.keywordPage,
       pageSize: input.settings.resultsPerGroup,
-      status: input.keyword.status,
       totalDocuments: input.keywordPage.totalDocuments,
-      warning: input.keyword.warning,
     },
+  };
+}
+
+export function buildExactAndRelatedSourceDiscoveryResponse(
+  input: BuildExactAndRelatedSourceDiscoveryResponseInput,
+): SourceDiscoveryResponse {
+  const exactDocuments = buildKeywordDocuments(
+    input.keywordPage.matches,
+    input.request.query,
+  );
+  const exactPassageKeys = readPassageKeys(exactDocuments);
+  const related = buildRelatedDocuments(
+    input.matchedElements,
+    input.request.query,
+    input.settings.resultsPerGroup,
+    input.settings.passagesPerDocument,
+    exactPassageKeys,
+  );
+  return {
     query: input.request.query,
-    related: {
-      documents: relatedDocuments,
-      limit: input.settings.resultsPerGroup,
-      status: input.related.status,
-      warning: input.related.warning,
+    results: {
+      exact: {
+        documents: exactDocuments,
+        page: input.request.keywordPage,
+        pageSize: input.settings.resultsPerGroup,
+        totalDocuments: input.keywordPage.totalDocuments,
+      },
+      kind: "exact-and-related",
+      related: {
+        documents: related.documents,
+        limit: input.settings.resultsPerGroup,
+        matchedPassageCount: related.matchedPassageCount,
+        reviewedPassageCount: input.reviewedPassageCount,
+      },
     },
   };
 }
@@ -130,79 +144,81 @@ export function createDiscoveryDocumentKey(
 function buildKeywordDocuments(
   matches: KeywordDiscoveryMatch[],
   query: string,
-  semanticElementIds: Set<string>,
-  semanticDocumentKeys: Set<string>,
 ): SourceDiscoveryDocument[] {
   const documents = new Map<string, MutableDiscoveryDocument>();
   for (const match of matches) {
     const element = match.element;
-    const documentKey = createDiscoveryDocumentKey(
-      element.documentId,
-      element.sourceFile,
-    );
-    const document = readOrCreateDocument(documents, element, "keyword");
+    const document = readOrCreateDocument(documents, element);
     document.matchingPassageCount = Math.max(
       document.matchingPassageCount,
       match.matchingPassageCount,
     );
-    const passageMatchKinds: DiscoveryMatchKind[] = ["keyword"];
-    if (semanticElementIds.has(element.id)) {
-      passageMatchKinds.push("semantic");
-    }
     document.passages.push(buildPassage(
       element,
       match.evidenceContent,
       query,
-      passageMatchKinds,
+      "keyword",
     ));
-    if (semanticDocumentKeys.has(documentKey)) {
-      document.matchKinds.add("semantic");
-    }
   }
   return finalizeDocuments(documents);
 }
 
+interface RelatedDocuments {
+  documents: SourceDiscoveryDocument[];
+  matchedPassageCount: number;
+}
+
 function buildRelatedDocuments(
   elements: RetrievedElement[],
-  lexicalDocumentKeys: Set<string>,
   query: string,
   limit: number,
   passagesPerDocument: number,
-): SourceDiscoveryDocument[] {
+  excludedPassageKeys: Set<string>,
+): RelatedDocuments {
   const documents = new Map<string, MutableDiscoveryDocument>();
+  const includedPassageKeys = new Set<string>();
+  let matchedPassageCount = 0;
   for (const item of elements) {
     const element = item.element;
+    const passageKey = createDiscoveryPassageKey(element);
+    if (
+      excludedPassageKeys.has(passageKey)
+      || includedPassageKeys.has(passageKey)
+    ) {
+      continue;
+    }
     const documentKey = createDiscoveryDocumentKey(
       element.documentId,
       element.sourceFile,
     );
-    if (lexicalDocumentKeys.has(documentKey)) {
-      continue;
-    }
     let document = documents.get(documentKey);
     if (document === undefined) {
       if (documents.size === limit) {
         continue;
       }
-      document = readOrCreateDocument(documents, element, "semantic");
+      document = readOrCreateDocument(documents, element);
     }
+    includedPassageKeys.add(passageKey);
+    matchedPassageCount += 1;
     document.matchingPassageCount += 1;
     if (document.passages.length < passagesPerDocument) {
       document.passages.push(buildPassage(
         element,
         item.evidenceContent,
         query,
-        ["semantic"],
+        "semantic",
       ));
     }
   }
-  return finalizeDocuments(documents);
+  return {
+    documents: finalizeDocuments(documents),
+    matchedPassageCount,
+  };
 }
 
 function readOrCreateDocument(
   documents: Map<string, MutableDiscoveryDocument>,
   element: RetrievalSourceElement,
-  matchKind: DiscoveryMatchKind,
 ): MutableDiscoveryDocument {
   const documentKey = createDiscoveryDocumentKey(
     element.documentId,
@@ -210,12 +226,10 @@ function readOrCreateDocument(
   );
   const existing = documents.get(documentKey);
   if (existing !== undefined) {
-    existing.matchKinds.add(matchKind);
     return existing;
   }
   const created: MutableDiscoveryDocument = {
     documentId: element.documentId,
-    matchKinds: new Set([matchKind]),
     matchingPassageCount: 0,
     passages: [],
     sourceFile: element.sourceFile,
@@ -228,13 +242,13 @@ function buildPassage(
   element: RetrievalSourceElement,
   evidenceContent: string,
   query: string,
-  matchKinds: DiscoveryMatchKind[],
+  matchKind: DiscoveryMatchKind,
 ): SourceDiscoveryPassage {
   return {
     excerpt: createSourceExcerpt(element, evidenceContent, query),
     id: element.id,
     kind: element.kind,
-    matchKinds,
+    matchKind,
     pageNumbers: element.pageNumbers,
     regions: element.regions,
     sectionPath: element.sectionPath,
@@ -248,7 +262,6 @@ function finalizeDocuments(
   for (const document of documents.values()) {
     finalized.push({
       documentId: document.documentId,
-      matchKinds: [...document.matchKinds],
       matchingPassageCount: document.matchingPassageCount,
       passages: document.passages,
       sourceFile: document.sourceFile,
@@ -257,23 +270,32 @@ function finalizeDocuments(
   return finalized;
 }
 
-function readSemanticElementIds(elements: RetrievedElement[]): Set<string> {
-  const elementIds = new Set<string>();
-  for (const item of elements) {
-    elementIds.add(item.element.id);
+function readPassageKeys(
+  documents: SourceDiscoveryDocument[],
+): Set<string> {
+  const passageKeys = new Set<string>();
+  for (const document of documents) {
+    for (const passage of document.passages) {
+      passageKeys.add(createDiscoveryPassageKey({
+        documentId: document.documentId,
+        id: passage.id,
+        sourceFile: document.sourceFile,
+      }));
+    }
   }
-  return elementIds;
+  return passageKeys;
 }
 
-function readSemanticDocumentKeys(elements: RetrievedElement[]): Set<string> {
-  const documentKeys = new Set<string>();
-  for (const item of elements) {
-    documentKeys.add(createDiscoveryDocumentKey(
-      item.element.documentId,
-      item.element.sourceFile,
-    ));
-  }
-  return documentKeys;
+interface DiscoveryPassageIdentity {
+  documentId: string;
+  id: string;
+  sourceFile: string;
+}
+
+function createDiscoveryPassageKey(
+  passage: DiscoveryPassageIdentity,
+): string {
+  return `${createDiscoveryDocumentKey(passage.documentId, passage.sourceFile)}\u0000${passage.id}`;
 }
 
 function findQueryMatchIndex(content: string, query: string): number {

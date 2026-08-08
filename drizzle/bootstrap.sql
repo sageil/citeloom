@@ -944,7 +944,7 @@ WITH canonical_settings AS (
           },
           "maximumParallelRequests": 1,
           "name": null,
-          "thinkingMode": "auto",
+          "thinkingMode": "disabled",
           "reranking": {
             "apiToken": null,
             "baseUrl": null,
@@ -1011,7 +1011,6 @@ WITH canonical_settings AS (
       }
     },
     "runtime": {
-      "answerMaximumOutputTokens": 20000,
       "answerMinimumOutputTokens": 256,
       "answerProviderSafetyMarginTokens": 2048,
       "answerTemperature": 0,
@@ -1210,22 +1209,17 @@ SET
             jsonb_set(
               jsonb_set(
                 jsonb_set(
-                  jsonb_set(
-                    "application_settings"."defaults",
-                    '{providers,routing}',
-                    EXCLUDED."defaults"#>'{providers,routing}',
-                    true
-                  ),
-                  '{providers,catalog}',
-                  EXCLUDED."defaults"#>'{providers,catalog}',
+                  "application_settings"."defaults",
+                  '{providers,routing}',
+                  EXCLUDED."defaults"#>'{providers,routing}',
                   true
                 ),
-                '{providers,connections}',
-                EXCLUDED."defaults"#>'{providers,connections}',
+                '{providers,catalog}',
+                EXCLUDED."defaults"#>'{providers,catalog}',
                 true
               ),
-              '{runtime,answerMaximumOutputTokens}',
-              EXCLUDED."defaults"#>'{runtime,answerMaximumOutputTokens}',
+              '{providers,connections}',
+              EXCLUDED."defaults"#>'{providers,connections}',
               true
             ),
             '{runtime,embeddingInputFormatId}',
@@ -1247,7 +1241,7 @@ SET
     '{runtime,searchMethod}',
     EXCLUDED."defaults"#>'{runtime,searchMethod}',
     true
-  ),
+  ) #- '{runtime,answerMaximumOutputTokens}',
   "settings" = jsonb_set(
     jsonb_set(
       jsonb_set(
@@ -1255,26 +1249,13 @@ SET
           jsonb_set(
             jsonb_set(
               jsonb_set(
-                jsonb_set(
-                  "application_settings"."settings",
-                  '{providers,catalog}',
-                  EXCLUDED."settings"#>'{providers,catalog}',
-                  true
-                ),
-                '{providers,connections}',
-                EXCLUDED."settings"#>'{providers,connections}',
+                "application_settings"."settings",
+                '{providers,catalog}',
+                EXCLUDED."settings"#>'{providers,catalog}',
                 true
               ),
-              '{runtime,answerMaximumOutputTokens}',
-              CASE
-                WHEN
-                  "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
-                    IS NULL
-                  OR "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
-                    = "application_settings"."defaults"#>'{runtime,answerMaximumOutputTokens}'
-                THEN EXCLUDED."settings"#>'{runtime,answerMaximumOutputTokens}'
-                ELSE "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
-              END,
+              '{providers,connections}',
+              EXCLUDED."settings"#>'{providers,connections}',
               true
             ),
             '{runtime,queryExpansions}',
@@ -1331,7 +1312,7 @@ SET
       ELSE "application_settings"."settings"#>'{runtime,searchMethod}'
     END,
     true
-  ),
+  ) #- '{runtime,answerMaximumOutputTokens}',
   "updated_at" = now(),
   "version" = "application_settings"."version" + 1
 WHERE
@@ -1342,7 +1323,9 @@ WHERE
   OR "application_settings"."defaults"#>'{providers,connections}'
     IS DISTINCT FROM EXCLUDED."defaults"#>'{providers,connections}'
   OR "application_settings"."defaults"#>'{runtime,answerMaximumOutputTokens}'
-    IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,answerMaximumOutputTokens}'
+    IS NOT NULL
+  OR "application_settings"."settings"#>'{runtime,answerMaximumOutputTokens}'
+    IS NOT NULL
   OR "application_settings"."defaults"#>'{runtime,embeddingInputFormatId}'
     IS DISTINCT FROM EXCLUDED."defaults"#>'{runtime,embeddingInputFormatId}'
   OR "application_settings"."defaults"#>'{runtime,queryExpansions}'

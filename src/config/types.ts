@@ -139,7 +139,6 @@ export interface SchedulingConfig {
 export interface InferenceConfig {
   answer: LanguageInferenceConfig;
   answerBudget: {
-    maximumOutputTokens: number;
     minimumOutputTokens: number;
     providerSafetyMarginTokens: number;
   };
@@ -299,7 +298,6 @@ export interface WorkerConfig {
 }
 
 export interface RuntimeSettings {
-  answerMaximumOutputTokens: number;
   answerMinimumOutputTokens: number;
   answerProviderSafetyMarginTokens: number;
   answerTemperature: number;

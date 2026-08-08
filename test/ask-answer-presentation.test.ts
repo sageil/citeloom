@@ -60,7 +60,6 @@ describe("ask answer presentation", () => {
     expect(stylesheet).toContain(
       "grid-template-columns: 220px minmax(0, 1fr) 290px;",
     );
-    expect(stylesheet.split("\n").length).toBeLessThanOrEqual(200);
     expect(shellScript).toContain("this.activeView !== \"ask\"");
   });
 

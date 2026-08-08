@@ -21,6 +21,7 @@ describe("runtime setting contract", () => {
 
     expect(definitionKeys).toEqual(schemaKeys);
     expect(new Set(definitionKeys).size).toBe(definitionKeys.length);
+    expect(definitionKeys).not.toContain("answerMaximumOutputTokens");
   });
 
   it("validates a setting value with its named schema", () => {

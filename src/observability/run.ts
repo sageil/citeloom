@@ -183,7 +183,6 @@ export interface AnswerBudgetTelemetry {
     | "no-complete-evidence-window"
     | null;
   inputTokenUpperBound: number | null;
-  outputBudgetTokens: number | null;
   providerSafetyMarginTokens: number;
   requests: AnswerGenerationRequestTelemetry[];
   responseDiagnostics: AnswerResponseDiagnosticTelemetry[];

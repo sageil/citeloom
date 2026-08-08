@@ -17,11 +17,11 @@ import {
 } from "../pipeline.js";
 import {
   ensureEmbeddingSpace,
-  readKeywordMatchingDocumentKeys,
   retrieveKeywordDiscoveryPage,
 } from "../indexing/index.js";
 import {
-  buildSourceDiscoveryResponse,
+  buildExactAndRelatedSourceDiscoveryResponse,
+  buildKeywordSourceDiscoveryResponse,
   type KeywordDiscoveryPage,
 } from "./model.js";
 import type {
@@ -145,17 +145,19 @@ async function searchIndexedSourcesWithSession(
       return response;
     }
 
-    const documentStore = new SourceDocumentStore(databaseSession.database);
-    const keywordPromise = retrieveKeywordDiscovery(
-      config,
-      databaseSession,
-      documentStore,
-      request,
-      scopeTargets,
-      runTelemetry,
-    );
-    const relatedPromise = request.includeRelated
-      ? retrieveRelatedDiscoveryElements(
+    let response: SourceDiscoveryResponse;
+    try {
+      if (request.includeRelated) {
+        const documentStore = new SourceDocumentStore(databaseSession.database);
+        const keywordPage = await retrieveKeywordDiscovery(
+          config,
+          databaseSession,
+          documentStore,
+          request,
+          scopeTargets,
+          runTelemetry,
+        );
+        const related = await retrieveRelatedDiscoveryElements(
           config,
           databaseSession,
           request,
@@ -163,46 +165,39 @@ async function searchIndexedSourcesWithSession(
           abortSignal,
           runTelemetry,
           runtime,
-        )
-      : Promise.resolve<RetrievedElement[]>([]);
-    const [keywordResult, relatedResult] = await Promise.allSettled([
-      keywordPromise,
-      relatedPromise,
-    ]);
-    abortSignal.throwIfAborted();
-
-    requireAvailableDiscoveryPath(request, keywordResult, relatedResult);
-    await recordPartialDiscoveryFallback(
-      scopeTargets.length,
-      keywordResult,
-      relatedResult,
-      runTelemetry,
-    );
-    const keywordPage: KeywordDiscoveryPage = keywordResult.status === "fulfilled"
-      ? keywordResult.value[0]
-      : { matches: [], totalDocuments: 0 };
-    const lexicalDocumentKeys = keywordResult.status === "fulfilled"
-      ? keywordResult.value[1]
-      : new Set<string>();
-    const relatedElements = relatedResult.status === "fulfilled"
-      ? relatedResult.value
-      : [];
-    if (!request.includeRelated) {
-      runTelemetry.setQueryVariantCount(1);
+        );
+        response = buildExactAndRelatedSourceDiscoveryResponse({
+          keywordPage,
+          matchedElements: related.matchedElements,
+          request,
+          reviewedPassageCount: related.reviewedPassageCount,
+          settings: config.sourceDiscovery,
+        });
+      } else {
+        const documentStore = new SourceDocumentStore(databaseSession.database);
+        const keywordPage = await retrieveKeywordDiscovery(
+          config,
+          databaseSession,
+          documentStore,
+          request,
+          scopeTargets,
+          runTelemetry,
+        );
+        runTelemetry.setQueryVariantCount(1);
+        runTelemetry.setCandidateCount(keywordPage.matches.length);
+        runTelemetry.setHydratedContextCount(keywordPage.matches.length);
+        response = buildKeywordSourceDiscoveryResponse({
+          keywordPage,
+          request,
+          settings: config.sourceDiscovery,
+        });
+      }
+    } catch (error: unknown) {
+      abortSignal.throwIfAborted();
+      throw new SourceDiscoveryUnavailableError(
+        `Source discovery failed: ${readErrorMessage(error)}`,
+      );
     }
-    const hydratedResultCount = keywordPage.matches.length
-      + relatedElements.length;
-    runTelemetry.setCandidateCount(hydratedResultCount);
-    runTelemetry.setHydratedContextCount(hydratedResultCount);
-    const response = buildSourceDiscoveryResponse({
-      keyword: readKeywordDiscoveryState(keywordResult),
-      keywordPage,
-      lexicalDocumentKeys,
-      related: readRelatedDiscoveryState(request, relatedResult),
-      relatedElements,
-      request,
-      settings: config.sourceDiscovery,
-    });
     await runTelemetry.finish("success");
     return response;
   } catch (error: unknown) {
@@ -226,34 +221,9 @@ async function resolveDiscoveryScopeTargets(
   }
 }
 
-function requireAvailableDiscoveryPath(
-  request: SourceDiscoveryRequest,
-  keywordResult: PromiseSettledResult<[KeywordDiscoveryPage, Set<string>]>,
-  relatedResult: PromiseSettledResult<RetrievedElement[]>,
-): void {
-  const everyRequestedPathFailed = keywordResult.status === "rejected"
-    && (!request.includeRelated || relatedResult.status === "rejected");
-  if (!everyRequestedPathFailed) {
-    return;
-  }
-  const relatedError = relatedResult.status === "rejected"
-    ? `; ${readErrorMessage(relatedResult.reason)}`
-    : "";
-  throw new SourceDiscoveryUnavailableError(
-    `Source discovery failed: ${readErrorMessage(keywordResult.reason)}${relatedError}`,
-  );
-}
-
-function readKeywordDiscoveryState(
-  result: PromiseSettledResult<[KeywordDiscoveryPage, Set<string>]>,
-): { status: "complete" | "unavailable"; warning: string | null } {
-  if (result.status === "fulfilled") {
-    return { status: "complete", warning: null };
-  }
-  return {
-    status: "unavailable",
-    warning: `Keyword search was unavailable: ${readErrorMessage(result.reason)}`,
-  };
+interface RelatedDiscoveryElements {
+  matchedElements: RetrievedElement[];
+  reviewedPassageCount: number;
 }
 
 async function retrieveRelatedDiscoveryElements(
@@ -264,7 +234,7 @@ async function retrieveRelatedDiscoveryElements(
   abortSignal: AbortSignal,
   runTelemetry: RunTelemetry,
   runtime?: ApplicationRuntime,
-): Promise<RetrievedElement[]> {
+): Promise<RelatedDiscoveryElements> {
   const retrieval = {
     ...config.retrieval,
     mode: "dense" as const,
@@ -298,7 +268,7 @@ async function retrieveRelatedDiscoveryElements(
     );
   }
   if (prepared.retrieved.length === 0) {
-    return [];
+    return { matchedElements: [], reviewedPassageCount: 0 };
   }
   if (prepared.models.reranker === null) {
     throw new Error("The configured reranker model was not resolved.");
@@ -337,7 +307,11 @@ async function retrieveRelatedDiscoveryElements(
       inputCount: prepared.retrieved.length,
       outputCount: reranked.length,
     }));
-    return reranked;
+    runTelemetry.setHydratedContextCount(reranked.length);
+    return {
+      matchedElements: reranked,
+      reviewedPassageCount: prepared.retrieved.length,
+    };
   } catch (error: unknown) {
     await rerankingStage.finish(createTelemetryStageResult(
       readTelemetryFailureOutcome(abortSignal),
@@ -354,34 +328,26 @@ async function retrieveKeywordDiscovery(
   request: SourceDiscoveryRequest,
   scopeTargets: ResolvedQueryScopeTarget[],
   runTelemetry: RunTelemetry,
-): Promise<[KeywordDiscoveryPage, Set<string>]> {
+): Promise<KeywordDiscoveryPage> {
   const stage = runTelemetry.startStage({
     model: null,
     name: "lexical-retrieval",
-    retrievalMode: config.retrieval.mode,
+    retrievalMode: "bm25",
   });
   try {
-    const result = await Promise.all([
-      retrieveKeywordDiscoveryPage(
-        databaseSession.query,
-        documentStore,
-        request.query,
-        config.embeddingSpace.id,
-        scopeTargets,
-        request.keywordPage,
-        config.sourceDiscovery.resultsPerGroup,
-        config.sourceDiscovery.passagesPerDocument,
-      ),
-      readKeywordMatchingDocumentKeys(
-        databaseSession.query,
-        request.query,
-        config.embeddingSpace.id,
-        scopeTargets,
-      ),
-    ]);
+    const result = await retrieveKeywordDiscoveryPage(
+      databaseSession.query,
+      documentStore,
+      request.query,
+      config.embeddingSpace.id,
+      scopeTargets,
+      request.keywordPage,
+      config.sourceDiscovery.resultsPerGroup,
+      config.sourceDiscovery.passagesPerDocument,
+    );
     await stage.finish(createTelemetryStageResult("success", {
       inputCount: scopeTargets.length,
-      outputCount: result[0].matches.length,
+      outputCount: result.matches.length,
     }));
     return result;
   } catch (error: unknown) {
@@ -392,68 +358,24 @@ async function retrieveKeywordDiscovery(
   }
 }
 
-async function recordPartialDiscoveryFallback(
-  documentCount: number,
-  keywordResult: PromiseSettledResult<[KeywordDiscoveryPage, Set<string>]>,
-  relatedResult: PromiseSettledResult<RetrievedElement[]>,
-  runTelemetry: RunTelemetry,
-): Promise<void> {
-  let name: "dense-retrieval" | "lexical-retrieval" | null = null;
-  let retrievalMode: "bm25" | "dense" | null = null;
-  if (keywordResult.status === "rejected") {
-    name = "lexical-retrieval";
-    retrievalMode = "bm25";
-  } else if (relatedResult.status === "rejected") {
-    name = "dense-retrieval";
-    retrievalMode = "dense";
-  }
-  if (name === null || retrievalMode === null) {
-    return;
-  }
-  const stage = runTelemetry.startStage({
-    model: null,
-    name,
-    retrievalMode,
-  });
-  await stage.finish(createTelemetryStageResult("fallback", {
-    inputCount: documentCount,
-  }));
-  if (relatedResult.status === "rejected") {
-    runTelemetry.setQueryVariantCount(1);
-  }
-}
-
 function buildEmptySourceDiscoveryResponse(
   request: SourceDiscoveryRequest,
   settings: AppConfig["sourceDiscovery"],
 ): SourceDiscoveryResponse {
-  return buildSourceDiscoveryResponse({
-    keyword: { status: "complete", warning: null },
+  if (request.includeRelated) {
+    return buildExactAndRelatedSourceDiscoveryResponse({
+      keywordPage: { matches: [], totalDocuments: 0 },
+      matchedElements: [],
+      request,
+      reviewedPassageCount: 0,
+      settings,
+    });
+  }
+  return buildKeywordSourceDiscoveryResponse({
     keywordPage: { matches: [], totalDocuments: 0 },
-    lexicalDocumentKeys: new Set(),
-    related: request.includeRelated
-      ? { status: "complete", warning: null }
-      : { status: "disabled", warning: null },
-    relatedElements: [],
     request,
     settings,
   });
-}
-
-function readRelatedDiscoveryState(
-  request: SourceDiscoveryRequest,
-  result: PromiseSettledResult<RetrievedElement[]>,
-): { status: "complete" | "disabled" | "unavailable"; warning: string | null } {
-  if (!request.includeRelated) {
-    return { status: "disabled", warning: null };
-  }
-  if (result.status === "fulfilled") {
-    return { status: "complete", warning: null };
-  }
-  return {
-    status: "unavailable",
-    warning: `Semantic search was unavailable: ${readErrorMessage(result.reason)}`,
-  };
 }
 
 function readErrorMessage(error: unknown): string {

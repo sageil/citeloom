@@ -913,7 +913,7 @@ function buildModels(claimVerifier: FakeHhemClient): InferenceModelRegistry {
   const embedding = new MockEmbeddingModelV4();
   return {
     answer: languageModel,
-    answerBudget: { maximumOutputTokens: 16_384, minimumOutputTokens: 256, providerSafetyMarginTokens: 0 },
+    answerBudget: { minimumOutputTokens: 256, providerSafetyMarginTokens: 0 },
     readAnswerCapabilities: async () => buildTestModelCapabilities(),
     claimVerifier,
     documentEmbedding: embedding,

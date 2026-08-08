@@ -130,7 +130,6 @@ function buildModelRegistry(
   return {
     answer: languageModel,
     answerBudget: {
-      maximumOutputTokens: 16_384,
       minimumOutputTokens: 256,
       providerSafetyMarginTokens: 0,
     },

@@ -23,63 +23,72 @@
       <div class="chat-conversation">
         <header class="chat-conversation-header">
           <div class="chat-context-bar">
-            <div class="chat-context-details">
-              <div class="chat-context-scope">
-                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
-                <span x-text="scopeLabel()"></span>
-              </div>
+            <div class="chat-context-primary">
               <div class="chat-conversation-title" :title="conversation.title">
                 <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
                 <span x-text="conversation.title"></span>
               </div>
+              <div class="chat-context-actions">
+                <button
+                  class="chat-context-icon-button"
+                  type="button"
+                  aria-label="New chat"
+                  title="New chat"
+                  @click="openNewChat()"
+                >
+                  <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
+                  <span>New chat</span>
+                </button>
+                <button
+                  class="chat-context-icon-button danger"
+                  type="button"
+                  aria-label="Delete chat"
+                  title="Delete chat"
+                  :disabled="busy"
+                  @click="deleteConversation()"
+                >
+                  <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use></svg>
+                  <span>Delete chat</span>
+                </button>
+              </div>
             </div>
-            <div
-              class="chat-context-verification chat-verification-status"
-              :class="`chat-verification-status-${conversationVerificationState()}`"
-              x-cloak
-              x-show="conversationVerificationVisible()"
-              :title="conversationVerificationLabel()"
-              aria-live="polite"
-            >
-              <span
-                class="chat-verification-status-label"
-                x-text="conversationVerificationStatusLabel()"
-              ></span>
-              <span
-                class="chat-verification-progress"
-                :class="`chat-verification-progress-${conversationVerificationState()}`"
-                role="progressbar"
-                aria-valuemin="0"
-                aria-valuemax="100"
-                :aria-valuenow="conversationVerificationProgressValue()"
-                :aria-valuetext="conversationVerificationLabel()"
-                :aria-label="conversationVerificationLabel()"
+            <div class="chat-context-metadata">
+              <div class="chat-context-scope">
+                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
+                <div class="chat-context-copy">
+                  <span class="chat-context-label">Search scope</span>
+                  <strong x-text="scopeLabel()"></strong>
+                </div>
+              </div>
+              <div
+                class="chat-context-verification chat-verification-status"
+                :class="`chat-verification-status-${conversationVerificationState()}`"
+                x-cloak
+                x-show="conversationVerificationVisible()"
+                :title="conversationVerificationLabel()"
+                aria-live="polite"
               >
-                <span></span>
-              </span>
-            </div>
-            <div class="chat-context-actions">
-              <button
-                class="chat-context-icon-button"
-                type="button"
-                aria-label="New chat"
-                title="New chat"
-                @click="openNewChat()"
-              >
-                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>
-                <span>New chat</span>
-              </button>
-              <button
-                class="chat-context-icon-button danger"
-                type="button"
-                aria-label="Delete chat"
-                title="Delete chat"
-                :disabled="busy"
-                @click="deleteConversation()"
-              >
-                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use></svg>
-                <span>Delete chat</span>
-              </button>
+                <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-shield-check"></use></svg>
+                <div class="chat-context-copy">
+                  <span class="chat-context-label">Answer status</span>
+                  <span
+                    class="chat-verification-status-label"
+                    x-text="conversationVerificationStatusLabel()"
+                  ></span>
+                </div>
+                <span
+                  class="chat-verification-progress"
+                  :class="`chat-verification-progress-${conversationVerificationState()}`"
+                  role="progressbar"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  :aria-valuenow="conversationVerificationProgressValue()"
+                  :aria-valuetext="conversationVerificationLabel()"
+                  :aria-label="conversationVerificationLabel()"
+                >
+                  <span></span>
+                </span>
+              </div>
             </div>
           </div>
         </header>
@@ -207,15 +216,14 @@
                                 <span class="chat-answer-evidence-number" x-text="sourceIndex + 1"></span>
                                 <strong x-text="sourceTitle(source.citation.sourceFile)"></strong>
                                 <span x-show="source.pageNumbers.length > 0" x-text="sourcePageLabel(source)"></span>
-                                <button
-                                  type="button"
-                                  aria-controls="chat-evidence-panel"
-                                  :aria-expanded="(selectedCitation?.id === source.citation.id).toString()"
-                                  @click="openCitation(source.citation, $event.currentTarget, message)"
+                                <a
+                                  :href="sourceFileUrl(source.citation)"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
                                 >
-                                  <span>View evidence</span>
+                                  <span>Open source</span>
                                   <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-external"></use></svg>
-                                </button>
+                                </a>
                               </div>
                             </template>
                           </div>
@@ -365,6 +373,17 @@
     @playing="speechAudioPlaying = true"
   ></audio>
 
+  <audio
+    aria-hidden="true"
+    class="visually-hidden"
+    preload="none"
+    x-ref="chatEvidenceSpeechAudio"
+    @ended="evidenceSpeechPlaying = false"
+    @error="handleEvidenceSpeechPlaybackError()"
+    @pause="evidenceSpeechPlaying = false"
+    @playing="evidenceSpeechPlaying = true"
+  ></audio>
+
   <div
     class="chat-switcher-backdrop"
     x-cloak
@@ -471,7 +490,22 @@
         <h3 class="section-kicker" id="chat-evidence-title">Exact evidence</h3>
         <span x-text="selectedCitationSummary()"></span>
       </div>
-      <div class="evidence-window-actions chat-evidence-header-actions">
+      <div class="evidence-window-actions">
+        <button
+          class="button"
+          type="button"
+          x-cloak
+          x-show="textToSpeechEnabled &amp;&amp; evidenceCanSpeak()"
+          :aria-label="evidenceSpeechActionLabel()"
+          :title="evidenceSpeechActionLabel()"
+          :disabled="evidenceSpeechLoading"
+          @click="toggleEvidenceSpeech()"
+        >
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon" :class="{ spin: evidenceSpeechLoading }">
+            <use :href="evidenceSpeechIcon()"></use>
+          </svg>
+          <span x-text="evidenceSpeechButtonLabel()"></span>
+        </button>
         <button
           class="button evidence-window-pin"
           type="button"

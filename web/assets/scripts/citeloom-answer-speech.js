@@ -1,6 +1,15 @@
 import { readJsonResponse } from "./citeloom-boundaries.js";
 
-export async function requestAnswerSpeech(answerDocument, signal) {
+function createUncitedSpeechDocument(content) {
+  return {
+    citations: [],
+    content,
+    schemaVersion: 2,
+    statements: [],
+  };
+}
+
+async function requestSpeech(answerDocument, signal, requestName) {
   const response = await fetch("/api/speech", {
     body: JSON.stringify({ answerDocument }),
     headers: { "content-type": "application/json" },
@@ -8,7 +17,7 @@ export async function requestAnswerSpeech(answerDocument, signal) {
     signal,
   });
   if (!response.ok) {
-    await readJsonResponse(response, "Answer speech request");
+    await readJsonResponse(response, requestName);
   }
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().startsWith("audio/")) {
@@ -19,4 +28,13 @@ export async function requestAnswerSpeech(answerDocument, signal) {
     throw new Error("The speech response was empty.");
   }
   return audio;
+}
+
+export async function requestAnswerSpeech(answerDocument, signal) {
+  return requestSpeech(answerDocument, signal, "Answer speech request");
+}
+
+export async function requestTextSpeech(text, signal) {
+  const answerDocument = createUncitedSpeechDocument(text);
+  return requestSpeech(answerDocument, signal, "Evidence speech request");
 }

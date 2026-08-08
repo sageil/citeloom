@@ -16,7 +16,6 @@ describe("answer request context budgeting", () => {
     const budget = planAnswerRequest(
       buildTestModelCapabilities(120),
       {
-        maximumOutputTokens: 30,
         minimumOutputTokens: 10,
         providerSafetyMarginTokens: 10,
       },
@@ -27,7 +26,7 @@ describe("answer request context budgeting", () => {
 
     expect(budget.decisions).toEqual([]);
     expect(budget.selected).toEqual([]);
-    expect(budget.outputBudgetTokens).toBe(30);
+    expect(budget.availableInputTokens).toBe(100);
   });
 
   it("accounts for fixed prompt, complete evidence, output, and safety reserve", () => {
@@ -38,7 +37,6 @@ describe("answer request context budgeting", () => {
     const budget = planAnswerRequest(
       buildTestModelCapabilities(120),
       {
-        maximumOutputTokens: 30,
         minimumOutputTokens: 10,
         providerSafetyMarginTokens: 10,
       },
@@ -51,7 +49,7 @@ describe("answer request context budgeting", () => {
     );
 
     expect(budget.contextCapacityTokens).toBe(120);
-    expect(budget.outputBudgetTokens).toBe(30);
+    expect(budget.availableInputTokens).toBe(100);
     expect(budget.providerSafetyMarginTokens).toBe(10);
     expect(budget.selected).toEqual([retrieved[0]]);
     expect(budget.decisions).toEqual([
@@ -63,7 +61,6 @@ describe("answer request context budgeting", () => {
   it("changes the available budget with model context capacity", () => {
     const retrieved = [buildRetrievedElement("a", "b")];
     const configuration = {
-      maximumOutputTokens: 30,
       minimumOutputTokens: 10,
       providerSafetyMarginTokens: 5,
     };
@@ -86,7 +83,7 @@ describe("answer request context budgeting", () => {
     expect(large.availableInputTokens).toBeGreaterThan(small.availableInputTokens);
   });
 
-  it("reduces output toward the configured minimum to preserve complete windows", () => {
+  it("reserves the configured minimum output while preserving complete windows", () => {
     const retrieved = [
       buildRetrievedElement("a", "b"),
       buildRetrievedElement("c", "d"),
@@ -94,7 +91,6 @@ describe("answer request context budgeting", () => {
     const budget = planAnswerRequest(
       buildTestModelCapabilities(70),
       {
-        maximumOutputTokens: 30,
         minimumOutputTokens: 10,
         providerSafetyMarginTokens: 5,
       },
@@ -107,8 +103,10 @@ describe("answer request context budgeting", () => {
     );
 
     expect(budget.selected).toEqual(retrieved);
-    expect(budget.outputBudgetTokens).toBe(17);
-    expect(budget.outputBudgetTokens).toBeGreaterThanOrEqual(10);
+    expect(budget.availableInputTokens).toBe(55);
+    expect(budget.inputTokenUpperBound).toBeLessThanOrEqual(
+      budget.availableInputTokens,
+    );
   });
 
   it("adds optional parent context only when the existing budget can fit it", () => {
@@ -121,7 +119,6 @@ describe("answer request context budgeting", () => {
       primary: [{ text: "short", type: "text" as const }],
     }];
     const configuration = {
-      maximumOutputTokens: 30,
       minimumOutputTokens: 10,
       providerSafetyMarginTokens: 5,
     };
@@ -150,7 +147,6 @@ describe("answer request context budgeting", () => {
     expect(() => planAnswerRequest(
       buildTestModelCapabilities(20),
       {
-        maximumOutputTokens: 10,
         minimumOutputTokens: 10,
         providerSafetyMarginTokens: 5,
       },

@@ -66,7 +66,6 @@ const applicationErrorRetentionEnvironmentSchema = z.object({
 });
 
 export const runtimeSettingsSchema = z.object({
-  answerMaximumOutputTokens: z.number().int().min(1),
   answerMinimumOutputTokens: z.number().int().min(1),
   answerProviderSafetyMarginTokens: z.number().int().min(0),
   aiMetricsEnabled: z.boolean(),
@@ -140,13 +139,6 @@ export const runtimeSettingsSchema = z.object({
   workerConcurrency: z.number().int().min(1).max(16),
   workerFallbackPollMs: z.number().int().min(1_000).max(300_000),
 }).strict().superRefine((settings, context) => {
-  if (settings.answerMaximumOutputTokens < settings.answerMinimumOutputTokens) {
-    context.addIssue({
-      code: "custom",
-      message: "must be greater than or equal to answerMinimumOutputTokens",
-      path: ["answerMaximumOutputTokens"],
-    });
-  }
   if (settings.retrievalCandidates < settings.topK) {
     context.addIssue({
       code: "custom",

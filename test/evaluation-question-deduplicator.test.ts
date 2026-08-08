@@ -90,7 +90,7 @@ function buildModelRegistry(
   const embedding = new MockEmbeddingModelV4();
   return {
     answer: evaluation,
-    answerBudget: { maximumOutputTokens: 16_384, minimumOutputTokens: 256, providerSafetyMarginTokens: 0 },
+    answerBudget: { minimumOutputTokens: 256, providerSafetyMarginTokens: 0 },
     readAnswerCapabilities: async () => buildTestModelCapabilities(),
     claimVerifier: new FakeHhemClient(),
     documentEmbedding: embedding,

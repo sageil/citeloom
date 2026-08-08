@@ -17,7 +17,7 @@ import {
 } from "../answers/stream.js";
 import {
   attachAdvisoryClaimChecks,
-  AnswerOutputTokenLimitError,
+  AnswerGenerationLengthError,
   answerQuestion,
   InvalidAnswerDraftError,
   streamAnswerQuestion,
@@ -189,7 +189,7 @@ type AnswerStreamFailure =
   | { kind: "answer-capacity" }
   | { kind: "answer-finish" }
   | { kind: "answer-invalid" }
-  | { kind: "answer-output-limit"; outputTokenLimit: number }
+  | { kind: "answer-length" }
   | { kind: "answer-timeout"; message: string }
   | { kind: "provider"; error: Error; failure: InferenceApiFailure }
   | { kind: "reranking-timeout"; message: string }
@@ -1071,11 +1071,8 @@ function readDirectAnswerStreamFailure(
       return { kind: "reranking-timeout", message: error.message };
     case error instanceof AnswerCapacityError:
       return { kind: "answer-capacity" };
-    case error instanceof AnswerOutputTokenLimitError:
-      return {
-        kind: "answer-output-limit",
-        outputTokenLimit: error.outputTokenLimit,
-      };
+    case error instanceof AnswerGenerationLengthError:
+      return { kind: "answer-length" };
     case error instanceof InvalidAnswerDraftError:
       return { kind: "answer-invalid" };
     case error instanceof UnexpectedAnswerFinishReasonError:
@@ -1098,8 +1095,8 @@ function formatAnswerStreamFailure(failure: AnswerStreamFailure): string {
       return failure.message;
     case "answer-capacity":
       return "The selected answer model cannot fit the answer instructions and retrieved evidence. Increase its configured context capacity or select a model with a larger context window.";
-    case "answer-output-limit":
-      return `The answer model reached this request's ${failure.outputTokenLimit.toLocaleString("en-CA")}-token output limit before completing the answer. Increase Maximum answer tokens in Settings if the model has enough context capacity, or select a model with a larger context window.`;
+    case "answer-length":
+      return "The answer provider exhausted its generation or context length before completing the answer. Try a model with more available context or reduce the amount of evidence supplied.";
     case "answer-finish":
       return "The answer provider stopped before producing a complete answer. Try again or select another answer model.";
     case "answer-invalid":
@@ -1179,7 +1176,7 @@ function readAnswerFailureOrigin(failure: AnswerStreamFailure) {
     case "answer-timeout":
     case "answer-finish":
     case "answer-invalid":
-    case "answer-output-limit":
+    case "answer-length":
     case "reranking-timeout":
       return "inference-provider" as const;
     case "answer-capacity":
@@ -1200,7 +1197,7 @@ function readAnswerFailureRetryability(
     case "settings-changed":
       return true;
     case "answer-capacity":
-    case "answer-output-limit":
+    case "answer-length":
       return false;
     case "answer-finish":
     case "answer-invalid":
@@ -1237,8 +1234,8 @@ function readAnswerFailureCategory(failure: AnswerStreamFailure): string {
       return "inference-scheduler";
     case "answer-capacity":
       return "answer-capacity";
-    case "answer-output-limit":
-      return "inference-provider-output-limit";
+    case "answer-length":
+      return "inference-provider-finish";
     case "answer-finish":
       return "inference-provider-finish";
     case "answer-invalid":
@@ -1265,8 +1262,8 @@ function readAnswerFailureCode(
       return "inference_settings_changed";
     case "answer-capacity":
       return "answer_context_capacity_exceeded";
-    case "answer-output-limit":
-      return "answer_output_token_limit_reached";
+    case "answer-length":
+      return "answer_provider_length_reached";
     case "answer-finish":
       return "answer_provider_incomplete";
     case "answer-invalid":
@@ -1302,7 +1299,7 @@ function readSafeAnswerFailureMessage(
     case "answer-capacity":
     case "answer-finish":
     case "answer-invalid":
-    case "answer-output-limit":
+    case "answer-length":
     case "scheduler-lease":
     case "settings-changed":
       return truncateAnswerFailureMessage(readErrorMessage(error));

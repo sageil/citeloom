@@ -17,7 +17,6 @@
 
 .chat-context-scope,
 .chat-conversation-title,
-.chat-context-details,
 .chat-context-actions,
 .chat-context-icon-button {
   display: inline-flex;
@@ -87,40 +86,38 @@
 .chat-context-bar {
   display: grid;
   width: min(1020px, 100%);
-  min-height: 54px;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 24px;
+  overflow: hidden;
   margin: 0 auto;
-  padding: 0 18px;
   border: 1px solid var(--border);
   border-top: 0;
   border-radius: 0 0 8px 8px;
-  background: var(--surface-translucent);
+  background: transparent;
   color: var(--muted);
   font-size: 12px;
 }
 
-.chat-context-details {
+.chat-context-primary {
+  display: flex;
   min-width: 0;
-  gap: 24px;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
 }
 
-.chat-context-scope,
-.chat-conversation-title {
-  gap: 8px;
-}
-
+.chat-conversation-title,
 .chat-context-scope {
-  color: var(--text-soft);
+  gap: 8px;
 }
 
 .chat-conversation-title {
   min-width: 0;
   color: var(--cyan);
+  font-weight: 650;
 }
 
-.chat-context-scope .citeloom-icon,
 .chat-conversation-title .citeloom-icon,
 .chat-context-icon-button .citeloom-icon {
   width: 15px;
@@ -133,15 +130,66 @@
   white-space: nowrap;
 }
 
+.chat-context-metadata {
+  display: grid;
+  min-height: 58px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.chat-context-scope {
+  min-width: 0;
+  padding: 10px 18px;
+  border-right: 1px solid var(--border);
+  color: var(--text-soft);
+}
+
+.chat-context-scope > .citeloom-icon,
+.chat-context-verification > .citeloom-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+}
+
+.chat-context-verification > .citeloom-icon {
+  color: #6ee7b7;
+}
+
+.chat-context-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.chat-context-label {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.chat-context-copy strong {
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-context-actions {
-  grid-column: 3;
-  justify-self: end;
   gap: 4px;
 }
 
-.chat-context-verification {
-  grid-column: 2;
-  justify-self: center;
+.chat-context-verification.chat-verification-status {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  justify-self: stretch;
+  gap: 10px;
+  padding: 10px 18px;
 }
 
 .chat-context-icon-button {
@@ -628,17 +676,16 @@
   white-space: nowrap;
 }
 
-.chat-answer-evidence-row button {
+.chat-answer-evidence-row a {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 0;
-  background: transparent;
   color: var(--cyan);
   font-size: 10px;
+  text-decoration: none;
 }
 
-.chat-answer-evidence-row button .citeloom-icon,
+.chat-answer-evidence-row a .citeloom-icon,
 .chat-send-button .citeloom-icon {
   width: 13px;
   height: 13px;
@@ -1414,20 +1461,12 @@
     display: none;
   }
 
-  .chat-context-bar {
-    gap: 14px;
-  }
-
   .chat-conversation {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .chat-source-navigator {
     display: none;
-  }
-
-  .chat-context-details {
-    gap: 14px;
   }
 
   .chat-assistant-content,
@@ -1470,25 +1509,21 @@
   }
 
   .chat-context-bar {
-    gap: 8px;
-    min-height: 48px;
-    padding: 0 10px;
     font-size: 10px;
   }
 
-  .chat-context-scope {
-    min-width: 0;
+  .chat-context-primary {
+    min-height: 44px;
+    padding-inline: 10px;
   }
 
-  .chat-context-details {
-    min-width: 0;
-    gap: 8px;
+  .chat-context-scope,
+  .chat-context-verification.chat-verification-status {
+    padding-inline: 10px;
   }
 
-  .chat-context-scope span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .chat-context-verification.chat-verification-status {
+    gap: 7px;
   }
 
   .chat-context-icon-button span {
@@ -1527,6 +1562,15 @@
     clip: rect(0 0 0 0);
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+
+  .chat-context-verification .chat-verification-status-label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    clip-path: none;
   }
 
   .chat-response-speech-button span {

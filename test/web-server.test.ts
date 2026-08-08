@@ -2906,20 +2906,21 @@ function buildTelemetryDashboard() {
 
 function buildSourceDiscoveryResponse(): SourceDiscoveryResponse {
   return {
-    keyword: {
-      documents: [],
-      page: 1,
-      pageSize: 10,
-      status: "complete",
-      totalDocuments: 0,
-      warning: null,
-    },
     query: "loan",
-    related: {
-      documents: [],
-      limit: 10,
-      status: "complete",
-      warning: null,
+    results: {
+      exact: {
+        documents: [],
+        page: 1,
+        pageSize: 10,
+        totalDocuments: 0,
+      },
+      kind: "exact-and-related",
+      related: {
+        documents: [],
+        limit: 10,
+        matchedPassageCount: 0,
+        reviewedPassageCount: 0,
+      },
     },
   };
 }

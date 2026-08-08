@@ -10,6 +10,7 @@ source_content_directory="${test_directory}/source-content"
 source_content="backup source content"
 document_id="fd74a46469d95a38532954dfbba42b558649cc8d563f2e6bba431088cded7f4f"
 document_byte_length="21"
+input_format_id="00000000-0000-4000-8000-000000000001"
 content_path="${source_content_directory}/sha256/$(printf '%s' "${document_id}" | cut -c1-2)/${document_id}"
 run_id="00000000-0000-4000-8000-000000000099"
 retained_space="backup-retained:plain:384"
@@ -57,12 +58,17 @@ run_compose exec -T postgres-test psql \
     INSERT INTO source_documents (byte_length, document_id, last_published_at)
     VALUES (${document_byte_length}, '${document_id}', '2026-07-24T12:00:00Z');
     INSERT INTO embedding_spaces (
-      id, dimensions, model, profile, created_at, retrieval_window_policy,
+      id, dimensions, input_format_document_template, input_format_hash,
+      input_format_id, input_format_query_template, input_format_schema_version,
+      model, profile, created_at, retrieval_window_policy,
       retrieval_window_policy_fingerprint
-    ) VALUES (
-      '${retained_space}', 384, 'backup-test', 'plain',
+    )
+    SELECT
+      '${retained_space}', 384, document_template, input_format_hash, id,
+      query_template, schema_version, 'backup-test', name,
       '2026-01-01T00:00:00Z', '{}'::jsonb, repeat('0', 64)
-    );
+    FROM embedding_input_formats
+    WHERE id = '${input_format_id}';
     INSERT INTO embedding_space_gc_runs (
       active_space_id, completed_at, id, mode, retention_cutoff, started_at, status
     ) VALUES (
@@ -70,14 +76,17 @@ run_compose exec -T postgres-test psql \
       '2026-06-15T12:00:00Z', '2026-07-15T12:00:00Z', 'completed'
     );
     INSERT INTO embedding_space_gc_spaces (
-      completed_at, created_at, dimensions, disposition, estimated_bytes, model,
-      profile, row_counts, run_id, space_id, state
-    ) VALUES (
+      completed_at, created_at, dimensions, disposition, estimated_bytes,
+      input_format_hash, input_format_name, model, profile, row_counts, run_id,
+      space_id, state
+    )
+    SELECT
       '2026-07-15T12:00:00Z', '2026-01-01T00:00:00Z', 384, 'deletable', 128,
-      'backup-test', 'plain',
+      input_format_hash, name, 'backup-test', name,
       '{\"indexedDocuments\":0,\"lexicalChunks\":1,\"vectorChunks1024\":0,\"vectorChunks384\":1,\"vectorChunks768\":0}',
       '${run_id}', '${collected_space}', 'deleted'
-    );
+    FROM embedding_input_formats
+    WHERE id = '${input_format_id}';
   "
 
 mkdir -p "$(dirname -- "${content_path}")"

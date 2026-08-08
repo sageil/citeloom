@@ -7,6 +7,7 @@ import {
   createEmptyAnswerContent,
 } from "./citeloom-answer-content.js";
 import { requestAnswerSpeech } from "./citeloom-answer-speech.js";
+import { createEvidenceSpeechControls } from "./citeloom-evidence-speech.js";
 import {
   readChatConversation,
   readChatMessageStream,
@@ -41,6 +42,21 @@ import {
 import { dispatchNotice } from "./citeloom-notices.js";
 import { requestConfirmation } from "./citeloom-confirmation.js";
 const chatSwitcherRequestEvent = "citeloom:chat-switcher-request";
+const chatEvidenceSpeechOptions = {
+  audioRefName: "chatEvidenceSpeechAudio",
+  beforePlay(page) {
+    page.resetChatSpeechAudio();
+  },
+  readCitation(page) {
+    return page.selectedCitation;
+  },
+  readEvidenceText(page, citation) {
+    return page.evidenceText(citation);
+  },
+  reportError(message) {
+    dispatchNotice("error", message);
+  },
+};
 
 function appendUniqueNewChatDocuments(current, additions) {
   const documents = [...current];
@@ -256,6 +272,7 @@ export function registerPage(alpine) {
     dictationStatus: "",
     draft: "",
     errorMessage: "",
+    ...createEvidenceSpeechControls(chatEvidenceSpeechOptions),
     followLatest: true,
     loading: true,
     newChatCatalogController: null,
@@ -425,6 +442,7 @@ export function registerPage(alpine) {
           features.textToSpeechPreloadEnabled;
         if (!this.textToSpeechEnabled) {
           this.resetChatSpeechAudio();
+          this.resetEvidenceSpeechPlayback();
         }
         if (!this.speechToTextEnabled) {
           this.cancelChatDictation();
@@ -724,6 +742,7 @@ export function registerPage(alpine) {
       if (!(audio instanceof HTMLAudioElement)) {
         return;
       }
+      this.resetEvidenceSpeechPlayback();
       const active = this.speechAnswerMessageId === message.id;
       if (active && !audio.paused && !audio.ended) {
         audio.pause();
@@ -1579,6 +1598,9 @@ export function registerPage(alpine) {
       if (citation === null || citation.preview === true) {
         return;
       }
+      if (this.selectedCitation?.id !== citation.id) {
+        this.resetEvidenceSpeechPlayback();
+      }
       if (message !== null) {
         this.activeEvidenceMessageId = message.id;
       }
@@ -1629,6 +1651,7 @@ export function registerPage(alpine) {
     },
 
     resetCitationPanel() {
+      this.resetEvidenceSpeechPlayback();
       resetEvidenceWindow(this.citationWindow);
       this.selectedCitation = null;
     },
@@ -1739,6 +1762,11 @@ export function registerPage(alpine) {
         return citation.evidence.content;
       }
       return "Image evidence";
+    },
+
+    sourceFileUrl(citation) {
+      const versionId = encodeURIComponent(citation.documentVersionId);
+      return `/api/document-versions/${versionId}/file`;
     },
 
     citationFileUrl(citation) {

@@ -441,7 +441,6 @@ function buildInferenceConfig(
       secondsToMilliseconds(settings.answerTimeoutSeconds),
     ),
     answerBudget: {
-      maximumOutputTokens: settings.answerMaximumOutputTokens,
       minimumOutputTokens: settings.answerMinimumOutputTokens,
       providerSafetyMarginTokens: settings.answerProviderSafetyMarginTokens,
     },
