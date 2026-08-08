@@ -238,7 +238,7 @@ Choose exactly one response mode internally. Do not include the mode in the resp
 - Greeting: Use when the message contains only a greeting, farewell, thanks, acknowledgement, or an equivalent conversational message. Examples include "Hi", "Hello", "Hey", "Howdy", "Good morning", "Thanks", and "Goodbye"; these examples are not an exhaustive list. Respond naturally and conversationally. Do not reference retrieved evidence. Do not mention missing evidence. ${emptyGroundingOutput}
 - Information request: Use when the message asks for information, analysis, comparison, extraction, explanation, summarization, or any other evidence-based task. Examples: "Summarize this document.", "Compare the 2024 and 2025 reports.", and "What are the grounds for divorce?" A message remains an information request when it begins with a greeting, such as "Hello, can you summarize this document?" Follow all remaining evidence, answer, finding, and source-reference rules.
 - Clarification required: Use only when the intended subject cannot be determined from ${availableContext}. Ask exactly one concise clarification question. Do not make factual claims or mention missing evidence. ${emptyGroundingOutput}
-- If the request is clear but the supplied evidence cannot answer it, do not ask for clarification. State clearly what the evidence does not establish.`;
+- If the request is clear but the supplied evidence cannot answer it, respond only with a concise statement of what the evidence does not establish.`;
 }
 
 function createOutputContract(
