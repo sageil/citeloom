@@ -106,6 +106,7 @@
 .ask-mode .answer-panel { min-height: 0; padding: 4px 12px 44px; border: 0; background: transparent; }
 .answer-question-title { margin: 0; font-size: 23px; }
 .answer-question-title::first-letter { text-transform: uppercase; }
+.answer-question-title .answer-markdown pre { font-size: 13px; }
 .answer-loading-header, .answer-toolbar, .answer-verification-status, .answer-finding-verification { display: flex; align-items: center; gap: 8px; }
 .ask-mode .answer-loading-header { min-height: 42px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .answer-toolbar { min-width: 0; flex: 1; flex-wrap: wrap; }

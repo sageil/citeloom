@@ -530,12 +530,15 @@
             :aria-busy="answer === null && operation === 'answer'"
             aria-live="polite"
           >
-            <h1
+            <div
               class="answer-question-title"
               x-cloak
               x-show="historicalAnswerVisible &amp;&amp; hasAnswerContent()"
-              x-text="answerQuestionTitle()"
-            ></h1>
+              role="heading"
+              aria-level="1"
+            >
+              <div class="answer-markdown" x-html="renderMarkdown(answerQuestionTitle())"></div>
+            </div>
             <div
               class="answer-loading-header answer-header-toolbar"
               x-cloak
@@ -665,7 +668,6 @@
                             <span class="evidence-score-scale-line"></span>
                             <span
                               class="evidence-score-scale-threshold"
-                              :class="`evidence-score-align-${selectedEvidenceScoreScale().thresholdAlignment}`"
                               :style="{ '--evidence-score-position': selectedEvidenceScoreScale().thresholdPosition }"
                             >
                               <span class="evidence-score-scale-threshold-label" x-text="`GLOBAL ${selectedEvidenceScoreScale().thresholdLabel}`"></span>
@@ -673,7 +675,7 @@
                             <template x-for="marker in selectedEvidenceScoreScale().markers" :key="marker.position">
                               <span
                                 class="evidence-score-scale-marker"
-                                :class="[`evidence-score-${marker.status}`, `evidence-score-align-${marker.alignment}`]"
+                                :class="`evidence-score-${marker.status}`"
                                 :style="{ '--evidence-score-position': marker.position }"
                                 :title="`HHEM ${marker.label}`"
                               >
@@ -735,7 +737,12 @@
                       <template x-if="inspectedCitation.evidence.kind === 'image'">
                         <img :alt="`Citation ${inspectedCitation.citationNumber} evidence`" :src="citationImageUrl()" />
                       </template>
-                      <template x-if="inspectedCitation.evidence.kind !== 'image'">
+                      <template x-if="inspectedCitation.evidence.kind !== 'image' &amp;&amp; hasFencedCodeBlock(citationEvidenceText())">
+                        <blockquote class="exact-evidence-text">
+                          <div class="answer-markdown" x-html="renderMarkdown(citationEvidenceText())"></div>
+                        </blockquote>
+                      </template>
+                      <template x-if="inspectedCitation.evidence.kind !== 'image' &amp;&amp; !hasFencedCodeBlock(citationEvidenceText())">
                         <blockquote class="exact-evidence-text" x-text="citationEvidenceText()"></blockquote>
                       </template>
                       <div class="evidence-window-source-actions">

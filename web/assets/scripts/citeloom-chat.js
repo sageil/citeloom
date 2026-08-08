@@ -5,6 +5,8 @@ import {
 import {
   applyAnswerContentUpdate,
   createEmptyAnswerContent,
+  hasFencedCodeBlock,
+  renderAnswerMarkdown,
 } from "./citeloom-answer-content.js";
 import { requestAnswerSpeech } from "./citeloom-answer-speech.js";
 import { buildEvidenceScoreScale } from "./citeloom-evidence-score.js";
@@ -325,6 +327,8 @@ export function registerPage(alpine) {
     newChatTagSearch: "",
     newChatTitle: "",
     newChatTotalDocuments: 0,
+    hasFencedCodeBlock,
+    renderMarkdown: renderAnswerMarkdown,
     activeEvidenceMessageId: null,
     citationWindow: createEvidenceWindowState(),
     selectedCitation: null,

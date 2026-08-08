@@ -252,7 +252,7 @@
   margin: 16px 18px 24px 0;
   border: 1px solid var(--border-strong);
   border-radius: 9px;
-  background: var(--surface-translucent);
+  background: transparent;
 }
 
 .chat-turn {
@@ -435,7 +435,7 @@
   color: var(--text);
   font-size: 15px;
   line-height: 1.55;
-  white-space: pre-wrap;
+  white-space: normal;
 }
 
 .chat-assistant-content {
@@ -700,7 +700,7 @@
   grid-column: 1;
   grid-row: 3;
   padding: 12px 20px 24px;
-  background: rgba(6, 9, 20, 0.96);
+  background: transparent;
 }
 
 .chat-composer-shell {
@@ -709,7 +709,7 @@
   margin: 0 auto;
   border: 1px solid var(--border-strong);
   border-radius: 12px;
-  background: var(--surface-opaque);
+  background: transparent;
   transition: border-color 160ms ease;
 }
 

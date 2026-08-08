@@ -41,6 +41,11 @@
   background: rgba(11, 16, 32, 0.7);
 }
 
+.access-hub .access-section-nav,
+.access-hub .access-card {
+  background: transparent;
+}
+
 .access-section-nav.single-section {
   grid-template-columns: 1fr;
 }

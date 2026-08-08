@@ -60,6 +60,14 @@ export function createEmptyAnswerContent() {
   return { citations: [], statements: [] };
 }
 
+export function hasFencedCodeBlock(content) {
+  const openingFence = content.indexOf("```");
+  if (openingFence === -1) {
+    return false;
+  }
+  return content.indexOf("```", openingFence + 3) !== -1;
+}
+
 export function createAnswerCitationKey(
   documentVersionId,
   documentId,

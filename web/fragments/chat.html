@@ -112,7 +112,9 @@
                         <strong>You</strong>
                         <time :datetime="message.createdAt" x-text="formatTime(message.createdAt)"></time>
                       </header>
-                      <p class="chat-user-content" x-text="message.content"></p>
+                      <div class="chat-user-content">
+                        <div class="answer-markdown" x-html="renderMarkdown(message.content)"></div>
+                      </div>
                     </div>
                   </template>
 
@@ -500,7 +502,6 @@
                 <span class="evidence-score-scale-line"></span>
                 <span
                   class="evidence-score-scale-threshold"
-                  :class="`evidence-score-align-${selectedEvidenceScoreScale().thresholdAlignment}`"
                   :style="{ '--evidence-score-position': selectedEvidenceScoreScale().thresholdPosition }"
                 >
                   <span class="evidence-score-scale-threshold-label" x-text="`GLOBAL ${selectedEvidenceScoreScale().thresholdLabel}`"></span>
@@ -508,7 +509,7 @@
                 <template x-for="marker in selectedEvidenceScoreScale().markers" :key="marker.position">
                   <span
                     class="evidence-score-scale-marker"
-                    :class="[`evidence-score-${marker.status}`, `evidence-score-align-${marker.alignment}`]"
+                    :class="`evidence-score-${marker.status}`"
                     :style="{ '--evidence-score-position': marker.position }"
                     :title="`HHEM ${marker.label}`"
                   >
@@ -561,12 +562,22 @@
               @load="positionCitationPanel()"
             />
           </template>
-          <template x-if="selectedCitation.evidence.kind === 'text'">
+          <template x-if="selectedCitation.evidence.kind === 'text' &amp;&amp; hasFencedCodeBlock(evidenceText(selectedCitation))">
+            <div class="exact-evidence-text">
+              <div class="answer-markdown" x-html="renderMarkdown(evidenceText(selectedCitation))"></div>
+            </div>
+          </template>
+          <template x-if="selectedCitation.evidence.kind === 'text' &amp;&amp; !hasFencedCodeBlock(evidenceText(selectedCitation))">
             <pre class="exact-evidence-text" x-text="evidenceText(selectedCitation)"></pre>
           </template>
           <template x-if="selectedCitation.evidence.kind === 'table'">
             <div>
-              <template x-if="selectedCitation.evidence.table.renderMode === 'text'">
+              <template x-if="selectedCitation.evidence.table.renderMode === 'text' &amp;&amp; hasFencedCodeBlock(evidenceText(selectedCitation))">
+                <div class="exact-evidence-text">
+                  <div class="answer-markdown" x-html="renderMarkdown(evidenceText(selectedCitation))"></div>
+                </div>
+              </template>
+              <template x-if="selectedCitation.evidence.table.renderMode === 'text' &amp;&amp; !hasFencedCodeBlock(evidenceText(selectedCitation))">
                 <pre
                   :aria-label="`${citationLabel(selectedCitation)} extracted table text`"
                   class="exact-evidence-text"

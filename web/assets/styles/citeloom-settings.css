@@ -161,6 +161,33 @@
   min-width: 0;
 }
 
+.settings-header-search,
+.settings-area-grid button,
+.settings-feature-health,
+.settings-feature-sidebar,
+.settings-feature-editor,
+.settings-feature-sidebar nav button,
+.settings-readonly-control,
+.settings-feature-footer,
+.settings-provider-workspace,
+.settings-provider-authentication,
+.settings-provider-connection-summary,
+.settings-provider-capability-matrix,
+.settings-provider-matrix-header,
+.settings-provider-inline-editor,
+.settings-provider-inheritance-summary,
+.settings-provider-editor > .settings-feature-footer,
+.settings-startup-value,
+.settings-startup-guidance,
+.settings-readonly-footer,
+.settings-runtime-editor-docling-pdf .settings-field,
+.settings-docling-mode-control > button,
+.settings-docling-advanced,
+.settings-input-format-record,
+.settings-input-format-editor {
+  background: transparent;
+}
+
 .settings-area-browser > header {
   display: flex;
   align-items: center;
@@ -194,7 +221,6 @@
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--surface-translucent);
   color: var(--muted);
   text-align: left;
 }
@@ -243,10 +269,6 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
-}
-
-.application-feature-settings .settings-field:nth-child(odd) {
-  background: transparent;
 }
 
 .settings-runtime-panel-fields {
@@ -336,7 +358,6 @@
   padding: 16px 20px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(17, 24, 39, 0.82);
 }
 
 .settings-feature-health > div {
@@ -401,7 +422,6 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(17, 24, 39, 0.86);
 }
 
 .settings-feature-sidebar > header {
@@ -442,7 +462,6 @@
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 7px;
-  background: rgba(11, 16, 32, 0.42);
   color: var(--muted);
   text-align: left;
 }
@@ -588,7 +607,6 @@
   padding: 0 10px;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: rgba(11, 16, 32, 0.55);
 }
 
 .settings-readonly-control code {
@@ -751,7 +769,6 @@
   justify-content: space-between;
   gap: 16px;
   padding: 14px 22px;
-  background: rgba(11, 16, 32, 0.5);
 }
 
 .settings-feature-footer > span,
@@ -799,14 +816,12 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(17, 24, 39, 0.86);
 }
 
 .settings-provider-workspace > .settings-feature-sidebar,
 .settings-provider-workspace > .settings-feature-editor {
   border: 0;
   border-radius: 0;
-  background: transparent;
 }
 
 .settings-provider-workspace > .settings-feature-sidebar {
@@ -824,7 +839,6 @@
   border-color: transparent;
   border-bottom-color: var(--border);
   border-radius: 0;
-  background: transparent;
 }
 
 .settings-provider-sidebar nav button:hover {
@@ -965,7 +979,6 @@
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(11, 16, 32, 0.45);
 }
 
 .settings-provider-auth-heading {
@@ -1051,7 +1064,6 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(19, 27, 46, 0.52);
 }
 
 .settings-provider-connection-summary > div,
@@ -1096,7 +1108,6 @@
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(11, 16, 32, 0.36);
 }
 
 .settings-provider-matrix-header,
@@ -1117,7 +1128,6 @@
   min-height: 44px;
   padding: 0 13px;
   border-bottom: 1px solid var(--border);
-  background: rgba(19, 27, 46, 0.66);
   color: var(--muted);
   font-size: 10px;
   font-weight: 650;
@@ -1189,7 +1199,6 @@
   min-width: 870px;
   gap: 15px;
   padding: 20px;
-  background: rgba(17, 24, 39, 0.62);
 }
 
 .settings-provider-inline-editor > header {
@@ -1217,7 +1226,6 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 7px;
-  background: rgba(11, 16, 32, 0.45);
 }
 
 .settings-provider-inline-fields {
@@ -1232,7 +1240,6 @@
   z-index: 3;
   bottom: 0;
   border-top: 1px solid var(--border);
-  background: rgba(8, 13, 26, 0.96);
   backdrop-filter: blur(14px);
 }
 
@@ -1250,7 +1257,6 @@
   padding: 16px;
   border: 1px solid var(--cyan-border);
   border-radius: 8px;
-  background: rgba(6, 182, 212, 0.05);
 }
 
 .settings-startup-value > svg {
@@ -1282,7 +1288,6 @@
   padding: 13px 14px;
   border: 1px solid var(--border);
   border-radius: 7px;
-  background: var(--surface);
   color: var(--muted);
   font-size: 12px;
   line-height: 1.55;
@@ -1293,7 +1298,6 @@
   align-items: center;
   gap: 9px;
   padding: 16px 22px;
-  background: rgba(11, 16, 32, 0.5);
   color: var(--muted);
   font-size: 11px;
 }
@@ -1355,7 +1359,6 @@
 .settings-runtime-editor-docling-pdf .settings-field {
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(11, 16, 32, 0.46);
 }
 
 .settings-docling-mode-control {
@@ -1376,7 +1379,6 @@
   padding: 8px 12px;
   border: 0;
   border-right: 1px solid var(--border);
-  background: rgba(11, 16, 32, 0.5);
   color: var(--text);
 }
 
@@ -1414,7 +1416,6 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(11, 16, 32, 0.35);
 }
 
 .settings-docling-advanced > button {
@@ -1502,7 +1503,6 @@
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--surface);
 }
 
 .settings-input-format-heading {

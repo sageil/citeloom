@@ -2,27 +2,39 @@ function formatScore(value) {
   return value.toFixed(3);
 }
 
-function scoreAlignment(value) {
-  if (value <= 0.12) {
-    return "start";
-  }
-  if (value >= 0.88) {
-    return "end";
-  }
-  return "center";
-}
+const SCORE_DISPLAY_POSITIONS = {
+  lower: "12.5%",
+  center: "50%",
+  upper: "87.5%",
+};
 
-function scorePosition(value) {
-  return `${(value * 100).toFixed(4)}%`;
-}
-
-function createScoreMarker(value, supportThreshold) {
+function createScoreMarker(value, supportThreshold, position) {
   return {
-    alignment: scoreAlignment(value),
     label: formatScore(value),
-    position: scorePosition(value),
+    position,
     status: value >= supportThreshold ? "supported" : "unsupported",
   };
+}
+
+function findMinimumCitationScore(claims, citationNumber) {
+  let citationScore = null;
+  for (const claim of claims) {
+    for (const evidenceUnit of claim.evidenceUnits) {
+      if (
+        evidenceUnit.citationNumber !== citationNumber
+        || evidenceUnit.supportProbability === null
+      ) {
+        continue;
+      }
+      if (
+        citationScore === null
+        || evidenceUnit.supportProbability < citationScore
+      ) {
+        citationScore = evidenceUnit.supportProbability;
+      }
+    }
+  }
+  return citationScore;
 }
 
 export function buildEvidenceScoreScale(
@@ -33,36 +45,24 @@ export function buildEvidenceScoreScale(
   if (citationNumber === null || supportThreshold === null) {
     return null;
   }
-  const scoreSet = new Set();
-  for (const claim of claims) {
-    for (const evidenceUnit of claim.evidenceUnits) {
-      if (
-        evidenceUnit.citationNumber === citationNumber
-        && evidenceUnit.supportProbability !== null
-      ) {
-        scoreSet.add(evidenceUnit.supportProbability);
-      }
-    }
-  }
-  const scores = [...scoreSet].sort((left, right) => left - right);
-  const minimumScore = scores[0];
-  if (minimumScore === undefined) {
+  const citationScore = findMinimumCitationScore(claims, citationNumber);
+  if (citationScore === null) {
     return null;
   }
-  const maximumScore = scores[scores.length - 1] ?? minimumScore;
-  const markers = [createScoreMarker(minimumScore, supportThreshold)];
-  if (maximumScore !== minimumScore) {
-    markers.push(createScoreMarker(maximumScore, supportThreshold));
-  }
+  const markerPosition = citationScore < supportThreshold
+    ? SCORE_DISPLAY_POSITIONS.lower
+    : SCORE_DISPLAY_POSITIONS.upper;
+  const marker = createScoreMarker(
+    citationScore,
+    supportThreshold,
+    markerPosition,
+  );
   const thresholdLabel = formatScore(supportThreshold);
-  const scoreLabel = maximumScore === minimumScore
-    ? `HHEM score ${formatScore(minimumScore)}`
-    : `HHEM score range ${formatScore(minimumScore)} to ${formatScore(maximumScore)}`;
+  const scoreLabel = `HHEM citation score ${formatScore(citationScore)}`;
   return {
     ariaLabel: `${scoreLabel}. Global support threshold ${thresholdLabel}.`,
-    markers,
-    thresholdAlignment: scoreAlignment(supportThreshold),
+    markers: [marker],
     thresholdLabel,
-    thresholdPosition: scorePosition(supportThreshold),
+    thresholdPosition: SCORE_DISPLAY_POSITIONS.center,
   };
 }

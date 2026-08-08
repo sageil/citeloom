@@ -8,6 +8,12 @@
   padding: 8px 0 40px;
 }
 
+.system-health-summary,
+.system-health-telemetry,
+.system-health-detail-panel {
+  background: transparent;
+}
+
 .system-health-header {
   display: flex;
   align-items: flex-start;
@@ -41,7 +47,6 @@
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: var(--surface-translucent);
 }
 
 .system-health-diagnostics {
@@ -412,7 +417,6 @@
   padding: 14px;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: var(--surface-translucent);
 }
 
 .system-health-telemetry > p {
@@ -508,7 +512,6 @@
   padding: 15px 16px 8px;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: var(--surface-translucent);
 }
 
 .system-health-detail-list {

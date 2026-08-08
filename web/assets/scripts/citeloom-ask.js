@@ -18,9 +18,11 @@ import {
   createAnswerCitationKey,
   createAnswerContentFromDocument,
   createEmptyAnswerContent,
+  hasFencedCodeBlock,
   linkAnswerContentCitations,
   linkAnswerContentVerification,
   readAnswerContentUpdate,
+  renderAnswerMarkdown,
 } from "./citeloom-answer-content.js";
 import { requestAnswerSpeech } from "./citeloom-answer-speech.js";
 import { createEvidenceSpeechControls } from "./citeloom-evidence-speech.js";
@@ -813,6 +815,8 @@ export function registerPage(alpine) {
     pushToTalkBlockedUntilRelease: false,
     pushToTalkBlurListener: null,
     pushToTalkKeyDownListener: null,
+    hasFencedCodeBlock,
+    renderMarkdown: renderAnswerMarkdown,
     pushToTalkKeyUpListener: null,
     question: "",
     queryableDocumentCount: 0,
