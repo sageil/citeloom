@@ -4,7 +4,7 @@
   aria-label="Ask page"
   x-data="citeloomAskPage"
   x-init="initialize()"
-  @keydown.escape.window="deleteThreadConfirmationOpen = false; closeTagPicker()"
+  @keydown.escape.window="closeTagPicker()"
 >
   <section
     class="feature-section question-section"
@@ -88,8 +88,8 @@
             <button
               class="text-action danger"
               type="button"
-              :disabled="operation === 'answer'"
-              @click="deleteThreadConfirmationOpen = true"
+              :disabled="deletingThread || operation === 'answer'"
+              @click="deleteThread()"
             >Delete thread</button>
           </div>
         </details>
@@ -188,25 +188,6 @@
           </template>
         </div>
       </details>
-      <div
-        class="research-thread-confirmation danger"
-        x-cloak
-        x-show="deleteThreadConfirmationOpen &amp;&amp; thread !== null"
-        role="group"
-        aria-label="Confirm thread deletion"
-      >
-        <span class="research-thread-confirmation-icon">
-          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use></svg>
-        </span>
-        <p>
-          <strong x-text="`Delete “${thread?.title ?? ''}” permanently?`"></strong>
-          <span x-text="`This removes all ${thread?.turns.length ?? 0} saved ${(thread?.turns.length ?? 0) === 1 ? 'turn' : 'turns'} and cannot be undone.`"></span>
-        </p>
-        <div>
-          <button class="button secondary" type="button" :disabled="deletingThread" @click="deleteThreadConfirmationOpen = false">Cancel</button>
-          <button class="button danger" type="button" :disabled="deletingThread || operation === 'answer'" @click="deleteThread()" x-text="deletingThread ? 'Deleting…' : 'Delete thread'"></button>
-        </div>
-      </div>
       </div>
     </aside>
 
@@ -561,17 +542,36 @@
               x-show="hasAnswerContent() || (answer === null && operation === 'answer')"
             >
               <div class="answer-toolbar">
-                <span
-                  class="answer-verification-summary"
+                <div
+                  class="answer-verification-status"
                   :class="`answer-verification-${answerVerificationState()}`"
                   x-cloak
                   x-show="answer !== null"
+                  :title="answerVerificationLabel()"
+                  aria-live="polite"
                 >
                   <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
                     <use href="./assets/images/citeloom-icons.svg#citeloom-shield-check"></use>
                   </svg>
-                  <span x-text="answerVerificationLabel()"></span>
-                </span>
+                  <div class="answer-verification-copy">
+                    <span class="answer-verification-label">Answer status</span>
+                    <span
+                      class="answer-verification-status-label"
+                      x-text="answerVerificationLabel()"
+                    ></span>
+                  </div>
+                  <span
+                    class="answer-verification-progress"
+                    role="progressbar"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    :aria-valuenow="answerVerificationProgressValue()"
+                    :aria-valuetext="answerVerificationLabel()"
+                    :aria-label="answerVerificationLabel()"
+                  >
+                    <span></span>
+                  </span>
+                </div>
                 <div class="answer-toolbar-speech" x-cloak x-show="answer !== null && textToSpeechEnabled">
                   <button
                     class="button answer-toolbar-action"

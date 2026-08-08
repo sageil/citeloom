@@ -50,6 +50,7 @@ import {
 import { focusTextArea } from "./citeloom-focus.js";
 import { createDictationController } from "./citeloom-dictation.js";
 import { dispatchNotice } from "./citeloom-notices.js";
+import { requestConfirmation } from "./citeloom-confirmation.js";
 import {
   readAskAnswerDocument,
   readPublishedAnswerEvidence,
@@ -739,7 +740,6 @@ export function registerPage(alpine) {
     dashboardError: "",
     dashboardRefreshListener: null,
     deletingThread: false,
-    deleteThreadConfirmationOpen: false,
     discoveryResult: null,
     discoveryPageAbortController: null,
     discoveryPageLoading: false,
@@ -1142,23 +1142,43 @@ export function registerPage(alpine) {
     },
 
     async deleteThread() {
-      if (this.thread === null || this.operation === "answer") {
+      if (
+        this.thread === null
+        || this.deletingThread
+        || this.operation === "answer"
+      ) {
+        return;
+      }
+      const thread = this.thread;
+      const confirmed = await requestConfirmation({
+        cancelLabel: "Keep thread",
+        confirmLabel: "Delete thread",
+        description: "This permanently removes every saved turn and its retained evidence. This action cannot be undone.",
+        title: `Delete “${thread.title}”?`,
+        tone: "danger",
+      });
+      if (
+        !confirmed
+        || this.thread?.id !== thread.id
+        || this.operation === "answer"
+      ) {
         return;
       }
       this.deletingThread = true;
       try {
-        const encodedThreadId = encodeURIComponent(this.thread.id);
+        const encodedThreadId = encodeURIComponent(thread.id);
         const response = await fetch(`/api/research/threads/${encodedThreadId}`, {
           method: "DELETE",
         });
         if (!response.ok) {
           await readJsonResponse(response, "Delete research thread request");
         }
-        this.thread = null;
-        this.threadId = "";
-        this.turnId = "";
-        this.clearAnswerPresentation();
-        this.deleteThreadConfirmationOpen = false;
+        if (this.thread?.id === thread.id) {
+          this.thread = null;
+          this.threadId = "";
+          this.turnId = "";
+          this.clearAnswerPresentation();
+        }
         await this.loadResearchThreads();
       } catch (error) {
         this.requestError = readErrorMessage(
@@ -2638,6 +2658,10 @@ export function registerPage(alpine) {
         return "Checking evidence";
       }
       return "Verification unavailable";
+    },
+
+    answerVerificationProgressValue() {
+      return this.answerVerificationState() === "checking" ? null : 100;
     },
 
     answerStatementClaim(statement) {
