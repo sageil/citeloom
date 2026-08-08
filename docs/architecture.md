@@ -180,7 +180,7 @@ If Docling no longer recognizes a VLM task, the unchanged source is submitted as
 When document TOC routing is enabled, the indexing phase builds a bounded navigation map from Docling section paths and maps every retained entry to exact retrieval-window IDs.
 The map is staged under the same generation as the vectors and lexical rows, validated before atomic publication, and removed with obsolete retrieval generations.
 
-Source deletion is recorded in PostgreSQL before the local file is removed.
+Knowledge Source deletion is performed in the database before the local file is removed.
 The worker retries pending deletions after a restart, and the same per-hash database lock serializes publication with deletion.
 Newly stored content has a one-hour grace period.
 This prevents cleanup from removing a file while its job is being created and limits how long files from a failed intake remain unused.
@@ -192,11 +192,11 @@ The application-wide Search method selects BM25 keyword retrieval, meaning-based
 Keyword retrieval does not call the embedding model for the document query.
 Semantic and Hybrid retrieval embed the original document query and every configured expansion.
 When Query Expansion is enabled, CiteLoom also searches the generated query variations through the selected retrieval method.
-At a configured count of 0, CiteLoom does not call the extra-search-query model.
+When Query Expansion is configured at count of 0, CiteLoom does not call the extra-search-query model (0 is equals to disabled)
 It then ranks the active results and can optionally rerank the best candidates.
 When a published TOC map is available and the selected method includes vector retrieval, CiteLoom may select relevant branches from the strongest normally retrieved document and merge their mapped passages into the candidate ranking before reranking.
 TOC entries remain unavailable to answer generation and citation publication.
-Reranking can improve answer and citation accuracy by using a specialized relevance model to reorder candidates before CiteLoom selects the answer context.
+Reranking (disabled by default) can improve answer and citation accuracy by using a specialized relevance model to reorder candidates before CiteLoom selects the answer context.
 
 Each answer run uses the configured sampling temperatures.
 
@@ -293,7 +293,7 @@ Deleting the chat removes its messages, embeddings, and citation records, then q
 
 ## Persistence and concurrency
 
-PostgreSQL leases coordinate background workers and model-request capacity across processes.
+PostgreSQL leases coordinate background workers and model request capacity across processes.
 Requests routed to the same provider share that provider's request limit across the deployment.
 The database publishes a completed document index in one operation, keeping partial replacements out of search.
 
@@ -301,6 +301,6 @@ Saved research threads keep their original answers, citations, claims, and run s
 Each new turn also stores its generated queries, ordered source results, and exact sampling settings in a retrieval trace.
 Every new turn has a retrieval trace, while older turns remain readable without one.
 Submitting a question creates a new run.
-Opening a saved turn returns the stored result without searching or generating it again.
+Opening a saved turn returns the stored result from the database without searching or generating it again.
 The server remains the source of truth for citation identity and source metadata.
 Saved chats keep their original messages and retained citation evidence independently of the current library.
