@@ -16,10 +16,9 @@ Ask, Chat, Indexing model, and Embedding model require a provider.
 Query Expansion requires a provider only when enabled.
 Search ranking, Speech input, and Spoken answers are optional.
 Each feature can use its own provider, model, maximum input size, URL, and sign-in details.
-Existing installations initially copy their Answer route and model settings into Chat, after which later Chat changes are independent.
 
-A fresh database uses Ollama for the required capabilities.
-Optional capabilities start unassigned and can be enabled at any time.
+Default installation uses Ollama for the required capabilities.
+Optional capabilities start unassigned/disabled and can be enabled at any time.
 See [Provider reference](#provider-reference) for supported combinations and endpoint formats.
 
 After saving provider settings, verify the connections from the environment where CiteLoom runs.
@@ -177,7 +176,6 @@ Work already in progress keeps its saved settings snapshot when a model, endpoin
 Automatic context size is enabled by default for Ollama language models.
 It applies only to native Ollama GGUF language models used for Ask, Chat, Query Expansion, and Indexing model.
 It does not change Embedding model requests or other providers.
-Ollama safetensors models use the MLX runner's dynamic context instead of CiteLoom's GGUF sizing.
 
 CiteLoom discovers each configured Ollama language model's format, digest, and maximum context lazily on first use and reuses that metadata for the lifetime of the application runtime.
 An application restart or saved settings change creates a new runtime and discovers the configured models again on first use.
