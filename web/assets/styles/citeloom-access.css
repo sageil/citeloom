@@ -212,6 +212,7 @@
 }
 
 .access-users-heading .access-primary-button {
+  width: 118px;
   border-color: var(--border-strong);
   background: rgba(10, 16, 31, 0.72);
   color: var(--text);
@@ -411,9 +412,11 @@
 }
 
 .access-users-heading > div:last-child {
-  display: flex;
-  align-items: center;
-  gap: 9px;
+  flex: 0 0 auto;
+}
+
+.access-users-heading .access-refresh-button {
+  width: 104px;
 }
 
 .access-refresh-button svg {
@@ -939,6 +942,10 @@
   .access-users-heading > div:last-child {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .access-users-heading > div:last-child .button {
+    width: 100%;
   }
 
   .access-workspace-summary,

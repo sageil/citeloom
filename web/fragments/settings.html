@@ -10,7 +10,7 @@
       <h1 id="settings-title">Settings</h1>
       <p>Choose the services and settings CiteLoom uses for search, answers, document processing, and audio.</p>
     </div>
-    <div class="settings-header-actions">
+    <div class="settings-header-actions compact-header-actions">
       <label class="search-control settings-search-input settings-header-search">
         <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
           <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
@@ -28,7 +28,7 @@
       <label class="settings-header-source">
         <span class="visually-hidden">Filter setting source</span>
         <select
-          class="form-control"
+          class="form-control compact-header-control"
           aria-label="Filter setting source"
           :value="sourceFilter"
           @change="changeSourceFilter($event.target.value)"
@@ -40,7 +40,7 @@
         </select>
       </label>
       <button
-        class="button secondary settings-all-areas"
+        class="button secondary settings-all-areas compact-header-control"
         type="button"
         x-show="settings !== null &amp;&amp; !browsingAreas"
         @click="clearSearch()"
@@ -51,7 +51,7 @@
         <span>All areas</span>
       </button>
       <button
-        class="button secondary"
+        class="button secondary settings-reset-action compact-header-control"
         type="button"
         :disabled="saving || settings === null"
         @click="resetAll()"
@@ -62,7 +62,7 @@
         <span>Reset</span>
       </button>
       <button
-        class="button primary"
+        class="button primary compact-header-control compact-header-primary"
         type="button"
         :aria-busy="saving"
         :disabled="!canSave"

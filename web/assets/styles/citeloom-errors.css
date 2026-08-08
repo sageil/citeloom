@@ -44,24 +44,17 @@
 }
 
 .error-reports-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
   margin-top: 20px;
 }
 
-.error-reports-refresh,
-.error-reports-purge {
-  min-height: 46px;
-  margin-top: 0;
-}
-
 .error-reports-refresh {
+  width: 104px;
   border-color: rgba(6, 182, 212, 0.58);
   background: rgba(11, 16, 32, 0.74);
 }
 
 .error-reports-purge {
+  width: 112px;
   border-color: rgba(248, 113, 113, 0.62);
   background: rgba(248, 113, 113, 0.05);
   color: var(--danger-soft);
@@ -453,6 +446,7 @@
   }
 
   .error-reports-actions .button {
+    width: auto;
     flex: 1 1 140px;
   }
 

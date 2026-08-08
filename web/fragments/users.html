@@ -40,9 +40,9 @@
   <section class="access-users-panel access-card">
     <header class="access-users-heading">
       <div><h2>Workspace users</h2><p>Add users and assign roles to control workspace access.</p></div>
-      <div>
-        <button class="button access-refresh-button" :disabled="loading" type="button" @click="loadUsers()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use></svg><span>Refresh</span></button>
-        <button class="button access-primary-button" :disabled="busy" type="button" @click="openAddUser()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-user-plus"></use></svg><span>Add user</span></button>
+      <div class="compact-header-actions">
+        <button class="button access-refresh-button compact-header-control" :disabled="loading" type="button" @click="loadUsers()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use></svg><span>Refresh</span></button>
+        <button class="button access-primary-button compact-header-control compact-header-primary" :disabled="busy" type="button" @click="openAddUser()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-user-plus"></use></svg><span>Add user</span></button>
       </div>
     </header>
 

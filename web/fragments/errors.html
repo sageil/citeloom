@@ -11,9 +11,9 @@
       <h1 id="error-reports-title">Error reports</h1>
       <p>Review sanitized operational failures recorded by CiteLoom. Times are shown in your local time zone.</p>
     </div>
-    <div class="error-reports-actions">
+    <div class="error-reports-actions compact-header-actions">
       <button
-        class="button secondary error-reports-purge"
+        class="button secondary error-reports-purge compact-header-control"
         type="button"
         :aria-busy="purging"
         :disabled="busy || errorPage.counts.all === 0"
@@ -25,7 +25,7 @@
         <span x-text="purging ? 'Purging' : 'Purge logs'">Purge logs</span>
       </button>
       <button
-        class="button secondary error-reports-refresh"
+        class="button secondary error-reports-refresh compact-header-control compact-header-primary"
         type="button"
         :aria-busy="loading"
         :disabled="busy"

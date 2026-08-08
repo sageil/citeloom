@@ -710,6 +710,29 @@ select.form-control {
   padding: 0 12px;
 }
 
+.compact-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compact-header-control,
+select.compact-header-control {
+  min-height: 34px;
+  padding-right: 10px;
+  padding-left: 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.compact-header-primary {
+  min-height: 40px;
+}
+
+.compact-header-actions > .compact-header-primary {
+  margin-left: 6px;
+}
+
 .form-field textarea,
 textarea.form-control {
   min-height: 152px;
@@ -974,6 +997,12 @@ textarea.form-control {
 
   .help-toc ol {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .compact-header-actions > .compact-header-primary {
+    margin-left: 0;
   }
 }
 

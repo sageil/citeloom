@@ -7,10 +7,7 @@
 }
 
 .settings-header-actions {
-  display: flex;
   flex: 0 0 auto;
-  align-items: center;
-  gap: 10px;
 }
 
 .settings-message.warning p {
@@ -141,11 +138,24 @@
 }
 
 .settings-header-search {
-  width: clamp(250px, 30vw, 420px);
+  width: clamp(320px, 28vw, 390px);
+  border-radius: 8px;
 }
 
 .settings-header-source {
-  width: 132px;
+  width: 116px;
+}
+
+.settings-all-areas {
+  width: 104px;
+}
+
+.settings-reset-action {
+  width: 82px;
+}
+
+.settings-header-actions > .button.primary {
+  width: 150px;
 }
 
 .settings-search-layout {
@@ -1775,6 +1785,7 @@
 
   .settings-header-source,
   .settings-header-actions > .button.primary {
+    width: 100%;
     grid-column: 1 / -1;
   }
 
