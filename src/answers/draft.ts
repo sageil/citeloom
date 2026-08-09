@@ -16,6 +16,7 @@ export const ANSWER_DRAFT_SECTIONS = [
 export const ANSWER_PRESENTATIONS = ["paragraph", "bullet"] as const;
 
 const bracketedNumericCitationDecorationPattern = /(^|[^\p{L}\p{N}_])(?:\[[^\]\r\n]*\d[^\]\r\n]*\]|【[^】\r\n]*\d[^】\r\n]*】)(?=$|[^\p{L}\p{N}_])/gimu;
+const fullWidthNumericCitationDecorationPattern = /【[^】\r\n]*\d[^】\r\n]*】/gimu;
 const unclosedNumericCitationDecorationPattern = /(^|[^\p{L}\p{N}_])\[(?=[^\]\r\n]*\d)[^\]\r\n]+$/gimu;
 const namedNumericCitationDecorationPattern = /(?:\(\s*(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\s*\)|\b(?:citation|source)s?\s*#?\s*\d+(?:\s*(?:,|-|\u2013|to)\s*\d+)*\b)/gi;
 const evidenceReferenceDecorationPattern = /(?:[\[【]\s*EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\s*[\]】]|\(\s*(?:(?:evidence\s+)?references?\s+)?EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\s*\)|\b(?:(?:evidence\s+)?references?\s+)?EVID_[A-Z]+(?:\s*(?:,|-|\u2013|to)\s*EVID_[A-Z]+)*\b)/gi;
@@ -475,6 +476,7 @@ function uniqueEvidenceReferences(
 export function normalizeAnswerModelText(value: string): string {
   const withoutBracketedCitations = value
     .replace(bracketedNumericCitationDecorationPattern, "$1")
+    .replace(fullWidthNumericCitationDecorationPattern, "")
     .replace(unclosedNumericCitationDecorationPattern, "$1");
   const withoutNumericCitations = withoutBracketedCitations.replace(
     namedNumericCitationDecorationPattern,
