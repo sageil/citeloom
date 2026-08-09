@@ -7,14 +7,15 @@ const supportedViews = new Set([
   "help",
   "login",
   "overview",
+  "security",
   "settings",
   "system-health",
-  "users",
 ]);
 
 const parameters = new URLSearchParams(window.location.search);
 const queryView = parameters.get("view");
-const pathView = window.location.pathname.slice(1);
+const requestedPathView = window.location.pathname.slice(1);
+const pathView = requestedPathView === "users" ? "security" : requestedPathView;
 let initialView = "overview";
 if (queryView !== null && supportedViews.has(queryView)) {
   initialView = queryView;

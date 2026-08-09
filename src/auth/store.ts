@@ -9,6 +9,7 @@ import {
   userSetupTokens,
   users,
   workspaceMemberships,
+  workspaceSecurityPolicies,
   workspaces,
 } from "../database/schema.js";
 import type {
@@ -20,10 +21,24 @@ import type {
   WorkspaceRole,
 } from "./model.js";
 import type { LoginInput, NormalizedUserIdentity } from "./boundary.js";
-import { hashPassword, verifyPassword } from "./password.js";
+import {
+  hashPassword,
+  hashValidatedPassword,
+  validatePassword,
+  verifyPassword,
+  type PasswordInput,
+} from "./password.js";
 import { createOpaqueToken, digestOpaqueToken } from "./token.js";
+import {
+  requireWorkspaceAdministrator,
+} from "./authorization.js";
+import {
+  DEFAULT_WORKSPACE_SECURITY_POLICY,
+  WorkspaceSecurityPolicyStore,
+} from "./security-policy-store.js";
 
-const setupTokenLifetimeMs = 24 * 60 * 60 * 1_000;
+export { WorkspaceAuthorizationError } from "./authorization.js";
+
 const sessionIdleLifetimeSeconds = 2 * 60 * 60;
 const rememberedSessionIdleLifetimeSeconds = 7 * 24 * 60 * 60;
 const sessionAbsoluteLifetimeMs = 12 * 60 * 60 * 1_000;
@@ -41,13 +56,6 @@ export class SetupTokenRejectedError extends Error {
   public constructor() {
     super("The password link is invalid or has expired.");
     this.name = "SetupTokenRejectedError";
-  }
-}
-
-export class WorkspaceAuthorizationError extends Error {
-  public constructor(message: string = "Workspace administrator access is required.") {
-    super(message);
-    this.name = "WorkspaceAuthorizationError";
   }
 }
 
@@ -80,11 +88,30 @@ export class AuthenticationStore {
 
   public async completePasswordSetup(
     setupToken: string,
-    password: string,
+    password: PasswordInput,
   ): Promise<AuthenticationSession> {
-    const passwordHash = await hashPassword(password);
     const tokenDigest = digestOpaqueToken(setupToken);
     const now = this.now();
+    const tokenRows = await this.database
+      .select({ userId: userSetupTokens.userId })
+      .from(userSetupTokens)
+      .where(and(
+        eq(userSetupTokens.tokenDigest, tokenDigest),
+        gt(userSetupTokens.expiresAt, now),
+      ))
+      .limit(1);
+    const token = tokenRows[0];
+    if (token === undefined) {
+      throw new SetupTokenRejectedError();
+    }
+    const securityPolicy = new WorkspaceSecurityPolicyStore(
+      this.database,
+      this.now,
+    );
+    const passwordRequirements = await securityPolicy
+      .readEffectivePasswordPolicy(token.userId);
+    const validatedPassword = validatePassword(password, passwordRequirements);
+    const passwordHash = await hashValidatedPassword(validatedPassword);
     const sessionToken = createOpaqueToken();
     const sessionTokenDigest = digestOpaqueToken(sessionToken);
     const expiresAt = new Date(now.getTime() + sessionAbsoluteLifetimeMs);
@@ -104,9 +131,12 @@ export class AuthenticationStore {
         .innerJoin(users, eq(users.id, userSetupTokens.userId))
         .innerJoin(
           workspaceMemberships,
-          eq(workspaceMemberships.userId, users.id),
+          and(
+            eq(workspaceMemberships.userId, users.id),
+            eq(workspaceMemberships.workspaceId, userSetupTokens.workspaceId),
+          ),
         )
-        .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
+        .innerJoin(workspaces, eq(workspaces.id, userSetupTokens.workspaceId))
         .where(and(
           eq(userSetupTokens.tokenDigest, tokenDigest),
           gt(userSetupTokens.expiresAt, now),
@@ -121,6 +151,13 @@ export class AuthenticationStore {
       ) {
         throw new SetupTokenRejectedError();
       }
+      const currentSecurityPolicy = new WorkspaceSecurityPolicyStore(
+        transaction as unknown as CiteLoomDatabase,
+        this.now,
+      );
+      const currentPasswordRequirements = await currentSecurityPolicy
+        .readEffectivePasswordPolicy(row.userId);
+      validatePassword(password, currentPasswordRequirements);
       if (row.state === "pending") {
         await transaction.insert(userPasswordCredentials).values({
           passwordHash,
@@ -273,7 +310,7 @@ export class AuthenticationStore {
   public async changePassword(
     principal: AuthenticatedPrincipal,
     currentPassword: string,
-    newPassword: string,
+    newPassword: PasswordInput,
   ): Promise<void> {
     const rows = await this.database
       .select({ passwordHash: userPasswordCredentials.passwordHash })
@@ -287,13 +324,34 @@ export class AuthenticationStore {
     ) {
       throw new AuthenticationRejectedError();
     }
-    const passwordHash = await hashPassword(newPassword);
+    const securityPolicy = new WorkspaceSecurityPolicyStore(
+      this.database,
+      this.now,
+    );
+    const passwordRequirements = await securityPolicy
+      .readEffectivePasswordPolicy(principal.userId);
+    const validatedPassword = validatePassword(newPassword, passwordRequirements);
+    const passwordHash = await hashValidatedPassword(validatedPassword);
     const now = this.now();
     await this.database.transaction(async (transaction) => {
-      await transaction
+      const currentSecurityPolicy = new WorkspaceSecurityPolicyStore(
+        transaction as unknown as CiteLoomDatabase,
+        this.now,
+      );
+      const currentPasswordRequirements = await currentSecurityPolicy
+        .readEffectivePasswordPolicy(principal.userId);
+      validatePassword(newPassword, currentPasswordRequirements);
+      const updatedCredentials = await transaction
         .update(userPasswordCredentials)
         .set({ passwordHash, updatedAt: now })
-        .where(eq(userPasswordCredentials.userId, principal.userId));
+        .where(and(
+          eq(userPasswordCredentials.userId, principal.userId),
+          eq(userPasswordCredentials.passwordHash, credential.passwordHash),
+        ))
+        .returning({ userId: userPasswordCredentials.userId });
+      if (updatedCredentials[0] === undefined) {
+        throw new AuthenticationRejectedError();
+      }
       await transaction.delete(userSessions).where(and(
         eq(userSessions.userId, principal.userId),
         ne(userSessions.tokenDigest, principal.sessionTokenDigest),
@@ -311,9 +369,15 @@ export class AuthenticationStore {
     const setupTokenDigest = digestOpaqueToken(setupToken);
     const userId = randomUUID();
     const now = this.now();
-    const expiresAt = new Date(now.getTime() + setupTokenLifetimeMs);
     try {
       const addition = await this.database.transaction(async (transaction) => {
+        const resetLinkLifetimeSeconds = await readResetLinkLifetimeSecondsForIssue(
+          transaction as unknown as CiteLoomDatabase,
+          principal.workspaceId,
+        );
+        const expiresAt = new Date(
+          now.getTime() + resetLinkLifetimeSeconds * 1_000,
+        );
         const existingUsers = await transaction
           .select({ id: users.id, state: users.state })
           .from(users)
@@ -356,6 +420,7 @@ export class AuthenticationStore {
           expiresAt,
           tokenDigest: setupTokenDigest,
           userId,
+          workspaceId: principal.workspaceId,
         });
         return {
           expiresAt: expiresAt.toISOString(),
@@ -400,8 +465,14 @@ export class AuthenticationStore {
     const setupToken = createOpaqueToken();
     const tokenDigest = digestOpaqueToken(setupToken);
     const now = this.now();
-    const expiresAt = new Date(now.getTime() + setupTokenLifetimeMs);
-    await this.database.transaction(async (transaction) => {
+    const expiresAt = await this.database.transaction(async (transaction) => {
+      const resetLinkLifetimeSeconds = await readResetLinkLifetimeSecondsForIssue(
+        transaction as unknown as CiteLoomDatabase,
+        principal.workspaceId,
+      );
+      const resetExpiresAt = new Date(
+        now.getTime() + resetLinkLifetimeSeconds * 1_000,
+      );
       const membershipRows = await transaction
         .select({ state: users.state })
         .from(workspaceMemberships)
@@ -422,10 +493,12 @@ export class AuthenticationStore {
       await transaction.insert(userSetupTokens).values({
         createdAt: now,
         createdByUserId: principal.userId,
-        expiresAt,
+        expiresAt: resetExpiresAt,
         tokenDigest,
         userId,
+        workspaceId: principal.workspaceId,
       });
+      return resetExpiresAt;
     });
     return {
       expiresAt: expiresAt.toISOString(),
@@ -460,6 +533,10 @@ export class AuthenticationStore {
       await transaction.delete(userSessions).where(and(
         eq(userSessions.activeWorkspaceId, principal.workspaceId),
         eq(userSessions.userId, userId),
+      ));
+      await transaction.delete(userSetupTokens).where(and(
+        eq(userSetupTokens.workspaceId, principal.workspaceId),
+        eq(userSetupTokens.userId, userId),
       ));
       await transaction.delete(workspaceMemberships).where(and(
         eq(workspaceMemberships.workspaceId, principal.workspaceId),
@@ -511,10 +588,24 @@ export class AuthenticationStore {
   }
 }
 
+async function readResetLinkLifetimeSecondsForIssue(
+  database: CiteLoomDatabase,
+  workspaceId: string,
+): Promise<number> {
+  const rows = await database
+    .select({
+      resetLinkLifetimeSeconds: workspaceSecurityPolicies.resetLinkLifetimeSeconds,
+    })
+    .from(workspaceSecurityPolicies)
+    .where(eq(workspaceSecurityPolicies.workspaceId, workspaceId))
+    .for("share")
+    .limit(1);
+  return rows[0]?.resetLinkLifetimeSeconds
+    ?? DEFAULT_WORKSPACE_SECURITY_POLICY.resetLinkLifetimeSeconds;
+}
+
 function requireAdministrator(principal: AuthenticatedPrincipal): void {
-  if (principal.role !== "admin") {
-    throw new WorkspaceAuthorizationError();
-  }
+  requireWorkspaceAdministrator(principal);
 }
 
 function buildPrincipal(row: {

@@ -6,7 +6,26 @@ import {
 import { z } from "zod";
 
 const maximumPasswordBytes = 4_096;
-const passwordSchema = z.string().min(15).max(1_024);
+const passwordInputSchema = z.string().min(1).max(1_024);
+
+const validatedPasswordBrand: unique symbol = Symbol("ValidatedPassword");
+
+export type PasswordInput = string;
+export type ValidatedPassword = string & {
+  readonly [validatedPasswordBrand]: true;
+};
+
+export interface PasswordRequirements {
+  minimumPasswordLength: number;
+  requireLetterAndNumber: boolean;
+  requireSpecialCharacter: boolean;
+}
+
+export const defaultPasswordRequirements: PasswordRequirements = {
+  minimumPasswordLength: 15,
+  requireLetterAndNumber: false,
+  requireSpecialCharacter: false,
+};
 
 export class PasswordValidationError extends Error {
   public constructor(message: string) {
@@ -15,11 +34,11 @@ export class PasswordValidationError extends Error {
   }
 }
 
-export function readPassword(value: unknown): string {
-  const result = passwordSchema.safeParse(value);
+export function readPasswordInput(value: unknown): PasswordInput {
+  const result = passwordInputSchema.safeParse(value);
   if (!result.success) {
     throw new PasswordValidationError(
-      "Password must contain between 15 and 1,024 characters.",
+      "Password must contain between 1 and 1,024 characters.",
     );
   }
   if (Buffer.byteLength(result.data, "utf8") > maximumPasswordBytes) {
@@ -30,14 +49,51 @@ export function readPassword(value: unknown): string {
   return result.data;
 }
 
-export async function hashPassword(password: string): Promise<string> {
-  const normalizedPassword = readPassword(password);
-  return hashWithArgon2(normalizedPassword, {
+export function validatePassword(
+  password: PasswordInput,
+  requirements: PasswordRequirements,
+): ValidatedPassword {
+  if (password.length < requirements.minimumPasswordLength) {
+    throw new PasswordValidationError(
+      `Password must contain at least ${requirements.minimumPasswordLength} characters.`,
+    );
+  }
+  if (
+    requirements.requireLetterAndNumber
+    && (!/\p{L}/u.test(password) || !/\p{N}/u.test(password))
+  ) {
+    throw new PasswordValidationError(
+      "Password must contain at least one letter and one number.",
+    );
+  }
+  if (
+    requirements.requireSpecialCharacter
+    && !/[^\p{L}\p{N}\s]/u.test(password)
+  ) {
+    throw new PasswordValidationError(
+      "Password must contain at least one special character.",
+    );
+  }
+  return password as unknown as ValidatedPassword;
+}
+
+export function readPassword(value: unknown): ValidatedPassword {
+  return validatePassword(readPasswordInput(value), defaultPasswordRequirements);
+}
+
+export async function hashValidatedPassword(
+  password: ValidatedPassword,
+): Promise<string> {
+  return hashWithArgon2(password, {
     memoryCost: 19_456,
     parallelism: 1,
     timeCost: 2,
     type: argon2id,
   });
+}
+
+export async function hashPassword(password: unknown): Promise<string> {
+  return hashValidatedPassword(readPassword(password));
 }
 
 export async function verifyPassword(

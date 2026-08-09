@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
+import { ZodError } from "zod";
 
 import {
   decodeChangePasswordInput,
@@ -9,6 +10,7 @@ import {
   decodeWorkspaceMemberRoleInput,
 } from "../auth/boundary.js";
 import type { AuthenticatedPrincipal } from "../auth/model.js";
+import { PasswordValidationError } from "../auth/password.js";
 import {
   AuthenticationRejectedError,
   FinalWorkspaceAdministratorError,
@@ -33,6 +35,9 @@ const PUBLIC_LOGIN_WEB_PATHS = new Set([
 const ADMINISTRATOR_WEB_PATHS = new Set([
   "/errors",
   "/fragments/errors.html",
+  "/fragments/security.html",
+  "/fragments/workspace-users-management.html",
+  "/security",
 ]);
 const LOGIN_REDIRECT_HEADER = "HX-Redirect";
 const LOGIN_REDIRECT_PATH = "/login";
@@ -153,8 +158,8 @@ export function registerAuthenticationRoutes(
   });
 
   server.post("/api/auth/setup", async (request, reply) => {
-    const setup = decodePasswordSetupInput(request.body);
     try {
+      const setup = decodePasswordSetupInput(request.body);
       const session = await services.completePasswordSetup(
         setup.setupToken,
         setup.password,
@@ -164,6 +169,12 @@ export function registerAuthenticationRoutes(
     } catch (error: unknown) {
       if (error instanceof SetupTokenRejectedError) {
         throw new WebRequestError(400, error.message);
+      }
+      if (error instanceof PasswordValidationError) {
+        throw new WebRequestError(400, error.message);
+      }
+      if (error instanceof ZodError) {
+        throw new WebRequestError(400, "The password setup request is invalid.");
       }
       throw error;
     }
@@ -185,8 +196,8 @@ export function registerAuthenticationRoutes(
 
   server.put("/api/auth/password", async (request, reply) => {
     const principal = requireRequestPrincipal(requestPrincipals, request);
-    const passwords = decodeChangePasswordInput(request.body);
     try {
+      const passwords = decodeChangePasswordInput(request.body);
       await services.changePassword(
         principal,
         passwords.currentPassword,
@@ -196,6 +207,12 @@ export function registerAuthenticationRoutes(
     } catch (error: unknown) {
       if (error instanceof AuthenticationRejectedError) {
         throw new WebRequestError(401, "The current password is incorrect.");
+      }
+      if (error instanceof PasswordValidationError) {
+        throw new WebRequestError(400, error.message);
+      }
+      if (error instanceof ZodError) {
+        throw new WebRequestError(400, "The password change request is invalid.");
       }
       throw error;
     }

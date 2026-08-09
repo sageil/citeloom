@@ -7,6 +7,7 @@ export const APP_SECTION_PATHS = {
   help: "/help",
   login: "/login",
   overview: "/overview",
+  security: "/security",
   settings: "/settings",
   "system-health": "/system-health",
   users: "/users",
@@ -26,6 +27,7 @@ export function readAppSectionName(value: string | null): AppSectionName | null 
     case "help":
     case "login":
     case "overview":
+    case "security":
     case "settings":
     case "system-health":
     case "users":
@@ -53,6 +55,8 @@ export function readAppSectionPath(pathname: string): AppSectionName | null {
       return "login";
     case APP_SECTION_PATHS.overview:
       return "overview";
+    case APP_SECTION_PATHS.security:
+      return "security";
     case APP_SECTION_PATHS.settings:
       return "settings";
     case APP_SECTION_PATHS["system-health"]:
