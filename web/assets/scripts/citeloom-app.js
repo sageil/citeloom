@@ -24,11 +24,14 @@ import {
   buildDocumentNotificationStorageKey,
   changeDocumentNotificationSubscription,
   documentNotificationEnabled,
+  readBrowserNotificationPermission,
   readDocumentNotificationCatalogStatus,
   readDocumentNotificationChange,
   readDocumentNotificationOutcome,
   readDocumentNotificationRequest,
   readStoredDocumentNotificationSubscriptions,
+  requestBrowserNotificationPermission,
+  showBrowserNotification,
   writeStoredDocumentNotificationSubscriptions,
 } from "./citeloom-document-notifications.js";
 import {
@@ -840,7 +843,7 @@ function registerShell(alpine) {
         } catch {
           return;
         }
-        this.changeDocumentNotification(change);
+        void this.changeDocumentNotification(change);
       };
       window.addEventListener(
         DOCUMENT_NOTIFICATION_CHANGE_EVENT,
@@ -1165,25 +1168,55 @@ function registerShell(alpine) {
       );
       this.documentNotificationStorageKey = storageKey;
       const pendingSubscriptions = this.documentNotificationSubscriptions;
-      let subscriptions = readStoredDocumentNotificationSubscriptions(
+      const storedSubscriptions = readStoredDocumentNotificationSubscriptions(
         sessionStorage,
         storageKey,
       );
-      for (const subscription of pendingSubscriptions) {
-        subscriptions = changeDocumentNotificationSubscription(
-          subscriptions,
-          { ...subscription, enabled: true },
-        );
+      const permission = readBrowserNotificationPermission();
+      let subscriptions = permission === "granted" ? storedSubscriptions : [];
+      if (permission === "granted") {
+        for (const subscription of pendingSubscriptions) {
+          subscriptions = changeDocumentNotificationSubscription(
+            subscriptions,
+            { ...subscription, enabled: true },
+          );
+        }
       }
       this.documentNotificationSubscriptions = subscriptions;
-      if (pendingSubscriptions.length > 0) {
+      if (
+        pendingSubscriptions.length > 0
+        || subscriptions.length !== storedSubscriptions.length
+      ) {
         this.persistDocumentNotifications();
       }
       this.broadcastAllDocumentNotificationStates();
       this.scheduleDocumentNotificationRefresh();
     },
 
-    changeDocumentNotification(change) {
+    async changeDocumentNotification(change) {
+      if (change.enabled) {
+        let permission;
+        try {
+          permission = await requestBrowserNotificationPermission();
+        } catch {
+          this.showNotice(
+            "error",
+            "CiteLoom could not request browser notification permission.",
+          );
+          return;
+        }
+        if (permission !== "granted") {
+          this.broadcastDocumentNotificationState(change.sourceFile);
+          let message = "Browser notification permission was not granted.";
+          if (permission === "denied") {
+            message = "Browser notifications are blocked for CiteLoom. Allow them in your browser settings to use this feature.";
+          } else if (permission === "unsupported") {
+            message = "This browser does not support system notifications.";
+          }
+          this.showNotice("error", message);
+          return;
+        }
+      }
       const nextSubscriptions = changeDocumentNotificationSubscription(
         this.documentNotificationSubscriptions,
         change,
@@ -1310,7 +1343,6 @@ function registerShell(alpine) {
           continue;
         }
         outcomes.push({
-          errorMessage: documentStatus.errorMessage,
           filename: subscription.filename,
           outcome,
         });
@@ -1326,40 +1358,64 @@ function registerShell(alpine) {
       if (outcomes.length === 0) {
         return;
       }
+      let body;
+      let title;
       if (outcomes.length === 1) {
         const [outcome] = outcomes;
         if (outcome.outcome === "failed") {
-          const message = outcome.errorMessage === null
-            ? `${outcome.filename} needs attention.`
-            : `${outcome.filename} failed: ${outcome.errorMessage}`;
-          this.showNotice("error", message);
+          title = "Document needs attention";
+          body = `${outcome.filename} needs attention.`;
+        } else {
+          title = "Document ready";
+          body = `${outcome.filename} is ready.`;
+        }
+      } else {
+        let failed = 0;
+        let ready = 0;
+        for (const outcome of outcomes) {
+          if (outcome.outcome === "failed") {
+            failed += 1;
+          } else {
+            ready += 1;
+          }
+        }
+        if (failed > 0 && ready > 0) {
+          title = "Documents updated";
+          body = `${ready} ready and ${failed} needing attention.`;
+        } else if (failed > 0) {
+          title = "Documents need attention";
+          body = `${failed} watched documents need attention.`;
+        } else {
+          title = "Documents ready";
+          body = `${ready} watched documents are ready.`;
+        }
+      }
+      this.showDocumentBrowserNotification(title, body);
+    },
+
+    showDocumentBrowserNotification(title, body) {
+      try {
+        const notification = showBrowserNotification(title, {
+          body,
+          icon: "/assets/images/citeloom-apple-touch-icon.png",
+        });
+        if (notification === null) {
+          this.showNotice(
+            "error",
+            "Browser notification permission is no longer available.",
+          );
           return;
         }
-        this.showNotice("success", `${outcome.filename} is ready.`);
-        return;
+        notification.addEventListener("click", () => {
+          window.focus();
+          notification.close();
+        });
+      } catch {
+        this.showNotice(
+          "error",
+          "CiteLoom could not display the browser notification.",
+        );
       }
-      let failed = 0;
-      let ready = 0;
-      const failureMessages = [];
-      for (const outcome of outcomes) {
-        if (outcome.outcome === "failed") {
-          failed += 1;
-          const message = outcome.errorMessage === null
-            ? `${outcome.filename} needs attention.`
-            : `${outcome.filename} failed: ${outcome.errorMessage}`;
-          failureMessages.push(message);
-        } else {
-          ready += 1;
-        }
-      }
-      if (failed > 0 && ready > 0) {
-        failureMessages.unshift(`${ready} watched documents are ready.`);
-      }
-      if (failed > 0) {
-        this.showNotice("error", failureMessages.join("\n"));
-        return;
-      }
-      this.showNotice("success", `${ready} watched documents are ready.`);
     },
 
     clearDocumentNotifications() {

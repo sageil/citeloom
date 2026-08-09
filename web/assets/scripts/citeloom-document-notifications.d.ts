@@ -23,6 +23,12 @@ export interface DocumentNotificationStorage {
   setItem(key: string, value: string): void;
 }
 
+export type BrowserNotificationPermission =
+  | "default"
+  | "denied"
+  | "granted"
+  | "unsupported";
+
 export const DOCUMENT_NOTIFICATION_CHANGE_EVENT: string;
 export const DOCUMENT_NOTIFICATION_REQUEST_EVENT: string;
 export const DOCUMENT_NOTIFICATION_STATE_EVENT: string;
@@ -42,6 +48,7 @@ export function documentNotificationEnabled(
   subscriptions: DocumentNotificationSubscription[],
   sourceFile: string,
 ): boolean;
+export function readBrowserNotificationPermission(): BrowserNotificationPermission;
 export function readDocumentNotificationCatalogStatus(
   value: unknown,
   sourceFile: string,
@@ -65,6 +72,11 @@ export function readStoredDocumentNotificationSubscriptions(
   storage: DocumentNotificationStorage,
   storageKey: string,
 ): DocumentNotificationSubscription[];
+export function requestBrowserNotificationPermission(): Promise<BrowserNotificationPermission>;
+export function showBrowserNotification(
+  title: string,
+  options?: NotificationOptions,
+): Notification | null;
 export function writeStoredDocumentNotificationSubscriptions(
   storage: DocumentNotificationStorage,
   storageKey: string,

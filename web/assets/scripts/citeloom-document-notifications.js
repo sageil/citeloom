@@ -24,6 +24,40 @@ const documentNotificationQueryStatuses = Object.freeze([
   "running",
 ]);
 
+function readBrowserNotificationPermission() {
+  if (!window.isSecureContext || !("Notification" in window)) {
+    return "unsupported";
+  }
+  const permission = window.Notification.permission;
+  if (
+    permission === "default"
+    || permission === "denied"
+    || permission === "granted"
+  ) {
+    return permission;
+  }
+  return "unsupported";
+}
+
+async function requestBrowserNotificationPermission() {
+  const permission = readBrowserNotificationPermission();
+  if (permission !== "default") {
+    return permission;
+  }
+  const result = await window.Notification.requestPermission();
+  if (result === "default" || result === "denied" || result === "granted") {
+    return result;
+  }
+  return "unsupported";
+}
+
+function showBrowserNotification(title, options) {
+  if (readBrowserNotificationPermission() !== "granted") {
+    return null;
+  }
+  return new window.Notification(title, options);
+}
+
 function buildDocumentNotificationStorageKey(userId, workspaceId) {
   return `citeloom.document-notifications.v1:${userId}:${workspaceId}`;
 }
@@ -240,6 +274,7 @@ export {
   buildDocumentNotificationStorageKey,
   changeDocumentNotificationSubscription,
   documentNotificationEnabled,
+  readBrowserNotificationPermission,
   readDocumentNotificationCatalogStatus,
   readDocumentNotificationChange,
   readDocumentNotificationOutcome,
@@ -247,5 +282,7 @@ export {
   readDocumentNotificationState,
   readDocumentNotificationSubscriptions,
   readStoredDocumentNotificationSubscriptions,
+  requestBrowserNotificationPermission,
+  showBrowserNotification,
   writeStoredDocumentNotificationSubscriptions,
 };

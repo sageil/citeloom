@@ -1247,7 +1247,7 @@ export function registerPage(alpine) {
 
     documentNotificationLabel(document) {
       return this.documentNotificationEnabled(document)
-        ? "Notification set"
+        ? "Browser notification set"
         : "Notify me when ready";
     },
 
