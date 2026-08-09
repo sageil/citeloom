@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   readChatConversation,
-  readChatSpeechFeatures,
+  readChatDashboard,
   readChatSummaries,
 } from "../web/assets/scripts/citeloom-chat-boundaries.js";
 
@@ -23,14 +23,18 @@ describe("CiteLoom chat boundaries", () => {
     }]);
   });
 
-  it("reads the chat speech feature contract", () => {
-    expect(readChatSpeechFeatures({
+  it("reads the chat dashboard contract", () => {
+    expect(readChatDashboard({
       features: {
         speechToText: true,
         textToSpeech: true,
         textToSpeechPreload: false,
       },
+      inferenceRuntime: {
+        claimVerifier: { supportThreshold: 0.7 },
+      },
     })).toEqual({
+      claimVerifierSupportThreshold: 0.7,
       speechToTextEnabled: true,
       textToSpeechEnabled: true,
       textToSpeechPreloadEnabled: false,
@@ -109,11 +113,14 @@ describe("CiteLoom chat boundaries", () => {
   });
 
   it("rejects malformed chat feature and scope values at the boundary", () => {
-    expect(() => readChatSpeechFeatures({
+    expect(() => readChatDashboard({
       features: {
         speechToText: "yes",
         textToSpeech: true,
         textToSpeechPreload: false,
+      },
+      inferenceRuntime: {
+        claimVerifier: { supportThreshold: 0.7 },
       },
     })).toThrow("The speech-to-text feature response is invalid.");
     expect(() => readChatConversation({
@@ -174,7 +181,13 @@ function buildCitedConversation() {
           citationNumbers: [1],
           claim: "Revenue increased.",
           claimIndex: 0,
-          evidenceUnits: [{ citationNumber: 1, outcome: "supported" }],
+          evidenceUnits: [{
+            citationNumber: 1,
+            outcome: "supported",
+            rationale: "The cited evidence directly supports the claim.",
+            supportProbability: 0.9,
+            unitId: "claim-0-citation-1",
+          }],
           status: "supported",
         }],
         content: "Revenue increased.",
