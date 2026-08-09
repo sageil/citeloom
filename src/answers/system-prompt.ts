@@ -236,13 +236,15 @@ function createConversationRules(mode: GroundedPromptMode): string {
   }
   return `QUESTION INTERPRETATION
 
-- Interpret the current question by its intended meaning rather than exact wording.`;
+- Interpret the current question by its intended meaning rather than exact wording.
+- When conversation context is supplied, use it only to resolve references, pronouns, shorthand, and the intended subject.
+- Give the current question priority over supplied conversation context.`;
 }
 
 function createRequestModeRules(mode: GroundedPromptMode): string {
   const availableContext = mode === "chat"
     ? "the current message, selected conversation context, and retrieved evidence"
-    : "the current question and retrieved evidence";
+    : "the current question, any supplied conversation context, and retrieved evidence";
   const emptyGroundingOutput = mode === "chat"
     ? "Return answer.topics as an empty array."
     : "Return answer.findings as an empty array.";
