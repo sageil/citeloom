@@ -1032,7 +1032,7 @@ WITH canonical_settings AS (
       "backgroundProgressIntervalMs": 5000,
       "claimVerifierBaseUrl": "http://host.docker.internal:8088",
       "claimVerifierRuntimeName": "HHEM-2.1-Open",
-      "claimVerifierSupportThreshold": 0.5,
+      "claimVerifierSupportThreshold": 0.7,
       "claimVerifierTimeoutSeconds": 120,
       "chatTemperature": 0,
       "denseWeight": 1,

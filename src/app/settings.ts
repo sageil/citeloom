@@ -225,7 +225,7 @@ const embeddingDimensionOptions = SUPPORTED_EMBEDDING_DIMENSIONS.map(
 export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   setting("claimVerifierRuntimeName", "Hughes Hallucination Evaluation Model", "Citation checker name", "text", "The name shown for the service that checks whether citations support an answer."),
   setting("claimVerifierBaseUrl", "Hughes Hallucination Evaluation Model", "Citation checker address", "url", "The address of the service that checks whether citations support an answer."),
-  numberSetting("claimVerifierSupportThreshold", "Hughes Hallucination Evaluation Model", "Supported citation score", "The lowest score CiteLoom shows as supported. The recommended value is 0.50.", 0, 1, 0.01),
+  numberSetting("claimVerifierSupportThreshold", "Hughes Hallucination Evaluation Model", "Supported citation score", "The lowest score CiteLoom shows as supported. The recommended value is 0.70.", 0, 1, 0.01),
   numberSetting("claimVerifierTimeoutSeconds", "Hughes Hallucination Evaluation Model", "Citation check timeout", "How long CiteLoom waits for citation checks to finish.", 1, 3_600, 1, "seconds"),
   featureSetting(numberSetting("answerTemperature", "Hughes Hallucination Evaluation Model", "Temperature", "How much Ask responses may vary between runs.", 0, 2, 0.01), "answer"),
   featureSetting(numberSetting("answerTimeoutSeconds", "Hughes Hallucination Evaluation Model", "Answer timeout", "How long CiteLoom waits for an answer to finish.", 1, 3_600, 1, "seconds"), "answer"),
@@ -370,7 +370,7 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
 export const runtimeSettingChangeExamples = {
   claimVerifierRuntimeName: "Rename it to “Local claim checker” to make health reports easier to read.",
   claimVerifierBaseUrl: "Point it to http://hhem:8080 when HHEM runs in the Compose network.",
-  claimVerifierSupportThreshold: "Raise 0.50 to require stronger evidence, or lower it to mark more borderline claims as supported.",
+  claimVerifierSupportThreshold: "Raise 0.70 to require stronger evidence, or lower it to mark more borderline claims as supported.",
   claimVerifierTimeoutSeconds: "Raise 120 to 180 if large citation batches time out.",
   answerTimeoutSeconds: "Raise 600 to 900 when a large local model needs more than 10 minutes to answer.",
   answerMinimumOutputTokens: "Set this to the smallest space that can hold a complete answer in your preferred format.",
