@@ -16,9 +16,14 @@ function createScoreMarker(value, supportThreshold, position) {
   };
 }
 
-function findMinimumCitationScore(claims, citationNumber) {
-  let citationScore = null;
+function findClaimCitationScore(claims, claimIndex, citationNumber) {
+  if (claimIndex === null) {
+    return null;
+  }
   for (const claim of claims) {
+    if (claim.claimIndex !== claimIndex) {
+      continue;
+    }
     for (const evidenceUnit of claim.evidenceUnits) {
       if (
         evidenceUnit.citationNumber !== citationNumber
@@ -26,39 +31,44 @@ function findMinimumCitationScore(claims, citationNumber) {
       ) {
         continue;
       }
-      if (
-        citationScore === null
-        || evidenceUnit.supportProbability < citationScore
-      ) {
-        citationScore = evidenceUnit.supportProbability;
-      }
+      return evidenceUnit.supportProbability;
     }
+    return null;
   }
-  return citationScore;
+  return null;
 }
 
 export function buildEvidenceScoreScale(
   claims,
+  claimIndex,
   citationNumber,
   supportThreshold,
 ) {
-  if (citationNumber === null || supportThreshold === null) {
+  if (
+    claimIndex === null
+    || citationNumber === null
+    || supportThreshold === null
+  ) {
     return null;
   }
-  const citationScore = findMinimumCitationScore(claims, citationNumber);
-  if (citationScore === null) {
+  const claimScore = findClaimCitationScore(
+    claims,
+    claimIndex,
+    citationNumber,
+  );
+  if (claimScore === null) {
     return null;
   }
-  const markerPosition = citationScore < supportThreshold
+  const markerPosition = claimScore < supportThreshold
     ? SCORE_DISPLAY_POSITIONS.lower
     : SCORE_DISPLAY_POSITIONS.upper;
   const marker = createScoreMarker(
-    citationScore,
+    claimScore,
     supportThreshold,
     markerPosition,
   );
   const thresholdLabel = formatScore(supportThreshold);
-  const scoreLabel = `HHEM citation score ${formatScore(citationScore)}`;
+  const scoreLabel = `HHEM claim score ${formatScore(claimScore)}`;
   return {
     ariaLabel: `${scoreLabel}. Global support threshold ${thresholdLabel}.`,
     markers: [marker],

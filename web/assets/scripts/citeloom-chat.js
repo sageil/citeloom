@@ -32,6 +32,7 @@ import {
   finishEvidenceWindowDrag,
   positionEvidenceWindow,
   prepareEvidenceWindow,
+  readEvidenceClaimIndex,
   resetEvidenceWindow,
   revealEvidenceCitationTrigger,
   toggleEvidenceWindowPin,
@@ -364,6 +365,7 @@ export function registerPage(alpine) {
     activeEvidenceMessageId: null,
     citationWindow: createEvidenceWindowState(),
     selectedCitation: null,
+    selectedEvidenceClaimIndex: null,
     speechAbortController: null,
     speechAnswerMessageId: null,
     speechAudioError: "",
@@ -1617,11 +1619,6 @@ export function registerPage(alpine) {
       return this.sourceSidebarMessage()?.citations ?? [];
     },
 
-    sourceNavigatorTitle(citation) {
-      const sectionTitle = citation.sectionPath.at(-1);
-      return sectionTitle ?? this.sourceTitle(citation.sourceFile);
-    },
-
     sourceNavigatorStatus(citation) {
       const message = this.sourceSidebarMessage();
       if (message === null) {
@@ -1726,12 +1723,13 @@ export function registerPage(alpine) {
       const claims = this.sourceSidebarMessage()?.claims ?? [];
       return buildEvidenceScoreScale(
         claims,
+        this.selectedEvidenceClaimIndex,
         citationNumber,
         this.claimVerifierSupportThreshold,
       );
     },
 
-    openCitation(citation, trigger, message = null) {
+    openCitation(citation, trigger, message = null, claimIndex = null) {
       if (citation === null || citation.preview === true) {
         return;
       }
@@ -1743,6 +1741,7 @@ export function registerPage(alpine) {
       }
       prepareEvidenceWindow(this.citationWindow, trigger);
       this.selectedCitation = citation;
+      this.selectedEvidenceClaimIndex = claimIndex;
       void this.completeCitationOpen(citation.id);
     },
 
@@ -1770,9 +1769,10 @@ export function registerPage(alpine) {
         this.openCitation(citation, null, message);
         return;
       }
+      const claimIndex = readEvidenceClaimIndex(trigger);
       revealEvidenceCitationTrigger(trigger, this.$refs.thread);
       await this.$nextTick();
-      this.openCitation(citation, trigger, message);
+      this.openCitation(citation, trigger, message, claimIndex);
     },
 
     closeCitation(options = {}) {
@@ -1791,6 +1791,7 @@ export function registerPage(alpine) {
       this.resetEvidenceSpeechPlayback();
       resetEvidenceWindow(this.citationWindow);
       this.selectedCitation = null;
+      this.selectedEvidenceClaimIndex = null;
     },
 
     citationPanelStyle() {

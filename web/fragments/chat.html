@@ -188,11 +188,12 @@
                                       :title="citationVerificationDescription(message, statement, citationKey)"
                                       :aria-label="statementCitationLabel(message, statement, citationKey)"
                                       :data-evidence-citation-id="citationForKey(message, citationKey)?.id"
+                                      :data-evidence-claim-index="statement.verificationIndex"
                                       :data-evidence-message-id="message.id"
                                       aria-controls="chat-evidence-panel"
-                                      :aria-expanded="(selectedCitation?.id === citationForKey(message, citationKey)?.id).toString()"
+                                      :aria-expanded="(selectedCitation?.id === citationForKey(message, citationKey)?.id &amp;&amp; selectedEvidenceClaimIndex === statement.verificationIndex).toString()"
                                       :disabled="citationForKey(message, citationKey)?.preview === true"
-                                      @click="openCitation(citationForKey(message, citationKey), $event.currentTarget, message)"
+                                      @click="openCitation(citationForKey(message, citationKey), $event.currentTarget, message, statement.verificationIndex)"
                                     ></button>
                                   </template>
                                 </div>
@@ -273,13 +274,6 @@
                 @click="openCitationFromNavigator(citation)"
               >
                 <span class="source-navigator-number" x-text="citation.citationNumber ?? sourceIndex + 1"></span>
-                <span class="source-navigator-copy">
-                  <strong x-text="sourceNavigatorTitle(citation)"></strong>
-                  <small
-                    x-show="citation.pageNumbers.length > 0"
-                    x-text="sourcePageLabel(citation)"
-                  ></small>
-                </span>
                 <span
                   class="source-navigator-status"
                   :class="`source-navigator-status-${sourceNavigatorStatus(citation)}`"

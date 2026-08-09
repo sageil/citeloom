@@ -45,6 +45,7 @@ import {
   finishEvidenceWindowDrag,
   positionEvidenceWindow,
   prepareEvidenceWindow,
+  readEvidenceClaimIndex,
   readEvidenceWindowPlacement,
   resetEvidenceWindow,
   revealEvidenceCitationTrigger,
@@ -824,6 +825,7 @@ export function registerPage(alpine) {
     requestError: "",
     scopeKind: "all",
     selectedCitation: null,
+    selectedEvidenceClaimIndex: null,
     selectedDiscoveryDocuments: [],
     selectedTags: [],
     speechAbortController: null,
@@ -1674,7 +1676,7 @@ export function registerPage(alpine) {
       }
     },
 
-    async inspectCitation(source, trigger = null) {
+    async inspectCitation(source, trigger = null, claimIndex = null) {
       if (source.preview === true) {
         return;
       }
@@ -1684,6 +1686,7 @@ export function registerPage(alpine) {
       this.citationAbortController = controller;
       prepareEvidenceWindow(this.citationWindow, trigger);
       this.selectedCitation = source;
+      this.selectedEvidenceClaimIndex = claimIndex;
       this.inspectedCitation = buildStoredCitationPreview(source);
       this.citationError = "";
       this.citationImageDimensions = null;
@@ -1771,9 +1774,10 @@ export function registerPage(alpine) {
         await this.inspectCitation(source);
         return;
       }
+      const claimIndex = readEvidenceClaimIndex(trigger);
       revealEvidenceCitationTrigger(trigger);
       await this.$nextTick();
-      await this.inspectCitation(source, trigger);
+      await this.inspectCitation(source, trigger, claimIndex);
     },
 
     askEvidencePanelStyle() {
@@ -1990,6 +1994,7 @@ export function registerPage(alpine) {
       this.citationLoading = false;
       this.resetCitationInspectorSize();
       this.selectedCitation = null;
+      this.selectedEvidenceClaimIndex = null;
     },
 
     async submitFeedback(dimension, rating, citationId) {
@@ -2658,10 +2663,6 @@ export function registerPage(alpine) {
       return "All documents";
     },
 
-    citationNavigatorTitle(source) {
-      return source.sectionPath.at(-1) ?? this.basename(source.sourceFile);
-    },
-
     citationNavigatorStatusLabel(citationNumber) {
       if (isVerificationPending(this.answerVerificationState())) {
         return "Checking";
@@ -2842,6 +2843,7 @@ export function registerPage(alpine) {
       const claims = this.answer?.claims ?? [];
       return buildEvidenceScoreScale(
         claims,
+        this.selectedEvidenceClaimIndex,
         citationNumber,
         this.claimVerifierSupportThreshold,
       );

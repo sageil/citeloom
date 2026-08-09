@@ -41,14 +41,10 @@
 .source-navigator-empty strong { color: var(--text); font-size: 11px; }
 .source-navigator-empty p { margin: 0; font-size: 9px; line-height: 1.5; }
 .source-navigator-list { min-height: 0; overflow-y: auto; border-top: 1px solid var(--border); }
-.source-navigator-list > button { display: grid; width: 100%; grid-template-columns: 22px 1fr; gap: 4px 8px; padding: 10px; border: 0; border-left: 2px solid transparent; background: transparent; color: var(--muted); text-align: left; }
+.source-navigator-list > button { display: flex; width: 100%; align-items: center; gap: 8px; padding: 10px; border: 0; border-left: 2px solid transparent; background: transparent; color: var(--muted); text-align: left; }
 .source-navigator-list > button.selected { border-left-color: #a78bfa; background: rgba(139, 92, 246, 0.08); color: var(--text); }
-.source-navigator-number { display: grid; width: 20px; height: 20px; grid-row: 1 / span 2; place-items: center; border: 1px solid var(--cyan); border-radius: 5px; color: var(--cyan); }
-.source-navigator-copy { display: grid; min-width: 0; }
-.source-navigator-copy strong, .source-navigator-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.source-navigator-copy strong { color: var(--text-soft); font-size: 10px; }
-.source-navigator-copy small { font-size: 9px; }
-.source-navigator-status { display: flex; align-items: center; gap: 4px; grid-column: 2; font-size: 8px; }
+.source-navigator-number { display: grid; width: 20px; height: 20px; flex: 0 0 auto; place-items: center; border: 1px solid var(--cyan); border-radius: 5px; color: var(--cyan); }
+.source-navigator-status { display: flex; align-items: center; gap: 4px; font-size: 8px; }
 .source-navigator-status .citeloom-icon { width: 10px; height: 10px; }
 .source-navigator-status-supported { color: #6ee7b7; }
 .source-navigator-status-pending, .source-navigator-status-unverified { color: var(--muted); }

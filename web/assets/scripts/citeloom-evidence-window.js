@@ -290,6 +290,21 @@ export function findEvidenceCitationTrigger(
   return firstRenderedMatch;
 }
 
+export function readEvidenceClaimIndex(trigger) {
+  if (!(trigger instanceof HTMLElement)) {
+    return null;
+  }
+  const encodedClaimIndex = trigger.dataset.evidenceClaimIndex;
+  if (encodedClaimIndex === undefined) {
+    return null;
+  }
+  const claimIndex = Number(encodedClaimIndex);
+  if (!Number.isInteger(claimIndex) || claimIndex < 0) {
+    return null;
+  }
+  return claimIndex;
+}
+
 export function revealEvidenceCitationTrigger(
   trigger,
   scrollContainer = null,
