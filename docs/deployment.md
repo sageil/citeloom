@@ -2,7 +2,6 @@
 
 CiteLoom is designed to run on a private local network.
 The supplied stack includes workspace sign-in, administrator roles, and local HTTPS through Caddy.
-Internet-facing deployments need their own production TLS, network access policy, and availability design.
 
 ## Install from Docker Hub
 
@@ -39,13 +38,12 @@ docker compose --env-file .env -f compose.dockerhub.yml up -d --wait
 The stack pulls the application, PostgreSQL, Docling, and HHEM images from the `sageil` Docker Hub account.
 Caddy uses the version pinned in the Compose file.
 Model providers run separately.
-A fresh database points the required routes to Ollama and leaves reranking and speech ready for the administrator to configure.
-It selects Standard Docling processing and saves an inactive Ollama Unlimited OCR model identifier for use after that model is installed and the administrator switches PDF processing to VLM.
+Configure them from Settings after the application starts.
 
-Open `https://localhost:3443`.
-If the browser warns about the local development certificate, use its trust or continue flow for this local site.
+Open `https://localhost:3443` and sign in with the administrator account from `.env`.
+See [Trust local HTTPS](#trust-local-https) if the browser does not trust the local certificate.
 
-### Choose storage paths
+## Choose storage paths
 
 Relative database and source-content paths resolve from the directory containing `compose.dockerhub.yml`.
 Set absolute paths before the first start when persistent data belongs elsewhere.
@@ -57,6 +55,21 @@ CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY=/srv/citeloom/documents/blobs
 
 When reusing existing data, verify both bind paths and back up PostgreSQL and source content together.
 
+Compose mounts the source directory at `/app/documents/blobs` in the migration, web, worker, and Docling containers.
+Docling receives a read-only mount and reads stored sources by content ID.
+Migration saves the container path in PostgreSQL for application processes to use.
+
+To move an existing source store to a different process-visible path:
+
+1. Stop every web, worker, and Docling process.
+2. Copy the complete `sha256` content tree to the new shared directory.
+3. Mount that directory read-only at the same absolute path in every Docling instance.
+4. Set `CITELOOM_SOURCE_CONTENT_DIRECTORY` to the path visible to the migration process.
+5. Run the migration.
+
+The migration checks every recorded source before changing the stored path.
+It keeps the previous setting when validation fails.
+
 Stop the stack without deleting its bind-mounted data.
 
 ```bash
@@ -65,13 +78,7 @@ docker compose --env-file .env -f compose.dockerhub.yml down
 
 ## Build and run locally
 
-The host needs Docker Compose.
-Create the untracked environment file and configure the initial administrator credentials before the first start.
-
-```bash
-cp .env.example .env
-chmod 600 .env
-```
+Prepare `.env`, the initial administrator, and storage paths as described in [Install from Docker Hub](#install-from-docker-hub).
 
 Build and start the complete stack from the repository root.
 
@@ -97,9 +104,12 @@ Validate the resolved configuration without changing containers.
 docker compose config --quiet
 ```
 
-Open `https://localhost:3443` after installation.
 The endpoint at `http://localhost:3080` redirects to HTTPS.
-If the browser reports an untrusted certificate, use its trust or continue flow for this local site.
+
+## Trust local HTTPS
+
+The supplied Caddy service creates a private local certificate authority for `https://localhost:3443`.
+Use the browser's trust or continue flow for an isolated local installation.
 Caddy stores the root certificate at `data/caddy/caddy/pki/authorities/local/root.crt` for browsers or operating systems that require manual certificate import.
 Keep `data/caddy` private and persistent because it contains the local certificate authority keys.
 Reusing that directory preserves the browser trust established for its certificate authority.
@@ -121,7 +131,7 @@ docker compose down
 ## Publishing Docker Hub images
 
 The manually dispatched `Build and push CiteLoom images` GitHub Actions workflow publishes the application, PostgreSQL, Docling, and HHEM images.
-The workflow follows the same QEMU, Buildx, Docker Hub login, semantic-version validation, and dry-run approach as the `crewai-docker-image` release workflow.
+The workflow uses QEMU and Buildx to publish multi-platform images after validating the release inputs.
 
 Before the first publication:
 
@@ -144,43 +154,16 @@ If a run stops after publishing only some version tags, fix the cause and use Gi
 If a run stops while updating `latest`, use the same action to safely finish pointing all four repositories to the verified release.
 Existing exact-version deployments remain unchanged during a partial publication.
 
-## Configuration and storage
+## Configure a production proxy
 
-The default Compose bind mount resolves to `data/citeloomdb` under the directory containing the Compose file.
-Override it in `.env` with an absolute bind path or a path relative to that directory.
-
-```dotenv
-CITELOOM_POSTGRES_DATA_DIRECTORY=./data/citeloomdb
-```
-
-Compose stores unmodified source files under `CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY`, which defaults to `documents/blobs` under the same directory.
-Docker Compose creates that host directory when needed and mounts it at `/app/documents/blobs` in the migration, web, worker, and Docling containers.
-Docling mounts it read-only and accepts content IDs instead of uploaded document bytes.
-Database bootstrap stores `/app/documents/blobs` in `application_settings`, and application processes read the path from there.
-
-To move the source store outside the supplied Compose setup:
-
-1. Stop every web, worker, and Docling process.
-2. Copy the complete `sha256` content tree to the new shared directory.
-3. Mount that directory read-only at the same absolute path in every Docling instance.
-4. Set `CITELOOM_SOURCE_CONTENT_DIRECTORY` to the path visible to the process running the migration.
-5. Run the migration.
-
-The migration checks every recorded source document before changing the database setting.
-The previous directory remains intact.
-
-Set `CITELOOM_PUBLIC_ORIGIN`, `CITELOOM_SECURE_SESSION_COOKIE`, and `CITELOOM_TRUST_PROXY` for your proxy setup.
-Place Fastify behind a trusted production proxy for public deployments.
+Set `CITELOOM_PUBLIC_ORIGIN`, `CITELOOM_SECURE_SESSION_COOKIE`, and `CITELOOM_TRUST_PROXY` for the deployed origin and proxy path.
+Keep secure cookies enabled outside isolated automated tests.
+Enable trusted-proxy mode only when a trusted proxy replaces forwarded client headers, as the supplied Caddy service does.
+Internet-facing deployments need production TLS, network access controls, and an availability design beyond the supplied local setup.
 
 ## Administrator bootstrap
 
-Set `CITELOOM_ADMIN_USERNAME` and `CITELOOM_ADMIN_PASSWORD` in the untracked environment file before running migrations.
-Use a password between 15 and 1,024 characters.
-
-```dotenv
-CITELOOM_ADMIN_USERNAME=Mayhem
-CITELOOM_ADMIN_PASSWORD='replace-with-a-private-passphrase'
-```
+The initial password entered during installation must contain between 15 and 1,024 characters.
 
 For a new database, the data bootstrap creates the active administrator and a `CiteLoom` workspace in the same transaction.
 The password is stored as an Argon2id hash.
@@ -193,8 +176,6 @@ Regular sessions expire after 2 hours of inactivity or 12 hours in total.
 Remembered sessions expire after 7 days of inactivity or 30 days in total.
 Administrator-created setup and password-reset links expire after 24 hours and are consumed when the user sets a password.
 `CITELOOM_PUBLIC_ORIGIN` is the required origin for state-changing browser requests.
-Keep `CITELOOM_SECURE_SESSION_COOKIE=true` outside isolated automated tests.
-Set `CITELOOM_TRUST_PROXY=true` only when a trusted proxy replaces forwarded client headers, as the included Caddy service does.
 
 Workspace members can use document, ingestion, reindexing, search, and research APIs.
 Workspace administrators can also manage membership, settings, and diagnostics.

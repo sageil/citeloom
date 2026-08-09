@@ -1,221 +1,184 @@
 # Features
 
-This guide describes the product features available in the current CiteLoom web application, command-line tools, and supplied self-hosted deployment.
-It is written for workspace members and administrators who need to know what CiteLoom can do and where each control belongs.
+This guide explains what CiteLoom can do, who can use each feature, and where its important limits are.
+Workspace members should use the in-app Help page for step-by-step instructions.
+Administrators should use [Configuration](configuration.md) for exact settings and [Operations](operations.md) for maintenance and recovery.
 
-## Accounts and workspace access
+## How CiteLoom uses AI
 
-CiteLoom uses workspace accounts backed by PostgreSQL sessions.
-Every user can change their own password from Account and access.
-New users set their first password through the time-limited setup link created by an administrator.
-Sign-in can create a regular session or a longer remembered session, and signing out revokes the current session.
+CiteLoom answers from the ready documents in the scope you choose.
+It does not treat the language model's general knowledge or earlier chat messages as source evidence.
 
-Workspace members can upload and manage documents, control their own ingestion jobs, search, ask questions, chat, and save research.
-Workspace administrators can also add and remove users, assign member or administrator roles, create password-reset links, change application settings, run provider diagnostics, and review operational errors.
-CiteLoom prevents removal of the final active administrator.
+The answer has two layers:
 
-See [Deployment](deployment.md#administrator-bootstrap) for authentication, session, and administrator bootstrap details.
+- The direct answer summarizes the result without citation markers.
+- Supporting findings or topics link to the original evidence with citations such as `[1]`.
 
-## Document library and ingestion
+The server validates citation references before publishing an answer.
+An advisory Hughes Hallucination Evaluation Model (HHEM) score can help you review whether a cited passage supports a finding, but it is not a correctness guarantee.
+Always inspect the cited evidence before relying on an important result.
 
-CiteLoom accepts PDF, HTML, DOCX, XLSX, PPTX, JPEG, PNG, WebP, and nonempty UTF-8 text files.
-Uploaded source bytes are stored unchanged in the content store and identified by SHA-256.
-PostgreSQL stores document metadata, processing state, version records, and search indexes.
+## Accounts and access
 
-The Overview and Documents screens provide these controls:
+Every person uses an individual workspace account.
+Members can manage documents, run searches, ask questions, chat, and save research.
+Administrators can also manage users, providers, application settings, diagnostics, and retained error reports.
 
-- Upload one or more documents and assign tags during intake.
-- Browse all documents, uploads, untagged documents, and tag-based collections.
-- Search the catalog and filter it by processing state or tag.
-- Sort documents by update time or name.
-- Inspect stored, normalized, embedded, and ready progress.
-- View the stored source path, indexed text, tables, images, page counts, and processing failures.
-- Add, remove, and save document tags.
-- Pause, resume, or cancel an eligible PDF ingestion owned by the current user.
-- Retry a failed ingestion job.
+New users set their password from a time-limited link created by an administrator.
+Every user can change their own password, and the workspace always keeps at least one active administrator.
+
+## Build a document library
+
+CiteLoom accepts these inputs:
+
+| Type | Formats |
+| --- | --- |
+| Documents | PDF, HTML, and DOCX |
+| Spreadsheets | XLSX |
+| Presentations | PPTX |
+| Images | JPEG, PNG, and WebP |
+| Text | Nonempty, readable UTF-8 files, including files with an unknown extension or no extension |
+
+Uploaded source bytes stay unchanged in the content store.
+The library tracks metadata, tags, processing state, searchable versions, and document history in PostgreSQL.
+
+From Overview or Documents, members can:
+
+- Upload one or more files and add tags.
+- Browse all, uploaded, untagged, or tagged documents.
+- Search, filter, and sort the catalog.
+- Inspect processing progress, extracted text, tables, images, page counts, and errors.
+- Pause or resume eligible PDF work, cancel active work, and retry failures they own.
+- Ask the browser to notify them when a processing document becomes ready or needs attention.
 - Reindex a ready document while its current version remains searchable.
-- Delete a document after confirmation when no ingestion or reindex is active.
-- Open the saved source for the active document version.
-- Review document version history and compare added, modified, and removed evidence between adjacent versions.
-- Select documents and carry that selection into Ask or Chat.
+- Compare evidence changes between adjacent versions.
+- Open the source file for the active or retained version.
+- Delete an idle document after confirmation.
+- Select documents and carry that scope into Ask or Chat.
 
-Administrators can pause, resume, or cancel any workspace ingestion job.
-Cancellation removes partial indexing work, while canceling a reindex preserves the current searchable version.
-Document deletion and unreferenced source cleanup are durable operations that resume after a restart.
+Administrators can control any workspace ingestion job.
+Cancelling a new ingestion removes its partial indexing work.
+Cancelling a reindex keeps the current searchable version.
 
-See [Configuration](configuration.md#document-conversion) for processing choices and [Operations](operations.md#reindexing) for reindexing behavior.
+Browser notifications require a secure browser context, notification permission, and an open CiteLoom page.
+The notification preference is stored for the signed-in user and workspace in that browser.
 
-## Ask and saved research
+## Ask questions and save research
 
-Ask retrieves evidence from the chosen scope and generates a structured answer with validated citations.
-A question can search all ready documents, selected documents, or any document carrying one of the selected tags.
+Ask retrieves evidence from all ready documents, selected documents, or documents matching any selected tag.
+Each completed question becomes a turn in a saved research thread.
 
-Each saved research thread can contain multiple turns.
-Opening an existing turn reads its stored answer, citations, settings snapshot, and retrieval trace without running the models again.
-Users can create and delete threads, export a thread as Markdown or JSON, and rate retrieval relevance, answer usefulness, and citation correctness.
+A saved turn keeps its answer, citations, exact evidence, settings snapshot, and retrieval trace.
+Opening it later reads the stored result without running retrieval or generation again.
+A new submission creates a new run that can reflect changed documents, settings, models, or provider behavior.
 
-Ask streams the completed published answer and exposes:
+Members can create or delete threads, export a thread as Markdown or JSON, and rate source relevance, answer usefulness, and citation correctness where those controls appear.
 
-- A direct answer without citation markers and supporting findings with inline citation markers.
-- The documents and pages used by the answer.
-- Original text, structured table, image, and highlighted PDF evidence.
-- The exact retained document version when the current library version has changed.
-- Advisory HHEM support checks for cited findings.
-- Advanced retrieval, model, timing, and run diagnostics when available.
+## Find source material without an answer
 
-The answer model can cite only evidence references supplied for the current request.
-The server validates those references and creates the stored citation records.
-The direct answer remains separate from citations, while supporting findings link to the evidence that HHEM checks.
-HHEM scores are advisory and never remove, rewrite, or add answer content or citations.
+Find Sources is for discovery rather than synthesis.
+Keyword matching finds exact terms and phrases.
+Semantic matching can also return related content that uses different wording.
 
-## Find Sources
+Results are grouped by document and include matching excerpts.
+Keyword results continue across pages, while semantic results use the configured display limit and ranking threshold.
+Members can add useful result documents to the current question scope and continue in Ask.
 
-Find Sources searches without generating an answer.
-Keyword search finds exact words and phrases through PostgreSQL BM25 indexes.
-Optional semantic search finds related meaning through the configured embedding and search-ranking pipeline.
+## Chat with selected documents
 
-Results are grouped by document and show configurable matching excerpts.
-Keyword results are paginated.
-Semantic results are limited by the configured result count and optional ranking-score threshold.
-Users can add useful result documents to the current question selection and continue in Ask.
-
-## Document-grounded Chat
-
-Chat provides private, multi-turn conversations grounded in selected documents.
-A conversation can use all ready documents, selected documents, or selected tags.
-Each conversation is visible only to its creator in the active workspace.
+Chat supports private, multi-turn conversations over all ready documents, selected files, or selected tags.
+Only the conversation creator can open a chat in the current workspace.
 
 CiteLoom stores every user message and completed assistant response.
-It uses complete recent turns and, when needed, semantically relevant earlier turns to clarify follow-up questions.
-Conversation memory is context only and cannot serve as evidence for a factual claim.
-Each factual response must use currently retrieved document evidence and validated citations.
-When retrieval finds no relevant evidence, Chat returns an uncited response instead of relying on general model knowledge.
+It keeps complete recent turns and may retrieve relevant earlier turns when the whole conversation no longer fits.
+Conversation history can clarify a follow-up question, but every factual response still needs currently retrieved document evidence.
+If no relevant document evidence is available, Chat returns an uncited response instead of filling the gap with general model knowledge.
 
-Chat preserves its message text, citation snapshots, retained image evidence, retrieval trace, memory trace, and run configuration.
-Deleting a library document does not change existing chat evidence.
+Deleting a library document does not rewrite saved chat evidence.
 Deleting a chat permanently removes its messages and citation records, then makes otherwise unreferenced source bytes eligible for durable cleanup.
 
-## Evidence inspection and document history
+## Inspect citations and retained evidence
 
-Ask and Chat use the same evidence presentation components.
-Text is shown with its retained section and page location.
-Structured tables render as HTML when table structure is available.
-Images use retained source crops.
-PDF citations can open a generated copy with the cited region highlighted.
+Ask and Chat can show:
 
-Citation evidence remains tied to the exact document version used for the answer.
-The inspector identifies superseded versions and lets the user open the retained original instead of silently substituting the current library version.
+- Original text with its section and page location.
+- Structured tables when the source contains usable table structure.
+- Retained source images and image crops.
+- A highlighted PDF region or highlighted HTML or plain-text source view.
+- The exact older source version when the library has since changed.
+- HHEM score markers alongside the workspace's configured support threshold.
 
-## Speech input and spoken answers
+Retrieved source material lists what CiteLoom reviewed while preparing the answer.
+Relevant material does not automatically become a citation, so this list can be longer than the cited-source list.
 
-Speech input is optional and currently applies to Ask.
-Users can record with the microphone control or hold Option on macOS or Alt on Windows and Linux, then edit the transcript before submitting it.
-CiteLoom sends the temporary recording to the configured transcription provider and discards it after transcription or cancellation.
+## Dictate questions and listen to evidence
 
-Spoken answers are optional in both Ask and Chat.
-Ask can play the displayed answer, and Chat can play any completed assistant answer in the conversation.
-The administrator selects the provider, model, voice, speed, and timeout in Settings.
-When Preload answer audio is enabled, the browser requests the audio asynchronously after a completed answer is loaded or published.
-When it is disabled, CiteLoom requests audio only after the user chooses the play control.
-Generated browser audio URLs are released when the answer, thread, or conversation changes.
+Speech input and spoken answers are separate optional features.
 
-## Search and answer controls
+When speech input is enabled, members can dictate an Ask question or Chat message, review the transcript, and edit it before submission.
+The temporary browser recording is sent to the configured transcription provider and discarded after transcription or cancellation.
 
-Administrators can choose Keyword, Semantic, or Hybrid retrieval for Ask and Chat.
-Keyword uses BM25 exact-word retrieval and does not embed the document query.
-Semantic embeds the document query and searches by vector similarity.
-Hybrid runs both paths and combines them through weighted Reciprocal Rank Fusion.
-Administrators can also configure how many matching sections are reviewed, how many sections an answer may use, how many Find Sources results and excerpts are displayed, and how semantic, lexical, and repeated matches influence ordering.
+When spoken answers are enabled, members can play completed Ask and Chat answers and supported text evidence.
+Audio can be generated on demand or preloaded after an answer finishes.
+The browser holds the generated audio temporarily and releases it when the answer, thread, or conversation changes.
 
-Optional Query Expansion creates up to four alternative searches for a question.
-Optional search ranking reorders the strongest candidates from any search method with a dedicated relevance model.
+## Control search and answer behavior
 
-Document table-of-contents routing can use stored headings as an additional way to reach relevant branches in long documents.
-Headings improve routing but are never answer evidence or citations.
+Administrators can choose:
 
-Search text formats control the document and query templates sent to an embedding model.
-Administrators can create a format, copy a built-in format, create a new revision of a used format, and retire an unused format.
-Changing the selected format requires reindexing because it changes both stored document embeddings and future query embeddings.
+- Keyword, Semantic, or Hybrid document retrieval.
+- The candidate search size and the maximum evidence sent to the answer model.
+- Optional Query Expansion with up to four alternative searches.
+- Optional model-based search ranking.
+- Find Sources result and excerpt counts.
+- Relative influence for exact, semantic, and repeated matches.
+- Embedding dimensions, document section size, and search text format.
+- Document heading routes that help reach relevant branches in long documents.
 
-See [Configuration](configuration.md#search-and-answers) for the exact controls and constraints.
+Generated headings, descriptions, and summaries can improve discovery, but they are not answer sources or citations.
+Changing an embedding model, vector dimensions, search text format, section method, or search-index name requires reindexing.
 
-## Providers and feature routing
+## Route work to model providers
 
-Administrators can route Ask, Chat, Query Expansion, indexing summaries, embeddings, search ranking, speech input, and spoken answers independently.
-Feature routes can override the provider model and, where the capability exposes it, input capacity or speech voice.
-Provider connections contain their endpoint, credentials, default models, and one deployment-wide concurrency limit shared by all capabilities using that provider.
+Administrators can route Ask, Chat, Query Expansion, the Indexing model, embeddings, search ranking, speech input, and spoken answers independently.
+Feature routes can override a provider's default model and supported capacity or voice settings.
 
-Built-in profiles are available for oMLX, Ollama, LM Studio, OpenAI, OpenRouter, OpenAI Codex, DeepSeek, Groq, Cohere, Jina, and Custom endpoints.
-OpenAI Codex uses device authorization from Settings.
-The Custom profile lets the administrator select the protocol adapter for each supported capability.
+Built-in profiles are available for oMLX, Ollama, LM Studio, OpenAI, OpenRouter, OpenAI Codex, DeepSeek, Groq, Mistral AI, Together AI, Cohere, Jina, and Custom connections.
+OpenAI Codex uses device authorization.
+Other profiles use API tokens when their endpoints require authentication.
 
-Ollama language routes can use automatic context sizing for native GGUF models.
-It calculates bounded answer requirements, applies a 65,536-token floor without exceeding the model maximum, and reuses a larger resident runner without shrinking it.
-MLX runners, embeddings, and other providers continue to use their fixed configured limits.
+One concurrency limit applies across every capability routed to the same provider.
+See the [provider reference](configuration.md#provider-reference) for supported combinations and endpoint conventions.
 
-See [Configuration](configuration.md#provider-reference) for the capability matrix and endpoint conventions.
+## Choose document processing
 
-## Standard and VLM document processing
+Standard Docling processing is the default.
+It uses layout, optical character recognition (OCR), and table models.
+Eligible Standard PDFs use page-range checkpoints so interrupted work can continue from completed ranges.
 
-Standard is the default Docling processing mode.
-It uses Docling's layout, OCR, and table models and exposes PDF reader, OCR, table-structure, and table-priority controls.
-Standard PDF processing uses page-range checkpoints in the supplied Docling service, so interrupted work can resume from completed ranges.
+Visual language model (VLM) processing sends each rendered PDF page to an image-capable model through an existing provider connection.
+It does not persist a separate PNG copy of every page, and it does not use Standard PDF page-range checkpoints.
+Document pages and provider credentials leave the Docling container for the configured endpoint, so VLM processing stays local only when that endpoint is local and trusted.
 
-VLM mode visually reads each PDF page with a model reached through an existing CiteLoom provider connection.
-The administrator can select the provider, enter any model identifier accepted by that endpoint, override the page prompt, and set the maximum output tokens per page.
-Leaving the model override blank uses the provider's configured answer model.
-CiteLoom does not restrict model identifiers, but the selected endpoint and model must accept OpenAI-compatible image chat requests and return usable document text.
+## Administer and recover the workspace
 
-The VLM request renders a page as an in-memory PNG and sends the prompt and image to the configured endpoint.
-CiteLoom does not create a persistent PNG copy of every PDF page for this path.
-Provider credentials and document page content leave the Docling container for the configured VLM endpoint, so processing remains local only when that endpoint is local and trusted.
+Settings changes are versioned in PostgreSQL.
+New work uses the effective settings snapshot available when it starts, while work already running keeps its original snapshot.
+Administrators can reset one value, one settings area, or all runtime settings after confirming the scope.
 
-CiteLoom persists the Docling task ID in both modes and can resume polling a task that the same Docling service still knows.
-The supplied page-range checkpoint and partial-document assembly path applies only to Standard PDFs.
-If a VLM task is lost by the Docling service, CiteLoom must resubmit the unchanged source rather than continue from a completed page range.
+System health shows runtime state, configured models, service and provider capacity, worker state, scheduling telemetry, and enabled usage metrics.
+Service-readiness diagnostics avoid model inference.
+Optional live tests can use provider credits or local compute and must be selected explicitly.
 
-See [Configuration](configuration.md#document-conversion) for setup and lifecycle details.
+Error reports contain sanitized operational failures stored in PostgreSQL.
+Purging them does not delete Docker, systemd, or other host logs.
 
-## Settings and safe resets
+PostgreSQL leases coordinate workers, Chat runs, and provider capacity across processes.
+Document indexes and answers are published atomically so partial results do not become available.
+The supplied tools support coordinated backup and restore, queue inspection, retries, reindexing, document-heading backfill, and embedding-space retention.
 
-The Settings page separates provider connections, feature routes, runtime controls, and startup-only deployment values.
-Runtime changes are versioned in PostgreSQL and new work receives the effective settings snapshot that exists when it starts.
-Work already in progress continues with its saved snapshot.
+## Evaluate retrieval and citation support
 
-Administrators can search settings, filter them by state or area, save pending changes, reset one setting to its database default, reset one feature or settings panel, or reset all runtime settings.
-Feature, panel, and global resets show a branded confirmation dialog and name the affected scope before applying changes.
-Changing an embedding model, dimensions, search text format, section method, or search-index name can require document reindexing.
-
-The Docling settings area groups its controls into Connection, PDF processing, Performance and limits, and Diagnostics panels.
-See [Configuration](configuration.md) for the settings reference.
-
-## System health, diagnostics, and error reports
-
-System health shows the current runtime state, model and service configuration, request capacity, worker and scheduling telemetry, and recent usage metrics when collection is enabled.
-An administrator can run service-readiness diagnostics without model inference, then explicitly select optional live model, speech, or reranking tests that may use provider credits or local compute.
-
-The Error reports screen is administrator-only.
-It lists sanitized operational failures by ingestion, application, or general area and includes identifiers and Docling details useful for diagnosis.
-Purge logs opens a confirmation dialog and deletes the operational error rows visible to the current workspace, including global rows visible there.
-It does not delete Docker or host process logs.
-
-Retention limits for stored operational errors are configured through environment variables.
-AI request diagnostics and Docling conversion diagnostics can be enabled separately and do not store document or question content.
-See [Operations](operations.md#health-diagnostics-and-error-reports) for the operator workflow.
-
-## Durability, recovery, and operations
-
-PostgreSQL leases coordinate ingestion workers, Chat runs, and provider request capacity across processes.
-Renewable leases and fenced attempts prevent an expired worker or Chat attempt from publishing after a newer attempt has taken ownership.
-Completed document indexes and answers are published atomically so partial results remain unavailable.
-
-CiteLoom supports coordinated PostgreSQL and source-content backups, guarded restore, embedding-space retention, document TOC backfill, queue inspection, failed-job retries, and dependency diagnostics.
-Docker Compose reconciles interrupted starts while preserving bind-mounted PostgreSQL and source-content data.
-
-See [Operations](operations.md), [pnpm commands](commands.md), and [Architecture](architecture.md) for the complete operational and internal behavior.
-
-## Evaluation tooling
-
-The repository includes offline tools for preparing corpora, generating and scoring datasets, tuning retrieval parameters, freezing configurations, and auditing claim verification.
-These tools are not part of the production application image.
-See [Evaluation](evaluation.md) and [Evaluation corpora](../corpora/README.md).
+The repository includes offline tools for corpus management, reviewed datasets, retrieval scoring, parameter search, configuration freezes, and claim-verification audits.
+These tools are excluded from the production application image.
+See [Evaluation](evaluation.md) for the workflow and [Evaluation corpora](../corpora/README.md) for source provenance.

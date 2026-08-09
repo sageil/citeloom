@@ -238,11 +238,13 @@
               <li>Select documents and choose Add to question to carry a focused file scope into Ask or Chat.</li>
               <li>Open a document to inspect its ingestion stages, indexed text, tables, images, source file, and processing errors.</li>
               <li>The uploader or an administrator can pause and resume eligible PDF ingestion, cancel active ingestion, and retry failed work.</li>
+              <li>For a processing document, choose <strong>Notify me when ready</strong> to receive a browser notification when it becomes ready or needs attention.</li>
               <li>Reindexing builds a replacement while the current ready version remains searchable.</li>
               <li>Version history lets you open the saved source and compare added, modified, and removed evidence.</li>
               <li>Deleting a document requires confirmation and does not rewrite evidence already retained by saved Ask or Chat answers.</li>
             </ul>
-            <p>Administrators choose Standard or VLM PDF processing under <strong>Settings → Docling → PDF processing</strong>. Standard uses Docling's layout, OCR, and table models. VLM sends each rendered PDF page to the selected visual model.</p>
+            <p>Browser notifications require permission, a secure connection, and an open CiteLoom page. You can turn a notification off from the same document panel.</p>
+            <p>Administrators choose Standard or VLM PDF processing under <strong>Settings → Docling → PDF processing</strong>. VLM sends document pages to the selected provider, so confirm that the endpoint is trusted before enabling it.</p>
           </div>
         </section>
 
@@ -259,18 +261,8 @@
             </ul>
             <p>For a complete answer, ask a complete question instead of entering one broad term.</p>
             <p>Use Find Sources first for queries such as <code>termination</code>, <code>arthritis</code>, or <code>data retention</code>.</p>
-            <h3>How much document text CiteLoom checks</h3>
-            <p>Administrators can change <strong>Matching sections reviewed</strong> and <strong>Sections available for answers</strong> on the Search size screen under Search and answers in Settings.</p>
-            <p><strong>Matching sections reviewed</strong> is the unique candidate budget before reranking. Lower values can miss relevant evidence, while higher values search more broadly but require more search and ranking work.</p>
-            <p><strong>Sections available for answers</strong> is the post-rerank ceiling sent to the answer model. Lower values can omit needed evidence, while higher values increase model input, response time, and distraction risk. CiteLoom may use fewer sections when the remaining matches are substantially weaker.</p>
-            <p>Matching sections reviewed must be equal to or greater than Sections available for answers.</p>
-            <p>CiteLoom may use fewer sections when fewer useful matches exist or the selected model cannot accept all of them.</p>
-            <h3>How CiteLoom finds matching sections</h3>
-            <p>Administrators can select Keyword, Semantic, or Hybrid under <strong>Settings → Search and answers → Search matching</strong>.</p>
-            <p>Keyword finds exact words and phrases through BM25 and does not call the embedding model for the document query.</p>
-            <p>Semantic searches by meaning and embeds the document query.</p>
-            <p>Hybrid is the default and combines Keyword and Semantic results.</p>
-            <p>An enabled search-ranking model can reorder candidates from any of the three methods.</p>
+            <p>If a useful passage is missing, narrow the document scope, reuse terms from the source, or try Find Sources before asking again.</p>
+            <p>Administrators can change how broadly CiteLoom searches under <strong>Settings → Search and answers</strong>.</p>
           </div>
         </section>
 
@@ -283,6 +275,7 @@
               <li>CiteLoom stores every user message and completed assistant response.</li>
               <li>Long chats remain focused on earlier messages that matter to the current question.</li>
               <li>Earlier messages help CiteLoom understand the conversation. Every factual response still requires source material from the documents and citations.</li>
+              <li>When speech input is enabled, choose <strong>Dictate</strong> to record and transcribe a message before sending it.</li>
               <li>If a library document is deleted or replaced, existing chat messages and their retained citation evidence remain unchanged.</li>
               <li>Deleting the chat permanently removes its messages and saved citation records.</li>
             </ul>
@@ -316,22 +309,8 @@
             </ul>
             <p><strong>Keyword match</strong> means a document section contains words from your search.</p>
             <p><strong>Semantic match</strong> means a document section appears related in meaning even if it does not contain those words.</p>
-            <h3>Find Sources result counts</h3>
-            <p><strong>Matching sections reviewed</strong> is the most document sections CiteLoom reviews for each Ask, Chat, or semantic Find Sources request.</p>
-            <p>Higher values search more material but take longer, and CiteLoom does not silently lower the value you set.</p>
-            <p><strong>Documents shown in Find Sources</strong> controls how many documents appear in the Keyword matches list and the Semantic matches list.</p>
-            <p>Keyword matches use the number on each page, so later matches remain available on additional pages.</p>
-            <p>Semantic matches show up to that many documents.</p>
-            <p><strong>Excerpts shown per document</strong> controls how many matching excerpts appear inside each document result.</p>
-            <p>The two display settings do not change how many document sections CiteLoom searches.</p>
-            <p>Administrators can change these values in <strong>Settings → Search and answers</strong>.</p>
-            <h3>Minimum score for Find Sources</h3>
-            <p>Find Sources does not show a semantic match when its search ranking score is below this value.</p>
-            <p>A higher value shows fewer semantic matches, while a lower value shows more.</p>
-            <p>The default is <code>0.9</code>, but search ranking models use different scoring scales.</p>
-            <p>A score of <code>0.9</code> does not mean 90 percent confidence, and the same value can behave differently with another search ranking model.</p>
-            <p>This setting affects Find Sources only and does not remove evidence from Ask.</p>
-            <p>Administrators can change it in <strong>Settings → Application Features → Search ranking → Show advanced settings</strong>.</p>
+            <p>Keyword results continue on later pages. Semantic results use the administrator's result limit and ranking threshold.</p>
+            <p>A semantic score is specific to the selected ranking model and is not a confidence percentage.</p>
           </div>
         </section>
 
@@ -351,10 +330,10 @@
         <section aria-labelledby="use-dictation" class="help-section">
           <h2 id="use-dictation" tabindex="-1">Use dictation</h2>
           <div>
-            <p>When voice input is enabled, you can dictate a question while using Ask.</p>
+            <p>When speech input is enabled, you can dictate an Ask question or Chat message and edit the transcript before sending it.</p>
             <ul>
-              <li>Hold Option on Mac or Alt on Windows and Linux to record. Release the key to stop and transcribe the recording.</li>
-              <li>You can also use the microphone button to start and stop recording.</li>
+              <li>In Ask, hold Option on macOS or Alt on Windows and Linux to record. Release the key to stop and transcribe.</li>
+              <li>In Ask or Chat, use the microphone or Dictate control to start and stop recording.</li>
               <li>Choose Cancel to discard a recording without changing the question draft.</li>
               <li>CiteLoom inserts the transcript at your cursor. You can edit it before submitting the question.</li>
               <li>Press Command or Control + Enter after reviewing the transcript to submit the question.</li>
@@ -367,7 +346,7 @@
         <section aria-labelledby="listen-to-answers" class="help-section">
           <h2 id="listen-to-answers" tabindex="-1">Listen to answers</h2>
           <div>
-            <p>When spoken answers are enabled, Ask can read the displayed answer and Chat can read any completed assistant answer in the conversation.</p>
+            <p>When spoken answers are enabled, CiteLoom can read the displayed Ask answer, any completed Chat answer, and supported text evidence in the evidence inspector.</p>
             <ul>
               <li>Choose the speaker control to prepare and play the answer with the configured speech provider.</li>
               <li>Use the audio controls to pause, resume, or replay prepared audio.</li>
@@ -382,9 +361,12 @@
           <h2 id="understand-citations-and-retrieved-context" tabindex="-1">Understand sources and citations</h2>
           <div>
             <p>An inline citation such as <code>[1]</code> links an answer claim to its supporting source.</p>
+            <p>Open the exact evidence to read the cited passage, then open the highlighted PDF, HTML, or plain-text source when that view is available.</p>
             <p>Retrieved source material shows the document sections CiteLoom considered while preparing the answer.</p>
             <p>A document section can be relevant to the question without supporting a claim in the final answer, so not every section becomes a citation.</p>
             <p>Find Sources results are search results, not citations.</p>
+            <p>The HHEM scale in the evidence inspector compares advisory support scores with the workspace threshold. It can help prioritize review, but it does not prove that an answer is correct.</p>
+            <p>CiteLoom never uses HHEM scores to add, remove, or rewrite an answer or citation. Read the exact evidence before relying on an important claim.</p>
           </div>
         </section>
 
@@ -404,17 +386,8 @@
         <section aria-labelledby="embedding-input-formats" class="help-section">
           <h2 id="embedding-input-formats" tabindex="-1">Search text formats</h2>
           <div>
-            <p>Vector dimensions and search text format are application-wide properties of the active embedding space.</p>
-            <p>Changing either property creates a different space, and documents must be reindexed before they are searchable there.</p>
-            <p>A search text format controls how CiteLoom prepares document sections and searches for the selected embedding model.</p>
-            <p>The document template prepares each searchable document section, and the query template prepares each question or semantic search.</p>
-            <p>Use the format specified by the embedding model or provider. An incorrect format can reduce search quality even when documents finish processing.</p>
-            <h3>Built-in examples</h3>
-            <ul class="help-examples">
-              <li><strong>Plain:</strong> document <code>{{text}}</code>; query <code>{{text}}</code>.</li>
-              <li><strong>EmbeddingGemma:</strong> document <code>title: none | text: {{text}}</code>; query <code>task: search result | query: {{text}}</code>.</li>
-              <li><strong>Snowflake:</strong> document <code>{{text}}</code>; use the exact query template required by the selected Snowflake model.</li>
-            </ul>
+            <p>A search text format applies the prefixes required by an embedding model to document sections and semantic searches.</p>
+            <p>Select the format documented by the model provider. The wrong format can reduce search quality even when indexing succeeds.</p>
             <h3>Create a format</h3>
             <ol>
               <li>Check the embedding model's instructions for document and query prefixes.</li>
@@ -437,6 +410,7 @@
             <p><strong>No keyword results appear:</strong> enable Include semantic matches or try a synonym.</p>
             <p><strong>A semantic result does not contain your search term:</strong> semantic search matches meaning, so review the excerpt before using it.</p>
             <p><strong>Model services are unavailable:</strong> keyword search may still work, but semantic search and answers will remain unavailable.</p>
+            <p><strong>Browser notifications do not appear:</strong> keep CiteLoom open over HTTPS and allow notifications in the browser's site settings.</p>
           </div>
         </section>
 
@@ -446,8 +420,8 @@
             <p>Every user can change their own password under Account and access.</p>
             <p>Workspace administrators can add and remove users, assign member or administrator roles, create time-limited setup or password-reset links, and configure providers and features.</p>
             <p>System health shows the active runtime, service capacity, and scheduling information. Service readiness checks connectivity and model availability without inference. Optional live tests are selected separately and may use provider credits or local compute.</p>
-            <p>Error reports contains sanitized operational failures for administrators. Purge logs requires confirmation, removes the retained database error records visible to the workspace, and does not delete Docker or host logs.</p>
-            <p>Settings resets require confirmation and name whether they affect one value, one feature or panel, or all runtime settings.</p>
+            <p>Error reports contain sanitized operational failures for administrators. Purge logs requires confirmation, removes the retained database error records visible to the workspace, and does not delete Docker or host logs.</p>
+            <p>Settings resets require confirmation. The confirmation identifies whether the reset affects one value, one feature or panel, or all runtime settings.</p>
           </div>
         </section>
 

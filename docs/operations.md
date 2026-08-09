@@ -1,33 +1,16 @@
 # Operations
 
-CiteLoom keeps its database definition in three places:
+This guide covers maintenance and recovery for an existing CiteLoom deployment.
+Use [Deployment](deployment.md) for installation and [Configuration](configuration.md) for settings.
 
-- [`src/database/schema.ts`](../src/database/schema.ts) declares the schema.
-- [`drizzle/`](../drizzle/) contains the complete greenfield migration and initial data setup.
-- [`queries/`](../queries/) contains SQL used while the application runs.
+## Apply migrations
 
-## Clean setup
+Run migrations before starting a new application version.
+The migration applies the schema and reruns the database bootstrap without replacing existing accounts or saved credentials.
 
-Create a complete local Compose installation with one command.
-
-```bash
-docker compose up -d --build --wait
-```
-
-`0000_citeloom_schema.sql` creates the complete schema, required extensions, database functions, and triggers in one migration.
-It does not replay earlier development changes.
-`bootstrap.sql` then creates the required reference data and settings.
-When the database has no users, it creates the first administrator from `CITELOOM_ADMIN_USERNAME` and `CITELOOM_ADMIN_PASSWORD`.
-When users already exist, it confirms that an active administrator has a password credential and leaves the stored authentication data unchanged.
-
-## Migrations
-
-During greenfield development, regenerate `0000_citeloom_schema.sql` from `src/database/schema.ts`, then restore and verify the hand-authored extension, function, and trigger definitions that Drizzle does not generate.
-Do not keep historical development migrations.
-Keep `bootstrap.sql` as the single rerunnable data bootstrap for application defaults, database-owned configuration, and the initial administrator.
+Use the development command from a source checkout:
 
 ```bash
-pnpm db:generate
 pnpm db:migrate
 ```
 
@@ -37,9 +20,12 @@ Production builds load `.env` and use the production migration command.
 pnpm db:migrate:production
 ```
 
+The schema source is `src/database/schema.ts`, the greenfield migration is `drizzle/0000_citeloom_schema.sql`, and `drizzle/bootstrap.sql` owns initial reference data and settings.
+Contributors changing these files should follow the database workflow in [Contributing](../CONTRIBUTING.md).
+
 ## Backup and restore
 
-Before creating a backup, stop every writer so the database and source files represent the same point in time.
+Before creating a backup, stop the web and worker services and do not run commands that change the database or source files.
 
 ```bash
 docker compose stop web worker
@@ -62,11 +48,8 @@ Before doing so, it creates a temporary database dump that can be used for rollb
 pnpm restore --confirm backups/citeloom-YYYYMMDDTHHMMSSZ.backup
 ```
 
-Compose PostgreSQL data is stored under `data/citeloomdb` by default and remains when Compose services stop.
-Set `CITELOOM_POSTGRES_DATA_DIRECTORY` in `.env` before the first install to use a different bind-mounted directory.
-Compose source content is stored under `documents/blobs` by default.
-Set `CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY` in `.env` before installation to use a different bind-mounted directory.
-Use absolute paths when the same deployment could be managed from more than one checkout.
+After backup or restore completes, start the stopped services and confirm that the web application, worker, document catalog, and a retained source file are available.
+Storage path selection belongs to the [deployment procedure](deployment.md#choose-storage-paths).
 
 ## Compose recovery
 
@@ -86,10 +69,10 @@ docker compose logs migrate web worker
 After correcting the configuration or dependency failure, rerun the normal `docker compose up` command.
 Do not change persistent database or source-content paths when resuming an existing deployment.
 
-## Reindexing
+## Update document heading routes
 
-Document TOC routing does not require reindexing existing documents.
-After enabling `Document TOC routing`, populate missing maps from stored document elements with:
+The `Use document headings in search` setting does not require reindexing existing documents.
+After enabling it, populate missing maps from stored document elements with:
 
 ```bash
 pnpm dev document-toc backfill
@@ -102,14 +85,16 @@ docker compose run --rm --no-deps worker node dist/cli/index.js document-toc bac
 ```
 
 The command applies to documents in the active embedding space and is safe to rerun after interruption.
-It skips completed generations and does not rerun Docling or embeddings.
+It skips completed maps and does not rerun Docling or embeddings.
+
+## Reindex documents
 
 Use the document catalog to reindex a document.
 A document's current version stays searchable during an ordinary reindex.
 The background worker processes queued jobs.
 Monitor progress with `pnpm status` or the worker logs.
 
-Use the document controls in the web application to reindex after changing the embedding model, dimensions, input format, retrieval-window policy, or any setting that changes how searchable content is constructed.
+Use the document controls in the web application to reindex after changing the embedding model, dimensions, search text format, document section method, search-index name, or another setting that changes searchable content.
 The source filename remains the document's catalog identity, while CiteLoom reads the file itself from the content store.
 Files supported by Docling are converted again.
 Plain-text files are split, prepared for search, embedded, and indexed without Docling.

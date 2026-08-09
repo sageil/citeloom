@@ -1,10 +1,10 @@
-# Code of Conduct
+# Code of conduct
 
-## Our Pledge
+## Our pledge
 
 We are committed to providing a welcoming and harassment-free experience for everyone, regardless of age, body size, disability, ethnicity, gender identity, level of experience, nationality, personal appearance, race, religion, or sexual identity and orientation.
 
-## Our Standards
+## Our standards
 
 Help create a positive environment by:
 
@@ -23,7 +23,8 @@ The following behavior is not acceptable:
 
 ## Enforcement
 
-Report unacceptable behavior through [GitHub issues](https://github.com/sageil/citeloom/issues) or [private vulnerability reporting](https://github.com/sageil/citeloom/security/advisories/new).
+Report unacceptable behavior privately through [GitHub private reporting](https://github.com/sageil/citeloom/security/advisories/new) and identify it as a code-of-conduct report.
+Do not include personal or sensitive details in a public issue.
 The project team will review and investigate every report.
 The project team reserves the right to remove, edit, or reject comments, commits, code, issues, and other contributions that violate this Code of Conduct.
 

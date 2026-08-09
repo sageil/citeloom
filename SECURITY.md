@@ -1,6 +1,6 @@
-# Security Policy
+# Security policy
 
-## Reporting a Vulnerability
+## Report a vulnerability
 
 If you find a security vulnerability in CiteLoom, report it privately so it can be investigated before public disclosure.
 
@@ -17,7 +17,7 @@ Include:
 You should receive an acknowledgment within 48 hours.
 We will then work with you to confirm the issue, prepare a fix, and coordinate public disclosure.
 
-## Scope
+## In scope
 
 Security issues in the following areas are in scope:
 
@@ -30,14 +30,14 @@ Security issues in the following areas are in scope:
 - Validation failures that publish or persist unsafe generated answers
 - Inputs that repeatedly exhaust resources, crash the service, or leave ingestion unable to recover
 
-## Out of Scope
+## Out of scope
 
 - Vulnerabilities in upstream dependencies with no demonstrated impact on CiteLoom
 - Issues that require physical access to the host
 - Social engineering
 - Denial of service caused only by an administrator intentionally configuring insufficient local resources
 
-## Supported Versions
+## Supported versions
 
 Security fixes are applied to the latest release and the `main` branch.
 Run the latest available version and keep external services and model runtimes patched.

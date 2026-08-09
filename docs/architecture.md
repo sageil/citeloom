@@ -180,7 +180,7 @@ If Docling no longer recognizes a VLM task, the unchanged source is submitted as
 When document TOC routing is enabled, the indexing phase builds a bounded navigation map from Docling section paths and maps every retained entry to exact retrieval-window IDs.
 The map is staged under the same generation as the vectors and lexical rows, validated before atomic publication, and removed with obsolete retrieval generations.
 
-Knowledge Source deletion is performed in the database before the local file is removed.
+Document deletion is recorded in the database before the local file is removed.
 The worker retries pending deletions after a restart, and the same per-hash database lock serializes publication with deletion.
 Newly stored content has a one-hour grace period.
 This prevents cleanup from removing a file while its job is being created and limits how long files from a failed intake remain unused.
@@ -191,9 +191,9 @@ Before searching, CiteLoom resolves the exact set of documents selected for the 
 The application-wide Search method selects BM25 keyword retrieval, meaning-based vector retrieval, or both paths in parallel.
 Keyword retrieval does not call the embedding model for the document query.
 Semantic and Hybrid retrieval embed the original document query and every configured expansion.
-When Query Expansion is enabled, CiteLoom also searches the generated query variations through the selected retrieval method.
-When Query Expansion is configured at count of 0, CiteLoom does not call the extra-search-query model (0 is equals to disabled)
-It then ranks the active results and can optionally rerank the best candidates.
+When Query Expansion is greater than `0`, CiteLoom also searches the generated query variations through the selected retrieval method.
+At `0`, it searches only the original question and does not call the Query Expansion model.
+CiteLoom then ranks the active results and can optionally rerank the best candidates.
 When a published TOC map is available and the selected method includes vector retrieval, CiteLoom may select relevant branches from the strongest normally retrieved document and merge their mapped passages into the candidate ranking before reranking.
 TOC entries remain unavailable to answer generation and citation publication.
 Reranking (disabled by default) can improve answer and citation accuracy by using a specialized relevance model to reorder candidates before CiteLoom selects the answer context.
@@ -249,14 +249,13 @@ sequenceDiagram
     Entry-->>Client: Stream completed published answer
 ```
 
-CiteLoom publishes the direct answer without citation markers and attaches validated citations only to supporting findings or topics.
-HHEM claim-support scoring is a separate advisory check that measures whether cited evidence appears to support the selected atomic statements.
-Ask selects supporting findings, while Chat selects ordered answer topics.
-The direct synthesis is not sent to HHEM.
-Exact duplicate claim and evidence pairs are scored once and their result is reused for each matching statement.
-HHEM scores never remove, replace, or rewrite answer statements or citations, and they never convert a cited response into an uncited response.
-When HHEM is unavailable or times out, CiteLoom publishes the cited answer with unverified advisory checks.
-Structured answer validation and citation validation remain publication requirements.
+CiteLoom publishes the direct answer without citation markers and attaches validated citations only to supporting Ask findings or Chat topics.
+HHEM scores those atomic statements against their cited evidence, not the direct synthesis.
+Exact duplicate statement-evidence pairs are scored once and reuse the result.
+
+HHEM is advisory.
+Its scores never change the answer or citations, and an unavailable HHEM service leaves the checks unverified rather than blocking an otherwise valid cited answer.
+Structured answer and citation validation remain publication requirements.
 Cancellations and service failures keep their own status.
 
 ## Document chat
@@ -272,14 +271,10 @@ When the conversation exceeds its memory budget, CiteLoom combines the most rece
 Each selected prior assistant answer includes a citation source map built from its stored citation snapshots so its numeric citation markers retain their document identity.
 Conversation memory can clarify a follow-up, but it cannot support a factual claim or replace currently retrieved document evidence.
 If document retrieval finds no relevant evidence, Chat publishes an uncited response instead of using model knowledge.
-An answered Chat response contains a substantive direct synthesis and may add ordered topics for distinct parts of a comprehensive response.
-The Chat model contract represents the direct synthesis separately from those topics and does not include a findings field.
-The model response keeps the direct synthesis free of evidence references and attaches exact request-local references only to each topic.
-The published direct synthesis does not contain citation links, while each published topic retains its validated citations.
-The model may cite only request-local evidence references, and the server resolves those references to stored source elements before publication.
-Chat sends only its topics to HHEM because they are the atomic supporting statements presented for verification.
-The direct synthesis is not an HHEM input.
-Chat stores the resulting checks as diagnostic metadata and never uses them to reject, remove, or rewrite the answer.
+An answered Chat response contains a direct synthesis and may add ordered topics for distinct parts of a comprehensive response.
+The model keeps the synthesis free of evidence references and attaches request-local references only to topics.
+The server resolves those references to stored source elements, validates them, and sends only the topics to HHEM.
+Chat stores the resulting checks as advisory metadata.
 
 Chat run leases are renewable and retry attempts are fenced by an attempt number.
 This prevents an expired worker from publishing after a newer attempt has taken ownership.

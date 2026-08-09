@@ -1,9 +1,9 @@
-# pnpm Commands
+# pnpm commands
 
 This page describes every pnpm script declared in [`package.json`](../package.json).
 Run a script with `pnpm <script>`, followed by any arguments the command accepts.
 
-## Application commands
+## Application scripts
 
 | Script | Purpose |
 | --- | --- |
@@ -18,23 +18,25 @@ Run a script with `pnpm <script>`, followed by any arguments the command accepts
 | `worker` | Run the ingestion worker from source. |
 | `worker:production` | Run the compiled production ingestion worker. |
 
-### Document TOC backfill
+### Command-line subcommands
 
-After enabling `Document TOC routing`, build missing TOC maps for documents already indexed in the active embedding space.
+Run `pnpm dev --help` for the complete command syntax.
 
-```bash
-pnpm dev document-toc backfill
-```
+| Command | Purpose |
+| --- | --- |
+| `pnpm dev ask [scope] -- <question>` | Ask a question from an explicit document scope. |
+| `pnpm dev doctor` | Check the database, migrations, extensions, and configured services. |
+| `pnpm dev documents list` | List documents, jobs, and embedding spaces. |
+| `pnpm dev ingest [options] <path>` | Ingest files or directories immediately or enqueue them. |
+| `pnpm dev jobs retry --file <path>` | Retry the failed job for a stored source path. |
+| `pnpm dev status` | Show queue, worker, retry, and provider-request capacity. |
+| `pnpm dev worker [--once]` | Process queued ingestion work continuously or for one pass. |
+| `pnpm dev document-toc backfill` | Build missing document-heading maps from stored elements. |
+| `pnpm dev embedding-spaces pin --space <id> --reason <reason>` | Protect an embedding space from retention cleanup. |
+| `pnpm dev embedding-spaces unpin --space <id>` | Remove that retention protection. |
+| `pnpm dev embedding-spaces gc ...` | Preview, apply, or resume embedding-space cleanup. |
 
-For the supplied container deployment, run the compiled command through the worker service.
-
-```bash
-docker compose run --rm --no-deps worker node dist/cli/index.js document-toc backfill
-```
-
-The command reads stored document elements, recreates their existing retrieval-window identifiers, and writes only missing TOC artifacts.
-It does not rerun Docling, generate embeddings, or replace retrieval rows.
-The command is safe to rerun because completed generations are skipped and a generated map is saved only if its indexed generation is still active.
+Use [Operations](operations.md) for the document-heading backfill and embedding-space retention procedures.
 
 ## Build and code quality
 
@@ -86,6 +88,9 @@ It does not delete files under `documents/`.
 | `evaluate:generate` | Generate an evaluation dataset. |
 | `probe:answer-draft:lm-studio` | Probe answer generation through LM Studio. |
 | `probe:answer-draft:ollama` | Probe answer generation through Ollama. |
+| `probe:query-application` | Probe the retrieval and answer application path with the development environment. |
+| `probe:query-application:chat` | Run the saved Chat application probe with `.env`. |
+| `probe:query-application:question` | Run the saved Ask application probe with `.env`. |
 | `validate:corpus` | Validate evaluation corpus files and metadata. |
 | `validate:evaluations` | Validate evaluation datasets and artifacts. |
 | `validate:evaluations:live` | Compare evaluation datasets with the currently indexed corpus. |

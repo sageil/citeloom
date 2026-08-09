@@ -6,22 +6,26 @@ CiteLoom has two configuration layers:
 - Use environment variables for database access, storage paths, web listeners, release information, and service processes.
 
 Settings are stored in PostgreSQL.
-Each job and answer run keeps the settings it started with.
+Each ingestion, Ask, or Chat run keeps the settings snapshot it started with.
 
 ## Configure providers
 
-After CiteLoom starts, open Settings.
-Configure a provider connection, then choose which features use it.
-Ask, Chat, Indexing model, and Embedding model require a provider.
-Query Expansion requires a provider only when enabled.
+Open Settings after CiteLoom starts, then configure providers in this order:
+
+1. Open a provider connection and enter its endpoint, credential, default models, and shared request limit.
+2. Save the connection.
+3. Assign each application feature to a compatible provider.
+4. Add a feature-specific model, input-capacity, thinking, or voice override only when that feature needs one.
+5. Save the feature routes.
+
+Ask, Chat, the Indexing model, and the Embedding model require a route.
+Query Expansion needs a route only when its expansion count is greater than `0`.
 Search ranking, Speech input, and Spoken answers are optional.
-Each feature can use its own provider, model, maximum input size, URL, and sign-in details.
 
-Default installation uses Ollama for the required capabilities.
-Optional capabilities start unassigned/disabled and can be enabled at any time.
-See [Provider reference](#provider-reference) for supported combinations and endpoint formats.
+Fresh installations route the required features to Ollama and leave the optional features unassigned.
+The [provider reference](#provider-reference) shows compatible routes and endpoint formats.
 
-After saving provider settings, verify the connections from the environment where CiteLoom runs.
+Verify the saved connections from the environment where CiteLoom runs.
 
 ```bash
 pnpm run doctor:docker
@@ -83,14 +87,12 @@ The web application, worker, and ordinary command-line tools use this database v
 The host-run development benchmark is the exception.
 It reads `CITELOOM_SOURCE_CONTENT_DIRECTORY` because a Docker Compose database may contain the container-only path `/app/documents/blobs`.
 
-To change the stored path, first stop every process that can write data.
-Copy all existing content to the new directory, set `CITELOOM_SOURCE_CONTENT_DIRECTORY` to the path visible to the process running the migration, and run the migration.
-The migration checks every stored source before updating the database.
-If validation fails, the previous setting remains active.
+Follow [Choose storage paths](deployment.md#choose-storage-paths) to select or move the persistent stores safely.
 
 ## Provider reference
 
-[`providerCatalog`](../src/providers/profiles.ts) is the source of truth for built-in provider profiles and capabilities.
+Provider profiles and capabilities are stored in PostgreSQL.
+[`drizzle/bootstrap.sql`](../drizzle/bootstrap.sql) defines the catalog for a fresh database, and Settings reads the active catalog from the database.
 Each feature can use a different provider, so the service that writes answers does not have to be the service used for search or speech.
 
 | Provider | Ask | Chat | Query Expansion | Indexing model | Embedding model | Search ranking | Speech input | Spoken answers |
@@ -103,6 +105,8 @@ Each feature can use a different provider, so the service that writes answers do
 | OpenAI Codex | Yes | Yes | Yes | Yes | - | - | - | - |
 | DeepSeek | Yes | Yes | Yes | Yes | - | - | - | - |
 | Groq | Yes | Yes | Yes | Yes | - | - | Yes | Yes |
+| Mistral AI | Yes | Yes | Yes | Yes | Yes | - | Yes | Yes |
+| Together AI | Yes | Yes | Yes | Yes | Yes | - | Yes | Yes |
 | Cohere | Yes | Yes | Yes | Yes | Yes | Yes | - | - |
 | Jina | - | - | - | - | Yes | Yes | - | - |
 | Custom | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
@@ -133,6 +137,8 @@ A source-run process normally uses the equivalent `127.0.0.1` or network address
 | OpenAI Codex | Fixed by the adapter | OpenAI device sign-in and the Codex model catalog |
 | DeepSeek | `https://api.deepseek.com` | DeepSeek OpenAI-compatible Chat Completions contract |
 | Groq | `https://api.groq.com/openai/v1` | Groq OpenAI-compatible language and audio endpoints |
+| Mistral AI | `https://api.mistral.ai/v1` | Mistral language, embedding, transcription, and speech endpoints |
+| Together AI | `https://api.together.xyz/v1` | Together AI OpenAI-compatible language, embedding, and audio endpoints |
 | Cohere | `https://api.cohere.com/v2` | Cohere v2 chat, embedding, and reranking endpoints |
 | Jina | `https://api.jina.ai/v1` | Jina embedding and reranking endpoints |
 | Custom | None | Administrator-selected adapters, base URLs, models, and credentials |
@@ -140,7 +146,7 @@ A source-run process normally uses the equivalent `127.0.0.1` or network address
 Base URLs, model IDs, context capacities, and maximum parallel requests are editable in Settings.
 Use the exact model identifier exposed by the configured endpoint.
 Provider APIs and model catalogs change independently of CiteLoom.
-Confirm current details in the official documentation for [oMLX](https://github.com/jundot/omlx), [Ollama](https://docs.ollama.com/api/introduction), [LM Studio](https://lmstudio.ai/docs/developer/core/server), [OpenAI](https://platform.openai.com/docs/api-reference), [OpenRouter](https://openrouter.ai/docs/quickstart), [DeepSeek](https://api-docs.deepseek.com/), [Groq](https://console.groq.com/docs/openai), [Cohere](https://docs.cohere.com/v2), and [Jina](https://jina.ai/en-US/reranker/).
+Confirm current details in the official documentation for [oMLX](https://github.com/jundot/omlx), [Ollama](https://docs.ollama.com/api/introduction), [LM Studio](https://lmstudio.ai/docs/developer/core/server), [OpenAI](https://platform.openai.com/docs/api-reference), [OpenRouter](https://openrouter.ai/docs/quickstart), [DeepSeek](https://api-docs.deepseek.com/), [Groq](https://console.groq.com/docs/openai), [Mistral AI](https://docs.mistral.ai/developers), [Together AI](https://docs.together.ai/docs/inference/openai-compatibility), [Cohere](https://docs.cohere.com/v2), and [Jina](https://jina.ai/en-US/reranker/).
 
 The bootstrap OpenRouter profile uses `openrouter/free` for language features, `nvidia/nemotron-3-embed-1b:free` for embeddings, `nvidia/llama-nemotron-rerank-vl-1b-v2:free` for search ranking, `openai/gpt-4o-mini-transcribe` for speech input, and `fish-audio/s2.1-pro-free:free` with voice `alloy` for spoken answers.
 CiteLoom validates every embedding response against the application-wide Vector dimensions setting in Settings → Application Features → Embedding space.
@@ -173,33 +179,41 @@ Work already in progress keeps its saved settings snapshot when a model, endpoin
 
 ### Ollama automatic context size
 
-Automatic context size is enabled by default for Ollama language models.
-It applies only to native Ollama GGUF language models used for Ask, Chat, Query Expansion, and Indexing model.
-It does not change Embedding model requests or other providers.
+Automatic context size lets CiteLoom request enough Ollama context for each native GGUF language request without shrinking an already larger loaded runner.
+It is enabled on fresh installations and applies only to Ask, Chat, Query Expansion, and the Indexing model.
+It does not affect embeddings, MLX models, or other providers.
 
-CiteLoom discovers each configured Ollama language model's format, digest, and maximum context lazily on first use and reuses that metadata for the lifetime of the application runtime.
-An application restart or saved settings change creates a new runtime and discovers the configured models again on first use.
-MLX and fixed-context GGUF requests do not inspect `/api/ps`.
-Adaptive GGUF requests inspect `/api/ps` before inference so CiteLoom can reuse an already larger resident runner instead of requesting a smaller reload.
+Before enabling it, set both of these concurrency limits to `1`:
 
-CiteLoom uses the configured minimum answer space and provider safety margin when deciding how much retrieved evidence can fit in the request.
-For adaptive Ollama Ask and Chat requests, CiteLoom requests the model maximum reported by Ollama.
-The configured context capacity remains the fixed fallback when CiteLoom cannot inspect Ollama or Ollama reports an unsupported model format.
-For a recognized MLX model, the configured capacity bounds CiteLoom's prompt budget while Ollama manages the runner's dynamic context.
-Query Expansion uses the adaptive 65,536-token floor, capped by the model maximum.
-Summary, vision, tool, and reasoning requests use the model maximum.
+- Maximum parallel requests on the Ollama provider in CiteLoom Settings.
+- Ollama's `OLLAMA_NUM_PARALLEL` setting.
 
-Automatic context size requires CiteLoom's Ollama provider limit and Ollama's `OLLAMA_NUM_PARALLEL` setting to both be `1`.
-Use a dedicated Ollama endpoint, or coordinate every client that can load the same model, because another client can change the resident runner.
-The Settings page locks CiteLoom's provider limit to `1` while Automatic context size is enabled.
-Turn Automatic context size off to make native GGUF language requests use the configured fixed input size.
+Use a dedicated Ollama endpoint when possible.
+Another client that loads the same model can change its resident runner and invalidate CiteLoom's assumption about the active context size.
+Settings keeps CiteLoom's provider limit at `1` while the feature is enabled.
 
-Fresh installations and provider resets enable Automatic context size.
-An upgraded configuration with no saved Automatic context size choice is enabled when its Ollama provider limit is already `1`.
-An explicit opt-out is preserved, and an older configuration with higher concurrency remains fixed-context instead of having its concurrency changed silently.
+For a native GGUF model, CiteLoom reads the model format, digest, and maximum context from Ollama on first use.
+It then chooses the request size as follows:
 
-The fresh Mac language model uses MLX, so Ollama manages its context dynamically even though Automatic context size is enabled for GGUF models.
-Do not infer MLX context allocation from native GGUF behavior.
+| Request | Context requested |
+| --- | --- |
+| Ask or Chat without tools or explicit reasoning | The calculated input and answer requirement, with a 65,536-token floor and the model maximum as a ceiling |
+| Query Expansion | 65,536 tokens, or the model maximum when it is smaller |
+| Indexing, vision, tool, reasoning, or unbounded-answer work | The model maximum |
+
+The Ask and Chat calculation includes the configured Minimum answer space and Reserved model space.
+If Ollama already has the model loaded with a larger context, CiteLoom reuses that size instead of requesting a smaller reload.
+
+If model inspection fails or Ollama reports an unsupported format, CiteLoom uses the configured input capacity as a fixed fallback.
+Turning Automatic context size off also makes native GGUF requests use that fixed capacity.
+
+MLX models follow a different path.
+CiteLoom uses the configured capacity to budget the prompt, while Ollama manages the runner's dynamic context.
+The fresh Mac answer model is MLX, so GGUF runner behavior does not describe its allocation.
+
+CiteLoom caches discovered model metadata for the current application runtime.
+A settings save, application restart, or provider error causes later work to discover it again.
+Existing explicit opt-outs remain off during upgrades, and configurations with higher Ollama concurrency are not changed automatically.
 
 ## Search text formats
 
@@ -312,12 +326,12 @@ Speech input and spoken answers are independent optional routes.
 Enabling one does not require enabling the other.
 The provider matrix lists which built-in profiles expose each adapter, and the Custom profile can select a compatible speech adapter explicitly.
 
-Speech input currently appears in Ask.
+Speech input appears in Ask and Chat.
 The Language hint and Vocabulary prompt are optional provider hints.
 Transcription timeout limits one provider request, and Maximum audio size rejects a browser recording before it is sent when the recording is too large.
 CiteLoom accepts supported WebM, Ogg, MP4, or WAV browser recordings and discards the temporary audio after transcription or cancellation.
 
-Spoken answers appear in Ask and Chat.
+Spoken answers appear in Ask and Chat, and supported text evidence can also be read aloud from the evidence inspector.
 The selected feature route can override the provider's default model and voice.
 Speech speed and Speech generation timeout apply to each generated answer audio request.
 
@@ -351,34 +365,37 @@ The Docling settings area is organized into four panels:
 
 ### Standard and VLM processing
 
+Choose the processing mode based on how the source PDF needs to be read.
+
+| Mode | Best fit | Recovery behavior |
+| --- | --- | --- |
+| Standard | PDFs that work with Docling layout, OCR, and table extraction | Eligible PDFs resume from completed page ranges with the supplied Docling service |
+| VLM | PDFs that need visual page interpretation by an image-capable model | CiteLoom resumes a known remote task, but resubmits the unchanged source if that task is lost |
+
 Standard is the fresh-install default.
-It uses Docling's layout, OCR, and table models.
-The PDF reader, scanned-text OCR, table structure, and table reading priority settings apply to Standard processing.
-Extracted image quality controls the image scale supplied to the selected conversion pipeline.
+Its PDF reader, scanned-text OCR, table structure, and table-priority settings do not affect VLM processing.
+Extracted image quality applies to the selected pipeline.
 
-The supplied Docling service processes eligible Standard PDFs in page ranges and saves completed range checkpoints.
-After interruption, it can resume from the next incomplete range and assemble the completed ranges into one document.
-CiteLoom also saves the remote Docling task ID, so a worker restart can continue polling a task that the same service still knows.
+VLM processing renders one PDF page at a time as an in-memory PNG and sends it with the configured instructions.
+It does not save a separate PNG copy of every page and does not use Standard page-range checkpoints.
 
-VLM processing visually reads each PDF page through a model reached from the Docling service.
-The PDF page is encoded as an in-memory PNG and sent with the configured prompt.
-This path does not save a persistent PNG copy of every page.
-The supplied range-checkpoint and partial-document assembly path does not apply to VLM processing.
-If the Docling service loses a VLM task, CiteLoom resubmits the unchanged source instead of continuing from a completed page range.
+To configure VLM processing:
 
-VLM processing uses an existing provider connection rather than a separate provider capability.
-It reads that connection's answer URL, shared or answer-specific token, and answer model.
-An explicit VLM model override replaces the answer model for document conversion only.
-CiteLoom accepts any model identifier entered by the administrator and does not maintain a model allowlist.
-The selected endpoint and model must accept OpenAI-compatible image chat requests and return document text that Docling can consume.
+1. Choose an existing provider connection with an image-capable OpenAI-compatible chat endpoint.
+2. Enter a model override, or leave it blank to use that connection's answer model.
+3. Enter the page instructions and output limit.
+4. Confirm that the model is installed or available at the selected endpoint.
+5. Select VLM as the processing mode and save the settings.
 
-The supplied CiteLoom Docling image enables remote services and custom VLM configuration.
-It also sends the prompt before the image and normalizes the inline labels and bounding boxes returned by the saved Unlimited OCR model into Markdown.
-An independently managed Docling service must enable its equivalent remote-service and custom-VLM settings and must implement response handling compatible with the selected model.
+VLM is not a separate feature route.
+It reuses the selected connection's answer endpoint and shared or answer-specific credential.
+CiteLoom accepts any entered model identifier, so compatibility must be verified against the configured endpoint.
 
-The Ollama VLM endpoint is derived by adding `/v1/chat/completions` to a native Ollama base URL.
-Other provider base URLs use their configured OpenAI-compatible `/chat/completions` route.
-If the selected connection has no usable URL or model, CiteLoom rejects the effective configuration instead of starting a conversion with missing values.
+The supplied Docling image enables remote services and custom VLM configuration.
+An independently managed Docling service needs equivalent options and response handling that is compatible with the selected model.
+For Ollama, CiteLoom derives the VLM route by adding `/v1/chat/completions` to the native base URL.
+Other providers use the OpenAI-compatible `/chat/completions` route under their configured base URL.
+CiteLoom rejects a VLM configuration with no usable endpoint or model.
 
 Fresh installations save these VLM values while leaving Standard selected:
 
@@ -390,9 +407,6 @@ Fresh installations save these VLM values while leaving Standard selected:
 | VLM instructions | `document parsing.` | The same task instruction is sent with each PDF page. |
 | VLM output limit | `32768` tokens | This is the requested maximum output for one page; the provider or model may enforce a smaller limit. |
 
-Saving a model identifier does not download its weights.
-Install or make the selected VLM model available at the provider endpoint before switching the processing mode.
-
 Changing the processing mode or its options affects new conversion attempts.
 Reindex an existing document when it must be converted with the new mode.
 Conversion time varies with page count, page complexity, model speed, endpoint load, and output length, so validate Standard and VLM performance with representative documents before choosing deployment limits.
@@ -400,22 +414,18 @@ Conversion time varies with page count, page complexity, model speed, endpoint l
 VLM page content and the configured provider credential pass from the Docling container to the selected endpoint.
 Document processing remains local only when that endpoint is local and trusted.
 
-The PDF backend applies only to PDF requests.
-Excel worksheets and PowerPoint slides retain their Docling location numbers, and worksheet names appear in section paths.
-Excel formulas are indexed from their saved results.
-Recalculate and save workbooks before ingestion.
-Bounding-box source highlighting is limited to PDFs and standalone image files.
+The PDF reader applies only to PDFs.
+Excel worksheets and PowerPoint slides keep their Docling location numbers, and worksheet names appear in section paths.
+CiteLoom indexes the saved results of Excel formulas, so recalculate and save a workbook before ingestion.
+Bounding-box highlighting is available only for PDFs and standalone images.
 
-Use document headings in search is a Docling setting because CiteLoom reads headings while processing a document.
-When enabled, Ask and Chat can use a document's table of contents to find relevant sections in long documents.
-Table-of-contents titles help search but are not used as answer sources or citations.
-Run `pnpm dev document-toc backfill` after enabling the setting to update existing documents without converting or fully indexing them again.
-For the supplied container deployment, run `docker compose run --rm --no-deps worker node dist/cli/index.js document-toc backfill`.
-The command is safe to rerun because it skips documents that are already updated.
-Turning the setting off stops using document headings as an additional search aid. Regular search continues to work.
+The Use document headings in search setting lets Ask and Chat route through a document's stored headings.
+The headings help discovery but never become evidence or citations.
+After enabling this setting, follow the [document-heading backfill procedure](operations.md#update-document-heading-routes) for existing documents.
+Turning it off removes the extra route without disabling normal search.
 
-Thread count, page batch size, and pipeline profiling are process settings that require the Docling service to restart.
-Restart workers with the same declared process settings so operational records remain accurate.
+Thread count, page batch size, and pipeline profiling are startup settings.
+Restart Docling after changing them, and keep those process settings consistent across workers so operational records remain accurate.
 
 ## Multiple Docling instances
 

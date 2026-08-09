@@ -1,206 +1,57 @@
-# CiteLoom Agent Onboarding
+# CiteLoom agent onboarding
 
-Use this guide to clone CiteLoom, understand its boundaries, and find the authoritative instructions for a task.
-Read [`AGENTS.md`](AGENTS.md) before changing code.
-Verify current behavior from source and live state because this guide is an orientation map, not a substitute for inspection.
+Use this page to find the authoritative source for a task.
+Read [`AGENTS.md`](AGENTS.md) before inspecting or changing the repository.
 
-## Clone the repository
+## Establish the truth boundary
 
-```bash
-git clone git@github.com:sageil/citeloom.git
-cd citeloom
-pnpm install
-```
+Treat this guide as navigation, not proof of current behavior.
+Use evidence in this order:
 
-CiteLoom requires Node.js 26.5 and pnpm 11 for source-based development.
-The Docker Compose stack does not require Node.js on the host.
+1. Current runtime state and stored data when the task concerns a live environment.
+2. The owning production code, database schema, configuration boundary, and focused tests.
+3. The task-specific documentation linked below.
+4. Historical commits, comments, and assumptions only as supporting context.
 
-Check the working tree before making changes.
-
-```bash
-git status --short
-```
-
-Existing changes belong to the user unless the task clearly says otherwise.
-
-## Read in this order
-
-Start with [`AGENTS.md`](AGENTS.md), [`README.md`](README.md), [`docs/architecture.md`](docs/architecture.md), and [`src/README.md`](src/README.md).
-Use the [documentation map](#documentation-map) to choose the task-specific guide, then inspect the relevant source path.
-Treat source files, database state, and runtime probes as more current than descriptive documentation.
+When sources disagree, report the conflict and verify the current path before editing.
+Check `git status --short` first because existing changes belong to the user.
 
 ## Product mental model
 
-CiteLoom turns private documents into answers backed by citations.
-It keeps original source files unchanged and stores their metadata, processing state, search indexes, application settings, and durable workflow state in PostgreSQL.
+CiteLoom turns private documents into answers backed by retained source evidence.
+Original source bytes stay unchanged in a content store, while PostgreSQL owns metadata, processing state, search indexes, settings, accounts, saved research, and durable workflow coordination.
 
-Document ingestion follows this path:
+Ingestion moves through content storage, document conversion when required, searchable section construction, generated retrieval descriptions, embeddings, and atomic index publication.
+Answering resolves an authorized document scope, retrieves and ranks evidence, generates a structured response, validates citations, records advisory HHEM checks, and atomically publishes the saved result.
 
-```text
-source file
-  -> immutable content store
-  -> document catalog and durable job
-  -> Docling conversion when required
-  -> summaries and embeddings
-  -> atomic index publication
-```
+Generated summaries can help retrieval but cannot become source evidence.
+The server owns citation identity.
+Conversation memory can clarify a Chat follow-up but cannot support a factual claim.
 
-Question answering follows this path:
+## Route the task
 
-```text
-question and document scope
-  -> generated query variations
-  -> vector and BM25 retrieval
-  -> rank fusion
-  -> optional reranking
-  -> original source evidence
-  -> structured cited answer
-  -> citation validation
-  -> HHEM claim-support verification
-  -> published answer
-```
+| Task | Start here | Verify next |
+| --- | --- | --- |
+| Set up a development checkout or prepare a pull request | [`CONTRIBUTING.md`](CONTRIBUTING.md) | [`package.json`](package.json) and the affected scripts |
+| Find the server owner for a behavior | [`src/README.md`](src/README.md) | The owning feature directory and focused tests |
+| Trace ingestion, retrieval, answers, Chat, or concurrency | [`docs/architecture.md`](docs/architecture.md) | The exact entry point and downstream calls |
+| Change a provider or runtime setting | [`docs/configuration.md`](docs/configuration.md) | `src/app/settings.ts`, `src/providers/`, and `drizzle/bootstrap.sql` |
+| Change installation, Compose, HTTPS, or scaling | [`docs/deployment.md`](docs/deployment.md) | Compose files and `infra/` |
+| Change migrations, backup, restore, reindexing, or retention | [`docs/operations.md`](docs/operations.md) | Schema, scripts, and restart behavior |
+| Look up a package or CLI command | [`docs/commands.md`](docs/commands.md) | `package.json` and `src/cli/command-parser.ts` |
+| Change datasets, scoring, tuning, or corpus inputs | [`docs/evaluation.md`](docs/evaluation.md) | `tools/evaluation/`, `corpora/`, and `evaluations/` |
+| Review user-visible scope or limits | [`docs/features.md`](docs/features.md) | Web fragments, API routes, and settings definitions |
+| Handle a vulnerability report | [`SECURITY.md`](SECURITY.md) | The private reporting channel |
 
-Generated summaries help discovery but are not cited as original evidence.
-The server owns citation identity and source metadata.
-An answer is not published when required validation fails.
+## Preserve core invariants
 
-## Repository map
+- Put production code in the feature directory that owns the behavior.
+- Validate untrusted input once at its boundary, then pass concrete typed data internally.
+- Keep citation identity under server control.
+- Preserve durable state transitions, lease fencing, failure behavior, and restart behavior.
+- Keep completed indexes and answers atomic.
+- Keep production independent of offline evaluation tooling.
+- Change the source of generated files instead of editing generated output.
 
-| Path | Responsibility |
-| --- | --- |
-| `src/` | Production application core, API, command line, worker, and web-server entry point |
-| `web/` | Browser interface and static assets |
-| `tools/evaluation/` | Offline corpus and evaluation tooling |
-| `test/` | Unit, integration, boundary, and live-service tests |
-| `drizzle/` | Greenfield PostgreSQL schema and bootstrap SQL |
-| `queries/` | SQL used while the application runs |
-| `compose.yml` | Local source-build Docker Compose topology |
-| `infra/` | Docker images, backup, restore, and local HTTPS |
-| `scripts/` | Build, validation, probes, and development benchmark tooling |
-| `docs/` | Architecture, configuration, deployment, operations, evaluation, and command guides |
-| `corpora/` | Evaluation corpus manifests and provenance |
-| `evaluations/` | Evaluation datasets, frozen configurations, and tuning inputs |
-
-Put production code in the feature directory that owns its behavior.
-Do not add unrelated modules to the `src` root.
-
-## Production and evaluation boundary
-
-Production code lives under `src/`.
-Offline evaluation and corpus code lives under `tools/evaluation/`.
-
-Evaluation tools may import the production application core.
-Production code must never import evaluation tools.
-Deleting `tools/evaluation/` must not prevent the production build from succeeding.
-
-`tsconfig.build.json` compiles only `src/**/*.ts` into `dist/`.
-The production image builds `src` and packages only the compiled output, database migrations, runtime queries, dependencies, and web assets.
-It never copies evaluation tools into the build or runtime stages.
-
-Keep reusable product behavior in `src/`.
-Keep datasets, scoring, tuning, corpus reconciliation, and other evaluation-only behavior in `tools/evaluation/`.
-
-## Set up a source development environment
-
-Copy the development environment template.
-
-```bash
-cp .env.example .env.development
-```
-
-Set `CITELOOM_ADMIN_USERNAME` and `CITELOOM_ADMIN_PASSWORD` in `.env.development`.
-A new database uses these values to create its first administrator.
-Migration commands continue to require both values, while existing accounts remain unchanged.
-Keep credentials in untracked environment files.
-
-Start the supporting services and prepare the database.
-
-```bash
-pnpm services:up
-pnpm db:migrate
-pnpm run doctor:docker
-```
-
-Run the worker and web server in separate terminals.
-
-```bash
-pnpm worker
-```
-
-```bash
-CITELOOM_PUBLIC_ORIGIN=http://127.0.0.1:3000 \
-CITELOOM_SECURE_SESSION_COOKIE=false \
-pnpm dev:web
-```
-
-Open `http://127.0.0.1:3000`.
-Configure model providers and feature routing in the application Settings page.
-Treat [`src/providers/profiles.ts`](src/providers/profiles.ts) as the source of truth for supported provider capabilities and [`drizzle/bootstrap.sql`](drizzle/bootstrap.sql) as the source of truth for greenfield provider defaults.
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`docs/configuration.md`](docs/configuration.md) when the task requires a running source environment.
-
-## Database rules
-
-`src/database/schema.ts` defines the database schema.
-`drizzle/0000_citeloom_schema.sql` is the complete greenfield migration.
-
-During greenfield development, a regenerated baseline does not upgrade a database created from an older baseline.
-Recreate a disposable development database with the guarded command below.
-
-```bash
-pnpm db:reset:development
-```
-
-This command permanently deletes records from the local database named `citeloom`.
-It refuses production mode and non-local database hosts.
-It does not delete files under `documents/`.
-
-If existing data must be preserved, stop and design a forward migration before changing the database.
-Read [`docs/operations.md`](docs/operations.md) before schema, backup, restore, or retention work.
-
-## Change workflow
-
-1. Confirm the requested outcome and inspect the existing execution path.
-2. Ask whether the proposed change is the best long-term option for this greenfield application.
-3. Read the owning feature, its boundary adapters, and its tests before editing.
-4. Keep the change inside the requested scope.
-5. Validate untrusted input once at the system boundary and pass concrete typed data internally.
-6. Preserve citation identity, durable workflow state, failure behavior, and restart behavior.
-7. Review the complete diff before reporting completion.
-
-Do not edit generated files or `CHANGELOG.md` manually.
-Do not use destructive Git or database commands without confirming the exact target.
-
-## Verification
-
-Choose checks that cover the changed behavior.
-
-| Change | Minimum relevant checks |
-| --- | --- |
-| Documentation only | Review the rendered structure or Markdown diff, check links, and run `git diff --check` |
-| Production TypeScript | `pnpm typecheck`, `pnpm lint`, and `pnpm build` |
-| Isolated application logic | Relevant focused tests, then `pnpm test` |
-| Evaluation or corpus tooling | `pnpm test:all` and the relevant validation command |
-| Database behavior | Start the test database and run `pnpm test:integration` |
-| Release-wide change | `pnpm check` plus any required integration or end-to-end verification |
-
-Tests against production must start with a question and end with an answer.
-Do not present an offline probe or isolated unit test as production end-to-end evidence.
-
-## Documentation map
-
-| Guide | Use it for |
-| --- | --- |
-| [`README.md`](README.md) | Product overview, installation, common commands, and supported scope |
-| [`AGENTS.md`](AGENTS.md) | Mandatory rules for agents |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development workflow and pull requests |
-| [`docs/architecture.md`](docs/architecture.md) | Runtime components and end-to-end execution paths |
-| [`src/README.md`](src/README.md) | Source ownership and dependency direction |
-| [`docs/commands.md`](docs/commands.md) | Complete pnpm script reference |
-| [`docs/configuration.md`](docs/configuration.md) | Environment variables, supported provider matrix, feature routing, Thinking mode, retrieval, timeouts, and capacity |
-| [`docs/deployment.md`](docs/deployment.md) | Complete local installation, HTTPS, scaling, and deployment checks |
-| [`docs/operations.md`](docs/operations.md) | Migrations, backup, restore, reindexing, and retention |
-| [`docs/evaluation.md`](docs/evaluation.md) | Offline datasets, preparation, scoring, tuning, and frozen configurations |
-| [`corpora/README.md`](corpora/README.md) | Evaluation corpus sources, downloads, and reconciliation |
-| [`SECURITY.md`](SECURITY.md) | Security scope and vulnerability reporting |
-
-When a documented claim conflicts with current source or runtime behavior, follow the verified current behavior and update the documentation in the same change.
+Before delivery, review the complete diff and run only the checks authorized for the task and proportional to the affected path.
+Never claim a check ran unless it completed successfully.
