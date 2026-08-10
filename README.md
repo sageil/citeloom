@@ -2,7 +2,7 @@
 
 > Private documents, woven into cited answers.
 
-![Version](https://img.shields.io/badge/version-0.2.4-0ea5e9)
+![Version](https://img.shields.io/badge/version-0.2.5-0ea5e9)
 ![Node.js](https://img.shields.io/badge/node-26.5.0-339933)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
@@ -11,6 +11,8 @@
 ![GitHub Stars](https://img.shields.io/github/stars/sageil/citeloom?style=flat-square)
 
 ![CiteLoom product artwork with the message Private by Design](assets/citeloom-readme-private-by-design-caps.png)
+
+▶ [Watch the CiteLoom demo on YouTube](https://www.youtube.com/watch?v=_wxx2ei7dtE)
 
 CiteLoom is a Retrieval-Augmented Generation (RAG) system that lets you ask questions and chat with your documents.
 Its findings link back to the original evidence.
