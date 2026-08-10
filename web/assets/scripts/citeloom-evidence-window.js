@@ -1,3 +1,5 @@
+import { buildEvidenceScoreScale } from "./citeloom-evidence-score.js";
+
 const evidenceWindowGap = 10;
 const evidenceWindowAnchorInset = 16;
 const evidenceWindowLayoutAttempts = 3;
@@ -357,3 +359,198 @@ export function revealEvidenceCitationTrigger(
     top: triggerBounds.bottom - targetBottom,
   });
 }
+
+export function createEvidenceWindowControls(options) {
+  return {
+    citationWindow: createEvidenceWindowState(),
+    selectedEvidenceClaimIndex: null,
+
+    evidenceWindowCitation() {
+      return options.readCitation(this);
+    },
+
+    evidenceWindowVisible() {
+      return options.readSelectedCitation(this) !== null;
+    },
+
+    evidenceWindowError() {
+      return options.readError(this);
+    },
+
+    evidenceWindowLoading() {
+      return options.readLoading(this);
+    },
+
+    evidenceWindowSummary() {
+      return options.readSummary(this);
+    },
+
+    evidenceWindowText() {
+      const citation = this.evidenceWindowCitation();
+      if (citation === null) {
+        return "";
+      }
+      return options.readText(this, citation);
+    },
+
+    evidenceWindowImageUrl() {
+      const citation = this.evidenceWindowCitation();
+      if (citation === null) {
+        return "";
+      }
+      return options.readImageUrl(this, citation);
+    },
+
+    evidenceWindowFileUrl() {
+      const citation = this.evidenceWindowCitation();
+      if (citation === null) {
+        return "";
+      }
+      return options.readFileUrl(this, citation);
+    },
+
+    evidenceWindowFileLabel() {
+      const citation = this.evidenceWindowCitation();
+      if (citation === null) {
+        return "";
+      }
+      return options.readFileLabel(this, citation);
+    },
+
+    evidenceWindowCitationLabel() {
+      const citation = this.evidenceWindowCitation();
+      if (citation === null) {
+        return "Citation";
+      }
+      return `Citation ${citation.citationNumber}`;
+    },
+
+    selectedEvidenceScoreScale() {
+      const citation = options.readSelectedCitation(this);
+      const citationNumber = citation?.citationNumber ?? null;
+      return buildEvidenceScoreScale(
+        options.readClaims(this),
+        this.selectedEvidenceClaimIndex,
+        citationNumber,
+        this.claimVerifierSupportThreshold,
+      );
+    },
+
+    prepareEvidencePanel(trigger, claimIndex) {
+      prepareEvidenceWindow(this.citationWindow, trigger);
+      this.selectedEvidenceClaimIndex = claimIndex;
+    },
+
+    async completeEvidencePanelOpen(citationId) {
+      await this.$nextTick();
+      const panelReady = await waitForEvidenceWindowLayout(
+        this.$refs.evidencePanel,
+      );
+      const selectedCitation = options.readSelectedCitation(this);
+      if (selectedCitation?.id !== citationId || !panelReady) {
+        return false;
+      }
+      this.positionEvidencePanel();
+      this.$refs.evidencePanel?.focus();
+      return true;
+    },
+
+    resetEvidencePanelState() {
+      resetEvidenceWindow(this.citationWindow);
+      this.selectedEvidenceClaimIndex = null;
+    },
+
+    evidencePanelStyle() {
+      return evidenceWindowStyle(
+        this.citationWindow,
+        this.evidenceWindowVisible(),
+      );
+    },
+
+    positionEvidencePanel() {
+      if (!this.evidenceWindowVisible()) {
+        return;
+      }
+      positionEvidenceWindow(
+        this.citationWindow,
+        this.$refs.evidencePanel,
+      );
+    },
+
+    repositionEvidencePanel() {
+      if (this.evidenceWindowVisible() && !this.citationWindow.pinned) {
+        this.positionEvidencePanel();
+      }
+    },
+
+    togglePinnedEvidence() {
+      toggleEvidenceWindowPin(this.citationWindow);
+      if (!this.citationWindow.pinned) {
+        this.$nextTick(() => this.positionEvidencePanel());
+      }
+      this.$refs.evidencePanel?.focus();
+    },
+
+    beginEvidencePanelDrag(event) {
+      const started = beginEvidenceWindowDrag(
+        this.citationWindow,
+        event,
+        this.$refs.evidencePanel,
+      );
+      if (!started) {
+        return;
+      }
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.preventDefault();
+    },
+
+    continueEvidencePanelDrag(event) {
+      continueEvidenceWindowDrag(
+        this.citationWindow,
+        event,
+        this.$refs.evidencePanel,
+      );
+    },
+
+    finishEvidencePanelDrag(event) {
+      const finished = finishEvidenceWindowDrag(
+        this.citationWindow,
+        event.pointerId,
+      );
+      if (!finished) {
+        return;
+      }
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    },
+
+    closeEvidenceWindow() {
+      options.close(this);
+    },
+  };
+}
+
+export function registerEvidenceWindowElement() {
+  if (
+    typeof customElements === "undefined"
+    || typeof document === "undefined"
+    || customElements.get("citeloom-evidence-window") !== undefined
+  ) {
+    return;
+  }
+  customElements.define("citeloom-evidence-window", class extends HTMLElement {
+    connectedCallback() {
+      if (this.childNodes.length > 0) {
+        return;
+      }
+      const template = document.getElementById("citeloom-evidence-window-template");
+      if (!(template instanceof HTMLTemplateElement)) {
+        throw new Error("The shared evidence window template is unavailable.");
+      }
+      this.append(template.content.cloneNode(true));
+    }
+  });
+}
+
+registerEvidenceWindowElement();

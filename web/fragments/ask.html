@@ -580,24 +580,25 @@
                   <button
                     class="button answer-toolbar-action"
                     type="button"
-                    x-show="speechAudioUrl === ''"
+                    :aria-label="answerSpeechActionLabel()"
+                    :title="answerSpeechActionLabel()"
                     :disabled="speechAudioLoading"
-                    @click="loadAnswerSpeech()"
+                    @click="toggleAnswerSpeech()"
                   >
                     <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon" :class="{ spin: speechAudioLoading }">
-                      <use :href="speechAudioLoading ? './assets/images/citeloom-icons.svg#citeloom-refresh' : './assets/images/citeloom-icons.svg#citeloom-speaker'"></use>
+                      <use :href="answerSpeechIcon()"></use>
                     </svg>
-                    <span x-text="speechAudioLoading ? 'Preparing' : 'Listen'"></span>
+                    <span x-text="answerSpeechButtonLabel()"></span>
                   </button>
                   <audio
-                    aria-label="Spoken answer audio"
-                    controls
+                    aria-hidden="true"
+                    class="visually-hidden"
                     preload="metadata"
-                    x-cloak
                     x-ref="answerSpeechAudio"
-                    x-show="speechAudioUrl !== ''"
-                    :src="speechAudioUrl"
-                    @play="resetEvidenceSpeechPlayback()"
+                    @ended="speechAudioPlaying = false"
+                    @error="handleAnswerSpeechError()"
+                    @pause="speechAudioPlaying = false"
+                    @playing="speechAudioPlaying = true"
                   ></audio>
                 </div>
                 <a
@@ -633,131 +634,7 @@
             </div>
 
             <div class="ask-evidence-layer">
-              <section
-                aria-labelledby="ask-inline-evidence-title"
-                class="evidence-window ask-inline-evidence"
-                :class="{ pinned: citationWindow.pinned }"
-                :style="askEvidencePanelStyle()"
-                role="region"
-                tabindex="-1"
-                x-cloak
-                x-ref="askEvidencePanel"
-                x-show="selectedCitation !== null"
-                @keydown.escape="closeEvidenceInspector()"
-                @resize.window="repositionAskEvidencePanel()"
-                @scroll.window="repositionAskEvidencePanel()"
-              >
-                <header
-                  title="Drag to move evidence"
-                  @lostpointercapture="finishAskEvidencePanelDrag($event)"
-                  @pointercancel="finishAskEvidencePanelDrag($event)"
-                  @pointerdown="beginAskEvidencePanelDrag($event)"
-                  @pointermove="continueAskEvidencePanelDrag($event)"
-                  @pointerup="finishAskEvidencePanelDrag($event)"
-                >
-                  <div class="evidence-window-heading">
-                    <div class="evidence-window-title-row">
-                      <h3 class="section-kicker" id="ask-inline-evidence-title">Exact evidence</h3>
-                      <template x-if="selectedEvidenceScoreScale() !== null">
-                        <span
-                          class="evidence-score-scale"
-                          role="img"
-                          :aria-label="selectedEvidenceScoreScale().ariaLabel"
-                        >
-                          <span class="evidence-score-scale-label">HHEM</span>
-                          <span class="evidence-score-scale-track" aria-hidden="true">
-                            <span class="evidence-score-scale-line"></span>
-                            <span
-                              class="evidence-score-scale-threshold"
-                              :style="{ '--evidence-score-position': selectedEvidenceScoreScale().thresholdPosition }"
-                            >
-                              <span class="evidence-score-scale-threshold-label" x-text="`GLOBAL ${selectedEvidenceScoreScale().thresholdLabel}`"></span>
-                            </span>
-                            <template x-for="marker in selectedEvidenceScoreScale().markers" :key="marker.position">
-                              <span
-                                class="evidence-score-scale-marker"
-                                :class="`evidence-score-${marker.status}`"
-                                :style="{ '--evidence-score-position': marker.position }"
-                                :title="`HHEM ${marker.label}`"
-                              >
-                                <span class="evidence-score-scale-marker-label" x-text="marker.label"></span>
-                              </span>
-                            </template>
-                          </span>
-                        </span>
-                      </template>
-                    </div>
-                    <span x-text="selectedCitationSummary()"></span>
-                  </div>
-                  <div class="evidence-window-actions">
-                    <button
-                      class="button"
-                      type="button"
-                      x-cloak
-                      x-show="textToSpeechEnabled &amp;&amp; evidenceCanSpeak()"
-                      :aria-label="evidenceSpeechActionLabel()"
-                      :title="evidenceSpeechActionLabel()"
-                      :disabled="evidenceSpeechLoading"
-                      @click="toggleEvidenceSpeech()"
-                    >
-                      <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon" :class="{ spin: evidenceSpeechLoading }">
-                        <use :href="evidenceSpeechIcon()"></use>
-                      </svg>
-                      <span x-text="evidenceSpeechButtonLabel()"></span>
-                    </button>
-                    <button
-                      class="button evidence-window-pin"
-                      type="button"
-                      :aria-pressed="citationWindow.pinned.toString()"
-                      :title="citationWindow.pinned ? 'Return evidence above its citation' : 'Keep evidence at this viewport position while scrolling'"
-                      @click="togglePinnedCitation()"
-                      x-text="citationWindow.pinned ? 'Unpin' : 'Pin evidence'"
-                    ></button>
-                    <button class="icon-button" aria-label="Close exact evidence" type="button" @click="closeEvidenceInspector()">
-                      <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                        <use href="./assets/images/citeloom-icons.svg#citeloom-close"></use>
-                      </svg>
-                    </button>
-                  </div>
-                </header>
-                <audio
-                  aria-hidden="true"
-                  class="visually-hidden"
-                  preload="none"
-                  x-ref="askEvidenceSpeechAudio"
-                  @ended="evidenceSpeechPlaying = false"
-                  @error="handleEvidenceSpeechPlaybackError()"
-                  @pause="evidenceSpeechPlaying = false"
-                  @playing="evidenceSpeechPlaying = true"
-                ></audio>
-                <div class="evidence-window-body ask-inline-evidence-body">
-                  <p class="field-error" role="alert" x-cloak x-show="citationError !== ''" x-text="citationError"></p>
-                  <p class="ask-citation-loading" x-cloak x-show="citationLoading">Refreshing evidence...</p>
-                  <template x-if="inspectedCitation !== null">
-                    <div class="evidence-window-content-stack">
-                      <template x-if="inspectedCitation.evidence.kind === 'image'">
-                        <img :alt="`Citation ${inspectedCitation.citationNumber} evidence`" :src="citationImageUrl()" />
-                      </template>
-                      <template x-if="inspectedCitation.evidence.kind !== 'image' &amp;&amp; hasFencedCodeBlock(citationEvidenceText())">
-                        <blockquote class="exact-evidence-text">
-                          <div class="answer-markdown" x-html="renderMarkdown(citationEvidenceText())"></div>
-                        </blockquote>
-                      </template>
-                      <template x-if="inspectedCitation.evidence.kind !== 'image' &amp;&amp; !hasFencedCodeBlock(citationEvidenceText())">
-                        <blockquote class="exact-evidence-text" x-text="citationEvidenceText()"></blockquote>
-                      </template>
-                      <div class="evidence-window-source-actions">
-                        <a
-                          rel="noopener noreferrer"
-                          target="_blank"
-                          :href="citationFileUrl()"
-                          x-text="citationFileLabel()"
-                        ></a>
-                      </div>
-                    </div>
-                  </template>
-                </div>
-              </section>
+              <citeloom-evidence-window></citeloom-evidence-window>
             </div>
 
             <div class="answer-content answer-copy" x-cloak x-show="hasAnswerContent()">

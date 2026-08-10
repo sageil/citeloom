@@ -24,9 +24,8 @@ import {
   readAnswerContentUpdate,
   renderAnswerMarkdown,
 } from "./citeloom-answer-content.js";
-import { requestAnswerSpeech } from "./citeloom-answer-speech.js";
+import { createAnswerSpeechControls } from "./citeloom-answer-speech.js";
 import { createEvidenceSpeechControls } from "./citeloom-evidence-speech.js";
-import { buildEvidenceScoreScale } from "./citeloom-evidence-score.js";
 import {
   buildCitationPresentation,
   buildCitationPresentations,
@@ -37,20 +36,11 @@ import {
   isTextSourceFile,
 } from "./citeloom-file-links.js";
 import {
-  beginEvidenceWindowDrag,
-  continueEvidenceWindowDrag,
-  createEvidenceWindowState,
-  evidenceWindowStyle,
+  createEvidenceWindowControls,
   findEvidenceCitationTrigger,
-  finishEvidenceWindowDrag,
-  positionEvidenceWindow,
-  prepareEvidenceWindow,
   readEvidenceClaimIndex,
   readEvidenceWindowPlacement,
-  resetEvidenceWindow,
   revealEvidenceCitationTrigger,
-  toggleEvidenceWindowPin,
-  waitForEvidenceWindowLayout,
 } from "./citeloom-evidence-window.js";
 import { focusTextArea } from "./citeloom-focus.js";
 import { createDictationController } from "./citeloom-dictation.js";
@@ -59,7 +49,7 @@ import { requestConfirmation } from "./citeloom-confirmation.js";
 import {
   clearVerificationRefresh as clearVerificationPolling,
   isVerificationPending,
-  readVerificationEvidenceUnits,
+  readStoredAnswerVerificationClaims,
   readVerificationState,
   runVerificationRefresh,
   scheduleVerificationRefresh as scheduleVerificationPolling,
@@ -73,21 +63,33 @@ import {
   readPublishedSourceRegions,
 } from "./citeloom-published-answer.js";
 
-const claimStatuses = Object.freeze([
-  "partially-supported",
-  "supported",
-  "unsupported",
-  "unverified",
-]);
 const discoveryMatchKinds = Object.freeze(["keyword", "semantic"]);
 const discoveryResultKinds = Object.freeze(["exact", "exact-and-related"]);
-const askEvidenceSpeechOptions = {
-  audioRefName: "askEvidenceSpeechAudio",
+const askAnswerSpeechOptions = {
+  audioRefName: "answerSpeechAudio",
   beforePlay(page) {
-    const answerAudio = page.$refs.answerSpeechAudio;
-    if (answerAudio instanceof HTMLAudioElement) {
-      answerAudio.pause();
+    page.resetEvidenceSpeechPlayback();
+  },
+  findPreloadTarget(page) {
+    return readAskAnswerSpeechTarget(page.answer);
+  },
+  findTarget(page, turnId) {
+    const target = readAskAnswerSpeechTarget(page.answer);
+    if (target === null || target.turnId !== turnId) {
+      return null;
     }
+    return target;
+  },
+  readTargetId(target) {
+    return target.turnId;
+  },
+  reportError() {},
+  targetIdProperty: "speechAnswerTurnId",
+};
+const askEvidenceSpeechOptions = {
+  audioRefName: "evidenceSpeechAudio",
+  beforePlay(page) {
+    page.pauseAnswerSpeech();
   },
   readCitation(page) {
     return page.citationLoading ? null : page.inspectedCitation;
@@ -99,6 +101,51 @@ const askEvidenceSpeechOptions = {
     dispatchNotice("error", message);
   },
 };
+const askEvidenceWindowOptions = {
+  close(page) {
+    page.closeEvidenceInspector();
+  },
+  readCitation(page) {
+    return page.inspectedCitation;
+  },
+  readClaims(page) {
+    return page.answer?.claims ?? [];
+  },
+  readError(page) {
+    return page.citationError;
+  },
+  readFileLabel(page) {
+    return page.citationFileLabel();
+  },
+  readFileUrl(page) {
+    return page.citationFileUrl();
+  },
+  readImageUrl(page) {
+    return page.citationImageUrl();
+  },
+  readLoading(page) {
+    return page.citationLoading;
+  },
+  readSelectedCitation(page) {
+    return page.selectedCitation;
+  },
+  readSummary(page) {
+    return page.selectedCitationSummary();
+  },
+  readText(page) {
+    return page.citationEvidenceText();
+  },
+};
+
+function readAskAnswerSpeechTarget(answer) {
+  if (answer === null) {
+    return null;
+  }
+  return {
+    answerDocument: answer.answerDocument,
+    turnId: answer.turn.turnId,
+  };
+}
 const evidenceKinds = Object.freeze(["image", "table", "text"]);
 const feedbackDimensions = Object.freeze([
   "answer-usefulness",
@@ -269,32 +316,6 @@ function buildAnswerSources(citations) {
   return sources;
 }
 
-function readClaim(value, label) {
-  const claim = readObject(value, label);
-  const evidence = readVerificationEvidenceUnits(
-    claim.evidenceUnits,
-    claim.citationNumbers,
-    label,
-  );
-  return {
-    citationNumbers: evidence.citationNumbers,
-    claim: readNonEmptyString(claim.claim, `${label} text`),
-    evidenceUnits: evidence.evidenceUnits,
-    id: readNonEmptyString(claim.id, `${label} id`),
-    rationale: readNonEmptyString(claim.rationale, `${label} rationale`),
-    status: readEnum(claim.status, claimStatuses, `${label} status`),
-  };
-}
-
-function readClaims(value) {
-  const values = readArray(value, "claim checks");
-  const claims = [];
-  for (let index = 0; index < values.length; index += 1) {
-    claims.push(readClaim(values[index], `claim check ${index + 1}`));
-  }
-  return claims;
-}
-
 function readMatchedDocuments(value) {
   const values = readArray(value, "retrieved context");
   const documents = [];
@@ -363,7 +384,11 @@ function readStreamedAnswer(value) {
   );
   return {
     ...presentation,
-    claims: readClaims(answer.claims),
+    claims: readStoredAnswerVerificationClaims(
+      answer.claims,
+      presentation.answerDocument,
+      "claim check",
+    ),
     matchedDocuments: readMatchedDocuments(answer.matchedDocuments),
     runDetails: readRunDetails(answer.runDetails),
     turn: readAnswerTurn(answer.turn),
@@ -409,7 +434,11 @@ function readResearchTurn(value, label) {
   readObject(turn.runConfiguration, `${label} run configuration`);
   return {
     ...presentation,
-    claims: readClaims(turn.claims),
+    claims: readStoredAnswerVerificationClaims(
+      turn.claims,
+      presentation.answerDocument,
+      `${label} claim check`,
+    ),
     completedAt: readNonEmptyString(turn.completedAt, `${label} completed time`),
     id: readNonEmptyString(turn.id, `${label} id`),
     question: readNonEmptyString(turn.question, `${label} question`),
@@ -784,7 +813,6 @@ export function registerPage(alpine) {
     citationInspectorViewportResizeListener: null,
     citationImageDimensions: null,
     citationLoading: false,
-    citationWindow: createEvidenceWindowState(),
     claimVerifierSupportThreshold: null,
     creatingThread: false,
     dashboardError: "",
@@ -806,6 +834,8 @@ export function registerPage(alpine) {
     inferenceRuntimeName: "the configured inference runtime",
     inspectedCitation: null,
     expandedDiscoveryResultKeys: [],
+    ...createAnswerSpeechControls(askAnswerSpeechOptions),
+    ...createEvidenceWindowControls(askEvidenceWindowOptions),
     ...createEvidenceSpeechControls(askEvidenceSpeechOptions),
     historicalAnswerVisible: false,
     mode: "ask",
@@ -825,13 +855,8 @@ export function registerPage(alpine) {
     requestError: "",
     scopeKind: "all",
     selectedCitation: null,
-    selectedEvidenceClaimIndex: null,
     selectedDiscoveryDocuments: [],
     selectedTags: [],
-    speechAbortController: null,
-    speechAudioError: "",
-    speechAudioLoading: false,
-    speechAudioUrl: "",
     speechState: "idle",
     speechStatus: "",
     speechToTextEnabled: false,
@@ -923,7 +948,7 @@ export function registerPage(alpine) {
       this.dictationController?.destroy();
       this.dictationController = null;
       this.resetEvidenceSpeechPlayback();
-      this.resetSpeechAudio();
+      this.resetAnswerSpeechAudio();
     },
 
     async loadDashboard() {
@@ -946,6 +971,7 @@ export function registerPage(alpine) {
         this.textToSpeechEnabled = snapshot.textToSpeechEnabled;
         this.textToSpeechPreloadEnabled = snapshot.textToSpeechPreloadEnabled;
         if (!this.textToSpeechEnabled) {
+          this.resetAnswerSpeechAudio();
           this.resetEvidenceSpeechPlayback();
         }
         if (!this.speechToTextEnabled) {
@@ -1035,7 +1061,7 @@ export function registerPage(alpine) {
       this.clearAnswerPresentation();
       this.requestError = "";
       this.closeEvidenceInspector();
-      this.resetSpeechAudio();
+      this.resetAnswerSpeechAudio();
       if (threadId === "") {
         return;
       }
@@ -1083,7 +1109,7 @@ export function registerPage(alpine) {
           retrieval: { negative: 0, positive: 0 },
         };
         await this.loadTurnFeedback();
-        this.resetSpeechAudio();
+        this.resetAnswerSpeechAudio();
         await this.loadResearchThreads();
         this.maybePreloadAnswerSpeech();
       } catch (error) {
@@ -1110,7 +1136,7 @@ export function registerPage(alpine) {
       };
       await this.loadTurnFeedback();
       this.closeEvidenceInspector();
-      this.resetSpeechAudio();
+      this.resetAnswerSpeechAudio();
       this.maybePreloadAnswerSpeech();
     },
 
@@ -1421,7 +1447,7 @@ export function registerPage(alpine) {
       this.requestError = "";
       this.clearAnswerPresentation();
       this.closeEvidenceInspector();
-      this.resetSpeechAudio();
+      this.resetAnswerSpeechAudio();
       try {
         const answeringThreadId = await this.resolveAnsweringThreadId(
           controller.signal,
@@ -1684,9 +1710,8 @@ export function registerPage(alpine) {
       this.citationAbortController?.abort();
       const controller = new AbortController();
       this.citationAbortController = controller;
-      prepareEvidenceWindow(this.citationWindow, trigger);
+      this.prepareEvidencePanel(trigger, claimIndex);
       this.selectedCitation = source;
-      this.selectedEvidenceClaimIndex = claimIndex;
       this.inspectedCitation = buildStoredCitationPreview(source);
       this.citationError = "";
       this.citationImageDimensions = null;
@@ -1705,16 +1730,11 @@ export function registerPage(alpine) {
         return;
       }
       if (this.mode === "ask") {
-        const panelReady = await waitForEvidenceWindowLayout(
-          this.$refs.askEvidencePanel,
-        );
+        const panelReady = await this.completeEvidencePanelOpen(source.id);
         if (controller.signal.aborted) {
           return;
         }
-        if (panelReady) {
-          this.positionAskEvidencePanel();
-          this.$refs.askEvidencePanel?.focus();
-        } else {
+        if (!panelReady) {
           this.citationError = "Citation evidence could not be displayed.";
         }
       } else {
@@ -1747,7 +1767,7 @@ export function registerPage(alpine) {
           this.citationAbortController = null;
           this.citationLoading = false;
           await this.$nextTick();
-          this.repositionAskEvidencePanel();
+          this.repositionEvidencePanel();
         }
       }
     },
@@ -1778,68 +1798,6 @@ export function registerPage(alpine) {
       revealEvidenceCitationTrigger(trigger);
       await this.$nextTick();
       await this.inspectCitation(source, trigger, claimIndex);
-    },
-
-    askEvidencePanelStyle() {
-      return evidenceWindowStyle(this.citationWindow, this.mode === "ask");
-    },
-
-    positionAskEvidencePanel() {
-      if (this.mode !== "ask") {
-        return;
-      }
-      positionEvidenceWindow(
-        this.citationWindow,
-        this.$refs.askEvidencePanel,
-      );
-    },
-
-    repositionAskEvidencePanel() {
-      if (this.selectedCitation !== null && !this.citationWindow.pinned) {
-        this.positionAskEvidencePanel();
-      }
-    },
-
-    togglePinnedCitation() {
-      toggleEvidenceWindowPin(this.citationWindow);
-      if (!this.citationWindow.pinned) {
-        this.$nextTick(() => this.positionAskEvidencePanel());
-      }
-      this.$refs.askEvidencePanel?.focus();
-    },
-
-    beginAskEvidencePanelDrag(event) {
-      const started = beginEvidenceWindowDrag(
-        this.citationWindow,
-        event,
-        this.$refs.askEvidencePanel,
-      );
-      if (!started) {
-        return;
-      }
-      event.currentTarget.setPointerCapture(event.pointerId);
-      event.preventDefault();
-    },
-
-    continueAskEvidencePanelDrag(event) {
-      continueEvidenceWindowDrag(
-        this.citationWindow,
-        event,
-        this.$refs.askEvidencePanel,
-      );
-    },
-
-    finishAskEvidencePanelDrag(event) {
-      const finished = finishEvidenceWindowDrag(
-        this.citationWindow,
-        event.pointerId,
-      );
-      if (!finished) {
-        return;
-      }
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
     },
 
     citationInspectorStyle() {
@@ -1987,14 +1945,13 @@ export function registerPage(alpine) {
       this.citationAbortController?.abort();
       this.citationAbortController = null;
       this.resetEvidenceSpeechPlayback();
-      resetEvidenceWindow(this.citationWindow);
+      this.resetEvidencePanelState();
       this.inspectedCitation = null;
       this.citationError = "";
       this.citationImageDimensions = null;
       this.citationLoading = false;
       this.resetCitationInspectorSize();
       this.selectedCitation = null;
-      this.selectedEvidenceClaimIndex = null;
     },
 
     async submitFeedback(dimension, rating, citationId) {
@@ -2079,67 +2036,6 @@ export function registerPage(alpine) {
         this.loadFeedbackSummary("answer-usefulness", null),
         this.loadFeedbackSummary("retrieval-relevance", null),
       ]);
-    },
-
-    async loadAnswerSpeech(surfaceError = true) {
-      if (this.answer === null || this.speechAudioLoading) {
-        return;
-      }
-      this.speechAbortController?.abort();
-      const controller = new AbortController();
-      this.speechAbortController = controller;
-      this.speechAudioLoading = true;
-      this.speechAudioError = "";
-      this.revokeSpeechAudio();
-      try {
-        const audio = await requestAnswerSpeech(
-          this.answer.answerDocument,
-          controller.signal,
-        );
-        if (!controller.signal.aborted) {
-          this.speechAudioUrl = URL.createObjectURL(audio);
-        }
-      } catch (error) {
-        if (!controller.signal.aborted && surfaceError) {
-          this.speechAudioError = readErrorMessage(
-            error,
-            "The answer audio could not be generated.",
-          );
-        }
-      } finally {
-        if (this.speechAbortController === controller) {
-          this.speechAbortController = null;
-          this.speechAudioLoading = false;
-        }
-      }
-    },
-
-    maybePreloadAnswerSpeech() {
-      if (
-        this.answer === null
-        || !this.textToSpeechEnabled
-        || !this.textToSpeechPreloadEnabled
-        || this.speechAudioLoading
-        || this.speechAudioUrl !== ""
-      ) {
-        return;
-      }
-      void this.loadAnswerSpeech(false);
-    },
-
-    resetSpeechAudio() {
-      this.speechAbortController?.abort();
-      this.speechAbortController = null;
-      this.speechAudioLoading = false;
-      this.speechAudioError = "";
-      this.revokeSpeechAudio();
-    },
-
-    revokeSpeechAudio() {
-      if (this.speechAudioUrl !== "") {
-        URL.revokeObjectURL(this.speechAudioUrl);
-        this.speechAudioUrl = "";
-      }
     },
 
     initializeDictationController() {
@@ -2836,17 +2732,6 @@ export function registerPage(alpine) {
         return "";
       }
       return this.citationSourceSummary(this.selectedCitation);
-    },
-
-    selectedEvidenceScoreScale() {
-      const citationNumber = this.selectedCitation?.citationNumber ?? null;
-      const claims = this.answer?.claims ?? [];
-      return buildEvidenceScoreScale(
-        claims,
-        this.selectedEvidenceClaimIndex,
-        citationNumber,
-        this.claimVerifierSupportThreshold,
-      );
     },
 
     citationSourceSummary(citation) {

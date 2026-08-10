@@ -110,6 +110,13 @@ describe("CiteLoom chat boundaries", () => {
         content: "Revenue increased.",
       }],
     });
+    expect(conversation.runs[0].messages[0].claims[0]).toMatchObject({
+      claimIndex: 0,
+      evidenceUnits: [{
+        citationNumber: 1,
+        supportProbability: 0.9,
+      }],
+    });
   });
 
   it("rejects malformed chat feature and scope values at the boundary", () => {
@@ -188,6 +195,7 @@ function buildCitedConversation() {
             supportProbability: 0.9,
             unitId: "claim-0-citation-1",
           }],
+          rationale: "The cited evidence supports the answer statement.",
           status: "supported",
         }],
         content: "Revenue increased.",

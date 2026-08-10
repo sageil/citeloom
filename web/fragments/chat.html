@@ -5,7 +5,6 @@
   @keydown.meta.k.window.prevent="toggleChatSwitcher()"
   @keydown.ctrl.k.window.prevent="toggleChatSwitcher()"
   @keydown.escape.window="chatSwitcherOpen ? closeChatSwitcher() : (selectedCitation !== null &amp;&amp; !newChatOpen &amp;&amp; closeCitation())"
-  @resize.window="positionCitationPanel()"
 >
   <main class="chat-workspace">
     <template x-if="conversation === null">
@@ -190,7 +189,7 @@
                                       :data-evidence-citation-id="citationForKey(message, citationKey)?.id"
                                       :data-evidence-claim-index="statement.verificationIndex"
                                       :data-evidence-message-id="message.id"
-                                      aria-controls="chat-evidence-panel"
+                                      aria-controls="evidence-window"
                                       :aria-expanded="(selectedCitation?.id === citationForKey(message, citationKey)?.id &amp;&amp; selectedEvidenceClaimIndex === statement.verificationIndex).toString()"
                                       :disabled="citationForKey(message, citationKey)?.preview === true"
                                       @click="openCitation(citationForKey(message, citationKey), $event.currentTarget, message, statement.verificationIndex)"
@@ -364,20 +363,9 @@
     preload="metadata"
     x-ref="chatSpeechAudio"
     @ended="speechAudioPlaying = false"
-    @error="handleChatSpeechError()"
+    @error="handleAnswerSpeechError()"
     @pause="speechAudioPlaying = false"
     @playing="speechAudioPlaying = true"
-  ></audio>
-
-  <audio
-    aria-hidden="true"
-    class="visually-hidden"
-    preload="none"
-    x-ref="chatEvidenceSpeechAudio"
-    @ended="evidenceSpeechPlaying = false"
-    @error="handleEvidenceSpeechPlaybackError()"
-    @pause="evidenceSpeechPlaying = false"
-    @playing="evidenceSpeechPlaying = true"
   ></audio>
 
   <div
@@ -461,188 +449,7 @@
     </section>
   </div>
 
-  <aside
-    class="evidence-window chat-evidence-panel"
-    id="chat-evidence-panel"
-    x-cloak
-    x-ref="citationPanel"
-    x-show="selectedCitation !== null"
-    :class="{ pinned: citationWindow.pinned }"
-    :style="citationPanelStyle()"
-    role="dialog"
-    aria-modal="false"
-    aria-labelledby="chat-evidence-title"
-    tabindex="-1"
-  >
-    <header
-      title="Drag to move evidence"
-      @lostpointercapture="finishCitationPanelDrag($event)"
-      @pointercancel="finishCitationPanelDrag($event)"
-      @pointerdown="beginCitationPanelDrag($event)"
-      @pointermove="continueCitationPanelDrag($event)"
-      @pointerup="finishCitationPanelDrag($event)"
-    >
-      <div class="evidence-window-heading">
-        <div class="evidence-window-title-row">
-          <h3 class="section-kicker" id="chat-evidence-title">Exact evidence</h3>
-          <template x-if="selectedEvidenceScoreScale() !== null">
-            <span
-              class="evidence-score-scale"
-              role="img"
-              :aria-label="selectedEvidenceScoreScale().ariaLabel"
-            >
-              <span class="evidence-score-scale-label">HHEM</span>
-              <span class="evidence-score-scale-track" aria-hidden="true">
-                <span class="evidence-score-scale-line"></span>
-                <span
-                  class="evidence-score-scale-threshold"
-                  :style="{ '--evidence-score-position': selectedEvidenceScoreScale().thresholdPosition }"
-                >
-                  <span class="evidence-score-scale-threshold-label" x-text="`GLOBAL ${selectedEvidenceScoreScale().thresholdLabel}`"></span>
-                </span>
-                <template x-for="marker in selectedEvidenceScoreScale().markers" :key="marker.position">
-                  <span
-                    class="evidence-score-scale-marker"
-                    :class="`evidence-score-${marker.status}`"
-                    :style="{ '--evidence-score-position': marker.position }"
-                    :title="`HHEM ${marker.label}`"
-                  >
-                    <span class="evidence-score-scale-marker-label" x-text="marker.label"></span>
-                  </span>
-                </template>
-              </span>
-            </span>
-          </template>
-        </div>
-        <span x-text="selectedCitationSummary()"></span>
-      </div>
-      <div class="evidence-window-actions">
-        <button
-          class="button"
-          type="button"
-          x-cloak
-          x-show="textToSpeechEnabled &amp;&amp; evidenceCanSpeak()"
-          :aria-label="evidenceSpeechActionLabel()"
-          :title="evidenceSpeechActionLabel()"
-          :disabled="evidenceSpeechLoading"
-          @click="toggleEvidenceSpeech()"
-        >
-          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon" :class="{ spin: evidenceSpeechLoading }">
-            <use :href="evidenceSpeechIcon()"></use>
-          </svg>
-          <span x-text="evidenceSpeechButtonLabel()"></span>
-        </button>
-        <button
-          class="button evidence-window-pin"
-          type="button"
-          :aria-pressed="citationWindow.pinned.toString()"
-          :title="citationWindow.pinned ? 'Return evidence above its citation' : 'Keep evidence at this viewport position while scrolling'"
-          @click="togglePinnedCitation()"
-          x-text="citationWindow.pinned ? 'Unpin' : 'Pin evidence'"
-        ></button>
-        <button class="icon-button" type="button" aria-label="Close evidence" @click="closeCitation()">
-          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg>
-        </button>
-      </div>
-    </header>
-
-    <template x-if="selectedCitation !== null">
-      <div class="evidence-window-body evidence-window-content-stack chat-evidence-content">
-        <div class="chat-evidence-body">
-          <template x-if="selectedCitation.evidence.kind === 'image'">
-            <img
-              :src="imageUrl(selectedCitation)"
-              alt="Retained citation evidence"
-              @load="positionCitationPanel()"
-            />
-          </template>
-          <template x-if="selectedCitation.evidence.kind === 'text' &amp;&amp; hasFencedCodeBlock(evidenceText(selectedCitation))">
-            <div class="exact-evidence-text">
-              <div class="answer-markdown" x-html="renderMarkdown(evidenceText(selectedCitation))"></div>
-            </div>
-          </template>
-          <template x-if="selectedCitation.evidence.kind === 'text' &amp;&amp; !hasFencedCodeBlock(evidenceText(selectedCitation))">
-            <pre class="exact-evidence-text" x-text="evidenceText(selectedCitation)"></pre>
-          </template>
-          <template x-if="selectedCitation.evidence.kind === 'table'">
-            <div>
-              <template x-if="selectedCitation.evidence.table.renderMode === 'text' &amp;&amp; hasFencedCodeBlock(evidenceText(selectedCitation))">
-                <div class="exact-evidence-text">
-                  <div class="answer-markdown" x-html="renderMarkdown(evidenceText(selectedCitation))"></div>
-                </div>
-              </template>
-              <template x-if="selectedCitation.evidence.table.renderMode === 'text' &amp;&amp; !hasFencedCodeBlock(evidenceText(selectedCitation))">
-                <pre
-                  :aria-label="`${citationLabel(selectedCitation)} extracted table text`"
-                  class="exact-evidence-text"
-                  x-text="evidenceText(selectedCitation)"
-                ></pre>
-              </template>
-              <template x-if="selectedCitation.evidence.table.renderMode === 'grid'">
-                <div
-                  :aria-label="`${citationLabel(selectedCitation)} evidence table`"
-                  class="exact-evidence-table-frame"
-                  role="region"
-                  tabindex="0"
-                >
-                  <table class="exact-evidence-table">
-                    <caption
-                      class="visually-hidden"
-                      x-text="`${citationLabel(selectedCitation)} evidence table`"
-                    ></caption>
-                    <template x-if="selectedCitation.evidence.table.headerRows.length > 0">
-                      <thead>
-                        <template x-for="row in selectedCitation.evidence.table.headerRows" :key="row.key">
-                          <tr>
-                            <template x-for="cell in row.cells" :key="cell.key">
-                              <th
-                                :colspan="cell.columnSpan"
-                                :rowspan="cell.rowSpan"
-                                scope="col"
-                                x-text="cell.text"
-                              ></th>
-                            </template>
-                          </tr>
-                        </template>
-                      </thead>
-                    </template>
-                    <tbody>
-                      <template x-for="row in selectedCitation.evidence.table.bodyRows" :key="row.key">
-                        <tr>
-                          <template x-for="cell in row.cells" :key="cell.key">
-                            <td
-                              :colspan="cell.columnSpan"
-                              :role="cell.rowHeader ? 'rowheader' : null"
-                              :rowspan="cell.rowSpan"
-                              x-text="cell.text"
-                            ></td>
-                          </template>
-                        </tr>
-                      </template>
-                    </tbody>
-                  </table>
-                </div>
-              </template>
-            </div>
-          </template>
-        </div>
-
-        <dl>
-          <div x-show="selectedCitation.pageNumbers.length > 0"><dt>Pages</dt><dd x-text="selectedCitation.pageNumbers.join(', ')"></dd></div>
-          <div><dt>Section</dt><dd x-text="selectedCitation.sectionPath.length === 0 ? 'Not specified' : selectedCitation.sectionPath.join(' / ')"></dd></div>
-        </dl>
-
-        <div class="evidence-window-source-actions">
-          <a
-            :href="citationFileUrl(selectedCitation)"
-            target="_blank"
-            rel="noopener"
-            x-text="citationFileLabel(selectedCitation)"
-          ></a>
-        </div>
-      </div>
-    </template>
-  </aside>
+  <citeloom-evidence-window></citeloom-evidence-window>
 
   <div
     class="dialog-backdrop chat-modal-backdrop"

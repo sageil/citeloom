@@ -29,8 +29,9 @@ describe("ask answer presentation", () => {
   });
 
   it("uses the research notebook workspace for Ask", async () => {
-    const [fragment, stylesheet, shellScript] = await Promise.all([
+    const [fragment, index, stylesheet, shellScript] = await Promise.all([
       readFile(new URL("../web/fragments/ask.html", import.meta.url), "utf8"),
+      readFile(new URL("../web/index.html", import.meta.url), "utf8"),
       readFile(
         new URL("../web/assets/styles/citeloom-ask.css", import.meta.url),
         "utf8",
@@ -44,11 +45,15 @@ describe("ask answer presentation", () => {
     expect(fragment).toContain("class=\"ask-composer-scope-chip\"");
     expect(fragment).toContain("class=\"answer-question-title\"");
     expect(fragment).toContain("class=\"source-navigator\"");
-    expect(fragment).toContain("class=\"evidence-window ask-inline-evidence\"");
-    expect(fragment).toContain('x-ref="askEvidencePanel"');
-    expect(fragment).toContain('x-text="citationWindow.pinned ? \'Unpin\' : \'Pin evidence\'"');
-    expect(fragment).toContain(":style=\"askEvidencePanelStyle()\"");
-    expect(fragment).toContain("beginAskEvidencePanelDrag($event)");
+    expect(fragment).toContain(
+      "<citeloom-evidence-window></citeloom-evidence-window>",
+    );
+    expect(index).toContain('x-ref="evidencePanel"');
+    expect(index).toContain('x-text="citationWindow.pinned ? \'Unpin\' : \'Pin evidence\'"');
+    expect(index).toContain(":style=\"evidencePanelStyle()\"");
+    expect(index).toContain("beginEvidencePanelDrag($event)");
+    expect(index).toContain("HHEM");
+    expect(fragment).not.toContain('class="evidence-window"');
     expect(fragment).toContain(':data-evidence-citation-id="citation.id"');
     expect(fragment).toContain('@click="inspectCitationFromNavigator(source)"');
     expect(fragment).toContain("class=\"research-thread-actions\"");

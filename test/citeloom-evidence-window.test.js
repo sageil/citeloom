@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createEvidenceWindowControls,
   createEvidenceWindowState,
   findEvidenceCitationTrigger,
   positionEvidenceWindow,
@@ -33,6 +34,61 @@ afterEach(() => {
 });
 
 describe("shared evidence window", () => {
+  it("builds the HHEM scale from the selected claim for either route", () => {
+    const controls = createEvidenceWindowControls({
+      close() {},
+      readCitation(page) {
+        return page.selectedCitation;
+      },
+      readClaims(page) {
+        return page.claims;
+      },
+      readError() {
+        return "";
+      },
+      readFileLabel() {
+        return "Open source";
+      },
+      readFileUrl() {
+        return "/source";
+      },
+      readImageUrl() {
+        return "";
+      },
+      readLoading() {
+        return false;
+      },
+      readSelectedCitation(page) {
+        return page.selectedCitation;
+      },
+      readSummary() {
+        return "Source";
+      },
+      readText() {
+        return "Evidence";
+      },
+    });
+    const page = {
+      ...controls,
+      claimVerifierSupportThreshold: 0.7,
+      claims: [{
+        claimIndex: 3,
+        evidenceUnits: [{
+          citationNumber: 2,
+          supportProbability: 0.9,
+        }],
+      }],
+      selectedCitation: { citationNumber: 2 },
+    };
+    page.selectedEvidenceClaimIndex = 3;
+
+    expect(page.selectedEvidenceScoreScale()).toMatchObject({
+      ariaLabel: "HHEM claim score 0.900. Global support threshold 0.700.",
+      markers: [{ label: "0.900", status: "supported" }],
+      thresholdLabel: "0.700",
+    });
+  });
+
   it("selects a rendered citation trigger instead of a hidden match", () => {
     vi.stubGlobal("HTMLElement", FakeHtmlElement);
     const hidden = new FakeHtmlElement({
