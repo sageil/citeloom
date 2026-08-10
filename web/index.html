@@ -533,5 +533,210 @@
         </section>
       </div>
     </main>
+
+    <template id="citeloom-evidence-window-template">
+      <aside
+        aria-labelledby="evidence-window-title"
+        aria-modal="false"
+        class="evidence-window"
+        id="evidence-window"
+        role="dialog"
+        tabindex="-1"
+        x-cloak
+        x-ref="evidencePanel"
+        x-show="evidenceWindowVisible()"
+        :class="{ pinned: citationWindow.pinned }"
+        :style="evidencePanelStyle()"
+        @keydown.escape="closeEvidenceWindow()"
+        @resize.window="repositionEvidencePanel()"
+        @scroll.window="repositionEvidencePanel()"
+      >
+        <header
+          title="Drag to move evidence"
+          @lostpointercapture="finishEvidencePanelDrag($event)"
+          @pointercancel="finishEvidencePanelDrag($event)"
+          @pointerdown="beginEvidencePanelDrag($event)"
+          @pointermove="continueEvidencePanelDrag($event)"
+          @pointerup="finishEvidencePanelDrag($event)"
+        >
+          <div class="evidence-window-heading">
+            <div class="evidence-window-title-row">
+              <h3 class="section-kicker" id="evidence-window-title">Exact evidence</h3>
+              <template x-if="selectedEvidenceScoreScale() !== null">
+                <span
+                  class="evidence-score-scale"
+                  role="img"
+                  :aria-label="selectedEvidenceScoreScale().ariaLabel"
+                >
+                  <span class="evidence-score-scale-label">HHEM</span>
+                  <span class="evidence-score-scale-track" aria-hidden="true">
+                    <span class="evidence-score-scale-line"></span>
+                    <span
+                      class="evidence-score-scale-threshold"
+                      :style="{ '--evidence-score-position': selectedEvidenceScoreScale().thresholdPosition }"
+                    >
+                      <span class="evidence-score-scale-threshold-label" x-text="`GLOBAL ${selectedEvidenceScoreScale().thresholdLabel}`"></span>
+                    </span>
+                    <template x-for="marker in selectedEvidenceScoreScale().markers" :key="marker.position">
+                      <span
+                        class="evidence-score-scale-marker"
+                        :class="`evidence-score-${marker.status}`"
+                        :style="{ '--evidence-score-position': marker.position }"
+                        :title="`HHEM ${marker.label}`"
+                      >
+                        <span class="evidence-score-scale-marker-label" x-text="marker.label"></span>
+                      </span>
+                    </template>
+                  </span>
+                </span>
+              </template>
+            </div>
+            <span x-text="evidenceWindowSummary()"></span>
+          </div>
+          <div class="evidence-window-actions">
+            <button
+              class="button"
+              type="button"
+              x-cloak
+              x-show="textToSpeechEnabled &amp;&amp; evidenceCanSpeak()"
+              :aria-label="evidenceSpeechActionLabel()"
+              :title="evidenceSpeechActionLabel()"
+              :disabled="evidenceSpeechLoading"
+              @click="toggleEvidenceSpeech()"
+            >
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon" :class="{ spin: evidenceSpeechLoading }">
+                <use :href="evidenceSpeechIcon()"></use>
+              </svg>
+              <span x-text="evidenceSpeechButtonLabel()"></span>
+            </button>
+            <button
+              class="button evidence-window-pin"
+              type="button"
+              :aria-pressed="citationWindow.pinned.toString()"
+              :title="citationWindow.pinned ? 'Return evidence above its citation' : 'Keep evidence at this viewport position while scrolling'"
+              @click="togglePinnedEvidence()"
+              x-text="citationWindow.pinned ? 'Unpin' : 'Pin evidence'"
+            ></button>
+            <button class="icon-button" type="button" aria-label="Close evidence" @click="closeEvidenceWindow()">
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-close"></use>
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <audio
+          aria-hidden="true"
+          class="visually-hidden"
+          preload="none"
+          x-ref="evidenceSpeechAudio"
+          @ended="evidenceSpeechPlaying = false"
+          @error="handleEvidenceSpeechPlaybackError()"
+          @pause="evidenceSpeechPlaying = false"
+          @playing="evidenceSpeechPlaying = true"
+        ></audio>
+
+        <div class="evidence-window-body evidence-window-content-stack">
+          <p class="field-error" role="alert" x-cloak x-show="evidenceWindowError() !== ''" x-text="evidenceWindowError()"></p>
+          <p class="evidence-window-loading" x-cloak x-show="evidenceWindowLoading()">Refreshing evidence...</p>
+          <template x-if="evidenceWindowCitation() !== null">
+            <div class="evidence-window-content-stack">
+              <div class="evidence-window-evidence-body">
+                <template x-if="evidenceWindowCitation().evidence.kind === 'image'">
+                  <img
+                    :src="evidenceWindowImageUrl()"
+                    alt="Retained citation evidence"
+                    @load="positionEvidencePanel()"
+                  />
+                </template>
+                <template x-if="evidenceWindowCitation().evidence.kind === 'text' &amp;&amp; hasFencedCodeBlock(evidenceWindowText())">
+                  <div class="exact-evidence-text">
+                    <div class="answer-markdown" x-html="renderMarkdown(evidenceWindowText())"></div>
+                  </div>
+                </template>
+                <template x-if="evidenceWindowCitation().evidence.kind === 'text' &amp;&amp; !hasFencedCodeBlock(evidenceWindowText())">
+                  <pre class="exact-evidence-text" x-text="evidenceWindowText()"></pre>
+                </template>
+                <template x-if="evidenceWindowCitation().evidence.kind === 'table'">
+                  <div>
+                    <template x-if="evidenceWindowCitation().evidence.table.renderMode === 'text' &amp;&amp; hasFencedCodeBlock(evidenceWindowText())">
+                      <div class="exact-evidence-text">
+                        <div class="answer-markdown" x-html="renderMarkdown(evidenceWindowText())"></div>
+                      </div>
+                    </template>
+                    <template x-if="evidenceWindowCitation().evidence.table.renderMode === 'text' &amp;&amp; !hasFencedCodeBlock(evidenceWindowText())">
+                      <pre
+                        :aria-label="`${evidenceWindowCitationLabel()} extracted table text`"
+                        class="exact-evidence-text"
+                        x-text="evidenceWindowText()"
+                      ></pre>
+                    </template>
+                    <template x-if="evidenceWindowCitation().evidence.table.renderMode === 'grid'">
+                      <div
+                        :aria-label="`${evidenceWindowCitationLabel()} evidence table`"
+                        class="exact-evidence-table-frame"
+                        role="region"
+                        tabindex="0"
+                      >
+                        <table class="exact-evidence-table">
+                          <caption
+                            class="visually-hidden"
+                            x-text="`${evidenceWindowCitationLabel()} evidence table`"
+                          ></caption>
+                          <template x-if="evidenceWindowCitation().evidence.table.headerRows.length > 0">
+                            <thead>
+                              <template x-for="row in evidenceWindowCitation().evidence.table.headerRows" :key="row.key">
+                                <tr>
+                                  <template x-for="cell in row.cells" :key="cell.key">
+                                    <th
+                                      :colspan="cell.columnSpan"
+                                      :rowspan="cell.rowSpan"
+                                      scope="col"
+                                      x-text="cell.text"
+                                    ></th>
+                                  </template>
+                                </tr>
+                              </template>
+                            </thead>
+                          </template>
+                          <tbody>
+                            <template x-for="row in evidenceWindowCitation().evidence.table.bodyRows" :key="row.key">
+                              <tr>
+                                <template x-for="cell in row.cells" :key="cell.key">
+                                  <td
+                                    :colspan="cell.columnSpan"
+                                    :role="cell.rowHeader ? 'rowheader' : null"
+                                    :rowspan="cell.rowSpan"
+                                    x-text="cell.text"
+                                  ></td>
+                                </template>
+                              </tr>
+                            </template>
+                          </tbody>
+                        </table>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+
+              <dl>
+                <div x-show="evidenceWindowCitation().pageNumbers.length > 0"><dt>Pages</dt><dd x-text="evidenceWindowCitation().pageNumbers.join(', ')"></dd></div>
+                <div><dt>Section</dt><dd x-text="evidenceWindowCitation().sectionPath.length === 0 ? 'Not specified' : evidenceWindowCitation().sectionPath.join(' / ')"></dd></div>
+              </dl>
+
+              <div class="evidence-window-source-actions">
+                <a
+                  :href="evidenceWindowFileUrl()"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  x-text="evidenceWindowFileLabel()"
+                ></a>
+              </div>
+            </div>
+          </template>
+        </div>
+      </aside>
+    </template>
   </body>
 </html>

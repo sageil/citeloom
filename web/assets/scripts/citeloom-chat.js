@@ -8,8 +8,7 @@ import {
   hasFencedCodeBlock,
   renderAnswerMarkdown,
 } from "./citeloom-answer-content.js";
-import { requestAnswerSpeech } from "./citeloom-answer-speech.js";
-import { buildEvidenceScoreScale } from "./citeloom-evidence-score.js";
+import { createAnswerSpeechControls } from "./citeloom-answer-speech.js";
 import { createEvidenceSpeechControls } from "./citeloom-evidence-speech.js";
 import {
   readChatConversation,
@@ -24,19 +23,10 @@ import {
   isTextSourceFile,
 } from "./citeloom-file-links.js";
 import {
-  beginEvidenceWindowDrag,
-  continueEvidenceWindowDrag,
-  createEvidenceWindowState,
-  evidenceWindowStyle,
+  createEvidenceWindowControls,
   findEvidenceCitationTrigger,
-  finishEvidenceWindowDrag,
-  positionEvidenceWindow,
-  prepareEvidenceWindow,
   readEvidenceClaimIndex,
-  resetEvidenceWindow,
   revealEvidenceCitationTrigger,
-  toggleEvidenceWindowPin,
-  waitForEvidenceWindowLayout,
 } from "./citeloom-evidence-window.js";
 import { focusTextArea } from "./citeloom-focus.js";
 import {
@@ -56,9 +46,9 @@ import {
 } from "./citeloom-verification.js";
 const chatSwitcherRequestEvent = "citeloom:chat-switcher-request";
 const chatEvidenceSpeechOptions = {
-  audioRefName: "chatEvidenceSpeechAudio",
+  audioRefName: "evidenceSpeechAudio",
   beforePlay(page) {
-    page.resetChatSpeechAudio();
+    page.resetAnswerSpeechAudio();
   },
   readCitation(page) {
     return page.selectedCitation;
@@ -68,6 +58,41 @@ const chatEvidenceSpeechOptions = {
   },
   reportError(message) {
     dispatchNotice("error", message);
+  },
+};
+const chatEvidenceWindowOptions = {
+  close(page) {
+    page.closeCitation();
+  },
+  readCitation(page) {
+    return page.selectedCitation;
+  },
+  readClaims(page) {
+    return page.sourceSidebarMessage()?.claims ?? [];
+  },
+  readError() {
+    return "";
+  },
+  readFileLabel(page, citation) {
+    return page.citationFileLabel(citation);
+  },
+  readFileUrl(page, citation) {
+    return page.citationFileUrl(citation);
+  },
+  readImageUrl(page, citation) {
+    return page.imageUrl(citation);
+  },
+  readLoading() {
+    return false;
+  },
+  readSelectedCitation(page) {
+    return page.selectedCitation;
+  },
+  readSummary(page) {
+    return page.selectedCitationSummary();
+  },
+  readText(page, citation) {
+    return page.evidenceText(citation);
   },
 };
 
@@ -300,6 +325,26 @@ function findChatSpeechTarget(conversation, messageId) {
   return null;
 }
 
+const chatAnswerSpeechOptions = {
+  audioRefName: "chatSpeechAudio",
+  beforePlay(page) {
+    page.resetEvidenceSpeechPlayback();
+  },
+  findPreloadTarget(page) {
+    return findLatestChatSpeechTarget(page.conversation);
+  },
+  findTarget(page, messageId) {
+    return findChatSpeechTarget(page.conversation, messageId);
+  },
+  readTargetId(target) {
+    return target.messageId;
+  },
+  reportError(message) {
+    dispatchNotice("error", message);
+  },
+  targetIdProperty: "speechAnswerMessageId",
+};
+
 function findLatestChatVerificationState(conversation) {
   if (conversation === null) {
     return "not-applicable";
@@ -335,6 +380,7 @@ export function registerPage(alpine) {
     dictationStatus: "",
     draft: "",
     errorMessage: "",
+    ...createAnswerSpeechControls(chatAnswerSpeechOptions),
     ...createEvidenceSpeechControls(chatEvidenceSpeechOptions),
     followLatest: true,
     loading: true,
@@ -363,15 +409,8 @@ export function registerPage(alpine) {
     hasFencedCodeBlock,
     renderMarkdown: renderAnswerMarkdown,
     activeEvidenceMessageId: null,
-    citationWindow: createEvidenceWindowState(),
+    ...createEvidenceWindowControls(chatEvidenceWindowOptions),
     selectedCitation: null,
-    selectedEvidenceClaimIndex: null,
-    speechAbortController: null,
-    speechAnswerMessageId: null,
-    speechAudioError: "",
-    speechAudioLoading: false,
-    speechAudioPlaying: false,
-    speechAudioUrl: "",
     dashboardSettingsRefreshListener: null,
     speechToTextEnabled: false,
     textToSpeechEnabled: false,
@@ -537,7 +576,7 @@ export function registerPage(alpine) {
       this.clearVerificationRefresh();
       this.dictationController?.destroy();
       this.dictationController = null;
-      this.resetChatSpeechAudio();
+      this.resetAnswerSpeechAudio();
       this.resetCitationPanel();
     },
 
@@ -558,7 +597,7 @@ export function registerPage(alpine) {
         this.textToSpeechPreloadEnabled =
           snapshot.textToSpeechPreloadEnabled;
         if (!this.textToSpeechEnabled) {
-          this.resetChatSpeechAudio();
+          this.resetAnswerSpeechAudio();
           this.resetEvidenceSpeechPlayback();
         }
         if (!this.speechToTextEnabled) {
@@ -567,8 +606,8 @@ export function registerPage(alpine) {
         if (!this.textToSpeechEnabled) {
           return;
         }
-        this.prepareSpeechForConversation();
-        this.maybePreloadChatSpeech();
+        this.prepareAnswerSpeech();
+        this.maybePreloadAnswerSpeech();
       } catch (error) {
         const message = error instanceof Error
           ? error.message
@@ -645,7 +684,7 @@ export function registerPage(alpine) {
     async selectConversation(id) {
       this.clearVerificationRefresh();
       this.cancelChatDictation();
-      this.resetChatSpeechAudio();
+      this.resetAnswerSpeechAudio();
       this.errorMessage = "";
       this.activeEvidenceMessageId = null;
       this.resetCitationPanel();
@@ -661,8 +700,8 @@ export function registerPage(alpine) {
         this.followLatest = true;
         this.$nextTick(() => this.scrollToLatest(true));
         this.scheduleVerificationRefresh();
-        this.prepareSpeechForConversation();
-        this.maybePreloadChatSpeech();
+        this.prepareAnswerSpeech();
+        this.maybePreloadAnswerSpeech();
         this.focusMessageComposer();
       } catch (error) {
         this.reportError(error, "The chat could not be loaded.");
@@ -677,41 +716,23 @@ export function registerPage(alpine) {
     },
 
     messageSpeechActionLabel(message) {
-      const active = this.speechAnswerMessageId === message.id;
-      if (active && this.speechAudioLoading) {
-        return "Preparing this answer audio";
-      }
-      if (active && this.speechAudioPlaying) {
-        return "Pause this answer";
-      }
-      return "Listen to this answer";
+      return this.answerSpeechActionLabel(message.id);
     },
 
     messageSpeechButtonLabel(message) {
-      const active = this.speechAnswerMessageId === message.id;
-      if (active && this.speechAudioLoading) {
-        return "Preparing";
-      }
-      if (active && this.speechAudioPlaying) {
-        return "Pause";
-      }
-      return "Listen";
+      return this.answerSpeechButtonLabel(message.id);
     },
 
     messageSpeechIcon(message) {
-      const active = this.speechAnswerMessageId === message.id;
-      if (active && this.speechAudioLoading) {
-        return "./assets/images/citeloom-icons.svg#citeloom-refresh";
-      }
-      if (active && this.speechAudioPlaying) {
-        return "./assets/images/citeloom-icons.svg#citeloom-pause";
-      }
-      return "./assets/images/citeloom-icons.svg#citeloom-speaker";
+      return this.answerSpeechIcon(message.id);
     },
 
     messageSpeechLoading(message) {
-      return this.speechAnswerMessageId === message.id
-        && this.speechAudioLoading;
+      return this.answerSpeechLoading(message.id);
+    },
+
+    async toggleMessageSpeech(message) {
+      await this.toggleAnswerSpeech(message.id);
     },
 
     verificationLabel(state) {
@@ -742,154 +763,6 @@ export function registerPage(alpine) {
 
     conversationVerificationProgressValue() {
       return verificationProgressValue(this.conversationVerificationState());
-    },
-
-    prepareSpeechForConversation() {
-      if (this.speechAnswerMessageId === null) {
-        return;
-      }
-      const target = findChatSpeechTarget(
-        this.conversation,
-        this.speechAnswerMessageId,
-      );
-      if (target === null) {
-        this.resetChatSpeechAudio();
-      }
-    },
-
-    maybePreloadChatSpeech() {
-      if (
-        !this.textToSpeechEnabled
-        || !this.textToSpeechPreloadEnabled
-        || this.speechAudioLoading
-        || this.speechAudioUrl !== ""
-      ) {
-        return;
-      }
-      const target = findLatestChatSpeechTarget(this.conversation);
-      if (target !== null) {
-        void this.loadChatSpeech(target.messageId, false);
-      }
-    },
-
-    async loadChatSpeech(messageId, surfaceError = true) {
-      const target = findChatSpeechTarget(this.conversation, messageId);
-      if (target === null) {
-        return false;
-      }
-      if (
-        this.speechAnswerMessageId === target.messageId
-        && this.speechAudioUrl !== ""
-      ) {
-        return true;
-      }
-      this.resetChatSpeechAudio();
-      const controller = new AbortController();
-      this.speechAbortController = controller;
-      this.speechAnswerMessageId = target.messageId;
-      this.speechAudioLoading = true;
-      this.speechAudioError = "";
-      try {
-        const audioBlob = await requestAnswerSpeech(
-          target.answerDocument,
-          controller.signal,
-        );
-        const currentTarget = findChatSpeechTarget(
-          this.conversation,
-          target.messageId,
-        );
-        if (
-          controller.signal.aborted
-          || currentTarget?.messageId !== target.messageId
-        ) {
-          return false;
-        }
-        const audio = this.$refs.chatSpeechAudio;
-        if (!(audio instanceof HTMLAudioElement)) {
-          throw new Error("The chat audio player is unavailable.");
-        }
-        const audioUrl = URL.createObjectURL(audioBlob);
-        this.speechAudioUrl = audioUrl;
-        audio.src = audioUrl;
-        audio.load();
-        return true;
-      } catch (error) {
-        if (!controller.signal.aborted && surfaceError) {
-          const message = error instanceof Error
-            ? error.message
-            : "This answer audio could not be generated.";
-          this.speechAudioError = message;
-          dispatchNotice("error", message);
-        }
-        return false;
-      } finally {
-        if (this.speechAbortController === controller) {
-          this.speechAbortController = null;
-          this.speechAudioLoading = false;
-        }
-      }
-    },
-
-    async toggleMessageSpeech(message) {
-      const audio = this.$refs.chatSpeechAudio;
-      if (!(audio instanceof HTMLAudioElement)) {
-        return;
-      }
-      this.resetEvidenceSpeechPlayback();
-      const active = this.speechAnswerMessageId === message.id;
-      if (active && !audio.paused && !audio.ended) {
-        audio.pause();
-        return;
-      }
-      if (!active || this.speechAudioUrl === "") {
-        const loaded = await this.loadChatSpeech(message.id, true);
-        if (!loaded) {
-          return;
-        }
-      }
-      if (audio.ended) {
-        audio.currentTime = 0;
-      }
-      try {
-        await audio.play();
-      } catch (error) {
-        const errorMessage = error instanceof Error
-          ? error.message
-          : "This answer audio could not be played.";
-        this.speechAudioError = errorMessage;
-        this.speechAudioPlaying = false;
-        dispatchNotice("error", errorMessage);
-      }
-    },
-
-    resetChatSpeechAudio() {
-      this.speechAbortController?.abort();
-      this.speechAbortController = null;
-      this.speechAnswerMessageId = null;
-      this.speechAudioError = "";
-      this.speechAudioLoading = false;
-      this.speechAudioPlaying = false;
-      const audioUrl = this.speechAudioUrl;
-      this.speechAudioUrl = "";
-      const audio = this.$refs.chatSpeechAudio;
-      if (audio instanceof HTMLAudioElement) {
-        audio.pause();
-        audio.removeAttribute("src");
-        audio.load();
-      }
-      if (audioUrl !== "") {
-        URL.revokeObjectURL(audioUrl);
-      }
-    },
-
-    handleChatSpeechError() {
-      if (this.speechAudioUrl === "") {
-        return;
-      }
-      this.speechAudioPlaying = false;
-      const errorMessage = "This answer audio could not be played.";
-      this.speechAudioError = errorMessage;
-      dispatchNotice("error", errorMessage);
     },
 
     openNewChat() {
@@ -1327,7 +1200,7 @@ export function registerPage(alpine) {
           await readJsonResponse(response, "Delete chat");
         }
         this.conversation = null;
-        this.resetChatSpeechAudio();
+        this.resetAnswerSpeechAudio();
         this.resetCitationPanel();
         this.clearVerificationRefresh();
         await this.refreshConversations();
@@ -1399,8 +1272,8 @@ export function registerPage(alpine) {
             completed = true;
             this.$nextTick(() => this.scrollToLatest());
             this.scheduleVerificationRefresh();
-            this.prepareSpeechForConversation();
-            this.maybePreloadChatSpeech();
+            this.prepareAnswerSpeech();
+            this.maybePreloadAnswerSpeech();
           },
           (answerContentUpdate) => {
             if (this.conversation?.id !== conversationId) {
@@ -1718,17 +1591,6 @@ export function registerPage(alpine) {
       return location === "" ? title : `${title} · ${location}`;
     },
 
-    selectedEvidenceScoreScale() {
-      const citationNumber = this.selectedCitation?.citationNumber ?? null;
-      const claims = this.sourceSidebarMessage()?.claims ?? [];
-      return buildEvidenceScoreScale(
-        claims,
-        this.selectedEvidenceClaimIndex,
-        citationNumber,
-        this.claimVerifierSupportThreshold,
-      );
-    },
-
     openCitation(citation, trigger, message = null, claimIndex = null) {
       if (citation === null || citation.preview === true) {
         return;
@@ -1739,22 +1601,9 @@ export function registerPage(alpine) {
       if (message !== null) {
         this.activeEvidenceMessageId = message.id;
       }
-      prepareEvidenceWindow(this.citationWindow, trigger);
+      this.prepareEvidencePanel(trigger, claimIndex);
       this.selectedCitation = citation;
-      this.selectedEvidenceClaimIndex = claimIndex;
-      void this.completeCitationOpen(citation.id);
-    },
-
-    async completeCitationOpen(citationId) {
-      await this.$nextTick();
-      const panelReady = await waitForEvidenceWindowLayout(
-        this.$refs.citationPanel,
-      );
-      if (this.selectedCitation?.id !== citationId || !panelReady) {
-        return;
-      }
-      this.positionCitationPanel();
-      this.$refs.citationPanel?.focus();
+      void this.completeEvidencePanelOpen(citation.id);
     },
 
     async openCitationFromNavigator(citation) {
@@ -1789,68 +1638,8 @@ export function registerPage(alpine) {
 
     resetCitationPanel() {
       this.resetEvidenceSpeechPlayback();
-      resetEvidenceWindow(this.citationWindow);
+      this.resetEvidencePanelState();
       this.selectedCitation = null;
-      this.selectedEvidenceClaimIndex = null;
-    },
-
-    citationPanelStyle() {
-      return evidenceWindowStyle(
-        this.citationWindow,
-        this.selectedCitation !== null,
-      );
-    },
-
-    positionCitationPanel() {
-      if (this.selectedCitation === null) {
-        return;
-      }
-      positionEvidenceWindow(
-        this.citationWindow,
-        this.$refs.citationPanel,
-      );
-    },
-
-    togglePinnedCitation() {
-      toggleEvidenceWindowPin(this.citationWindow);
-      if (!this.citationWindow.pinned) {
-        this.$nextTick(() => this.positionCitationPanel());
-      }
-      this.$refs.citationPanel?.focus();
-    },
-
-    beginCitationPanelDrag(event) {
-      const started = beginEvidenceWindowDrag(
-        this.citationWindow,
-        event,
-        this.$refs.citationPanel,
-      );
-      if (!started) {
-        return;
-      }
-      event.currentTarget.setPointerCapture(event.pointerId);
-      event.preventDefault();
-    },
-
-    continueCitationPanelDrag(event) {
-      continueEvidenceWindowDrag(
-        this.citationWindow,
-        event,
-        this.$refs.citationPanel,
-      );
-    },
-
-    finishCitationPanelDrag(event) {
-      const finished = finishEvidenceWindowDrag(
-        this.citationWindow,
-        event.pointerId,
-      );
-      if (!finished) {
-        return;
-      }
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
     },
 
     statementSectionHeading(section) {
@@ -2057,7 +1846,7 @@ export function registerPage(alpine) {
         - thread.scrollTop
         - thread.clientHeight;
       this.followLatest = distanceFromBottom <= 72;
-      this.positionCitationPanel();
+      this.positionEvidencePanel();
     },
 
     scrollToLatest(force = false) {

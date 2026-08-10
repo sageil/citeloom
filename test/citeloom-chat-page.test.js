@@ -69,29 +69,34 @@ describe("CiteLoom chat page", () => {
   });
 
   it("uses the shared source navigator and movable evidence window", async () => {
-    const fragment = await readFile(
-      new URL("../web/fragments/chat.html", import.meta.url),
-      "utf8",
-    );
+    const [fragment, index] = await Promise.all([
+      readFile(
+        new URL("../web/fragments/chat.html", import.meta.url),
+        "utf8",
+      ),
+      readFile(new URL("../web/index.html", import.meta.url), "utf8"),
+    ]);
 
     expect(fragment).toContain(
       'class="source-navigator chat-source-navigator"',
     );
     expect(fragment).toContain(
-      'class="evidence-window chat-evidence-panel"',
+      "<citeloom-evidence-window></citeloom-evidence-window>",
     );
     expect(fragment).toContain(
       ':data-evidence-citation-id="citationForKey(message, citationKey)?.id"',
     );
     expect(fragment).toContain("openCitationFromNavigator(citation)");
-    expect(fragment).toContain("beginCitationPanelDrag($event)");
-    expect(fragment).toContain(
+    expect(index).toContain("beginEvidencePanelDrag($event)");
+    expect(index).toContain(
       'x-text="citationWindow.pinned ? \'Unpin\' : \'Pin evidence\'"',
     );
-    expect(fragment).toContain(
-      '<h3 class="section-kicker" id="chat-evidence-title">Exact evidence</h3>',
+    expect(index).toContain(
+      '<template id="citeloom-evidence-window-template">',
     );
-    expect(fragment).toContain('class="exact-evidence-text"');
+    expect(index).toContain("HHEM");
+    expect(index).toContain('class="exact-evidence-text"');
+    expect(fragment).not.toContain('class="evidence-window"');
     expect(fragment).not.toContain('class="chat-evidence-source"');
     expect(fragment).not.toContain("Exact retained evidence");
     expect(fragment).not.toContain("Current in library");

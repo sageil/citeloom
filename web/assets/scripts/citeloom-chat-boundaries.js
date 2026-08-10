@@ -22,7 +22,7 @@ import {
   readChatAnswerDocument,
   readPublishedAnswerEvidence,
 } from "./citeloom-published-answer.js";
-import { readVerificationEvidenceUnits } from "./citeloom-verification.js";
+import { readAnswerVerificationClaims } from "./citeloom-verification.js";
 
 const chatRunStates = Object.freeze([
   "accepted",
@@ -36,12 +36,6 @@ const chatRunStates = Object.freeze([
   "canceled",
 ]);
 const chatMessageRoles = Object.freeze(["assistant", "user"]);
-const findingSupportStatuses = Object.freeze([
-  "partially-supported",
-  "supported",
-  "unsupported",
-  "unverified",
-]);
 const chatVerificationStates = Object.freeze([
   "not-applicable",
   "pending",
@@ -217,54 +211,17 @@ function readChatMessage(value) {
     answerDocument,
     citations: readArray(message.citations, "chat citations")
       .map(readChatCitation),
-    claims: readChatFindingChecks(message.claims, answerDocument),
+    claims: readAnswerVerificationClaims(
+      message.claims,
+      answerDocument,
+      "chat finding check",
+    ),
     verificationState: readEnum(
       message.verificationState,
       chatVerificationStates,
       "chat verification state",
     ),
   };
-}
-
-function readChatFindingChecks(value, answerDocument) {
-  const values = readArray(value, "chat finding checks");
-  const checks = [];
-  const checkedStatementIndexes = new Set();
-  for (let index = 0; index < values.length; index += 1) {
-    const label = `chat finding check ${index + 1}`;
-    const candidate = readPlainObject(values[index], label);
-    const claimIndex = readNonNegativeInteger(
-      candidate.claimIndex,
-      `${label} statement index`,
-    );
-    if (checkedStatementIndexes.has(claimIndex)) {
-      throw new Error(`${label} duplicates statement index ${claimIndex}.`);
-    }
-    const statement = answerDocument.statements[claimIndex];
-    if (statement === undefined) {
-      throw new Error(`${label} refers to an unavailable statement.`);
-    }
-    const claim = readNonEmptyString(candidate.claim, `${label} text`);
-    if (claim !== statement.content) {
-      throw new Error(`${label} does not match its answer statement.`);
-    }
-    checkedStatementIndexes.add(claimIndex);
-    const evidence = readVerificationEvidenceUnits(
-      candidate.evidenceUnits,
-      candidate.citationNumbers,
-      label,
-    );
-    checks.push({
-      evidenceUnits: evidence.evidenceUnits,
-      claimIndex,
-      status: readEnum(
-        candidate.status,
-        findingSupportStatuses,
-        `${label} status`,
-      ),
-    });
-  }
-  return checks;
 }
 
 function readChatCitation(value) {
