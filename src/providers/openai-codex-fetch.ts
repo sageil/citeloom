@@ -175,5 +175,5 @@ function buildCredentialStoreOptions(
 
 function normalizeRelease(value: string | undefined): string {
   const normalized = value?.trim();
-  return normalized === undefined || normalized === "" ? "0.2.4" : normalized;
+  return normalized === undefined || normalized === "" ? "0.2.5" : normalized;
 }
