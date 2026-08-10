@@ -1,21 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
-import {
-  constants,
-  createReadStream,
-  createWriteStream,
-  type Stats,
-} from "node:fs";
-import {
-  link,
-  mkdir,
-  open,
-  readFile,
-  readdir,
-  stat,
-  unlink,
-} from "node:fs/promises";
-import { join } from "node:path";
-import { pipeline } from "node:stream/promises";
+import { createHash } from "node:crypto";
+import type { Readable } from "node:stream";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   and,
@@ -23,7 +8,6 @@ import {
   eq,
   gt,
   inArray,
-  like,
   lte,
   notExists,
   sql,
@@ -33,6 +17,7 @@ import { z } from "zod";
 import type { SourceContentConfig } from "../../config/index.js";
 import type { CiteLoomDatabase } from "../../database/client.js";
 import {
+  applicationSettings,
   chatCitationRecords,
   chatEvidenceDocuments,
   documentVersions,
@@ -43,6 +28,14 @@ import {
 } from "../../database/schema.js";
 import { contentIdSchema } from "../../domain/validation.js";
 import { sanitizeDiagnosticMessage } from "../../observability/application-errors.js";
+import { parseStoredApplicationSettings } from "../../providers/settings-persistence.js";
+import {
+  createSourceContentBackend,
+} from "./source-content-backend.js";
+import {
+  type SourceContentBackend,
+  SourceContentMissingError,
+} from "./source-content-backend-contract.js";
 
 const sourceDocumentMetadataSchema = z.object({
   byteLength: z.number().int().positive(),
@@ -53,14 +46,14 @@ const sourceDocumentMetadataSchema = z.object({
 const sourceContentDeletionSchema = z.object({
   documentId: contentIdSchema,
 });
+const applicationSettingsSourceContentRowSchema = z.object({
+  settings: z.unknown(),
+});
 
 const SOURCE_CONTENT_ALGORITHM = "sha256";
 const RECONCILIATION_BATCH_SIZE = 100;
 const UNREFERENCED_CONTENT_GRACE_MS = 60 * 60 * 1_000;
-const contentDirectoryPattern = /^[0-9a-f]{2}$/u;
-const temporaryContentPattern =
-  /^(?:\.write-probe-[0-9a-f-]+|(?:[0-9a-f]{64}\.)?[0-9a-f-]+\.(?:staged|tmp))$/u;
-const orphanScanAtByDirectory = new Map<string, number>();
+const orphanScanAtByBackend = new Map<string, number>();
 
 export interface StoredSourceDocument {
   content: Buffer;
@@ -69,8 +62,8 @@ export interface StoredSourceDocument {
 
 export interface StoredSourceDocumentReference {
   byteLength: number;
-  contentPath: string;
   documentId: string;
+  openContent: (abortSignal?: AbortSignal) => Promise<Readable>;
 }
 
 export interface StagedSourceContent {
@@ -96,112 +89,53 @@ type SourceContentTransaction = Parameters<
 
 export class SourceContentStore {
   private initialized = false;
+  private readonly backend: SourceContentBackend;
 
   public constructor(
     private readonly database: CiteLoomDatabase,
     private readonly config: SourceContentConfig,
     private readonly reportDeletionError: SourceContentDeletionErrorReporter
       | null = null,
-  ) {}
+    backend?: SourceContentBackend,
+  ) {
+    this.backend = backend ?? createSourceContentBackend(config);
+  }
 
   public async initialize(): Promise<void> {
     if (this.initialized) {
       return;
     }
-    await mkdir(this.algorithmDirectory(), { recursive: true });
-    const probePath = join(
-      this.algorithmDirectory(),
-      `.write-probe-${randomUUID()}`,
-    );
-    const handle = await open(
-      probePath,
-      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
-      0o600,
-    );
-    try {
-      await handle.writeFile("ready");
-      await handle.sync();
-    } finally {
-      try {
-        await handle.close();
-      } finally {
-        await removeFileIfPresent(probePath);
-      }
-    }
+    await this.backend.initialize();
     this.initialized = true;
   }
 
   public async writeDocument(document: StoredSourceDocument): Promise<void> {
     const normalized = readStoredSourceDocument(document);
-    const temporaryPath = await this.writeTemporaryContent(normalized.content);
-    try {
-      await this.publishSourceContent({
-        byteLength: normalized.content.byteLength,
-        documentId: normalized.documentId,
-        sourceFile: temporaryPath,
-      });
-    } finally {
-      await removeFileIfPresent(temporaryPath);
-    }
-  }
-
-  public async verifyStoredDocuments(): Promise<number> {
-    return this.inspectStoredDocuments(true);
-  }
-
-  public async assertStoredDocumentsPresent(): Promise<number> {
-    return this.inspectStoredDocuments(false);
-  }
-
-  private async inspectStoredDocuments(
-    verifyHashes: boolean,
-  ): Promise<number> {
-    await this.initialize();
-    let afterDocumentId: string | null = null;
-    let verifiedDocumentCount = 0;
-    while (true) {
-      const rows = await this.readVerificationBatch(afterDocumentId);
-      if (rows.length === 0) {
-        return verifiedDocumentCount;
-      }
-      for (const metadata of rows) {
-        if (verifyHashes) {
-          await this.verifyPublishedContent(metadata);
-        } else {
-          await this.assertPublishedContent(metadata);
-        }
-        afterDocumentId = metadata.documentId;
-        verifiedDocumentCount += 1;
-      }
-    }
+    await this.publishSourceContent({
+      byteLength: normalized.content.byteLength,
+      content: normalized.content,
+      documentId: normalized.documentId,
+      kind: "buffer",
+    });
   }
 
   public async publishStagedDocument(
     document: StagedSourceContent,
   ): Promise<void> {
     const normalized = readStagedSourceContent(document);
-    await this.publishSourceContent(normalized);
+    await this.publishSourceContent({
+      ...normalized,
+      kind: "file",
+    });
+  }
+
+  public async assertStoredDocumentsPresent(): Promise<number> {
+    return this.inspectStoredDocuments();
   }
 
   public async readDocument(documentId: string): Promise<StoredSourceDocument> {
     const metadata = await this.readDocumentMetadata(documentId);
-    const contentPath = this.contentPath(metadata.documentId);
-    let content: Buffer;
-    try {
-      content = await readFile(contentPath);
-    } catch (error: unknown) {
-      if (readFileSystemErrorCode(error) !== "ENOENT") {
-        throw error;
-      }
-      throw new Error(
-        `Stored source document is missing or invalid: ${metadata.documentId}`,
-      );
-    }
-    if (content.byteLength !== metadata.byteLength) {
-      throw new Error(
-        `Stored source document length does not match: ${metadata.documentId}`,
-      );
-    }
+    const content = await this.backend.read(metadata);
     const actualDocumentId = createHash(SOURCE_CONTENT_ALGORITHM)
       .update(content)
       .digest("hex");
@@ -220,38 +154,18 @@ export class SourceContentStore {
     documentId: string,
   ): Promise<StoredSourceDocumentReference> {
     const metadata = await this.readDocumentMetadata(documentId);
-    await this.assertPublishedContent(metadata);
+    await this.backend.assertPresent(metadata);
     return {
       byteLength: metadata.byteLength,
-      contentPath: this.contentPath(metadata.documentId),
       documentId: metadata.documentId,
+      openContent: async (abortSignal?: AbortSignal) => {
+        return this.backend.openRead(metadata, abortSignal);
+      },
     };
   }
 
-  private async readDocumentMetadata(
-    documentId: string,
-  ): Promise<z.output<typeof sourceDocumentMetadataSchema>> {
-    const normalizedDocumentId = readDocumentId(documentId);
-    const rows = await this.database
-      .select({
-        byteLength: sourceDocuments.byteLength,
-        documentId: sourceDocuments.documentId,
-        lastPublishedAt: sourceDocuments.lastPublishedAt,
-      })
-      .from(sourceDocuments)
-      .where(eq(sourceDocuments.documentId, normalizedDocumentId))
-      .limit(1);
-    const row = rows[0];
-    if (row === undefined) {
-      throw new Error(
-        `Stored source document is missing or invalid: ${normalizedDocumentId}`,
-      );
-    }
-    return readSourceDocumentMetadata(row, normalizedDocumentId);
-  }
-
   public async reconcilePendingDeletions(): Promise<SourceContentDeletionReport> {
-    await this.reconcileOrphanedFiles();
+    await this.reconcileOrphanedContent();
     await this.queueAbandonedContent();
     const rows = await this.database
       .select({ documentId: sourceContentDeletions.documentId })
@@ -290,16 +204,129 @@ export class SourceContentStore {
     }
   }
 
-  private algorithmDirectory(): string {
-    return join(this.config.directory, SOURCE_CONTENT_ALGORITHM);
+  private async inspectStoredDocuments(): Promise<number> {
+    await this.initialize();
+    let afterDocumentId: string | null = null;
+    let verifiedDocumentCount = 0;
+    while (true) {
+      const rows = await this.readVerificationBatch(afterDocumentId);
+      if (rows.length === 0) {
+        return verifiedDocumentCount;
+      }
+      for (const metadata of rows) {
+        await this.backend.assertPresent(metadata);
+        afterDocumentId = metadata.documentId;
+        verifiedDocumentCount += 1;
+      }
+    }
   }
 
-  private contentPath(documentId: string): string {
-    return join(
-      this.algorithmDirectory(),
-      documentId.slice(0, 2),
-      documentId,
-    );
+  private async publishSourceContent(
+    document:
+      | {
+          byteLength: number;
+          content: Buffer;
+          documentId: string;
+          kind: "buffer";
+        }
+      | {
+          byteLength: number;
+          documentId: string;
+          kind: "file";
+          sourceFile: string;
+        },
+  ): Promise<void> {
+    await this.initialize();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await this.backend.publish(document);
+      try {
+        await this.backend.verify(document);
+      } catch (error: unknown) {
+        try {
+          await this.removeUnpublishedContent(document.documentId);
+        } catch (cleanupError: unknown) {
+          throw new AggregateError(
+            [error, cleanupError],
+            `Source content verification and cleanup failed: ${document.documentId}`,
+          );
+        }
+        throw error;
+      }
+      try {
+        await this.database.transaction(async (transaction) => {
+          await lockSourceContentWrites(transaction);
+          await assertActiveSourceContentBackend(transaction, this.config);
+          await lockSourceContent(transaction, document.documentId);
+          await this.backend.assertPresent(document);
+          const existing = await readSourceDocumentMetadataIfPresent(
+            transaction,
+            document.documentId,
+          );
+          if (existing !== null && existing.byteLength !== document.byteLength) {
+            throw new Error(
+              `Source content metadata conflicts for ${document.documentId}.`,
+            );
+          }
+          if (existing === null) {
+            await transaction.insert(sourceDocuments).values({
+              byteLength: document.byteLength,
+              documentId: document.documentId,
+              lastPublishedAt: sql`clock_timestamp()`,
+            });
+          } else {
+            await transaction
+              .update(sourceDocuments)
+              .set({ lastPublishedAt: sql`clock_timestamp()` })
+              .where(eq(sourceDocuments.documentId, document.documentId));
+          }
+          await transaction
+            .delete(sourceContentDeletions)
+            .where(eq(sourceContentDeletions.documentId, document.documentId));
+        });
+        return;
+      } catch (error: unknown) {
+        if (error instanceof SourceContentBackendChangedError) {
+          await this.removeUnpublishedContent(document.documentId);
+          throw error;
+        }
+        if (!(error instanceof SourceContentMissingError) || attempt > 0) {
+          throw error;
+        }
+      }
+    }
+  }
+
+  private async removeUnpublishedContent(documentId: string): Promise<void> {
+    await this.database.transaction(async (transaction) => {
+      await lockSourceContent(transaction, documentId);
+      const existing = await readSourceDocumentMetadataIfPresent(
+        transaction,
+        documentId,
+      );
+      if (existing === null) {
+        await this.backend.remove(documentId);
+      }
+    });
+  }
+
+  private async readDocumentMetadata(
+    documentId: string,
+  ): Promise<z.output<typeof sourceDocumentMetadataSchema>> {
+    const normalizedDocumentId = readDocumentId(documentId);
+    const rows = await this.database
+      .select({
+        byteLength: sourceDocuments.byteLength,
+        documentId: sourceDocuments.documentId,
+        lastPublishedAt: sourceDocuments.lastPublishedAt,
+      })
+      .from(sourceDocuments)
+      .where(eq(sourceDocuments.documentId, normalizedDocumentId))
+      .limit(1);
+    const row = rows[0];
+    if (row === undefined) {
+      throw new SourceContentMissingError(normalizedDocumentId);
+    }
+    return readSourceDocumentMetadata(row, normalizedDocumentId);
   }
 
   private async readVerificationBatch(
@@ -327,191 +354,12 @@ export class SourceContentStore {
     return readSourceDocumentMetadataRows(rows);
   }
 
-  private async publishSourceContent(
-    document: StagedSourceContent,
-  ): Promise<void> {
-    await this.syncFile(document.sourceFile);
-    const stagedMetadata = await stat(document.sourceFile);
-    if (!stagedMetadata.isFile()) {
-      throw new Error(`Staged source content is not a file: ${document.sourceFile}`);
-    }
-    if (stagedMetadata.size !== document.byteLength) {
-      throw new Error(`Staged source content changed: ${document.sourceFile}`);
-    }
-
-    await this.database.transaction(async (transaction) => {
-      await lockSourceContent(transaction, document.documentId);
-      const existing = await readSourceDocumentMetadataIfPresent(
-        transaction,
-        document.documentId,
-      );
-      if (existing !== null) {
-        if (existing.byteLength !== document.byteLength) {
-          throw new Error(
-            `Source content metadata conflicts for ${document.documentId}.`,
-          );
-        }
-        await this.verifyPublishedContent(existing);
-        await transaction
-          .update(sourceDocuments)
-          .set({ lastPublishedAt: new Date() })
-          .where(eq(sourceDocuments.documentId, document.documentId));
-        await transaction
-          .delete(sourceContentDeletions)
-          .where(eq(sourceContentDeletions.documentId, document.documentId));
-        return;
-      }
-
-      await this.publishFile(document);
-      await transaction
-        .insert(sourceDocuments)
-        .values({
-          byteLength: document.byteLength,
-          documentId: document.documentId,
-        });
-      await transaction
-        .delete(sourceContentDeletions)
-        .where(eq(sourceContentDeletions.documentId, document.documentId));
-    });
-  }
-
-  private async publishFile(document: StagedSourceContent): Promise<void> {
-    const destination = this.contentPath(document.documentId);
-    const destinationDirectory = join(
-      this.algorithmDirectory(),
-      document.documentId.slice(0, 2),
-    );
-    await mkdir(destinationDirectory, { recursive: true });
-    try {
-      await link(document.sourceFile, destination);
-      await this.syncDirectory(destinationDirectory);
-      return;
-    } catch (error: unknown) {
-      const code = readFileSystemErrorCode(error);
-      if (code === "EEXIST") {
-        await this.verifyPublishedContent(document);
-        return;
-      }
-      if (code !== "EXDEV") {
-        throw error;
-      }
-    }
-
-    const temporaryPath = `${destination}.${randomUUID()}.tmp`;
-    let published = false;
-    try {
-      await pipeline(
-        createReadStream(document.sourceFile),
-        createWriteStream(temporaryPath, {
-          flags: "wx",
-          mode: 0o600,
-        }),
-      );
-      await this.syncFile(temporaryPath);
-      try {
-        await link(temporaryPath, destination);
-        published = true;
-      } catch (error: unknown) {
-        if (readFileSystemErrorCode(error) !== "EEXIST") {
-          throw error;
-        }
-      }
-    } finally {
-      await removeFileIfPresent(temporaryPath);
-    }
-    if (published) {
-      await this.syncDirectory(destinationDirectory);
-      return;
-    }
-    await this.verifyPublishedContent(document);
-  }
-
-  private async verifyPublishedContent(
-    document: StagedSourceContent | z.output<typeof sourceDocumentMetadataSchema>,
-    abortSignal?: AbortSignal,
-  ): Promise<void> {
-    const path = this.contentPath(document.documentId);
-    await this.assertPublishedContent(document);
-    const hash = createHash(SOURCE_CONTENT_ALGORITHM);
-    await pipeline(createReadStream(path, { signal: abortSignal }), hash);
-    const actualDocumentId = hash.digest("hex");
-    if (actualDocumentId !== document.documentId) {
-      throw new Error(
-        `Published source content hash does not match: ${document.documentId}`,
-      );
-    }
-  }
-
-  private async assertPublishedContent(
-    document: StagedSourceContent | z.output<typeof sourceDocumentMetadataSchema>,
-  ): Promise<void> {
-    const path = this.contentPath(document.documentId);
-    let metadata: Stats;
-    try {
-      metadata = await stat(path);
-    } catch (error: unknown) {
-      if (readFileSystemErrorCode(error) !== "ENOENT") {
-        throw error;
-      }
-      throw new Error(
-        `Stored source document is missing or invalid: ${document.documentId}`,
-      );
-    }
-    if (!metadata.isFile() || metadata.size !== document.byteLength) {
-      throw new Error(
-        `Published source content is missing or invalid: ${document.documentId}`,
-      );
-    }
-  }
-
-  private async writeTemporaryContent(content: Buffer): Promise<string> {
-    await this.initialize();
-    const path = join(
-      this.algorithmDirectory(),
-      `${randomUUID()}.staged`,
-    );
-    const handle = await open(path, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
-    try {
-      await handle.writeFile(content);
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    return path;
-  }
-
-  private async syncFile(path: string): Promise<void> {
-    const handle = await open(path, constants.O_RDONLY);
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-  }
-
-  private async syncDirectory(path: string): Promise<void> {
-    const handle = await open(path, constants.O_RDONLY);
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-  }
-
-  private async syncDirectoryIfPresent(path: string): Promise<void> {
-    try {
-      await this.syncDirectory(path);
-    } catch (error: unknown) {
-      if (readFileSystemErrorCode(error) !== "ENOENT") {
-        throw error;
-      }
-    }
-  }
-
   private async reconcileDeletion(
     documentId: string,
   ): Promise<"deleted" | "retained"> {
     const prepared = await this.database.transaction(async (transaction) => {
+      await lockSourceContentWrites(transaction);
+      await assertActiveSourceContentBackend(transaction, this.config);
       await lockSourceContent(transaction, documentId);
       const existing = await readSourceDocumentMetadataIfPresent(
         transaction,
@@ -542,6 +390,8 @@ export class SourceContentStore {
     }
 
     return this.database.transaction(async (transaction) => {
+      await lockSourceContentWrites(transaction);
+      await assertActiveSourceContentBackend(transaction, this.config);
       await lockSourceContent(transaction, documentId);
       const existing = await readSourceDocumentMetadataIfPresent(
         transaction,
@@ -553,12 +403,7 @@ export class SourceContentStore {
           .where(eq(sourceContentDeletions.documentId, documentId));
         return "retained";
       }
-      await removeFileIfPresent(this.contentPath(documentId));
-      const contentDirectory = join(
-        this.algorithmDirectory(),
-        documentId.slice(0, 2),
-      );
-      await this.syncDirectoryIfPresent(contentDirectory);
+      await this.backend.remove(documentId);
       await transaction
         .delete(sourceContentDeletions)
         .where(eq(sourceContentDeletions.documentId, documentId));
@@ -599,10 +444,7 @@ export class SourceContentStore {
         await transaction
           .delete(chatEvidenceDocuments)
           .where(and(
-            inArray(
-              chatEvidenceDocuments.documentVersionId,
-              orphanedVersionIds,
-            ),
+            inArray(chatEvidenceDocuments.documentVersionId, orphanedVersionIds),
             notExists(
               transaction
                 .select({ id: chatCitationRecords.id })
@@ -655,108 +497,33 @@ export class SourceContentStore {
     });
   }
 
-  private async reconcileOrphanedFiles(): Promise<void> {
+  private async reconcileOrphanedContent(): Promise<void> {
     const nowMs = Date.now();
-    const algorithmDirectory = this.algorithmDirectory();
-    const lastScanAtMs = orphanScanAtByDirectory.get(algorithmDirectory) ?? 0;
+    const lastScanAtMs = orphanScanAtByBackend.get(this.backend.identity) ?? 0;
     if (nowMs - lastScanAtMs < UNREFERENCED_CONTENT_GRACE_MS) {
       return;
     }
-    orphanScanAtByDirectory.set(algorithmDirectory, nowMs);
-    const rootEntries = await readdir(algorithmDirectory, {
-      withFileTypes: true,
-    });
-    let reconciled = 0;
-    for (const entry of rootEntries) {
-      if (reconciled >= RECONCILIATION_BATCH_SIZE) {
-        return;
-      }
-      const path = join(algorithmDirectory, entry.name);
-      if (entry.isFile() && temporaryContentPattern.test(entry.name)) {
-        if (await isOlderThanGracePeriod(path, nowMs)) {
-          await removeFileIfPresent(path);
-          reconciled += 1;
-        }
-        continue;
-      }
-      if (!entry.isDirectory() || !contentDirectoryPattern.test(entry.name)) {
-        continue;
-      }
-      reconciled += await this.reconcileContentDirectory(
-        path,
-        entry.name,
-        nowMs,
-        RECONCILIATION_BATCH_SIZE - reconciled,
-      );
-    }
-  }
-
-  private async reconcileContentDirectory(
-    directory: string,
-    documentIdPrefix: string,
-    nowMs: number,
-    limit: number,
-  ): Promise<number> {
-    const entries = await readdir(directory, { withFileTypes: true });
-    const metadataRows = await this.database
-      .select({ documentId: sourceDocuments.documentId })
-      .from(sourceDocuments)
-      .where(like(sourceDocuments.documentId, `${documentIdPrefix}%`));
-    const publishedDocumentIds = new Set(
-      metadataRows.map((row) => row.documentId),
-    );
-    let reconciled = 0;
-    for (const entry of entries) {
-      if (reconciled >= limit) {
-        return reconciled;
-      }
-      if (!entry.isFile()) {
-        continue;
-      }
-      const path = join(directory, entry.name);
-      if (temporaryContentPattern.test(entry.name)) {
-        if (await isOlderThanGracePeriod(path, nowMs)) {
-          await removeFileIfPresent(path);
-          reconciled += 1;
-        }
-        continue;
-      }
-      const documentId = contentIdSchema.safeParse(entry.name);
-      if (!documentId.success) {
-        continue;
-      }
-      if (publishedDocumentIds.has(documentId.data)) {
-        continue;
-      }
-      if (!await isOlderThanGracePeriod(path, nowMs)) {
-        continue;
-      }
-      const removed = await this.removeOrphanedPublishedFile(
-        documentId.data,
-        path,
-      );
-      if (removed) {
-        reconciled += 1;
-      }
-    }
-    return reconciled;
-  }
-
-  private async removeOrphanedPublishedFile(
-    documentId: string,
-    path: string,
-  ): Promise<boolean> {
-    return this.database.transaction(async (transaction) => {
-      await lockSourceContent(transaction, documentId);
-      const metadata = await readSourceDocumentMetadataIfPresent(
-        transaction,
-        documentId,
-      );
-      if (metadata !== null) {
-        return false;
-      }
-      await removeFileIfPresent(path);
-      return true;
+    orphanScanAtByBackend.set(this.backend.identity, nowMs);
+    await this.backend.reconcileOrphans({
+      graceMs: UNREFERENCED_CONTENT_GRACE_MS,
+      limit: RECONCILIATION_BATCH_SIZE,
+      nowMs,
+      removeIfOrphan: async (documentId, remove) => {
+        return this.database.transaction(async (transaction) => {
+          await lockSourceContentWrites(transaction);
+          await assertActiveSourceContentBackend(transaction, this.config);
+          await lockSourceContent(transaction, documentId);
+          const metadata = await readSourceDocumentMetadataIfPresent(
+            transaction,
+            documentId,
+          );
+          if (metadata !== null) {
+            return false;
+          }
+          await remove();
+          return true;
+        });
+      },
     });
   }
 
@@ -775,6 +542,44 @@ export class SourceContentStore {
       })
       .where(eq(sourceContentDeletions.documentId, documentId));
     await this.reportDeletionError?.(error, documentId);
+  }
+}
+
+export class SourceContentBackendChangedError extends Error {
+  public constructor() {
+    super(
+      "Source-content storage changed while the document was being published. Retry the upload.",
+    );
+    this.name = "SourceContentBackendChangedError";
+  }
+}
+
+async function lockSourceContentWrites(
+  transaction: SourceContentTransaction,
+): Promise<void> {
+  await transaction.execute(
+    sql`LOCK TABLE ${sourceDocuments} IN ROW EXCLUSIVE MODE`,
+  );
+}
+
+async function assertActiveSourceContentBackend(
+  transaction: SourceContentTransaction,
+  expectedConfig: SourceContentConfig,
+): Promise<void> {
+  const rows = await transaction
+    .select({ settings: applicationSettings.settings })
+    .from(applicationSettings)
+    .where(eq(applicationSettings.id, "runtime"))
+    .limit(1);
+  const decoded = applicationSettingsSourceContentRowSchema.safeParse(rows[0]);
+  if (!decoded.success) {
+    throw new Error(
+      `Invalid application settings while publishing source content: ${decoded.error.message}`,
+    );
+  }
+  const stored = parseStoredApplicationSettings(decoded.data.settings);
+  if (!isDeepStrictEqual(stored.sourceContent, expectedConfig)) {
+    throw new SourceContentBackendChangedError();
   }
 }
 
@@ -801,20 +606,13 @@ export async function queueSourceContentDeletion(
       .where(eq(sourceContentDeletions.documentId, normalizedDocumentId));
     return;
   }
-  if (!isOlderThanContentGracePeriod(metadata.lastPublishedAt)) {
-    return;
-  }
-  await transaction
-    .delete(sourceDocuments)
-    .where(eq(sourceDocuments.documentId, normalizedDocumentId));
 }
 
 export async function lockSourceContentReference(
   transaction: SourceContentTransaction,
   documentId: string,
 ): Promise<void> {
-  const normalizedDocumentId = readDocumentId(documentId);
-  await lockSourceContent(transaction, normalizedDocumentId);
+  await lockSourceContent(transaction, readDocumentId(documentId));
 }
 
 async function hasSourceContentReferences(
@@ -919,10 +717,7 @@ function readStoredSourceDocument(
   if (actualDocumentId !== documentId) {
     throw new Error(`Source content hash does not match: ${documentId}`);
   }
-  return {
-    content: value.content,
-    documentId,
-  };
+  return { content: value.content, documentId };
 }
 
 function readStagedSourceContent(
@@ -941,38 +736,6 @@ function readStagedSourceContent(
 
 function readDocumentId(value: string): string {
   return contentIdSchema.parse(value);
-}
-
-async function removeFileIfPresent(path: string): Promise<boolean> {
-  try {
-    await unlink(path);
-    return true;
-  } catch (error: unknown) {
-    if (readFileSystemErrorCode(error) !== "ENOENT") {
-      throw error;
-    }
-    return false;
-  }
-}
-
-function readFileSystemErrorCode(error: unknown): string | null {
-  const result = z.object({ code: z.string() }).safeParse(error);
-  return result.success ? result.data.code : null;
-}
-
-async function isOlderThanGracePeriod(
-  path: string,
-  nowMs: number,
-): Promise<boolean> {
-  try {
-    const metadata = await stat(path);
-    return nowMs - metadata.mtimeMs >= UNREFERENCED_CONTENT_GRACE_MS;
-  } catch (error: unknown) {
-    if (readFileSystemErrorCode(error) === "ENOENT") {
-      return false;
-    }
-    throw error;
-  }
 }
 
 function isOlderThanContentGracePeriod(lastPublishedAt: Date): boolean {

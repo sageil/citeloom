@@ -21,6 +21,9 @@ import {
   writeSettingsLocation,
 } from "./citeloom-settings-history.js";
 import { createSettingsResetActions } from "./citeloom-settings-resets.js";
+import {
+  createSourceContentStorageActions,
+} from "./citeloom-source-content-storage.js";
 
 const providerCapabilities = Object.freeze([
   "answer",
@@ -95,6 +98,7 @@ const capabilityLabels = Object.freeze({
   textToSpeech: "Spoken answers",
 });
 const startupGroupName = "Startup and deployment";
+const objectStorageAreaName = "Object storage";
 const doclingAdvancedFieldKeys = Object.freeze([
   "doclingPdfBackend",
   "doclingTocEnabled",
@@ -1165,9 +1169,10 @@ export function registerPage(alpine) {
     settingsHistoryListener: null,
     sourceFilter: "all",
     ...createSettingsResetActions(alpine),
+    ...createSourceContentStorageActions(),
 
     get areaCount() {
-      return this.groups.length + 3;
+      return this.groups.length + 4;
     },
 
     get browsingAreas() {
@@ -1281,11 +1286,15 @@ export function registerPage(alpine) {
         this.settingsRevisionListener,
       );
       await this.loadSettings();
-      await this.loadOpenAICodexAuth();
+      await Promise.all([
+        this.loadOpenAICodexAuth(),
+        this.loadSourceContentStorage(),
+      ]);
     },
 
     destroy() {
       this.abortController?.abort();
+      this.destroySourceContentStorage();
       if (this.openAICodexPollTimer !== null) {
         clearTimeout(this.openAICodexPollTimer);
       }
@@ -1547,6 +1556,7 @@ export function registerPage(alpine) {
       if (
         area === "Application Features"
         || area === "Providers"
+        || area === objectStorageAreaName
         || area === startupGroupName
       ) {
         return true;
@@ -1575,6 +1585,9 @@ export function registerPage(alpine) {
       }
       if (this.selectedArea === startupGroupName) {
         location.item = this.selectedStartupKey;
+        return location;
+      }
+      if (this.selectedArea === objectStorageAreaName) {
         return location;
       }
       if (this.selectedArea !== null) {
@@ -1622,6 +1635,9 @@ export function registerPage(alpine) {
           if (location.item !== null) {
             this.selectStartupSetting(location.item);
           }
+          return;
+        }
+        if (location.area === objectStorageAreaName) {
           return;
         }
         if (location.item !== null) {
@@ -2206,6 +2222,7 @@ export function registerPage(alpine) {
         "Search and answers": "Choose how widely CiteLoom searches and how much source material it can use in an answer.",
         "Embedding model": "Choose how CiteLoom converts document content and questions into representations used for semantic search.",
         "Search ranking": "Choose how CiteLoom orders and filters semantic search results.",
+        "Object storage": "Choose where CiteLoom keeps original source-document content and migrate it safely.",
         "Speech input": "Choose how CiteLoom turns recorded questions into text.",
         "Spoken answers": "Choose how CiteLoom creates and plays answer audio.",
         "Usage diagnostics": "Choose whether CiteLoom records AI request times and usage.",

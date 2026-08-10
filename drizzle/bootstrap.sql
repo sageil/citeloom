@@ -1096,10 +1096,7 @@ WITH canonical_settings AS (
   }
     $settings$::jsonb,
     '{sourceContent}',
-    jsonb_build_object(
-      'directory',
-      current_setting('citeloom.source_content_directory')
-    ),
+    current_setting('citeloom.source_content_config')::jsonb,
     true
   ) AS document
 ), settings_documents AS (

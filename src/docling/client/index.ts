@@ -1,4 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
+import type { Readable } from "node:stream";
 
 import { z } from "zod";
 import {
@@ -84,6 +85,11 @@ const pauseTaskResponseSchema = z.object({
   state: z.enum(["paused", "terminated"]),
   task_id: z.uuid(),
 });
+const contentUploadResponseSchema = z.object({
+  byte_length: z.number().int().positive(),
+  document_id: z.string().regex(/^[0-9a-f]{64}$/u),
+  task_id: z.uuid(),
+});
 const websocketMessageSchema = z.object({
   error: z.string().nullable().default(null),
   message: z.enum(["connection", "update", "error"]),
@@ -110,6 +116,11 @@ export interface DoclingConvertRequest {
   apiKey: string | null;
   baseUrl: string;
   body: string;
+  content: {
+    byteLength: number;
+    documentId: string;
+    open: (abortSignal?: AbortSignal) => Promise<Readable>;
+  };
   decodeResponse: (value: unknown) => DoclingConversionResult;
   observer: DoclingRequestObserver;
   requestTimeoutMs: number;
@@ -127,8 +138,10 @@ export type DoclingConvertRequester = (
 export interface DoclingHttpRequest {
   abortSignal: AbortSignal;
   apiKey: string | null;
-  body: string | null;
-  method: "GET" | "POST";
+  body: Readable | string | null;
+  contentLength?: number;
+  contentType?: "application/json" | "application/octet-stream";
+  method: "GET" | "POST" | "PUT";
   timeoutMs: number;
   url: string;
 }
@@ -188,6 +201,12 @@ export type DoclingReconnectWaiter = (
   task: DoclingTaskReference,
   attempt: number,
   abortSignal: AbortSignal,
+) => Promise<void>;
+
+export type DoclingSubmissionPreparer = (
+  request: DoclingConvertRequest,
+  requester: DoclingHttpRequester,
+  timeoutMs: number,
 ) => Promise<void>;
 
 export async function verifyDoclingService(
@@ -256,6 +275,8 @@ export async function sendDoclingConvertRequest(
       request,
       requester,
       connectDoclingWebSocket,
+      waitForReconnect,
+      uploadDoclingContent,
     );
   } catch (error: unknown) {
     throw new Error(
@@ -272,6 +293,7 @@ export async function completeDoclingAsyncConversion(
   requester: DoclingHttpRequester,
   connector: DoclingWebSocketConnector = connectDoclingWebSocket,
   reconnectWaiter: DoclingReconnectWaiter = waitForReconnect,
+  prepareSubmission: DoclingSubmissionPreparer = noOpSubmissionPreparer,
 ): Promise<DoclingConversionResult> {
   const invocationStartedAtMs = Date.now();
   const requestId = request.observer.identity.id;
@@ -286,6 +308,11 @@ export async function completeDoclingAsyncConversion(
       let status: DoclingTaskStatus;
       if (shouldSubmit) {
         const submittedAtMs = Date.parse(task.submittedAt);
+        await prepareSubmission(
+          request,
+          requester,
+          readRequestTimeout(taskDeadlineAtMs, request.requestTimeoutMs),
+        );
         const submittedValue = await requester({
           abortSignal: request.abortSignal,
           apiKey: request.apiKey,
@@ -468,6 +495,41 @@ export async function completeDoclingAsyncConversion(
       });
       throw failure;
     }
+  }
+}
+
+async function noOpSubmissionPreparer(): Promise<void> {}
+
+export async function uploadDoclingContent(
+  request: DoclingConvertRequest,
+  requester: DoclingHttpRequester,
+  timeoutMs: number,
+): Promise<void> {
+  const body = await request.content.open(request.abortSignal);
+  const value = await requester({
+    abortSignal: request.abortSignal,
+    apiKey: request.apiKey,
+    body,
+    contentLength: request.content.byteLength,
+    contentType: "application/octet-stream",
+    method: "PUT",
+    timeoutMs,
+    url: `${request.baseUrl}/v1/tasks/${encodeURIComponent(request.task.id)}/content/${request.content.documentId}`,
+  });
+  const result = contentUploadResponseSchema.safeParse(value);
+  if (!result.success) {
+    throw new DoclingTaskProtocolError(
+      `Docling content upload response is invalid: ${result.error.message}`,
+    );
+  }
+  if (
+    result.data.task_id !== request.task.id
+    || result.data.document_id !== request.content.documentId
+    || result.data.byte_length !== request.content.byteLength
+  ) {
+    throw new DoclingTaskProtocolError(
+      `Docling content upload acknowledgement does not match task ${request.task.id}.`,
+    );
   }
 }
 
@@ -1326,9 +1388,12 @@ async function sendDoclingHttpRequest(
   const headers = createDoclingHeaders(request.apiKey);
   headers.set("accept", "application/json");
   if (request.body !== null) {
-    headers.set("content-type", "application/json");
+    headers.set("content-type", request.contentType ?? "application/json");
   }
-  const response = await undiciFetch(request.url, {
+  if (request.contentLength !== undefined) {
+    headers.set("content-length", String(request.contentLength));
+  }
+  const options = {
     body: request.body,
     dispatcher,
     headers,
@@ -1337,7 +1402,11 @@ async function sendDoclingHttpRequest(
       request.abortSignal,
       AbortSignal.timeout(request.timeoutMs),
     ]),
-  });
+  };
+  if (typeof request.body !== "string" && request.body !== null) {
+    Object.assign(options, { duplex: "half" });
+  }
+  const response = await undiciFetch(request.url, options);
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 1_000);
     if (response.status === 404 && request.method === "GET") {

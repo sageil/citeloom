@@ -3,8 +3,9 @@
 CiteLoom uses the same application core for its web interface, command-line interface, and background worker.
 PostgreSQL stores document metadata, processing state, search indexes, settings, and shared limits for model requests.
 A separate content store keeps each original source file unchanged and identifies it by its SHA-256 hash.
-The web application, worker, and Docling service all use this store.
-Migration saves its path in PostgreSQL, which becomes the shared location used by application processes.
+The web application, command-line interface, worker, and migration process use the active source-content backend.
+PostgreSQL stores whether that backend is a mounted filesystem or S3-compatible storage such as the optional SeaweedFS service.
+Application processes stream source bytes to Docling, so Docling does not connect to either storage backend directly.
 
 ## Components
 
@@ -14,7 +15,7 @@ Migration saves its path in PostgreSQL, which becomes the shared location used b
 | Fastify server | Request validation, uploads, catalog operations, and streamed answers |
 | Application core | Document conversion, indexing preparation, embeddings, search, reranking, and cited answer generation |
 | Background worker | Resumable document processing with jobs shared through PostgreSQL |
-| Local source content store | Immutable raw source bytes addressed by SHA-256 |
+| Source-content backend | Immutable raw source bytes addressed by SHA-256 in either a mounted filesystem or S3-compatible storage such as the optional SeaweedFS service |
 | PostgreSQL | Source records, processing results, jobs, settings, search indexes, and shared model-request limits |
 | Docling | Standard or VLM document conversion that preserves reading order, tables, page locations, and image regions |
 | Model providers | VLM page reading, indexing descriptions, embeddings, Query Expansion, reranking, answers, Chat, and optional speech |
@@ -41,11 +42,13 @@ flowchart TB
         Worker[Background worker]
         Migrate[Migration bootstrap]
         Router[Provider adapters and routing]
+        Storage[Source-content adapters<br/>stored backend selection]
     end
 
     subgraph Data[Persistent data]
         Database[(PostgreSQL)]
-        Sources[(Immutable source content store)]
+        Filesystem[(Mounted filesystem)]
+        SeaweedFS[(SeaweedFS<br/>optional S3-compatible storage)]
     end
 
     subgraph Conversion[Document and verification services]
@@ -61,13 +64,15 @@ flowchart TB
     CLI <--> Database
     Worker <--> Database
     Migrate --> Database
+    Database -->|active backend configuration| Storage
 
-    Web <--> Sources
-    CLI <--> Sources
-    Worker <--> Sources
-    Migrate --> Sources
-    Docling -->|read-only| Sources
-    Worker --> Docling
+    Web <--> Storage
+    CLI <--> Storage
+    Worker <--> Storage
+    Migrate --> Storage
+    Storage -->|filesystem reads and writes| Filesystem
+    Storage -.->|optional S3 reads and writes| SeaweedFS
+    Worker -->|stream source bytes and conversion tasks| Docling
     Docling -->|VLM page requests when enabled| Endpoints
 
     Web --> Router
@@ -81,6 +86,7 @@ flowchart TB
 ```
 
 The supplied Compose files run Caddy, web, worker, migration, PostgreSQL, Docling, and HHEM containers.
+The optional `compose.seaweedfs.yml` overlay adds SeaweedFS and makes its S3-compatible endpoint available to the application processes.
 Local model servers such as LM Studio, Ollama, and oMLX normally run on the host and are reached from containers through `host.docker.internal`.
 Cloud providers use the configured HTTPS endpoint.
 
@@ -135,7 +141,7 @@ sequenceDiagram
     participant Intake as Ingestion entry
     participant Worker as Background worker
     participant Runner as Ingestion processor
-    participant Store as Source content store
+    participant Store as Active source storage<br/>Filesystem or optional SeaweedFS
     participant DB as PostgreSQL
     participant Parser as Docling
     participant AI as Inference providers
@@ -153,8 +159,10 @@ sequenceDiagram
         loop One leased phase at a time
             Runner->>DB: Claim due phase
             DB-->>Runner: Job and renewable lease
-            Runner->>Parser: Submit content ID, byte length, filename, and options
-            Parser->>Store: Read immutable source by content ID
+            Runner->>Store: Open immutable source by content ID
+            Store-->>Runner: Source byte stream
+            Runner->>Parser: Submit metadata and stream source bytes
+            Parser->>Parser: Verify byte length and SHA-256
             Runner->>AI: Describe or embed when required
             Runner->>DB: Store output and advance checkpoint
         end
@@ -164,7 +172,8 @@ sequenceDiagram
 
 The worker submits one Docling task to extract structure, text from images, tables, and cropped pictures.
 It saves the task ID so another worker can resume the same task after an interruption.
-Each Docling instance reads the source directly from the same read-only content store.
+The worker opens the source from the active filesystem or S3-compatible backend and streams it to the assigned Docling instance.
+Docling verifies and stages those bytes in its checkpoint directory, so it does not need access to the active source-content backend.
 If the original Docling instance no longer recognizes a saved task, the worker clears that task checkpoint and submits the same unchanged source again.
 Completed checkpoints remain available when the worker schedules a retry.
 
@@ -180,7 +189,7 @@ If Docling no longer recognizes a VLM task, the unchanged source is submitted as
 When document TOC routing is enabled, the indexing phase builds a bounded navigation map from Docling section paths and maps every retained entry to exact retrieval-window IDs.
 The map is staged under the same generation as the vectors and lexical rows, validated before atomic publication, and removed with obsolete retrieval generations.
 
-Document deletion is recorded in the database before the local file is removed.
+Document deletion is recorded in the database before the source object is removed from the active backend.
 The worker retries pending deletions after a restart, and the same per-hash database lock serializes publication with deletion.
 Newly stored content has a one-hour grace period.
 This prevents cleanup from removing a file while its job is being created and limits how long files from a failed intake remain unused.

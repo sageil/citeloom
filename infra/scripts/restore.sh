@@ -62,11 +62,32 @@ resolve_source_content_directory() {
 require_writers_stopped() {
   running_services="$(run_compose ps --services --status running)"
   for service in ${running_services}; do
-    if [ "${service}" = "web" ] || [ "${service}" = "worker" ]; then
-      echo "Stop the web and worker services before restoring a backup." >&2
+    if [ "${service}" = "migrate" ] \
+      || [ "${service}" = "web" ] \
+      || [ "${service}" = "worker" ]; then
+      echo "Stop the migrate, web, and worker services before restoring a backup." >&2
       exit 1
     fi
   done
+}
+
+read_source_content_backend() {
+  source_content_backend="$(
+    run_compose exec -T "${database_service}" psql \
+      --username "${database_user}" \
+      --dbname "${database_name}" \
+      --tuples-only \
+      --no-align \
+      --command "SELECT COALESCE(settings #>> '{sourceContent,kind}', 'filesystem') FROM application_settings WHERE id = 'runtime'" \
+      | tr -d '[:space:]'
+  )"
+  case "${source_content_backend}" in
+    filesystem|s3) ;;
+    *)
+      echo "Restored source-content backend is invalid: ${source_content_backend}" >&2
+      return 1
+      ;;
+  esac
 }
 
 validate_archive_paths() {
@@ -138,6 +159,27 @@ if ! run_compose exec -T "${database_service}" pg_restore \
   restore_rollback_database
   echo "Restore failed and the previous database was restored." >&2
   exit 1
+fi
+
+if ! read_source_content_backend; then
+  restore_rollback_database
+  echo "Restore failed and the previous database was restored." >&2
+  exit 1
+fi
+
+if [ "${source_content_backend}" = "s3" ]; then
+  staged_content="$(CDPATH= cd -- "${staged_content}" && pwd)"
+  if ! run_compose run --rm --no-deps \
+    --volume "${staged_content}:/restore:ro" \
+    worker node dist/cli/index.js source-content import --directory /restore --apply; then
+    restore_rollback_database
+    echo "Source content restore failed and the previous database was restored." >&2
+    exit 1
+  fi
+  trap - EXIT HUP INT TERM
+  rm -rf -- "${working_directory}"
+  echo "Restored ${backup_path}"
+  exit 0
 fi
 
 had_previous_content=false

@@ -692,11 +692,11 @@ export class IngestionProcessor {
     );
     const source: FileDocumentSource = {
       byteLength: storedDocument.byteLength,
-      contentPath: storedDocument.contentPath,
       documentId: storedDocument.documentId,
       extension: job.format.extension,
       kind: "file",
       mediaType: job.format.mediaType,
+      openContent: storedDocument.openContent,
       sourceFile: job.sourceFile,
     };
     if (isPlainTextFormat(source)) {

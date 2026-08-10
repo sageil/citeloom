@@ -37,10 +37,15 @@ Create a backup that contains both a PostgreSQL dump and the source files.
 pnpm backup
 ```
 
-The command stops if the Compose web or worker service is still active.
+The command stops if the Compose migration, web, or worker service is still active.
 It writes `backups/citeloom-<timestamp>.backup` by default.
+For SeaweedFS deployments, run the scripts with the same Compose overlay so the one-off exporter has the S3 endpoint and credentials.
 
-Restore requires the web and worker services to remain stopped.
+```bash
+COMPOSE_FILE=compose.yml:compose.seaweedfs.yml pnpm backup
+```
+
+Restore requires the migration, web, and worker services to remain stopped.
 The restore command replaces matching database objects and source files.
 Before doing so, it creates a temporary database dump that can be used for rollback and asks for explicit confirmation.
 
@@ -48,8 +53,28 @@ Before doing so, it creates a temporary database dump that can be used for rollb
 pnpm restore --confirm backups/citeloom-YYYYMMDDTHHMMSSZ.backup
 ```
 
+Use the same `COMPOSE_FILE` value when restoring a SeaweedFS backup.
+The restore imports and verifies content-addressed objects before reporting success, and a failed import restores the previous database dump.
+
 After backup or restore completes, start the stopped services and confirm that the web application, worker, document catalog, and a retained source file are available.
 Storage path selection belongs to the [deployment procedure](deployment.md#choose-storage-paths).
+
+## Migrate source-content storage
+
+Open Settings > Object storage as an administrator to change between a mounted filesystem and S3-compatible storage such as SeaweedFS.
+Test the target connection before starting the migration.
+Only one migration can be active, and CiteLoom keeps the current backend active while the worker copies and verifies content-addressed objects.
+The worker saves progress in PostgreSQL and resumes an interrupted migration after its lease expires.
+Documents written while the copy is running are copied during final verification under the cutover lock.
+The active configuration and completed migration record change in one database transaction.
+
+Cancellation is available until final cutover starts.
+A cancelled or failed migration leaves the current backend active and retains any objects already copied to the target.
+A completed migration retains the previous backend, but new writes and deletions are not mirrored there.
+Reverse migration is the rollback path; cleanup of the old backend is a separate explicit operation.
+
+Static S3 credentials entered through Settings are never returned by the API, but they are stored in PostgreSQL and included in database backups.
+Deployment environment credentials must be present in every web, worker, migration, backup, and restore process that accesses the S3 backend.
 
 ## Compose recovery
 

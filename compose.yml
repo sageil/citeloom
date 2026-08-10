@@ -61,7 +61,6 @@ services:
     restart: unless-stopped
     environment:
       CITELOOM_DOCLING_CHECKPOINT_DIRECTORY: /app/docling-checkpoints
-      CITELOOM_SOURCE_CONTENT_DIRECTORY: /app/documents/blobs
       DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS: ${DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS:-false}
       DOCLING_NUM_THREADS: ${DOCLING_NUM_THREADS:-4}
       DOCLING_PERF_PAGE_BATCH_SIZE: ${DOCLING_PERF_PAGE_BATCH_SIZE:-4}
@@ -72,7 +71,6 @@ services:
       - "127.0.0.1:5001:5001"
     volumes:
       - ./data/docling-checkpoints/docling:/app/docling-checkpoints
-      - ${CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY:-./documents/blobs}:/app/documents/blobs:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import json, urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:5001/ready'))['status'] == 'ok'"]
       interval: 10s
@@ -87,7 +85,6 @@ services:
     restart: unless-stopped
     environment:
       CITELOOM_DOCLING_CHECKPOINT_DIRECTORY: /app/docling-checkpoints
-      CITELOOM_SOURCE_CONTENT_DIRECTORY: /app/documents/blobs
       DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS: ${DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS:-false}
       DOCLING_NUM_THREADS: ${DOCLING_NUM_THREADS:-4}
       DOCLING_PERF_PAGE_BATCH_SIZE: ${DOCLING_PERF_PAGE_BATCH_SIZE:-4}
@@ -98,7 +95,6 @@ services:
       - "127.0.0.1:5003:5001"
     volumes:
       - ./data/docling-checkpoints/docling-replica:/app/docling-checkpoints
-      - ${CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY:-./documents/blobs}:/app/documents/blobs:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import json, urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:5001/ready'))['status'] == 'ok'"]
       interval: 10s
@@ -146,7 +142,7 @@ services:
     build: *app-build
     command: ["node", "dist/cli/index.js", "worker"]
     environment:
-      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-0.2.5}
+      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-0.3.5}
       CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS: ${CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS:-100000}
       CITELOOM_APPLICATION_ERROR_RETENTION_DAYS: ${CITELOOM_APPLICATION_ERROR_RETENTION_DAYS:-30}
       DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
@@ -179,7 +175,7 @@ services:
     build: *app-build
     command: ["node", "dist/web-server.js"]
     environment:
-      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-0.2.5}
+      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-0.3.5}
       CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS: ${CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS:-100000}
       CITELOOM_APPLICATION_ERROR_RETENTION_DAYS: ${CITELOOM_APPLICATION_ERROR_RETENTION_DAYS:-30}
       CITELOOM_MAX_UPLOAD_REQUEST_MEGABYTES: ${CITELOOM_MAX_UPLOAD_REQUEST_MEGABYTES:-100}

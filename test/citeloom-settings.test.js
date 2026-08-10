@@ -1,12 +1,19 @@
 import { readFile } from "node:fs/promises";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CONFIRMATION_REQUEST_EVENT,
   dispatchConfirmationResponse,
 } from "../web/assets/scripts/citeloom-confirmation.js";
 import { registerPage } from "../web/assets/scripts/citeloom-settings.js";
+import {
+  readSourceContentStorageResponse,
+} from "../web/assets/scripts/citeloom-source-content-storage.js";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("CiteLoom settings resets", () => {
   it("cancels the global reset without submitting changes", async () => {
@@ -256,6 +263,183 @@ describe("CiteLoom provider reasoning settings", () => {
     );
   });
 });
+
+describe("CiteLoom source-content storage settings", () => {
+  it("decodes redacted object-storage state without requiring credentials", () => {
+    const response = readSourceContentStorageResponse({
+      active: {
+        bucket: "citeloom",
+        credentialSource: "static",
+        credentialsConfigured: true,
+        endpointUrl: "http://seaweedfs:8333",
+        forcePathStyle: true,
+        kind: "s3",
+        prefix: "sources",
+        region: "us-east-1",
+      },
+      documentCount: 34,
+      migration: null,
+      settingsVersion: 7,
+    });
+
+    expect(response.active).toEqual({
+      bucket: "citeloom",
+      credentialSource: "static",
+      credentialsConfigured: true,
+      endpointUrl: "http://seaweedfs:8333",
+      forcePathStyle: true,
+      kind: "s3",
+      prefix: "sources",
+      region: "us-east-1",
+    });
+  });
+
+  it("tests a write-only target before queuing a confirmed migration", async () => {
+    await withConfirmation(true, async ({ confirmations }) => {
+      const page = createSettingsPage();
+      page.applySourceContentStorage(buildStorageOverview());
+      page.changeSourceContentStorageKind("s3");
+      page.writeSourceContentStorageDraft("credentialSource", "static");
+      page.writeSourceContentStorageDraft("accessKeyId", "seaweed-access");
+      page.writeSourceContentStorageDraft("secretAccessKey", "seaweed-secret");
+      const target = buildStorageTargetFixture();
+      const migrationResponse = buildMigrationResponse();
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(jsonResponse({ ok: true }))
+        .mockResolvedValueOnce(jsonResponse(migrationResponse))
+        .mockResolvedValueOnce(jsonResponse({
+          ...buildStorageOverview(),
+          active: migrationResponse.target,
+          migration: {
+            ...migrationResponse,
+            completedAt: "2026-08-10T16:02:00.000Z",
+            state: "completed",
+            verifiedDocuments: 34,
+          },
+          settingsVersion: 8,
+        }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      await page.testSourceContentStorage();
+      expect(page.sourceContentStorageProbePassed).toBe(true);
+      await page.startSourceContentMigration();
+
+      expect(confirmations).toEqual([
+        expect.objectContaining({
+          confirmLabel: "Start migration",
+          description: expect.stringContaining("34 documents"),
+          title: "Migrate source-content storage?",
+        }),
+      ]);
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        "/api/source-content-storage/probes",
+        expect.objectContaining({
+          body: JSON.stringify({ target }),
+          method: "POST",
+        }),
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        "/api/source-content-storage/migrations",
+        expect.objectContaining({
+          body: JSON.stringify({
+            expectedSettingsVersion: 7,
+            target,
+          }),
+          method: "POST",
+        }),
+      );
+      expect(page.sourceContentStorage.active).toEqual(
+        migrationResponse.target,
+      );
+      expect(page.sourceContentStorage.migration.state).toBe("completed");
+      page.destroySourceContentStorage();
+    });
+  });
+
+  it("renders the connection boundary and migration controls", async () => {
+    const fragment = await readFile(
+      new URL("../web/fragments/settings.html", import.meta.url),
+      "utf8",
+    );
+
+    expect(fragment).toContain("This page configures CiteLoom's connection.");
+    expect(fragment).toContain("SeaweedFS server credentials, ports, and data directories remain deployment-controlled.");
+    expect(fragment).toContain('@click="testSourceContentStorage()"');
+    expect(fragment).toContain('@click="startSourceContentMigration()"');
+    expect(fragment).toContain('@click="cancelSourceContentMigration()"');
+    expect(fragment).toContain("Credentials are write-only");
+    expect(fragment).toContain(
+      "selectedArea !== 'Object storage' &amp;&amp; selectedArea !== 'Startup and deployment'",
+    );
+  });
+});
+
+function buildStorageOverview() {
+  return {
+    active: {
+      directory: "/app/documents/blobs",
+      kind: "filesystem",
+    },
+    documentCount: 34,
+    migration: null,
+    settingsVersion: 7,
+  };
+}
+
+function buildStorageTargetFixture() {
+  return {
+    bucket: "citeloom",
+    credentials: {
+      accessKeyId: "seaweed-access",
+      kind: "static",
+      secretAccessKey: "seaweed-secret",
+    },
+    endpointUrl: "http://seaweedfs:8333",
+    forcePathStyle: true,
+    kind: "s3",
+    prefix: "sources",
+    region: "us-east-1",
+  };
+}
+
+function buildMigrationResponse() {
+  return {
+    attemptCount: 0,
+    completedAt: null,
+    copiedDocuments: 0,
+    createdAt: "2026-08-10T16:00:00.000Z",
+    errorMessage: null,
+    id: "00000000-0000-4000-8000-000000000401",
+    source: {
+      directory: "/app/documents/blobs",
+      kind: "filesystem",
+    },
+    startedAt: null,
+    state: "queued",
+    target: {
+      bucket: "citeloom",
+      credentialSource: "static",
+      credentialsConfigured: true,
+      endpointUrl: "http://seaweedfs:8333",
+      forcePathStyle: true,
+      kind: "s3",
+      prefix: "sources",
+      region: "us-east-1",
+    },
+    totalDocuments: 34,
+    updatedAt: "2026-08-10T16:00:00.000Z",
+    verifiedDocuments: 0,
+  };
+}
+
+function jsonResponse(value) {
+  return new Response(JSON.stringify(value), {
+    headers: { "content-type": "application/json" },
+    status: 200,
+  });
+}
 
 function createSettingsPage({ reactiveResetState = false } = {}) {
   let pageFactory = null;

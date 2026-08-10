@@ -1,0 +1,85 @@
+x-seaweedfs-s3-gateway: &seaweedfs-s3-gateway
+  image: chrislusf/seaweedfs:4.40
+  command: ["s3", "-filer=seaweedfs-core:8888", "-port=8333", "-iam=false"]
+  environment:
+    AWS_ACCESS_KEY_ID: ${CITELOOM_S3_ACCESS_KEY_ID:?Set CITELOOM_S3_ACCESS_KEY_ID in .env}
+    AWS_SECRET_ACCESS_KEY: ${CITELOOM_S3_SECRET_ACCESS_KEY:?Set CITELOOM_S3_SECRET_ACCESS_KEY in .env}
+  depends_on:
+    seaweedfs-core:
+      condition: service_healthy
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD-SHELL", "wget --quiet --output-document=/dev/null http://127.0.0.1:8333/healthz"]
+    interval: 10s
+    timeout: 5s
+    retries: 12
+    start_period: 10s
+
+services:
+  seaweedfs-core:
+    image: chrislusf/seaweedfs:4.40
+    command: ["mini", "-dir=/data"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${CITELOOM_S3_ACCESS_KEY_ID:?Set CITELOOM_S3_ACCESS_KEY_ID in .env}
+      AWS_SECRET_ACCESS_KEY: ${CITELOOM_S3_SECRET_ACCESS_KEY:?Set CITELOOM_S3_SECRET_ACCESS_KEY in .env}
+      S3_BUCKET: ${CITELOOM_SOURCE_CONTENT_S3_BUCKET:-citeloom}
+    ports:
+      - "127.0.0.1:${CITELOOM_SEAWEEDFS_MASTER_PORT:-9333}:9333"
+    volumes:
+      - ${CITELOOM_SEAWEEDFS_DATA_DIRECTORY:-./data/seaweedfs}:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --output-document=/dev/null http://127.0.0.1:9333/cluster/status && wget --quiet --output-document=/dev/null http://127.0.0.1:8888/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  seaweedfs-s3-a: *seaweedfs-s3-gateway
+  seaweedfs-s3-b: *seaweedfs-s3-gateway
+
+  seaweedfs:
+    image: caddy:2.11.4-alpine
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    depends_on:
+      seaweedfs-s3-a:
+        condition: service_healthy
+      seaweedfs-s3-b:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${CITELOOM_SEAWEEDFS_S3_PORT:-8333}:8333"
+    volumes:
+      - ${CITELOOM_SEAWEEDFS_CADDYFILE:-./deployments/examples/seaweedfs-caddy/Caddyfile}:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --output-document=/dev/null http://127.0.0.1:8333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  migrate:
+    environment: &source-content-s3-environment
+      AWS_ACCESS_KEY_ID: ${CITELOOM_S3_ACCESS_KEY_ID:?Set CITELOOM_S3_ACCESS_KEY_ID in .env}
+      AWS_SECRET_ACCESS_KEY: ${CITELOOM_S3_SECRET_ACCESS_KEY:?Set CITELOOM_S3_SECRET_ACCESS_KEY in .env}
+      CITELOOM_SOURCE_CONTENT_BACKEND: s3
+      CITELOOM_SOURCE_CONTENT_S3_BUCKET: ${CITELOOM_SOURCE_CONTENT_S3_BUCKET:-citeloom}
+      CITELOOM_SOURCE_CONTENT_S3_ENDPOINT: http://seaweedfs:8333
+      CITELOOM_SOURCE_CONTENT_S3_FORCE_PATH_STYLE: "true"
+      CITELOOM_SOURCE_CONTENT_S3_PREFIX: ${CITELOOM_SOURCE_CONTENT_S3_PREFIX:-sources}
+      CITELOOM_SOURCE_CONTENT_S3_REGION: ${CITELOOM_SOURCE_CONTENT_S3_REGION:-us-east-1}
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+
+  worker:
+    environment: *source-content-s3-environment
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+
+  web:
+    environment: *source-content-s3-environment
+    depends_on:
+      seaweedfs:
+        condition: service_healthy

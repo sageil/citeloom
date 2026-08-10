@@ -108,6 +108,7 @@ import {
 import { readWebConfig, type WebConfig } from "./config.js";
 import type { AuthenticatedPrincipal } from "../auth/model.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
+import { registerSourceContentStorageRoutes } from "./source-content-storage-routes.js";
 import {
   readSecurityWebServices,
   registerSecurityRoutes,
@@ -340,6 +341,10 @@ export async function buildWebServer(
     requestPrincipals,
     services,
     webConfig,
+  });
+  registerSourceContentStorageRoutes(server, {
+    requestPrincipals,
+    services,
   });
 
   const securityServices = readSecurityWebServices(services);

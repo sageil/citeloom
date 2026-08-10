@@ -88,9 +88,32 @@ export interface DatabaseConfig {
   url: string;
 }
 
-export interface SourceContentConfig {
+export interface FilesystemSourceContentConfig {
   directory: string;
+  kind: "filesystem";
 }
+
+export type S3SourceContentCredentials =
+  | { kind: "environment" }
+  | {
+      accessKeyId: string;
+      kind: "static";
+      secretAccessKey: string;
+    };
+
+export interface S3SourceContentConfig {
+  bucket: string;
+  credentials: S3SourceContentCredentials;
+  endpointUrl: string;
+  forcePathStyle: boolean;
+  kind: "s3";
+  prefix: string;
+  region: string;
+}
+
+export type SourceContentConfig =
+  | FilesystemSourceContentConfig
+  | S3SourceContentConfig;
 
 export interface EmbeddingSpaceConfig {
   dimensions: EmbeddingDimensions;

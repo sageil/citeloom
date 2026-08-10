@@ -11,6 +11,7 @@ import {
 import { hashPassword, readPassword } from "../auth/password.js";
 import type { SourceContentConfig } from "../config/index.js";
 import { SourceContentStore } from "../documents/storage/source-content-store.js";
+import { parseSourceContentConfig } from "../providers/settings-persistence.js";
 import type { CiteLoomDatabase } from "./client.js";
 import { applicationSettings } from "./schema.js";
 
@@ -19,15 +20,24 @@ const administratorBootstrapEnvironmentSchema = z.object({
   CITELOOM_ADMIN_USERNAME: z.string().min(1),
 });
 const sourceContentBootstrapEnvironmentSchema = z.object({
+  CITELOOM_SOURCE_CONTENT_BACKEND: z.enum(["filesystem", "s3"])
+    .default("filesystem"),
   CITELOOM_SOURCE_CONTENT_DIRECTORY: z.string()
     .trim()
     .min(1)
     .default("documents/blobs"),
+  CITELOOM_SOURCE_CONTENT_S3_BUCKET: z.string().trim().min(1).max(63)
+    .default("citeloom"),
+  CITELOOM_SOURCE_CONTENT_S3_ENDPOINT: z.url().default("http://127.0.0.1:8333"),
+  CITELOOM_SOURCE_CONTENT_S3_FORCE_PATH_STYLE: z.enum(["true", "false"])
+    .default("true"),
+  CITELOOM_SOURCE_CONTENT_S3_PREFIX: z.string().trim().min(1).max(512)
+    .default("sources"),
+  CITELOOM_SOURCE_CONTENT_S3_REGION: z.string().trim().min(1).max(100)
+    .default("us-east-1"),
 });
 const storedSourceContentSchema = z.object({
-  sourceContent: z.object({
-    directory: z.string().trim().min(1),
-  }).strict(),
+  sourceContent: z.unknown(),
 }).loose();
 const bootstrapSqlUrl = new URL("../../drizzle/bootstrap.sql", import.meta.url);
 const bootstrapSql = readFileSync(bootstrapSqlUrl, "utf8").trim();
@@ -72,9 +82,24 @@ export function readSourceContentBootstrapConfig(
     }).join("\n");
     throw new Error(`Invalid source content bootstrap configuration:\n${details}`);
   }
-  return {
+  if (result.data.CITELOOM_SOURCE_CONTENT_BACKEND === "s3") {
+    const config = {
+      bucket: result.data.CITELOOM_SOURCE_CONTENT_S3_BUCKET,
+      credentials: { kind: "environment" as const },
+      endpointUrl: result.data.CITELOOM_SOURCE_CONTENT_S3_ENDPOINT,
+      forcePathStyle:
+        result.data.CITELOOM_SOURCE_CONTENT_S3_FORCE_PATH_STYLE === "true",
+      kind: "s3" as const,
+      prefix: result.data.CITELOOM_SOURCE_CONTENT_S3_PREFIX,
+      region: result.data.CITELOOM_SOURCE_CONTENT_S3_REGION,
+    };
+    return parseSourceContentConfig(config);
+  }
+  const config = {
     directory: resolve(result.data.CITELOOM_SOURCE_CONTENT_DIRECTORY),
+    kind: "filesystem" as const,
   };
+  return parseSourceContentConfig(config);
 }
 
 export async function applyDatabaseBootstrap(
@@ -85,8 +110,11 @@ export async function applyDatabaseBootstrap(
     throw new Error("Database bootstrap SQL is empty.");
   }
   const config = readAdministratorBootstrapConfig(environment);
-  const sourceContent = readSourceContentBootstrapConfig(environment);
-  await prepareSourceContentDirectory(database, sourceContent);
+  const bootstrapSourceContent = readSourceContentBootstrapConfig(environment);
+  const sourceContent = await prepareSourceContentBackend(
+    database,
+    bootstrapSourceContent,
+  );
   const passwordHash = await hashPassword(config.password);
 
   await database.transaction(async (transaction) => {
@@ -113,8 +141,8 @@ export async function applyDatabaseBootstrap(
           true
         ),
         set_config(
-          'citeloom.source_content_directory',
-          ${sourceContent.directory},
+          'citeloom.source_content_config',
+          ${JSON.stringify(sourceContent)},
           true
         )
     `);
@@ -122,23 +150,24 @@ export async function applyDatabaseBootstrap(
   });
 }
 
-async function prepareSourceContentDirectory(
+async function prepareSourceContentBackend(
   database: CiteLoomDatabase,
-  sourceContent: SourceContentConfig,
-): Promise<void> {
-  const currentDirectory = await readStoredSourceContentDirectory(database);
-  const store = new SourceContentStore(database, sourceContent);
-  await store.initialize();
-  if (currentDirectory === sourceContent.directory) {
-    await store.assertStoredDocumentsPresent();
-    return;
+  bootstrapSourceContent: SourceContentConfig,
+): Promise<SourceContentConfig> {
+  const currentConfig = await readStoredSourceContentConfig(database);
+  if (currentConfig === null) {
+    const store = new SourceContentStore(database, bootstrapSourceContent);
+    await store.initialize();
+    return bootstrapSourceContent;
   }
-  await store.verifyStoredDocuments();
+  const store = new SourceContentStore(database, currentConfig);
+  await store.assertStoredDocumentsPresent();
+  return currentConfig;
 }
 
-async function readStoredSourceContentDirectory(
+async function readStoredSourceContentConfig(
   database: CiteLoomDatabase,
-): Promise<string | null> {
+): Promise<SourceContentConfig | null> {
   const rows = await database
     .select({ settings: applicationSettings.settings })
     .from(applicationSettings)
@@ -154,5 +183,5 @@ async function readStoredSourceContentDirectory(
       `Invalid stored source-content configuration: ${result.error.message}`,
     );
   }
-  return result.data.sourceContent.directory;
+  return parseSourceContentConfig(result.data.sourceContent);
 }

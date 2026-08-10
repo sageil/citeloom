@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createReadStream, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { Readable } from "node:stream";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -24,6 +25,7 @@ import {
   readDoclingErrorCategory,
   readDoclingFailureContext,
   terminateDoclingTask,
+  uploadDoclingContent,
   type DoclingConvertRequest,
   type DoclingConvertRequester,
   type DoclingHttpRequest,
@@ -545,6 +547,55 @@ describe("Docling document conversion", () => {
     );
     expect(requests.map((request) => request.method)).toEqual(["POST", "GET"]);
     expect(requests[1]?.url).toBe("http://docling.test/v1/result/task-1");
+  });
+
+  it("uploads source bytes before submitting a conversion", async () => {
+    const taskId = "00000000-0000-4000-8000-000000000041";
+    const request = buildAsyncConversionRequest(
+      new AbortController().signal,
+      ephemeralDoclingTaskControl,
+      taskId,
+    );
+    const methods: DoclingHttpRequest["method"][] = [];
+    let uploaded = Buffer.alloc(0);
+    const requester: DoclingHttpRequester = async (httpRequest) => {
+      methods.push(httpRequest.method);
+      if (httpRequest.method === "PUT") {
+        const chunks: Buffer[] = [];
+        if (typeof httpRequest.body === "string" || httpRequest.body === null) {
+          throw new Error("Expected a streamed Docling upload.");
+        }
+        for await (const chunk of httpRequest.body) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        uploaded = Buffer.concat(chunks);
+        return {
+          byte_length: request.content.byteLength,
+          document_id: request.content.documentId,
+          task_id: taskId,
+        };
+      }
+      if (httpRequest.method === "POST") {
+        return {
+          task_id: taskId,
+          task_status: "success",
+          task_type: "convert",
+        };
+      }
+      return buildDoclingResponse();
+    };
+
+    await expect(completeDoclingAsyncConversion(
+      request,
+      requester,
+      undefined,
+      undefined,
+      uploadDoclingContent,
+    )).resolves.toEqual(
+      decodeDoclingConversionResponse(buildDoclingResponse()),
+    );
+    expect(methods).toEqual(["PUT", "POST", "GET"]);
+    expect(uploaded).toEqual(Buffer.from("a"));
   });
 
   it("surfaces terminal asynchronous conversion failures without requesting a result", async () => {
@@ -1591,6 +1642,11 @@ function buildAsyncConversionRequest(
     apiKey: null,
     baseUrl: "http://docling.test",
     body: "{}",
+    content: {
+      byteLength: 1,
+      documentId: "a".repeat(64),
+      open: async () => Readable.from([Buffer.from("a")]),
+    },
     decodeResponse: decodeDoclingConversionResponse,
     observer: buildRequestObserver(),
     requestTimeoutMs: 30_000,
@@ -1813,11 +1869,16 @@ function buildBinaryDocumentSource(
   writeFileSync(contentPath, content);
   return {
     byteLength: content.byteLength,
-    contentPath,
     documentId,
     extension,
     kind: "file",
     mediaType,
+    openContent: async (abortSignal?: AbortSignal) => {
+      return createReadStream(
+        contentPath,
+        abortSignal === undefined ? {} : { signal: abortSignal },
+      );
+    },
     sourceFile: `/documents/sample${extension}`,
   };
 }

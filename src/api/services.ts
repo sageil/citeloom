@@ -31,6 +31,7 @@ import {
   readApplicationErrorRetentionConfig,
   readDoclingServiceTopologyFromConfig,
   type AppConfig,
+  type SourceContentConfig,
 } from "../config/index.js";
 import { openDatabase } from "../database/client.js";
 import {
@@ -43,6 +44,12 @@ import {
   type UpdateIndexedDocumentTagsResult,
 } from "../documents/catalog/service.js";
 import { SourceContentStore } from "../documents/storage/source-content-store.js";
+import { createSourceContentBackend } from "../documents/storage/source-content-backend.js";
+import {
+  type SourceContentMigrationRecord,
+  SourceContentMigrationRepository,
+  type SourceContentStorageOverview,
+} from "../documents/storage/source-content-migration-store.js";
 import {
   ingestStagedDocumentsWithRuntime,
   queueDocumentReindexWithRuntime,
@@ -159,6 +166,9 @@ import {
   OpenAICodexCredentialStore,
   type OpenAICodexConnectionState,
 } from "../providers/openai-codex-credentials.js";
+import type {
+  SourceContentMigrationRequest,
+} from "./source-content-storage-boundary.js";
 import type {
   OpenAICodexOAuthCredentials,
 } from "../providers/openai-codex-oauth.js";
@@ -372,6 +382,9 @@ export interface WebServices {
     currentPassword: string,
     newPassword: PasswordInput,
   ) => Promise<void>;
+  cancelSourceContentMigration: (
+    id: string,
+  ) => Promise<SourceContentMigrationRecord>;
   listWorkspaceMembers: (
     principal: AuthenticatedPrincipal,
   ) => Promise<WorkspaceMember[]>;
@@ -391,6 +404,7 @@ export interface WebServices {
   readRevisions: () => Promise<ApplicationStateRevisionSnapshot>;
   readSession: (sessionToken: string) => Promise<AuthenticatedPrincipal | null>;
   readSettings: () => Promise<EffectiveApplicationSettings>;
+  readSourceContentStorage: () => Promise<SourceContentStorageOverview>;
   reportApplicationError: (
     error: unknown,
     context: ApplicationErrorContext,
@@ -419,6 +433,13 @@ export interface WebServices {
     sourceId: string,
     definition: EmbeddingInputFormatDefinition,
   ) => Promise<EmbeddingInputFormatRecord>;
+  queueSourceContentMigration: (
+    requestedByUserId: string,
+    request: SourceContentMigrationRequest,
+  ) => Promise<SourceContentMigrationRecord>;
+  testSourceContentStorage: (
+    targetConfig: SourceContentConfig,
+  ) => Promise<void>;
   updateSettings: (
     request: UpdateApplicationSettingsRequest,
   ) => Promise<EffectiveApplicationSettings>;
@@ -731,6 +752,14 @@ export function createWebServices(
         await authentication.changePassword(principal, currentPassword, newPassword);
       });
     },
+    cancelSourceContentMigration: async (id) => {
+      return manager.withRuntime(async (runtime) => {
+        const repository = new SourceContentMigrationRepository(
+          runtime.database,
+        );
+        return repository.requestCancellation(id);
+      });
+    },
     createWorkspaceMember: async (principal, identity, role) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
@@ -805,6 +834,14 @@ export function createWebServices(
         doclingTopology,
       );
     }),
+    readSourceContentStorage: async () => {
+      return manager.withRuntime(async (runtime) => {
+        const repository = new SourceContentMigrationRepository(
+          runtime.database,
+        );
+        return repository.readOverview();
+      });
+    },
     readWorkspaceSecurityOverview: async (principal) => {
       return manager.withRuntime(async (runtime) => {
         const securityPolicy = new WorkspaceSecurityPolicyStore(runtime.database);
@@ -854,6 +891,24 @@ export function createWebServices(
           sourceId,
           definition,
         );
+      });
+    },
+    queueSourceContentMigration: async (requestedByUserId, request) => {
+      return manager.withRuntime(async (runtime) => {
+        const repository = new SourceContentMigrationRepository(
+          runtime.database,
+        );
+        return repository.queue({
+          expectedSettingsVersion: request.expectedSettingsVersion,
+          requestedByUserId,
+          targetConfig: request.targetConfig,
+        });
+      });
+    },
+    testSourceContentStorage: async (targetConfig) => {
+      await manager.withRuntime(async () => {
+        const backend = createSourceContentBackend(targetConfig);
+        await backend.initialize();
       });
     },
     updateSettings: async (request) => {
