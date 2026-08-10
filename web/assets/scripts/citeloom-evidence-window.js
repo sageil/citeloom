@@ -1,6 +1,8 @@
 const evidenceWindowGap = 10;
+const evidenceWindowAnchorInset = 16;
 const evidenceWindowLayoutAttempts = 3;
 const evidenceWindowViewportPadding = 16;
+const evidenceWindowAnchorSelector = "[data-evidence-window-anchor]";
 
 function clamp(value, minimum, maximum) {
   return Math.min(Math.max(Math.round(value), minimum), maximum);
@@ -38,6 +40,7 @@ export async function waitForEvidenceWindowLayout(panel) {
 
 export function createEvidenceWindowState() {
   return {
+    anchor: null,
     dragSession: null,
     pinned: false,
     position: null,
@@ -47,6 +50,7 @@ export function createEvidenceWindowState() {
 }
 
 export function resetEvidenceWindow(state) {
+  state.anchor = null;
   state.dragSession = null;
   state.pinned = false;
   state.position = null;
@@ -57,12 +61,22 @@ export function resetEvidenceWindow(state) {
 export function prepareEvidenceWindow(state, trigger) {
   resetEvidenceWindow(state);
   state.trigger = trigger instanceof HTMLElement ? trigger : null;
+  state.anchor = findEvidenceWindowAnchor(state.trigger);
+}
+
+function findEvidenceWindowAnchor(trigger) {
+  if (typeof Element === "undefined" || !(trigger instanceof Element)) {
+    return null;
+  }
+  const anchor = trigger.closest(evidenceWindowAnchorSelector);
+  return anchor instanceof HTMLElement ? anchor : null;
 }
 
 export function readEvidenceWindowPlacement(
   triggerBounds,
   panelBounds,
   viewport,
+  anchorBounds = null,
 ) {
   const availableWidth = Math.max(
     0,
@@ -78,13 +92,29 @@ export function readEvidenceWindowPlacement(
     evidenceWindowViewportPadding,
     viewport.width - evidenceWindowViewportPadding - width,
   );
+  const requestedLeft = anchorBounds === null
+    ? triggerBounds.left
+    : anchorBounds.left + evidenceWindowAnchorInset;
   const left = clamp(
-    triggerBounds.left,
+    requestedLeft,
     evidenceWindowViewportPadding,
     maximumLeft,
   );
   const top = triggerBounds.top - evidenceWindowGap - maxHeight;
   return { left, maxHeight, top, width };
+}
+
+function readEvidenceWindowAnchorBounds(state) {
+  if (!(state.anchor instanceof HTMLElement) || !state.anchor.isConnected) {
+    state.anchor = null;
+    return null;
+  }
+  const anchorBounds = state.anchor.getBoundingClientRect();
+  if (!hasRenderedBounds(anchorBounds)) {
+    state.anchor = null;
+    return null;
+  }
+  return anchorBounds;
 }
 
 export function evidenceWindowStyle(state, visible = true) {
@@ -142,10 +172,12 @@ export function positionEvidenceWindow(
           height: Math.min(state.size.height, availableHeight),
           width: state.size.width,
         };
+        const anchorBounds = readEvidenceWindowAnchorBounds(state);
         state.position = readEvidenceWindowPlacement(
           triggerBounds,
           availablePanelSize,
           viewport,
+          anchorBounds,
         );
         return true;
       }

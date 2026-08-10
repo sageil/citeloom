@@ -100,7 +100,7 @@
           @scroll.passive="handleThreadScroll()"
         >
           <template x-for="run in conversation.runs" :key="run.id">
-            <article class="chat-turn">
+            <article class="chat-turn" data-evidence-window-anchor>
               <template x-for="message in run.messages" :key="`${run.id}-${message.role}`">
                 <div class="chat-message" :class="`chat-message-${message.role}`">
                   <template x-if="message.role === 'user'">

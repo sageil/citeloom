@@ -526,6 +526,7 @@
         <template x-if="mode === 'ask' && (answer !== null || operation === 'answer' || hasAnswerContent())">
           <div
             class="panel answer-panel"
+            data-evidence-window-anchor
             :class="{ 'answer-panel-loading': answer === null && operation === 'answer' }"
             :aria-busy="answer === null && operation === 'answer'"
             aria-live="polite"
