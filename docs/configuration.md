@@ -2,8 +2,8 @@
 
 CiteLoom has two configuration layers:
 
-- Use the Settings page for providers, models, search, answers, and document conversion.
-- Use environment variables for database access, storage paths, web listeners, release information, and service processes.
+- Use the Settings page for providers, models, search, answers, document conversion, and the active source-content backend.
+- Use environment variables for database access, fresh-database storage defaults, web listeners, release information, and service processes.
 
 Settings are stored in PostgreSQL.
 Each ingestion, Ask, or Chat run keeps the settings snapshot it started with.
@@ -51,8 +51,17 @@ The [standalone frontend guide](../web/README.md) documents its additional varia
 | `DATABASE_URL` | PostgreSQL connection string |
 | `DATABASE_POOL_MAX` | Maximum PostgreSQL connections per process |
 | `CITELOOM_POSTGRES_DATA_DIRECTORY` | Host directory bind-mounted for Compose PostgreSQL data |
-| `CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY` | Host directory bind-mounted as immutable source content by Compose |
-| `CITELOOM_SOURCE_CONTENT_DIRECTORY` | Process-visible source-content path written to PostgreSQL during migration bootstrap |
+| `CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY` | Host directory bind-mounted as filesystem source content by Compose |
+| `CITELOOM_SOURCE_CONTENT_DIRECTORY` | Process-visible filesystem path used for a fresh database and as the offline migration target |
+| `CITELOOM_SOURCE_CONTENT_BACKEND` | Fresh-database or offline migration target: `filesystem` or `s3` |
+| `CITELOOM_SOURCE_CONTENT_S3_ENDPOINT` | S3-compatible endpoint used for a fresh database and as the offline migration target |
+| `CITELOOM_SOURCE_CONTENT_S3_BUCKET` | S3 bucket used for a fresh database and as the offline migration target |
+| `CITELOOM_SOURCE_CONTENT_S3_PREFIX` | Object key prefix used for a fresh database and as the offline migration target |
+| `CITELOOM_SOURCE_CONTENT_S3_REGION` | S3 request-signing region used for a fresh database and as the offline migration target |
+| `CITELOOM_SOURCE_CONTENT_S3_FORCE_PATH_STYLE` | Enables path-style requests for a fresh S3-compatible backend or offline migration target |
+| `CITELOOM_S3_ACCESS_KEY_ID` | SeaweedFS access key used by the optional Compose overlay |
+| `CITELOOM_S3_SECRET_ACCESS_KEY` | SeaweedFS secret key used by the optional Compose overlay |
+| `CITELOOM_SEAWEEDFS_DATA_DIRECTORY` | Host directory containing optional SeaweedFS data |
 | `CITELOOM_UPLOAD_DIRECTORY` | Web staging directory for in-progress uploads |
 | `CITELOOM_MAX_UPLOAD_REQUEST_MEGABYTES` | Aggregate byte limit for one multipart upload request |
 | `CITELOOM_WEB_HOST` | Listener address for a host-run web process |
@@ -82,10 +91,13 @@ The [standalone frontend guide](../web/README.md) documents its additional varia
 Docker Compose defaults `CITELOOM_POSTGRES_DATA_DIRECTORY` to `./data/citeloomdb`, resolved from the repository root.
 It defaults `CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY` to `./documents/blobs`.
 
-The database setting `sourceContent.directory` tells CiteLoom where processes can read stored source files.
-The web application, worker, and ordinary command-line tools use this database value instead of the environment variable.
-The host-run development benchmark is the exception.
-It reads `CITELOOM_SOURCE_CONTENT_DIRECTORY` because a Docker Compose database may contain the container-only path `/app/documents/blobs`.
+The database `sourceContent` setting selects either a filesystem directory or an S3-compatible bucket, endpoint, region, and key prefix.
+The web application, worker, and ordinary command-line tools use this stored configuration.
+An administrator can open Settings, choose Object storage, test a filesystem or S3-compatible target, and start a verified background migration.
+The environment source stores only the credential-source choice and reads `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in each application process.
+Static credentials entered in Settings are stored in PostgreSQL, are write-only through the API, and are therefore included in database backups.
+Source-content environment settings seed a new database and select the target for the offline `source-content migrate --apply` command, but they do not replace the active backend of an existing database during ordinary schema migration.
+The host-run development benchmark remains the exception and reads the source-content environment variables because Compose paths and service hostnames may not be reachable from the host.
 
 Follow [Choose storage paths](deployment.md#choose-storage-paths) to select or move the persistent stores safely.
 
@@ -431,7 +443,8 @@ Restart Docling after changing them, and keep those process settings consistent 
 
 CiteLoom coordinates multiple Docling instances through PostgreSQL.
 Each instance needs a unique ID, URL, and capacity because only the instance that accepted a remote task can resume it.
-Mount the same complete source-content store at `CITELOOM_SOURCE_CONTENT_DIRECTORY` as read-only storage in every instance.
+Each application process streams source bytes to its assigned Docling instance before conversion.
+Docling verifies and atomically stages those bytes in its checkpoint directory, so Docling replicas do not require access to the active source-content backend.
 
 Give every Docling instance a stable URL that recovery can reach.
 The supplied topology uses named services instead of `docker compose --scale docling=N` or round-robin balancing behind one URL.

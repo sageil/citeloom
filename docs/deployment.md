@@ -55,26 +55,95 @@ CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY=/srv/citeloom/documents/blobs
 
 When reusing existing data, verify both bind paths and back up PostgreSQL and source content together.
 
-Compose mounts the source directory at `/app/documents/blobs` in the migration, web, worker, and Docling containers.
-Docling receives a read-only mount and reads stored sources by content ID.
-Migration saves the container path in PostgreSQL for application processes to use.
+The default Compose deployment mounts the source directory at `/app/documents/blobs` in the migration, web, and worker containers.
+Application processes stream verified source bytes to Docling, so Docling does not mount this directory.
+Migration saves the filesystem configuration in PostgreSQL for application processes to use.
 
-To move an existing source store to a different process-visible path:
+To move an existing source store to a different process-visible path, mount the new directory in the web and worker containers and use Settings > Object storage to test it and start the migration.
+The background worker copies and hash-verifies every recorded source before changing the stored path.
+It keeps the previous setting and content tree when validation fails.
 
-1. Stop every web, worker, and Docling process.
-2. Copy the complete `sha256` content tree to the new shared directory.
-3. Mount that directory read-only at the same absolute path in every Docling instance.
-4. Set `CITELOOM_SOURCE_CONTENT_DIRECTORY` to the path visible to the migration process.
-5. Run the migration.
+The `source-content migrate --apply` command remains available for planned offline migration, but ordinary administrator changes should use the durable Settings workflow.
 
-The migration checks every recorded source before changing the stored path.
-It keeps the previous setting when validation fails.
+### Opt in to SeaweedFS
 
-Stop the stack without deleting its bind-mounted data.
+The optional `compose.seaweedfs.yml` overlay runs a pinned single-node SeaweedFS service and configures CiteLoom through its S3-compatible endpoint.
+Set strong credentials in `.env` before the first start.
+Keep each CiteLoom database on an exclusive bucket and key prefix because orphan reconciliation treats objects outside that database as removable.
+
+For a fixed single-host example with two stateless S3 gateways behind Caddy, follow [Self-hosted SeaweedFS with Caddy](../deployments/examples/seaweedfs-caddy/README.md).
+That example runs exactly three SeaweedFS containers and preserves the same internal S3 endpoint and data directory as this overlay.
+
+```dotenv
+CITELOOM_S3_ACCESS_KEY_ID=citeloom-admin
+CITELOOM_S3_SECRET_ACCESS_KEY=replace-with-a-long-random-secret
+CITELOOM_SEAWEEDFS_DATA_DIRECTORY=/srv/citeloom/seaweedfs
+```
+
+Start or update a source-build deployment with the overlay.
 
 ```bash
-docker compose --env-file .env -f compose.dockerhub.yml down
+docker compose --env-file .env -f compose.yml -f compose.seaweedfs.yml up -d --build --wait
 ```
+
+For a Docker Hub deployment, pull and start the selected application release with the overlay.
+
+```bash
+docker compose --env-file .env -f compose.dockerhub.yml -f compose.seaweedfs.yml pull
+docker compose --env-file .env -f compose.dockerhub.yml -f compose.seaweedfs.yml up -d --wait
+```
+
+A new database uses SeaweedFS immediately and does not require a content migration.
+
+#### Move an existing installation to SeaweedFS
+
+An existing filesystem installation uses two different migrations.
+The Compose `migrate` service first applies the database schema migration that records durable storage-migration jobs.
+This schema migration preserves the active filesystem configuration and does not move or switch source content.
+The administrator starts the separate content migration from Settings after the updated application is running.
+
+1. Follow [Backup and restore](operations.md#backup-and-restore) to stop writers and create a backup containing PostgreSQL and the existing source files.
+2. Set the SeaweedFS credentials and persistent data directory in `.env` as shown above.
+3. Start the updated deployment with both its existing Compose file and `compose.seaweedfs.yml`, using the applicable command above.
+4. Sign in as an administrator and open Settings > Object storage.
+5. Confirm that Active storage still reports Local filesystem.
+6. Select S3-compatible object storage and enter the bundled SeaweedFS connection values below.
+
+| Setting | Value |
+| --- | --- |
+| Endpoint URL | `http://seaweedfs:8333` |
+| Bucket | The value of `CITELOOM_SOURCE_CONTENT_S3_BUCKET`, or `citeloom` by default |
+| Object key prefix | The value of `CITELOOM_SOURCE_CONTENT_S3_PREFIX`, or `sources` by default |
+| Signing region | The value of `CITELOOM_SOURCE_CONTENT_S3_REGION`, or `us-east-1` by default |
+| Credential source | Deployment environment |
+| Use path-style URLs | Enabled |
+
+7. Select Test connection and wait for confirmation that the target accepted a write and delete probe.
+8. Select Start migration and confirm the requested migration.
+9. Monitor the migration on the same page until its status is Completed and Active storage reports S3-compatible storage.
+
+The base Compose service definitions keep the original filesystem mounted in the migration, web, and worker containers while the SeaweedFS overlay makes the target available.
+The filesystem remains active for reads and writes while the worker copies and hash-verifies every registered source object.
+The worker saves checkpoints in PostgreSQL, resumes after a restart or expired lease, and includes documents written while copying in its final verification.
+After verification, CiteLoom changes the active storage setting to SeaweedFS and completes the migration record in one database transaction.
+
+If the migration is cancelled or fails, the filesystem remains active and objects already copied to SeaweedFS are retained.
+Cancellation is available until final cutover starts.
+Correct the reported problem and start a new migration request when ready.
+
+After a completed migration, the previous filesystem content remains available for a reverse migration but does not receive new writes or deletions.
+Retain the old content and mount until the SeaweedFS deployment has been verified for the required recovery period.
+Cleanup is a separate explicit operator action because CiteLoom never deletes the previous backend automatically.
+
+The durable migration and recovery details are documented in [Migrate source-content storage](operations.md#migrate-source-content-storage).
+
+Stop a Docker Hub stack without deleting its bind-mounted data.
+
+```bash
+docker compose --env-file .env -f compose.dockerhub.yml -f compose.seaweedfs.yml down
+```
+
+For a source-build deployment, replace `compose.dockerhub.yml` with `compose.yml`.
 
 ## Build and run locally
 

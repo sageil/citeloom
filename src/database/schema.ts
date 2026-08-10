@@ -31,6 +31,7 @@ import type {
   DoclingServiceIdentity,
 } from "../docling/protocol/run-metadata.js";
 import type { StoredApplicationSettings } from "../providers/settings-persistence.js";
+import type { SourceContentConfig } from "../config/types.js";
 import type { MatchedDocument } from "../retrieval/document-retrieval.js";
 import type { EmbeddingSpaceRowCounts } from "../embedding/space/types.js";
 import { EMBEDDING_DIMENSIONS } from "../embedding/dimensions.js";
@@ -499,16 +500,137 @@ export const applicationSettings = pgTable(
         AND jsonb_typeof(${table.defaults}->'providers') = 'object'
         AND jsonb_typeof(${table.defaults}->'runtime') = 'object'
         AND COALESCE(jsonb_typeof(${table.defaults}->'sourceContent'), '') = 'object'
-        AND COALESCE(jsonb_typeof(${table.defaults}#>'{sourceContent,directory}'), '') = 'string'
-        AND COALESCE(${table.defaults}#>>'{sourceContent,directory}', '') <> ''
+        AND (
+          (
+            COALESCE(${table.defaults}#>>'{sourceContent,kind}', 'filesystem') = 'filesystem'
+            AND COALESCE(jsonb_typeof(${table.defaults}#>'{sourceContent,directory}'), '') = 'string'
+            AND COALESCE(${table.defaults}#>>'{sourceContent,directory}', '') <> ''
+          )
+          OR (
+            ${table.defaults}#>>'{sourceContent,kind}' = 's3'
+            AND COALESCE(${table.defaults}#>>'{sourceContent,bucket}', '') <> ''
+            AND COALESCE(${table.defaults}#>>'{sourceContent,endpointUrl}', '') <> ''
+            AND COALESCE(jsonb_typeof(${table.defaults}#>'{sourceContent,forcePathStyle}'), '') = 'boolean'
+            AND COALESCE(${table.defaults}#>>'{sourceContent,prefix}', '') <> ''
+            AND COALESCE(${table.defaults}#>>'{sourceContent,region}', '') <> ''
+          )
+        )
         AND ${table.defaults}->>'schemaVersion' = '1'
         AND jsonb_typeof(${table.settings}) = 'object'
         AND jsonb_typeof(${table.settings}->'providers') = 'object'
         AND jsonb_typeof(${table.settings}->'runtime') = 'object'
         AND COALESCE(jsonb_typeof(${table.settings}->'sourceContent'), '') = 'object'
-        AND COALESCE(jsonb_typeof(${table.settings}#>'{sourceContent,directory}'), '') = 'string'
-        AND COALESCE(${table.settings}#>>'{sourceContent,directory}', '') <> ''
+        AND (
+          (
+            COALESCE(${table.settings}#>>'{sourceContent,kind}', 'filesystem') = 'filesystem'
+            AND COALESCE(jsonb_typeof(${table.settings}#>'{sourceContent,directory}'), '') = 'string'
+            AND COALESCE(${table.settings}#>>'{sourceContent,directory}', '') <> ''
+          )
+          OR (
+            ${table.settings}#>>'{sourceContent,kind}' = 's3'
+            AND COALESCE(${table.settings}#>>'{sourceContent,bucket}', '') <> ''
+            AND COALESCE(${table.settings}#>>'{sourceContent,endpointUrl}', '') <> ''
+            AND COALESCE(jsonb_typeof(${table.settings}#>'{sourceContent,forcePathStyle}'), '') = 'boolean'
+            AND COALESCE(${table.settings}#>>'{sourceContent,prefix}', '') <> ''
+            AND COALESCE(${table.settings}#>>'{sourceContent,region}', '') <> ''
+          )
+        )
         AND ${table.settings}->>'schemaVersion' = '1'`,
+    ),
+  ],
+);
+
+export const sourceContentMigrations = pgTable(
+  "source_content_migrations",
+  {
+    activeSlot: integer("active_slot"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    completedAt: timestamp("completed_at", { mode: "date", withTimezone: true }),
+    copiedDocuments: integer("copied_documents").notNull().default(0),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    errorMessage: text("error_message"),
+    id: uuid("id").primaryKey(),
+    lastDocumentId: varchar("last_document_id", { length: 64 }),
+    leaseExpiresAt: timestamp("lease_expires_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    leaseOwner: uuid("lease_owner"),
+    requestedByUserId: uuid("requested_by_user_id").notNull(),
+    sourceConfig: jsonb("source_config")
+      .$type<SourceContentConfig>()
+      .notNull(),
+    startedAt: timestamp("started_at", { mode: "date", withTimezone: true }),
+    state: varchar("state", { length: 32 })
+      .$type<
+        | "queued"
+        | "validating"
+        | "copying"
+        | "cutover"
+        | "cancel_requested"
+        | "completed"
+        | "failed"
+        | "cancelled"
+      >()
+      .notNull(),
+    targetConfig: jsonb("target_config")
+      .$type<SourceContentConfig>()
+      .notNull(),
+    totalDocuments: integer("total_documents").notNull().default(0),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    verifiedDocuments: integer("verified_documents").notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex("source_content_migrations_active_slot_idx")
+      .on(table.activeSlot)
+      .where(sql`${table.activeSlot} IS NOT NULL`),
+    index("source_content_migrations_state_lease_idx")
+      .on(table.state, table.leaseExpiresAt),
+    check(
+      "source_content_migrations_values_valid",
+      sql`${table.attemptCount} >= 0
+        AND ${table.copiedDocuments} >= 0
+        AND ${table.totalDocuments} >= 0
+        AND ${table.verifiedDocuments} >= 0
+        AND (${table.lastDocumentId} IS NULL OR ${table.lastDocumentId} ~ '^[a-f0-9]{64}$')
+        AND jsonb_typeof(${table.sourceConfig}) = 'object'
+        AND jsonb_typeof(${table.targetConfig}) = 'object'
+        AND ${table.state} IN (
+          'queued',
+          'validating',
+          'copying',
+          'cutover',
+          'cancel_requested',
+          'completed',
+          'failed',
+          'cancelled'
+        )
+        AND (
+          (
+            ${table.state} IN (
+              'queued',
+              'validating',
+              'copying',
+              'cutover',
+              'cancel_requested'
+            )
+            AND ${table.activeSlot} = 1
+          )
+          OR (
+            ${table.state} IN ('completed', 'failed', 'cancelled')
+            AND ${table.activeSlot} IS NULL
+          )
+        )
+        AND (
+          (${table.leaseOwner} IS NULL AND ${table.leaseExpiresAt} IS NULL)
+          OR (${table.leaseOwner} IS NOT NULL AND ${table.leaseExpiresAt} IS NOT NULL)
+        )
+        AND (${table.completedAt} IS NULL OR ${table.completedAt} >= ${table.createdAt})
+        AND (${table.startedAt} IS NULL OR ${table.startedAt} >= ${table.createdAt})`,
     ),
   ],
 );

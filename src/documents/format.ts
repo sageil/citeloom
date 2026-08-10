@@ -1,4 +1,5 @@
 import { extname } from "node:path";
+import type { Readable } from "node:stream";
 
 import { z } from "zod";
 
@@ -66,8 +67,8 @@ export interface BufferedDocumentSource extends DocumentSourceBase {
 
 export interface FileDocumentSource extends DocumentSourceBase {
   byteLength: number;
-  contentPath: string;
   kind: "file";
+  openContent: (abortSignal?: AbortSignal) => Promise<Readable>;
 }
 
 export type DocumentSource = BufferedDocumentSource | FileDocumentSource;

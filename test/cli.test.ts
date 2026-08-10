@@ -105,6 +105,46 @@ describe("parseCliCommand", () => {
     });
   });
 
+  it("requires explicit application of a source-content migration", () => {
+    expect(parseCliCommand([
+      "source-content",
+      "migrate",
+      "--apply",
+    ])).toEqual({ name: "source-content-migrate" });
+    expect(() => parseCliCommand([
+      "source-content",
+      "migrate",
+    ])).toThrow("source-content migrate --apply");
+  });
+
+  it("parses source-content archive paths", () => {
+    expect(parseCliCommand([
+      "source-content",
+      "export",
+      "--directory",
+      "backup/source-content",
+    ], "/workspace")).toEqual({
+      directory: "/workspace/backup/source-content",
+      name: "source-content-export",
+    });
+    expect(parseCliCommand([
+      "source-content",
+      "import",
+      "--directory",
+      "/restore/source-content",
+      "--apply",
+    ], "/workspace")).toEqual({
+      directory: "/restore/source-content",
+      name: "source-content-import",
+    });
+    expect(() => parseCliCommand([
+      "source-content",
+      "import",
+      "--directory",
+      "/restore/source-content",
+    ], "/workspace")).toThrow("--apply");
+  });
+
   it("rejects an incomplete failed job retry command", () => {
     expect(() => parseCliCommand(["jobs", "retry"])).toThrow(
       "Usage: citeloom jobs retry --file <stored-source-file>",

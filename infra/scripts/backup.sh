@@ -52,19 +52,43 @@ resolve_source_content_directory() {
 require_writers_stopped() {
   running_services="$(run_compose ps --services --status running)"
   for service in ${running_services}; do
-    if [ "${service}" = "web" ] || [ "${service}" = "worker" ]; then
-      echo "Stop the web and worker services before creating a backup." >&2
+    if [ "${service}" = "migrate" ] \
+      || [ "${service}" = "web" ] \
+      || [ "${service}" = "worker" ]; then
+      echo "Stop the migrate, web, and worker services before creating a backup." >&2
       exit 1
     fi
   done
+}
+
+read_source_content_backend() {
+  source_content_backend="$(
+    run_compose exec -T "${database_service}" psql \
+      --username "${database_user}" \
+      --dbname "${database_name}" \
+      --tuples-only \
+      --no-align \
+      --command "SELECT COALESCE(settings #>> '{sourceContent,kind}', 'filesystem') FROM application_settings WHERE id = 'runtime'" \
+      | tr -d '[:space:]'
+  )"
+  case "${source_content_backend}" in
+    filesystem|s3) ;;
+    *)
+      echo "Stored source-content backend is invalid: ${source_content_backend}" >&2
+      exit 1
+      ;;
+  esac
 }
 
 cleanup() {
   rm -rf -- "${temporary_path}"
 }
 
-resolve_source_content_directory
 require_writers_stopped
+read_source_content_backend
+if [ "${source_content_backend}" = "filesystem" ]; then
+  resolve_source_content_directory
+fi
 mkdir -p "${backup_directory}"
 mkdir -p "${temporary_path}"
 trap cleanup EXIT HUP INT TERM
@@ -81,7 +105,19 @@ if [ ! -s "${temporary_path}/database.dump" ]; then
 fi
 
 printf '%s\n' "citeloom-backup-v1" > "${temporary_path}/format"
-if [ -d "${source_content_directory}" ]; then
+if [ "${source_content_backend}" = "s3" ]; then
+  source_content_export_directory="${temporary_path}/source-content"
+  mkdir "${source_content_export_directory}"
+  source_content_export_directory="$(
+    CDPATH= cd -- "${source_content_export_directory}" && pwd
+  )"
+  run_compose run --rm --no-deps \
+    --volume "${source_content_export_directory}:/backup" \
+    worker node dist/cli/index.js source-content export --directory /backup
+  tar -cf "${temporary_path}/source-content.tar" \
+    -C "${source_content_export_directory}" .
+  rm -rf -- "${source_content_export_directory}"
+elif [ -d "${source_content_directory}" ]; then
   tar -cf "${temporary_path}/source-content.tar" \
     -C "${source_content_directory}" .
 else

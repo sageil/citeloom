@@ -152,6 +152,18 @@
             <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
           </svg>
         </button>
+        <button type="button" @click="selectArea('Object storage')">
+          <svg aria-hidden="true" class="citeloom-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-database"></use>
+          </svg>
+          <span>
+            <strong>Object storage</strong>
+            <small x-text="sourceContentStorage?.active.kind === 's3' ? 'S3-compatible storage active' : 'Local filesystem active'"></small>
+          </span>
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+          </svg>
+        </button>
         <template x-for="group in groups" :key="group.name">
           <button type="button" @click="selectArea(group.name)">
             <svg aria-hidden="true" class="citeloom-icon">
@@ -754,6 +766,101 @@
     </section>
     </template>
 
+    <template x-if="selectedArea === 'Object storage'">
+    <section class="settings-search-results settings-storage-workbench">
+      <div class="status-message settings-message error" role="alert" x-cloak x-show="sourceContentStorageError !== ''">
+        <svg aria-hidden="true" class="citeloom-icon status-icon error"><use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use></svg>
+        <span x-text="sourceContentStorageError"></span>
+      </div>
+
+      <p class="settings-loading" x-show="sourceContentStorage === null">Loading object storage settings.</p>
+
+      <template x-if="sourceContentStorage !== null &amp;&amp; sourceContentStorageDraft !== null">
+      <div class="settings-storage-content">
+        <div class="settings-feature-health" aria-label="Object storage summary">
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-database"></use></svg><span><strong x-text="sourceContentStorage.active.kind === 's3' ? 'S3-compatible storage' : 'Local filesystem'"></strong><small>Active source-content backend</small></span></div>
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg><span><strong x-text="`${sourceContentStorage.documentCount} documents`"></strong><small>Registered source objects</small></span></div>
+          <div :class="{ warning: sourceContentMigrationActive() }"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><span><strong x-text="sourceContentMigrationActive() ? sourceContentMigrationStateLabel() : 'Ready'"></strong><small>Migration status</small></span></div>
+        </div>
+
+        <div class="settings-storage-grid">
+          <section class="settings-storage-active" aria-labelledby="settings-storage-active-title">
+            <header><span class="settings-feature-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-database"></use></svg></span><div><h2 id="settings-storage-active-title">Active storage</h2><p>New reads, writes, and deletions use this backend.</p></div></header>
+            <dl>
+              <div><dt>Backend</dt><dd x-text="sourceContentStorage.active.kind === 's3' ? 'S3-compatible' : 'Filesystem'"></dd></div>
+              <template x-if="sourceContentStorage.active.kind === 'filesystem'"><div><dt>Directory</dt><dd><code x-text="sourceContentStorage.active.directory"></code></dd></div></template>
+              <template x-if="sourceContentStorage.active.kind === 's3'"><div><dt>Endpoint</dt><dd><code x-text="sourceContentStorage.active.endpointUrl"></code></dd></div></template>
+              <template x-if="sourceContentStorage.active.kind === 's3'"><div><dt>Bucket and prefix</dt><dd><code x-text="`${sourceContentStorage.active.bucket}/${sourceContentStorage.active.prefix}`"></code></dd></div></template>
+              <template x-if="sourceContentStorage.active.kind === 's3'"><div><dt>Credentials</dt><dd x-text="sourceContentStorage.active.credentialSource === 'environment' ? 'Deployment environment' : 'Stored static credentials'"></dd></div></template>
+            </dl>
+            <p class="settings-storage-boundary-note"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><span>This page configures CiteLoom's connection. SeaweedFS server credentials, ports, and data directories remain deployment-controlled.</span></p>
+          </section>
+
+          <section class="settings-storage-editor" aria-labelledby="settings-storage-editor-title">
+            <header><div><h2 id="settings-storage-editor-title">Migration target</h2><p>Test a destination, then start a verified background migration.</p></div><span class="setting-source">Administrator</span></header>
+
+            <label class="form-field">
+              <span>Backend</span>
+              <select :disabled="sourceContentMigrationActive() || sourceContentStorageBusy" :value="sourceContentStorageDraft.kind" @change="changeSourceContentStorageKind($event.target.value)">
+                <option value="filesystem">Local filesystem</option>
+                <option value="s3">S3-compatible object storage</option>
+              </select>
+            </label>
+
+            <template x-if="sourceContentStorageDraft.kind === 'filesystem'">
+              <label class="form-field settings-storage-wide-field">
+                <span>Absolute directory</span>
+                <input autocomplete="off" type="text" :disabled="sourceContentMigrationActive() || sourceContentStorageBusy" :value="sourceContentStorageDraft.directory" @input="writeSourceContentStorageDraft('directory', $event.target.value)" />
+                <small>The directory must be mounted in both the web and worker containers.</small>
+              </label>
+            </template>
+
+            <template x-if="sourceContentStorageDraft.kind === 's3'">
+            <div class="settings-storage-s3-fields">
+              <label class="form-field settings-storage-wide-field"><span>Endpoint URL</span><input autocomplete="url" type="url" :disabled="sourceContentMigrationActive() || sourceContentStorageBusy" :value="sourceContentStorageDraft.endpointUrl" @input="writeSourceContentStorageDraft('endpointUrl', $event.target.value)" /><small>For bundled SeaweedFS, use <code>http://seaweedfs:8333</code>.</small></label>
+              <label class="form-field"><span>Bucket</span><input autocomplete="off" type="text" maxlength="63" :disabled="sourceContentMigrationActive() || sourceContentStorageBusy" :value="sourceContentStorageDraft.bucket" @input="writeSourceContentStorageDraft('bucket', $event.target.value)" /></label>
+              <label class="form-field"><span>Object key prefix</span><input autocomplete="off" type="text" maxlength="512" :disabled="sourceContentMigrationActive() || sourceContentStorageBusy" :value="sourceContentStorageDraft.prefix" @input="writeSourceContentStorageDraft('prefix', $event.target.value)" /></label>
+              <label class="form-field"><span>Signing region</span><input autocomplete="off" type="text" maxlength="100" :disabled="sourceContentMigrationActive() || sourceContentStorageBusy" :value="sourceContentStorageDraft.region" @input="writeSourceContentStorageDraft('region', $event.target.value)" /><small>This signs S3 requests and does not select where SeaweedFS stores data.</small></label>
+              <label class="form-field"><span>Credential source</span><select :disabled="sourceContentMigrationActive() || sourceContentStorageBusy" :value="sourceContentStorageDraft.credentialSource" @change="writeSourceContentStorageDraft('credentialSource', $event.target.value)"><option value="environment">Deployment environment</option><option value="static">Enter static credentials</option></select></label>
+              <template x-if="sourceContentStorageDraft.credentialSource === 'static'">
+              <div class="settings-storage-credential-fields">
+                <label class="form-field"><span>Access key ID</span><input autocomplete="off" type="password" maxlength="256" :disabled="sourceContentMigrationActive() || sourceContentStorageBusy" :value="sourceContentStorageDraft.accessKeyId" @input="writeSourceContentStorageDraft('accessKeyId', $event.target.value)" /></label>
+                <label class="form-field"><span>Secret access key</span><input autocomplete="new-password" type="password" maxlength="4096" :disabled="sourceContentMigrationActive() || sourceContentStorageBusy" :value="sourceContentStorageDraft.secretAccessKey" @input="writeSourceContentStorageDraft('secretAccessKey', $event.target.value)" /></label>
+                <small>Credentials are write-only and are never returned by the API or included in migration status.</small>
+              </div>
+              </template>
+              <label class="toggle-control settings-toggle-control settings-storage-path-style"><input type="checkbox" :checked="sourceContentStorageDraft.forcePathStyle" :disabled="sourceContentMigrationActive() || sourceContentStorageBusy" @change="writeSourceContentStorageDraft('forcePathStyle', $event.target.checked)" /><span><strong>Use path-style URLs</strong><small>Required by bundled SeaweedFS and many self-hosted S3 services.</small></span></label>
+            </div>
+            </template>
+
+            <div class="settings-storage-probe-status" :class="{ ready: sourceContentStorageProbePassed }">
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use :href="sourceContentStorageProbePassed ? './assets/images/citeloom-icons.svg#citeloom-status-check' : './assets/images/citeloom-icons.svg#citeloom-warning-circle'"></use></svg>
+              <span x-text="sourceContentStorageProbePassed ? 'Connection test passed. The target accepted a write and delete probe.' : 'Test the connection before starting a migration.'"></span>
+            </div>
+
+            <footer class="settings-storage-actions">
+              <button class="button secondary" type="button" :disabled="sourceContentStorageBusy || sourceContentMigrationActive()" @click="resetSourceContentStorageDraft()">Reset</button>
+              <button class="button secondary" type="button" :aria-busy="sourceContentStorageBusy" :disabled="sourceContentStorageBusy || sourceContentMigrationActive()" @click="testSourceContentStorage()">Test connection</button>
+              <button class="button primary" type="button" :disabled="sourceContentStorageBusy || sourceContentMigrationActive() || !sourceContentStorageProbePassed" @click="startSourceContentMigration()">Start migration</button>
+            </footer>
+          </section>
+        </div>
+
+        <template x-if="sourceContentStorage.migration !== null">
+        <section class="settings-storage-migration" :class="`state-${sourceContentStorage.migration.state}`" aria-live="polite">
+          <header><div><span>Latest migration</span><h2 x-text="sourceContentMigrationStateLabel()"></h2></div><strong x-text="`${sourceContentMigrationProgress()}%`"></strong></header>
+          <progress max="100" :value="sourceContentMigrationProgress()"></progress>
+          <div class="settings-storage-migration-counts"><span><strong x-text="sourceContentStorage.migration.copiedDocuments"></strong> copied and verified</span><span><strong x-text="sourceContentStorage.migration.verifiedDocuments"></strong> verified at cutover</span><span><strong x-text="sourceContentStorage.migration.attemptCount"></strong> worker attempts</span></div>
+          <p class="settings-storage-migration-error" x-show="sourceContentStorage.migration.errorMessage !== null" x-text="sourceContentStorage.migration.errorMessage"></p>
+          <p class="settings-storage-retention-note" x-show="sourceContentStorage.migration.state === 'completed'"><strong>Previous backend retained.</strong> It is available for a reverse migration but is not synchronized with new writes or deletions.</p>
+          <footer x-show="sourceContentMigrationCancellable()"><button class="button danger" type="button" :disabled="sourceContentStorageBusy" @click="cancelSourceContentMigration()">Cancel migration</button></footer>
+        </section>
+        </template>
+      </div>
+      </template>
+    </section>
+    </template>
+
     <template x-if="selectedArea === 'Startup and deployment'">
     <section class="settings-search-results settings-feature-workbench settings-startup-workbench">
       <div class="settings-feature-health" aria-label="Startup configuration summary">
@@ -791,7 +898,7 @@
     </section>
     </template>
 
-    <template x-if="!browsingAreas &amp;&amp; selectedArea !== 'Application Features' &amp;&amp; selectedArea !== 'Providers' &amp;&amp; selectedArea !== 'Startup and deployment'">
+    <template x-if="!browsingAreas &amp;&amp; selectedArea !== 'Application Features' &amp;&amp; selectedArea !== 'Providers' &amp;&amp; selectedArea !== 'Object storage' &amp;&amp; selectedArea !== 'Startup and deployment'">
     <section class="settings-search-results settings-feature-workbench settings-runtime-workbench" aria-live="polite">
       <div class="empty-state settings-empty-results" x-show="filteredFields.length === 0">
         <svg aria-hidden="true" class="citeloom-icon">

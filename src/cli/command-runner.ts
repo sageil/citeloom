@@ -36,6 +36,79 @@ export async function main(arguments_: string[] = process.argv.slice(2)): Promis
   );
   const config = effectiveSettings.config;
 
+  if (command.name === "source-content-migrate") {
+    const { readSourceContentBootstrapConfig } = await import(
+      "../database/administrator-bootstrap.js"
+    );
+    const { migrateSourceContentBackend } = await import(
+      "../documents/storage/source-content-migration.js"
+    );
+    const session = await openDatabase(config.database);
+    const controller = new AbortController();
+    const stop = (): void => controller.abort();
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+    try {
+      if (process.env.CITELOOM_SOURCE_CONTENT_BACKEND === undefined) {
+        throw new Error(
+          "Set CITELOOM_SOURCE_CONTENT_BACKEND explicitly before migrating source content.",
+        );
+      }
+      const target = readSourceContentBootstrapConfig(process.env);
+      const report = await migrateSourceContentBackend(
+        session.database,
+        target,
+        {
+          abortSignal: controller.signal,
+          reportProgress: printProgress,
+        },
+      );
+      console.log(
+        `Source-content migration complete: ${report.copied} copied, ${report.verifiedAtCutover} verified at cutover.`,
+      );
+    } finally {
+      process.off("SIGINT", stop);
+      process.off("SIGTERM", stop);
+      await session.close();
+    }
+    return;
+  }
+
+  if (
+    command.name === "source-content-export"
+    || command.name === "source-content-import"
+  ) {
+    const { copySourceContentObjects } = await import(
+      "../documents/storage/source-content-migration.js"
+    );
+    const session = await openDatabase(config.database);
+    const archiveConfig = {
+      directory: command.directory,
+      kind: "filesystem" as const,
+    };
+    const source = command.name === "source-content-export"
+      ? config.sourceContent
+      : archiveConfig;
+    const target = command.name === "source-content-export"
+      ? archiveConfig
+      : config.sourceContent;
+    try {
+      const copied = await copySourceContentObjects(
+        session.database,
+        source,
+        target,
+        { reportProgress: printProgress },
+      );
+      const operation = command.name === "source-content-export"
+        ? "exported"
+        : "imported";
+      console.log(`Source content ${operation}: ${copied} verified objects.`);
+    } finally {
+      await session.close();
+    }
+    return;
+  }
+
   if (command.name === "document-toc-backfill") {
     const { backfillDocumentTocs } = await import(
       "../retrieval/toc/backfill.js"

@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
 import { TextDecoder } from "node:util";
 
 import type { TextElement } from "../domain/source-elements.js";
@@ -130,7 +129,7 @@ async function readPlainTextChunks(
   const hash = createHash("sha256");
   const parser = new StreamingPlainTextParser(source.sourceFile);
   let prefix = Buffer.alloc(0);
-  const stream = createReadStream(source.contentPath, { signal: abortSignal });
+  const stream = await source.openContent(abortSignal);
   try {
     for await (const value of stream) {
       const content = Buffer.isBuffer(value) ? value : Buffer.from(value);

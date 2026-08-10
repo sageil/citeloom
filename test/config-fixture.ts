@@ -40,6 +40,7 @@ const TEST_DATABASE_CONFIG: Readonly<DatabaseConfig> = Object.freeze({
 export const TEST_SOURCE_CONTENT_CONFIG: Readonly<SourceContentConfig> =
   Object.freeze({
     directory: join(tmpdir(), "citeloom-test-source-content"),
+    kind: "filesystem",
   });
 
 export const TEST_EMBEDDING_INPUT_FORMAT = Object.freeze(

@@ -13,8 +13,10 @@ describe("stored document reindex source", () => {
     );
     const storedDocument: StoredSourceDocumentReference = {
       byteLength: 23,
-      contentPath: "/content/sha256/aa/document",
       documentId: indexedDocument.documentId,
+      openContent: async () => {
+        throw new Error("Content should not be opened by source discovery.");
+      },
     };
     const readDocumentReference = vi.fn(async () => storedDocument);
 
@@ -36,8 +38,10 @@ describe("stored document reindex source", () => {
     const indexedDocument = buildIndexedDocument("/documents/large.pdf");
     const storedDocument: StoredSourceDocumentReference = {
       byteLength: 5,
-      contentPath: "/content/sha256/aa/document",
       documentId: indexedDocument.documentId,
+      openContent: async () => {
+        throw new Error("Content should not be opened when enforcing limits.");
+      },
     };
 
     await expect(readStoredReindexSource(

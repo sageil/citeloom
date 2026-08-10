@@ -192,6 +192,11 @@ export async function requestDoclingConversion(
     apiKey: input.config.apiKey,
     baseUrl: input.config.baseUrl,
     body: JSON.stringify(body),
+    content: {
+      byteLength: input.source.byteLength,
+      documentId: input.source.documentId,
+      open: input.source.openContent,
+    },
     decodeResponse: decodeDoclingConversionResponse,
     observer: requestObserver,
     requestTimeoutMs: input.config.requestTimeoutMs,

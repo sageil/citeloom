@@ -34,6 +34,10 @@ import {
   enforceApplicationErrorRetention,
   startApplicationErrorRetentionController,
 } from "../observability/application-error-retention.js";
+import {
+  runSourceContentMigrationWorker,
+  type SourceContentMigrationWorkerOptions,
+} from "../documents/storage/source-content-migration-runner.js";
 
 export interface WorkerOptions {
   once: boolean;
@@ -155,26 +159,52 @@ export async function runIngestionWorker(
       reportProgress: reportWorkerEvent,
     });
     try {
-      await runWorkerDispatcher(
-        processor,
+      const migrationOptions = {
+        once: options.once,
         registry,
-        options.once,
-        options.signal,
-        {
-          reportError: async (error) => {
-            await errors.report(error, {
-              category: "worker-iteration",
-              code: "worker_iteration_failed",
-              instance: hostname(),
-              operation: "dispatch-ingestion-work",
-              origin: "worker",
-              retryable: true,
-              service: "worker",
-              severity: "error",
-            });
-          },
+        reportError: async (error: unknown) => {
+          await errors.report(error, {
+            category: "worker-iteration",
+            code: "source_content_migration_failed",
+            instance: hostname(),
+            operation: "migrate-source-content",
+            origin: "worker",
+            retryable: false,
+            service: "worker",
+            severity: "error",
+          });
         },
-      );
+        reportProgress: reportWorkerEvent,
+      } satisfies SourceContentMigrationWorkerOptions;
+      if (options.signal !== undefined) {
+        Object.assign(migrationOptions, { signal: options.signal });
+      }
+      await Promise.all([
+        runWorkerDispatcher(
+          processor,
+          registry,
+          options.once,
+          options.signal,
+          {
+            reportError: async (error) => {
+              await errors.report(error, {
+                category: "worker-iteration",
+                code: "worker_iteration_failed",
+                instance: hostname(),
+                operation: "dispatch-ingestion-work",
+                origin: "worker",
+                retryable: true,
+                service: "worker",
+                severity: "error",
+              });
+            },
+          },
+        ),
+        runSourceContentMigrationWorker(
+          databaseSession.database,
+          migrationOptions,
+        ),
+      ]);
     } finally {
       await errorRetention.close();
       await registry.stop();

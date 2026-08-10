@@ -126,6 +126,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
         converter_manager: CiteLoomConverterManager,
         checkpoint_directory: Path,
         page_range_size: int,
+        delete_task_content: Callable[[str], None] | None = None,
     ) -> None:
         if page_range_size <= 0:
             raise ValueError("Docling page range size must be positive.")
@@ -137,6 +138,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
         self._checkpoint_store = PageRangeCheckpointStore(
             checkpoint_directory
         )
+        self._delete_task_content = delete_task_content
         self._page_range_size = page_range_size
         self._active_executions: dict[str, _ProcessExecution] = {}
         self._execution_lock = asyncio.Lock()
@@ -302,6 +304,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
             await self._notify_task(task_id)
             await self._notify_queue_positions()
         self._checkpoint_store.delete(task_id)
+        self._release_task_content(task_id)
 
     async def delete_task(self, task_id: str) -> None:
         await self.terminate_task(task_id)
@@ -392,7 +395,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
 
             result = _read_task_result(execution.result_path)
             self._task_results[task_id] = result
-            task.sources = []
+            self._release_task_sources(task)
             task.set_status(TaskStatus.SUCCESS)
             _log.info(
                 "Disposable Docling process completed task %s in %.2f seconds",
@@ -480,7 +483,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
                         task_id,
                         manifest.model_copy(update={"state": "succeeded"}),
                     )
-                    task.sources = []
+                    self._release_task_sources(task)
                     task.set_status(TaskStatus.SUCCESS)
                     result = self._task_results[task_id]
                     _log.info(
@@ -748,7 +751,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
                 task.task_id,
                 manifest.model_copy(update={"state": "succeeded"}),
             )
-            task.sources = []
+            self._release_task_sources(task)
             task.set_status(TaskStatus.SUCCESS)
             return
         task.set_status(TaskStatus.PENDING)
@@ -910,6 +913,22 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
                 phase=FailurePhase.EXECUTION,
             )
         task.error_message = build_public_task_error(error)
+        if not self._is_resumable_pdf_task(task):
+            self._release_task_sources(task)
+
+    def _release_task_sources(self, task: Task) -> None:
+        task.sources = []
+        self._release_task_content(task.task_id)
+
+    def _release_task_content(self, task_id: str) -> None:
+        if self._delete_task_content is not None:
+            try:
+                self._delete_task_content(task_id)
+            except OSError:
+                _log.exception(
+                    "Could not release staged content for Docling task %s.",
+                    task_id,
+                )
 
     async def _notify_task(self, task_id: str) -> None:
         if self.notifier is not None:
@@ -924,6 +943,7 @@ def build_citeloom_process_orchestrator(
     orchestrator: LocalOrchestrator,
     checkpoint_directory: Path,
     page_range_size: int,
+    delete_task_content: Callable[[str], None] | None = None,
 ) -> CiteLoomProcessOrchestrator:
     manager = CiteLoomConverterManager(orchestrator.cm.config)
     return CiteLoomProcessOrchestrator(
@@ -931,6 +951,7 @@ def build_citeloom_process_orchestrator(
         manager,
         checkpoint_directory,
         page_range_size,
+        delete_task_content,
     )
 
 

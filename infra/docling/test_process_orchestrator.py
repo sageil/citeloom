@@ -55,11 +55,13 @@ class CiteLoomProcessOrchestratorTest(
         manager = CiteLoomConverterManager(
             DoclingConverterManagerConfig()
         )
+        self.deleted_task_content: list[str] = []
         self.orchestrator = CiteLoomProcessOrchestrator(
             config,
             manager,
             Path(self.checkpoint_directory.name),
             4,
+            self.deleted_task_content.append,
         )
 
     def tearDown(self) -> None:
@@ -223,6 +225,7 @@ class CiteLoomProcessOrchestratorTest(
         self.assertFalse(
             self.orchestrator._checkpoint_store.exists(task_id)
         )
+        self.assertEqual(self.deleted_task_content, [task_id])
 
     async def test_termination_before_submission_prevents_process_start(
         self,

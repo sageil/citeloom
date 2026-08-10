@@ -24,6 +24,7 @@ import type {
 import {
   type AppConfig,
   type RuntimeSettings,
+  type SourceContentConfig,
 } from "../src/config/index.js";
 import { createTestProviderSettings } from "./provider-settings-fixture.js";
 import {
@@ -996,6 +997,181 @@ describe("web server boundary", () => {
       expect(serialized).not.toContain("fragment-secret");
       expect(serialized).not.toContain("openai-secret");
       expect(serialized).not.toContain("openai-speech-secret");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("manages source-content storage without returning static credentials", async () => {
+    const target: SourceContentConfig = {
+      bucket: "citeloom",
+      credentials: {
+        accessKeyId: "storage-access-key",
+        kind: "static",
+        secretAccessKey: "storage-secret-key",
+      },
+      endpointUrl: "http://seaweedfs:8333",
+      forcePathStyle: true,
+      kind: "s3",
+      prefix: "sources",
+      region: "us-east-1",
+    };
+    const migrationId = "00000000-0000-4000-8000-000000000401";
+    const migration = buildSourceContentMigrationRecord(migrationId, target);
+    const testSourceContentStorage = vi.fn<
+      WebServices["testSourceContentStorage"]
+    >(async () => undefined);
+    const queueSourceContentMigration = vi.fn<
+      WebServices["queueSourceContentMigration"]
+    >(async () => migration);
+    const cancelSourceContentMigration = vi.fn<
+      WebServices["cancelSourceContentMigration"]
+    >(async () => ({ ...migration, activeSlot: null, state: "cancelled" }));
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        cancelSourceContentMigration,
+        queueSourceContentMigration,
+        readSourceContentStorage: async () => ({
+          activeConfig: target,
+          documentCount: 34,
+          migration,
+          settingsVersion: 7,
+        }),
+        testSourceContentStorage,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const overviewResponse = await server.inject({
+        method: "GET",
+        url: "/api/source-content-storage",
+      });
+      expect(overviewResponse.statusCode).toBe(200);
+      expect(overviewResponse.json()).toMatchObject({
+        active: {
+          bucket: "citeloom",
+          credentialSource: "static",
+          credentialsConfigured: true,
+          endpointUrl: "http://seaweedfs:8333",
+          forcePathStyle: true,
+          kind: "s3",
+          prefix: "sources",
+          region: "us-east-1",
+        },
+        documentCount: 34,
+        migration: {
+          id: migrationId,
+          source: { kind: "filesystem" },
+          target: { credentialSource: "static", kind: "s3" },
+        },
+        settingsVersion: 7,
+      });
+      expect(overviewResponse.body).not.toContain("storage-access-key");
+      expect(overviewResponse.body).not.toContain("storage-secret-key");
+
+      const probeResponse = await server.inject({
+        method: "POST",
+        payload: { target },
+        url: "/api/source-content-storage/probes",
+      });
+      expect(probeResponse.statusCode).toBe(200);
+      expect(probeResponse.json()).toEqual({ ok: true });
+      expect(testSourceContentStorage).toHaveBeenCalledWith(target);
+
+      const migrationResponse = await server.inject({
+        method: "POST",
+        payload: { expectedSettingsVersion: 7, target },
+        url: "/api/source-content-storage/migrations",
+      });
+      expect(migrationResponse.statusCode).toBe(202);
+      expect(migrationResponse.body).not.toContain("storage-access-key");
+      expect(migrationResponse.body).not.toContain("storage-secret-key");
+      expect(queueSourceContentMigration).toHaveBeenCalledWith(
+        "00000000-0000-4000-8000-000000000000",
+        { expectedSettingsVersion: 7, targetConfig: target },
+      );
+
+      const cancellationResponse = await server.inject({
+        method: "POST",
+        url: `/api/source-content-storage/migrations/${migrationId}/cancellation`,
+      });
+      expect(cancellationResponse.statusCode).toBe(200);
+      expect(cancelSourceContentMigration).toHaveBeenCalledWith(migrationId);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects invalid source-content storage requests at the API boundary", async () => {
+    const testSourceContentStorage = vi.fn<
+      WebServices["testSourceContentStorage"]
+    >(async () => undefined);
+    const queueSourceContentMigration = vi.fn<
+      WebServices["queueSourceContentMigration"]
+    >();
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        queueSourceContentMigration,
+        testSourceContentStorage,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const invalidTarget = {
+        bucket: "citeloom",
+        credentials: { accessKeyId: "incomplete", kind: "static" },
+        endpointUrl: "http://seaweedfs:8333",
+        forcePathStyle: true,
+        kind: "s3",
+        prefix: "sources",
+        region: "us-east-1",
+      };
+      const probeResponse = await server.inject({
+        method: "POST",
+        payload: { target: invalidTarget },
+        url: "/api/source-content-storage/probes",
+      });
+      const migrationResponse = await server.inject({
+        method: "POST",
+        payload: { expectedSettingsVersion: 2, target: invalidTarget },
+        url: "/api/source-content-storage/migrations",
+      });
+
+      expect(probeResponse.statusCode).toBe(400);
+      expect(migrationResponse.statusCode).toBe(400);
+      expect(testSourceContentStorage).not.toHaveBeenCalled();
+      expect(queueSourceContentMigration).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("limits source-content storage configuration to administrators", async () => {
+    const readSourceContentStorage = vi.fn<
+      WebServices["readSourceContentStorage"]
+    >();
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readSession: async () => buildAuthenticatedPrincipal("member"),
+        readSourceContentStorage,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        method: "GET",
+        url: "/api/source-content-storage",
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(readSourceContentStorage).not.toHaveBeenCalled();
     } finally {
       await server.close();
     }
@@ -2687,6 +2863,7 @@ type TestWebServiceOverrides = Partial<RuntimeWebServices>
   & Partial<Pick<
     WebServices,
     | "authenticate"
+    | "cancelSourceContentMigration"
     | "changePassword"
     | "changeWorkspaceMemberRole"
     | "completePasswordSetup"
@@ -2700,12 +2877,15 @@ type TestWebServiceOverrides = Partial<RuntimeWebServices>
     | "readApplicationErrors"
     | "readSession"
     | "readSettings"
+    | "readSourceContentStorage"
     | "reportApplicationError"
     | "removeWorkspaceMember"
     | "retireEmbeddingInputFormat"
     | "revokeSession"
     | "reviseEmbeddingInputFormat"
+    | "queueSourceContentMigration"
     | "subscribeRevisions"
+    | "testSourceContentStorage"
     | "updateSettings"
   >>;
 
@@ -2780,6 +2960,8 @@ function buildServices(
     changeWorkspaceMemberRole: overrides.changeWorkspaceMemberRole ?? (async () => {
       throw new Error("Authentication is not configured in boundary tests.");
     }),
+    cancelSourceContentMigration: overrides.cancelSourceContentMigration
+      ?? (async (id) => buildSourceContentMigrationRecord(id)),
     completePasswordSetup: overrides.completePasswordSetup ?? (async () => {
       throw new Error("Authentication is not configured in boundary tests.");
     }),
@@ -2810,6 +2992,13 @@ function buildServices(
       ?? (async () => buildApplicationErrorPage()),
     readRevisions: effectiveRuntimeServices.readRevisions,
     readSettings: overrides.readSettings ?? (async () => buildEffectiveSettings()),
+    readSourceContentStorage: overrides.readSourceContentStorage
+      ?? (async () => ({
+        activeConfig: buildConfig().sourceContent,
+        documentCount: 0,
+        migration: null,
+        settingsVersion: 2,
+      })),
     reportApplicationError: overrides.reportApplicationError
       ?? (async () => ({ id: "00000000-0000-4000-8000-000000000099" })),
     removeWorkspaceMember: overrides.removeWorkspaceMember ?? (async () => {
@@ -2828,7 +3017,43 @@ function buildServices(
     subscribeRevisions: overrides.subscribeRevisions ?? (() => () => undefined),
     reviseEmbeddingInputFormat: overrides.reviseEmbeddingInputFormat
       ?? (async () => buildEmbeddingInputFormatRecord()),
+    queueSourceContentMigration: overrides.queueSourceContentMigration
+      ?? (async (_requestedByUserId, request) => {
+        return buildSourceContentMigrationRecord(
+          "00000000-0000-4000-8000-000000000401",
+          request.targetConfig,
+        );
+      }),
+    testSourceContentStorage: overrides.testSourceContentStorage
+      ?? (async () => undefined),
     updateSettings: overrides.updateSettings ?? (async () => buildEffectiveSettings()),
+  };
+}
+
+function buildSourceContentMigrationRecord(
+  id: string,
+  targetConfig = buildConfig().sourceContent,
+) {
+  const now = new Date("2026-08-10T16:00:00.000Z");
+  return {
+    activeSlot: 1,
+    attemptCount: 0,
+    completedAt: null,
+    copiedDocuments: 0,
+    createdAt: now,
+    errorMessage: null,
+    id,
+    lastDocumentId: null,
+    leaseExpiresAt: null,
+    leaseOwner: null,
+    requestedByUserId: "00000000-0000-4000-8000-000000000301",
+    sourceConfig: buildConfig().sourceContent,
+    startedAt: null,
+    state: "queued" as const,
+    targetConfig,
+    totalDocuments: 0,
+    updatedAt: now,
+    verifiedDocuments: 0,
   };
 }
 

@@ -4,6 +4,8 @@ set -eu
 infrastructure_directory="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 repository_directory="$(CDPATH= cd -- "${infrastructure_directory}/.." && pwd)"
 database_url="postgresql://citeloom:citeloom@127.0.0.1:5433/citeloom_test"
+COMPOSE_PROJECT_NAME="citeloom-backup-test"
+export COMPOSE_PROJECT_NAME
 test_directory="$(mktemp -d "${TMPDIR:-/tmp}/citeloom-backup-restore.XXXXXX")"
 backup_directory="${test_directory}/backups"
 source_content_directory="${test_directory}/source-content"
@@ -35,6 +37,7 @@ cleanup() {
       DELETE FROM embedding_space_gc_runs WHERE id = '${run_id}';
       DELETE FROM embedding_spaces WHERE id = '${retained_space}';
     " >/dev/null 2>&1 || true
+  run_compose down --volumes >/dev/null 2>&1 || true
 }
 trap cleanup EXIT HUP INT TERM
 

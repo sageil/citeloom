@@ -643,11 +643,11 @@ async function readStoredDocumentSource(
   }
   const source: FileDocumentSource = {
     byteLength: storedDocument.byteLength,
-    contentPath: storedDocument.contentPath,
     documentId: storedDocument.documentId,
     extension: document.format.extension,
     kind: "file",
     mediaType: document.format.mediaType,
+    openContent: storedDocument.openContent,
     sourceFile: document.sourceFile,
   };
   return source;

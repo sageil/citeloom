@@ -1,12 +1,21 @@
 import hashlib
 import json
 import os
+import shutil
 import stat
+import time
 from pathlib import Path
 from typing import Annotated, Literal, Self
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import (
+    Depends,
+    Header,
+    HTTPException,
+    Path as PathParameter,
+    Request,
+    status,
+)
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from docling.datamodel.service.options import ConvertDocumentsOptions
@@ -33,12 +42,12 @@ from citeloom_docling.process_orchestrator import (
     build_citeloom_process_orchestrator,
 )
 
-SOURCE_CONTENT_DIRECTORY_ENVIRONMENT_VARIABLE = (
-    "CITELOOM_SOURCE_CONTENT_DIRECTORY"
-)
 CHECKPOINT_DIRECTORY_ENVIRONMENT_VARIABLE = (
     "CITELOOM_DOCLING_CHECKPOINT_DIRECTORY"
 )
+MAXIMUM_SOURCE_CONTENT_BYTES = 1024 * 1024 * 1024
+TASK_CONTENT_DIRECTORY_NAME = "source-content"
+ABANDONED_TASK_CONTENT_MAX_AGE_SECONDS = 24 * 60 * 60
 CONTENT_ID_PATTERN = r"^[0-9a-f]{64}$"
 FILENAME_PATTERN = r"^[^/\\\x00]+$"
 
@@ -174,6 +183,14 @@ class PauseTaskResponse(BaseModel):
     task_id: UUID
 
 
+class ContentUploadResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    byte_length: int = Field(gt=0)
+    document_id: str = Field(pattern=CONTENT_ID_PATTERN)
+    task_id: UUID
+
+
 class SharedContentSource(FileSource):
     content_path: Path = Field(exclude=True)
     byte_length: int = Field(exclude=True)
@@ -190,8 +207,8 @@ def create_app():
             "CiteLoom content-ID conversion requires the local Docling engine."
         )
 
-    source_content_directory = read_source_content_directory()
     checkpoint_directory = read_checkpoint_directory()
+    reset_task_content_directory(checkpoint_directory)
     require_auth = APIKeyAuth(docling_serve_settings.api_key)
     service_policy = build_service_policy(docling_serve_settings)
     upstream_orchestrator = get_async_orchestrator()
@@ -203,6 +220,10 @@ def create_app():
         upstream_orchestrator,
         checkpoint_directory,
         docling_settings.perf.page_batch_size,
+        lambda task_id: delete_task_content(
+            checkpoint_directory,
+            task_id,
+        ),
     )
 
     def read_process_orchestrator() -> CiteLoomProcessOrchestrator:
@@ -210,6 +231,53 @@ def create_app():
 
     upstream_docling_app.get_async_orchestrator = read_process_orchestrator
     app = create_docling_app()
+
+    @app.put(
+        "/v1/tasks/{task_id}/content/{document_id}",
+        tags=["tasks"],
+        response_model=ContentUploadResponse,
+    )
+    async def upload_task_content(
+        task_id: UUID,
+        document_id: Annotated[
+            str,
+            PathParameter(pattern=CONTENT_ID_PATTERN),
+        ],
+        request: Request,
+        content_length: Annotated[int, Header(alias="content-length")],
+        auth: Annotated[AuthenticationResult, Depends(require_auth)],
+    ) -> ContentUploadResponse:
+        del auth
+        retained_task_ids = {
+            known_task_id
+            for known_task_id, task in orchestrator.tasks.items()
+            if not task.is_completed()
+        }
+        retained_task_ids.add(str(task_id))
+        reconcile_abandoned_task_content(
+            checkpoint_directory,
+            retained_task_ids,
+        )
+        if (
+            content_length <= 0
+            or content_length > MAXIMUM_SOURCE_CONTENT_BYTES
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Source content length is outside the supported range.",
+            )
+        await store_task_content(
+            checkpoint_directory,
+            str(task_id),
+            document_id,
+            content_length,
+            request,
+        )
+        return ContentUploadResponse(
+            byte_length=content_length,
+            document_id=document_id,
+            task_id=task_id,
+        )
 
     @app.post(
         "/v1/convert/content/async",
@@ -225,33 +293,34 @@ def create_app():
         ] = None,
     ) -> TaskStatusResponse:
         del auth
-        content_path = resolve_content_path(
-            source_content_directory,
-            request.document_id,
-        )
-        assert_shared_content_file(content_path, request.byte_length)
-        assert_filename_matches_format(
-            request.filename,
-            request.options.from_formats[0],
-        )
-        assert_page_image_policy(request.options)
-        raw_options = ConvertDocumentsOptions.model_validate(
-            request.options.model_dump(mode="json")
-        )
-        options = normalize_convert_options(raw_options, service_policy)
-        validate_convert_options(options, service_policy)
-        source = SharedContentSource(
-            byte_length=request.byte_length,
-            content_path=content_path,
-            filename=request.filename,
-        )
-        tenant_id = x_tenant_id or "default"
-        request_fingerprint = fingerprint_conversion_request(
-            request,
-            options,
-            tenant_id,
-        )
         try:
+            content_path = resolve_task_content_path(
+                checkpoint_directory,
+                str(request.task_id),
+                request.document_id,
+            )
+            assert_shared_content_file(content_path, request.byte_length)
+            assert_filename_matches_format(
+                request.filename,
+                request.options.from_formats[0],
+            )
+            assert_page_image_policy(request.options)
+            raw_options = ConvertDocumentsOptions.model_validate(
+                request.options.model_dump(mode="json")
+            )
+            options = normalize_convert_options(raw_options, service_policy)
+            validate_convert_options(options, service_policy)
+            source = SharedContentSource(
+                byte_length=request.byte_length,
+                content_path=content_path,
+                filename=request.filename,
+            )
+            tenant_id = x_tenant_id or "default"
+            request_fingerprint = fingerprint_conversion_request(
+                request,
+                options,
+                tenant_id,
+            )
             task = await orchestrator.enqueue_with_task_id(
                 task_id=str(request.task_id),
                 request_fingerprint=request_fingerprint,
@@ -263,10 +332,29 @@ def create_app():
                 metadata={"tenant_id": tenant_id},
             )
         except TaskIdentityConflictError as error:
+            known_task = orchestrator.tasks.get(str(request.task_id))
+            if known_task is None or known_task.is_completed():
+                delete_task_content(
+                    checkpoint_directory,
+                    str(request.task_id),
+                )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=str(error),
             ) from error
+        except Exception:
+            known_task = orchestrator.tasks.get(str(request.task_id))
+            if known_task is None or known_task.is_completed():
+                delete_task_content(
+                    checkpoint_directory,
+                    str(request.task_id),
+                )
+            raise
+        if task.is_completed():
+            delete_task_content(
+                checkpoint_directory,
+                str(request.task_id),
+            )
         task_position = await orchestrator.get_queue_position(
             task_id=task.task_id
         )
@@ -336,30 +424,6 @@ def fingerprint_conversion_request(
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
-def read_source_content_directory() -> Path:
-    configured = os.environ.get(
-        SOURCE_CONTENT_DIRECTORY_ENVIRONMENT_VARIABLE,
-        "",
-    )
-    path = Path(configured)
-    if not path.is_absolute():
-        raise RuntimeError(
-            f"{SOURCE_CONTENT_DIRECTORY_ENVIRONMENT_VARIABLE} must be an "
-            "absolute path."
-        )
-    try:
-        resolved = path.resolve(strict=True)
-    except OSError as error:
-        raise RuntimeError(
-            f"{SOURCE_CONTENT_DIRECTORY_ENVIRONMENT_VARIABLE} is unavailable."
-        ) from error
-    if not resolved.is_dir():
-        raise RuntimeError(
-            f"{SOURCE_CONTENT_DIRECTORY_ENVIRONMENT_VARIABLE} is not a directory."
-        )
-    return resolved
-
-
 def read_checkpoint_directory() -> Path:
     configured = os.environ.get(
         CHECKPOINT_DIRECTORY_ENVIRONMENT_VARIABLE,
@@ -389,19 +453,121 @@ def read_checkpoint_directory() -> Path:
     return resolved
 
 
-def resolve_content_path(
-    source_content_directory: Path,
+def reset_task_content_directory(checkpoint_directory: Path) -> None:
+    content_directory = checkpoint_directory / TASK_CONTENT_DIRECTORY_NAME
+    if content_directory.exists():
+        assert_not_symbolic_link(content_directory)
+        if not content_directory.is_dir():
+            raise RuntimeError(
+                "Docling task content path is not a directory."
+            )
+        shutil.rmtree(content_directory)
+        fsync_directory(checkpoint_directory)
+    content_directory.mkdir(mode=0o700)
+    fsync_directory(checkpoint_directory)
+
+
+def reconcile_abandoned_task_content(
+    checkpoint_directory: Path,
+    retained_task_ids: set[str],
+    current_time_seconds: float | None = None,
+) -> int:
+    content_directory = checkpoint_directory / TASK_CONTENT_DIRECTORY_NAME
+    try:
+        assert_not_symbolic_link(content_directory)
+        entries = list(content_directory.iterdir())
+    except FileNotFoundError:
+        return 0
+    cutoff = (
+        current_time_seconds
+        if current_time_seconds is not None
+        else time.time()
+    ) - ABANDONED_TASK_CONTENT_MAX_AGE_SECONDS
+    removed = 0
+    for task_directory in entries:
+        if task_directory.name in retained_task_ids:
+            continue
+        try:
+            UUID(task_directory.name)
+            metadata = task_directory.lstat()
+        except (OSError, ValueError):
+            continue
+        if not stat.S_ISDIR(metadata.st_mode) or metadata.st_mtime > cutoff:
+            continue
+        shutil.rmtree(task_directory)
+        removed += 1
+    if removed > 0:
+        fsync_directory(content_directory)
+    return removed
+
+
+async def store_task_content(
+    checkpoint_directory: Path,
+    task_id: str,
+    document_id: str,
+    byte_length: int,
+    request: Request,
+) -> Path:
+    content_directory = checkpoint_directory / TASK_CONTENT_DIRECTORY_NAME
+    ensure_private_directory(content_directory, checkpoint_directory)
+    task_directory = read_task_content_directory(checkpoint_directory, task_id)
+    ensure_private_directory(task_directory, content_directory)
+    destination = task_directory / document_id
+    temporary_path = task_directory / f".{document_id}.{uuid4()}.tmp"
+    digest = hashlib.sha256()
+    written = 0
+    try:
+        with temporary_path.open("xb") as content_file:
+            os.chmod(temporary_path, 0o600)
+            async for chunk in request.stream():
+                written += len(chunk)
+                if written > byte_length:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                        detail="Uploaded source content exceeds its declared length.",
+                    )
+                digest.update(chunk)
+                content_file.write(chunk)
+            content_file.flush()
+            os.fsync(content_file.fileno())
+        if written != byte_length:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Uploaded source content length does not match.",
+            )
+        if digest.hexdigest() != document_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Uploaded source content hash does not match.",
+            )
+        temporary_path.replace(destination)
+        fsync_directory(task_directory)
+        return destination
+    finally:
+        temporary_path.unlink(missing_ok=True)
+        try:
+            task_directory.rmdir()
+        except OSError:
+            pass
+        else:
+            fsync_directory(content_directory)
+
+
+def resolve_task_content_path(
+    checkpoint_directory: Path,
+    task_id: str,
     document_id: str,
 ) -> Path:
-    algorithm_directory = source_content_directory / "sha256"
-    shard_directory = algorithm_directory / document_id[:2]
-    candidate = shard_directory / document_id
+    task_directory = read_task_content_directory(
+        checkpoint_directory,
+        task_id,
+    )
+    candidate = task_directory / document_id
     try:
-        assert_not_symbolic_link(algorithm_directory)
-        assert_not_symbolic_link(shard_directory)
+        assert_not_symbolic_link(task_directory)
         assert_not_symbolic_link(candidate)
         resolved = candidate.resolve(strict=True)
-        resolved.relative_to(source_content_directory)
+        resolved.relative_to(task_directory)
     except FileNotFoundError as error:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -413,6 +579,47 @@ def resolve_content_path(
             detail="Source content path is invalid.",
         ) from error
     return resolved
+
+
+def read_task_content_directory(
+    checkpoint_directory: Path,
+    task_id: str,
+) -> Path:
+    normalized_task_id = str(UUID(task_id))
+    return checkpoint_directory / TASK_CONTENT_DIRECTORY_NAME / normalized_task_id
+
+
+def delete_task_content(
+    checkpoint_directory: Path,
+    task_id: str,
+) -> None:
+    task_directory = read_task_content_directory(
+        checkpoint_directory,
+        task_id,
+    )
+    if not task_directory.exists():
+        return
+    shutil.rmtree(task_directory)
+    fsync_directory(task_directory.parent)
+
+
+def ensure_private_directory(path: Path, parent: Path) -> None:
+    try:
+        path.mkdir(mode=0o700)
+    except FileExistsError:
+        assert_not_symbolic_link(path)
+        if not path.is_dir():
+            raise RuntimeError(f"Docling task content path is not a directory: {path}")
+        return
+    fsync_directory(parent)
+
+
+def fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def assert_shared_content_file(path: Path, byte_length: int) -> None:

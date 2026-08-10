@@ -34,6 +34,15 @@ const commandSchema = z.discriminatedUnion("name", [
     sourceFile: z.string().min(1).max(8_192),
   }),
   z.object({ name: z.literal("status") }),
+  z.object({ name: z.literal("source-content-migrate") }),
+  z.object({
+    directory: z.string().min(1),
+    name: z.literal("source-content-export"),
+  }),
+  z.object({
+    directory: z.string().min(1),
+    name: z.literal("source-content-import"),
+  }),
   z.object({ name: z.literal("worker"), once: z.boolean() }),
   z.object({
     enqueue: z.boolean(),
@@ -69,6 +78,8 @@ export function parseCliCommand(
     candidate = { name: "doctor" };
   } else if (commandName === "status") {
     candidate = { name: "status" };
+  } else if (commandName === "source-content") {
+    candidate = parseSourceContentArguments(commandArguments, workingDirectory);
   } else if (commandName === "worker") {
     candidate = parseWorkerArguments(commandArguments);
   } else if (commandName === "documents") {
@@ -92,6 +103,43 @@ export function parseCliCommand(
     throw new CliUsageError(readCommandUsageError(commandName));
   }
   return result.data;
+}
+
+function parseSourceContentArguments(
+  arguments_: string[],
+  workingDirectory: string,
+): unknown {
+  if (arguments_.length === 2
+    && arguments_[0] === "migrate"
+    && arguments_[1] === "--apply") {
+    return { name: "source-content-migrate" };
+  }
+  if (
+    arguments_.length === 3
+    && arguments_[0] === "export"
+    && arguments_[1] === "--directory"
+    && arguments_[2] !== undefined
+  ) {
+    return {
+      directory: resolve(workingDirectory, arguments_[2]),
+      name: "source-content-export",
+    };
+  }
+  if (
+    arguments_.length === 4
+    && arguments_[0] === "import"
+    && arguments_[1] === "--directory"
+    && arguments_[2] !== undefined
+    && arguments_[3] === "--apply"
+  ) {
+    return {
+      directory: resolve(workingDirectory, arguments_[2]),
+      name: "source-content-import",
+    };
+  }
+  throw new CliUsageError(
+    "Usage: citeloom source-content migrate --apply | citeloom source-content export --directory <path> | citeloom source-content import --directory <path> --apply",
+  );
 }
 
 function parseDocumentTocArguments(arguments_: string[]): unknown {

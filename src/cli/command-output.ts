@@ -129,6 +129,7 @@ Ingest and search:
 
 Manage stored data:
   pnpm dev document-toc backfill
+  pnpm dev source-content migrate --apply
   pnpm dev embedding-spaces pin --space <id> --reason <reason>
   pnpm dev embedding-spaces unpin --space <id>
   pnpm dev embedding-spaces gc --retention-days <days> <--dry-run|--apply>
@@ -138,6 +139,8 @@ Manage stored data:
 Notes:
   - Add --enqueue to process ingestion in the background with a running worker.
   - Document TOC backfill uses stored document elements and does not rerun Docling or embeddings.
+  - Stop every web and worker process before migrating source-content storage.
+  - Source-content migration copies and verifies all objects before changing the active backend.
   - Run an interrupted ingest command again to resume it. Add --force only to rebuild it.
   - Repeat a scope flag to select multiple document IDs, files, or tags.
   - Supported document extensions: ${knownDocumentExtensions}.

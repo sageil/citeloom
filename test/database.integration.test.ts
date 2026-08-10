@@ -98,7 +98,8 @@ import {
   type AppConfig,
   type DoclingServiceInstanceConfig,
   type EmbeddingSpaceConfig,
-  type SourceContentConfig,
+  type FilesystemSourceContentConfig,
+  type S3SourceContentConfig,
 } from "../src/config/index.js";
 import {
   type CiteLoomDatabase,
@@ -155,6 +156,7 @@ import {
   researchTurns,
   sourceElements,
   sourceContentDeletions,
+  sourceContentMigrations,
   sourceDocuments,
   users,
   workerHeartbeats,
@@ -216,9 +218,25 @@ import {
   SourceDocumentStore,
 } from "../src/documents/storage/source-document-store.js";
 import {
+  SourceContentBackendChangedError,
   SourceContentStore,
   type StoredSourceDocument,
 } from "../src/documents/storage/source-content-store.js";
+import {
+  copyAndVerifySourceContentDocument,
+  migrateSourceContentBackend,
+} from "../src/documents/storage/source-content-migration.js";
+import {
+  runSourceContentMigrationWorker,
+} from "../src/documents/storage/source-content-migration-runner.js";
+import {
+  SourceContentMigrationConflictError,
+  SourceContentMigrationRepository,
+} from "../src/documents/storage/source-content-migration-store.js";
+import {
+  createSourceContentBackend,
+} from "../src/documents/storage/source-content-backend.js";
+import { S3SourceContentBackend } from "../src/documents/storage/s3-source-content-backend.js";
 import {
   createRetrievalWindowPolicy,
   createRetrievalWindowPolicyContract,
@@ -368,11 +386,12 @@ const space2048: EmbeddingSpaceConfig = {
   retrievalWindow: testRetrievalWindow,
 };
 let session: DatabaseSession;
-let sourceContentConfig: SourceContentConfig;
+let sourceContentConfig: FilesystemSourceContentConfig;
 
 beforeAll(async () => {
   sourceContentConfig = {
     directory: await mkdtemp(join(tmpdir(), "citeloom-source-content-")),
+    kind: "filesystem",
   };
   session = await openDatabase({ poolMax: 4, url: databaseUrl });
   await migrateDatabase(session.database);
@@ -388,6 +407,7 @@ beforeEach(async () => {
   await session.database.delete(doclingErrorDetails);
   await session.database.delete(applicationErrorEvents);
   await session.database.delete(providerOAuthCredentials);
+  await session.database.delete(sourceContentMigrations);
   await session.database.delete(applicationSettings);
   const storedSettings = buildDatabaseOwnedSettings();
   await session.database.insert(applicationSettings).values({
@@ -1048,6 +1068,381 @@ describe("PostgreSQL ingestion controls", () => {
       10,
     )).resolves.toEqual([]);
   });
+});
+
+describe("PostgreSQL source-content migration", () => {
+  it("keeps the stored backend when bootstrap environment values differ", async () => {
+    const targetDirectory = await mkdtemp(
+      join(tmpdir(), "citeloom-bootstrap-target-"),
+    );
+
+    await expect(applyDatabaseBootstrap(session.database, {
+      CITELOOM_ADMIN_PASSWORD: "integration test administrator password",
+      CITELOOM_ADMIN_USERNAME: "IntegrationAdmin",
+      CITELOOM_SOURCE_CONTENT_BACKEND: "filesystem",
+      CITELOOM_SOURCE_CONTENT_DIRECTORY: targetDirectory,
+    })).resolves.toBeUndefined();
+
+    const rows = await session.database
+      .select({ settings: applicationSettings.settings })
+      .from(applicationSettings)
+      .where(eq(applicationSettings.id, "runtime"));
+    expect(parseStoredApplicationSettings(rows[0]?.settings).sourceContent)
+      .toEqual(sourceContentConfig);
+  });
+
+  it("copies and verifies all objects before changing the active backend", async () => {
+    const content = Buffer.from("source-content migration payload");
+    const documentId = createHash("sha256").update(content).digest("hex");
+    const source = new SourceContentStore(
+      session.database,
+      sourceContentConfig,
+    );
+    await source.writeDocument({ content, documentId });
+    const targetConfig: FilesystemSourceContentConfig = {
+      directory: await mkdtemp(join(tmpdir(), "citeloom-migration-target-")),
+      kind: "filesystem",
+    };
+
+    const report = await migrateSourceContentBackend(
+      session.database,
+      targetConfig,
+    );
+
+    expect(report).toMatchObject({ copied: 1, verifiedAtCutover: 1 });
+    const target = new SourceContentStore(session.database, targetConfig);
+    await expect(target.readDocument(documentId)).resolves.toEqual({
+      content,
+      documentId,
+    });
+    const rows = await session.database
+      .select({ settings: applicationSettings.settings })
+      .from(applicationSettings)
+      .where(eq(applicationSettings.id, "runtime"));
+    expect(parseStoredApplicationSettings(rows[0]?.settings).sourceContent)
+      .toEqual(targetConfig);
+  });
+
+  it("leaves the active backend unchanged when verification fails", async () => {
+    const content = Buffer.from("content that becomes corrupt");
+    const documentId = createHash("sha256").update(content).digest("hex");
+    const source = new SourceContentStore(
+      session.database,
+      sourceContentConfig,
+    );
+    await source.writeDocument({ content, documentId });
+    await writeFile(
+      join(
+        sourceContentConfig.directory,
+        "sha256",
+        documentId.slice(0, 2),
+        documentId,
+      ),
+      Buffer.alloc(content.byteLength, 0),
+    );
+    const targetConfig: FilesystemSourceContentConfig = {
+      directory: await mkdtemp(join(tmpdir(), "citeloom-failed-target-")),
+      kind: "filesystem",
+    };
+
+    await expect(migrateSourceContentBackend(
+      session.database,
+      targetConfig,
+    )).rejects.toThrow("hash does not match");
+
+    const rows = await session.database
+      .select({ settings: applicationSettings.settings })
+      .from(applicationSettings)
+      .where(eq(applicationSettings.id, "runtime"));
+    expect(parseStoredApplicationSettings(rows[0]?.settings).sourceContent)
+      .toEqual(sourceContentConfig);
+  });
+
+  it("resumes from a checkpoint and includes a late document at cutover", async () => {
+    const initialContent = Buffer.from("durable migration checkpoint");
+    const initialDocumentId = createHash("sha256")
+      .update(initialContent)
+      .digest("hex");
+    const source = new SourceContentStore(
+      session.database,
+      sourceContentConfig,
+    );
+    await source.writeDocument({
+      content: initialContent,
+      documentId: initialDocumentId,
+    });
+    const targetConfig: FilesystemSourceContentConfig = {
+      directory: await mkdtemp(join(tmpdir(), "citeloom-durable-target-")),
+      kind: "filesystem",
+    };
+    const repository = new SourceContentMigrationRepository(session.database);
+    const migration = await repository.queue({
+      expectedSettingsVersion: 1,
+      requestedByUserId: "00000000-0000-4000-8000-000000000301",
+      targetConfig,
+    });
+    const firstOwnerId = randomUUID();
+    const claimed = await repository.claim(firstOwnerId);
+    expect(claimed?.id).toBe(migration.id);
+    await repository.markValidated(migration.id, firstOwnerId);
+    const sourceBackend = createSourceContentBackend(sourceContentConfig);
+    const targetBackend = createSourceContentBackend(targetConfig);
+    await sourceBackend.initialize("read");
+    await targetBackend.initialize();
+    await copyAndVerifySourceContentDocument(
+      sourceBackend,
+      targetBackend,
+      {
+        byteLength: initialContent.byteLength,
+        documentId: initialDocumentId,
+      },
+    );
+    await repository.saveCopyProgress(
+      migration.id,
+      firstOwnerId,
+      1,
+      initialDocumentId,
+      1,
+    );
+    await repository.releaseLease(migration.id, firstOwnerId);
+
+    let lateContent = Buffer.from("late migration document:0");
+    let lateDocumentId = createHash("sha256").update(lateContent).digest("hex");
+    let sequence = 0;
+    while (lateDocumentId >= initialDocumentId) {
+      sequence += 1;
+      lateContent = Buffer.from(`late migration document:${sequence}`);
+      lateDocumentId = createHash("sha256").update(lateContent).digest("hex");
+    }
+    await source.writeDocument({ content: lateContent, documentId: lateDocumentId });
+
+    await runSourceContentMigrationWorker(session.database, { once: true });
+
+    const overview = await repository.readOverview();
+    expect(overview.activeConfig).toEqual(targetConfig);
+    expect(overview.migration).toMatchObject({
+      attemptCount: 2,
+      copiedDocuments: 2,
+      id: migration.id,
+      state: "completed",
+      totalDocuments: 2,
+      verifiedDocuments: 2,
+    });
+    const target = new SourceContentStore(session.database, targetConfig);
+    await expect(target.readDocument(initialDocumentId)).resolves.toEqual({
+      content: initialContent,
+      documentId: initialDocumentId,
+    });
+    await expect(target.readDocument(lateDocumentId)).resolves.toEqual({
+      content: lateContent,
+      documentId: lateDocumentId,
+    });
+    await expect(source.reconcileDocumentDeletion(initialDocumentId))
+      .rejects.toBeInstanceOf(SourceContentBackendChangedError);
+    await expect(target.readDocument(initialDocumentId)).resolves.toEqual({
+      content: initialContent,
+      documentId: initialDocumentId,
+    });
+
+    const staleContent = Buffer.from("write through stale source backend");
+    const staleDocumentId = createHash("sha256")
+      .update(staleContent)
+      .digest("hex");
+    await expect(source.writeDocument({
+      content: staleContent,
+      documentId: staleDocumentId,
+    })).rejects.toBeInstanceOf(SourceContentBackendChangedError);
+    await expect(session.database
+      .select({ documentId: sourceDocuments.documentId })
+      .from(sourceDocuments)
+      .where(eq(sourceDocuments.documentId, staleDocumentId)))
+      .resolves.toEqual([]);
+    await expect(access(join(
+      sourceContentConfig.directory,
+      "sha256",
+      staleDocumentId.slice(0, 2),
+      staleDocumentId,
+    ))).rejects.toThrow();
+  });
+
+  it("cancels a queued migration without changing active storage", async () => {
+    const targetConfig: FilesystemSourceContentConfig = {
+      directory: await mkdtemp(join(tmpdir(), "citeloom-cancelled-target-")),
+      kind: "filesystem",
+    };
+    const repository = new SourceContentMigrationRepository(session.database);
+    const migration = await repository.queue({
+      expectedSettingsVersion: 1,
+      requestedByUserId: "00000000-0000-4000-8000-000000000301",
+      targetConfig,
+    });
+
+    const cancelled = await repository.requestCancellation(migration.id);
+    await runSourceContentMigrationWorker(session.database, { once: true });
+
+    expect(cancelled).toMatchObject({
+      activeSlot: null,
+      state: "cancelled",
+    });
+    const overview = await repository.readOverview();
+    expect(overview.activeConfig).toEqual(sourceContentConfig);
+    expect(overview.migration?.state).toBe("cancelled");
+  });
+
+  it("allows only one concurrent migration request", async () => {
+    const firstTarget: FilesystemSourceContentConfig = {
+      directory: await mkdtemp(join(tmpdir(), "citeloom-first-target-")),
+      kind: "filesystem",
+    };
+    const secondTarget: FilesystemSourceContentConfig = {
+      directory: await mkdtemp(join(tmpdir(), "citeloom-second-target-")),
+      kind: "filesystem",
+    };
+    const repository = new SourceContentMigrationRepository(session.database);
+
+    const results = await Promise.allSettled([
+      repository.queue({
+        expectedSettingsVersion: 1,
+        requestedByUserId: "00000000-0000-4000-8000-000000000301",
+        targetConfig: firstTarget,
+      }),
+      repository.queue({
+        expectedSettingsVersion: 1,
+        requestedByUserId: "00000000-0000-4000-8000-000000000302",
+        targetConfig: secondTarget,
+      }),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled"))
+      .toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(rejected).toMatchObject({
+      reason: expect.any(SourceContentMigrationConflictError),
+      status: "rejected",
+    });
+    const rows = await session.database
+      .select({ id: sourceContentMigrations.id })
+      .from(sourceContentMigrations);
+    expect(rows).toHaveLength(1);
+  });
+
+  it("records target validation failure and leaves active storage unchanged", async () => {
+    const targetConfig: FilesystemSourceContentConfig = {
+      directory: join("/dev/null", `citeloom-${randomUUID()}`),
+      kind: "filesystem",
+    };
+    const repository = new SourceContentMigrationRepository(session.database);
+    const migration = await repository.queue({
+      expectedSettingsVersion: 1,
+      requestedByUserId: "00000000-0000-4000-8000-000000000301",
+      targetConfig,
+    });
+
+    await runSourceContentMigrationWorker(session.database, { once: true });
+
+    const overview = await repository.readOverview();
+    expect(overview.activeConfig).toEqual(sourceContentConfig);
+    expect(overview.migration).toMatchObject({
+      activeSlot: null,
+      id: migration.id,
+      state: "failed",
+    });
+    expect(overview.migration?.errorMessage).not.toBeNull();
+  });
+
+  it("settles an owned cutover conflict as failed", async () => {
+    const targetConfig: FilesystemSourceContentConfig = {
+      directory: await mkdtemp(join(tmpdir(), "citeloom-conflict-target-")),
+      kind: "filesystem",
+    };
+    const changedConfig: FilesystemSourceContentConfig = {
+      directory: await mkdtemp(join(tmpdir(), "citeloom-changed-source-")),
+      kind: "filesystem",
+    };
+    const repository = new SourceContentMigrationRepository(session.database);
+    const migration = await repository.queue({
+      expectedSettingsVersion: 1,
+      requestedByUserId: "00000000-0000-4000-8000-000000000301",
+      targetConfig,
+    });
+    const ownerId = randomUUID();
+    await repository.claim(ownerId);
+    await repository.markValidated(migration.id, ownerId);
+    await repository.beginCutover(migration.id, ownerId);
+    await repository.releaseLease(migration.id, ownerId);
+    const settingsRows = await session.database
+      .select({
+        defaults: applicationSettings.defaults,
+        settings: applicationSettings.settings,
+      })
+      .from(applicationSettings)
+      .where(eq(applicationSettings.id, "runtime"));
+    const currentDefaults = parseStoredApplicationSettings(
+      settingsRows[0]?.defaults,
+    );
+    const currentSettings = parseStoredApplicationSettings(
+      settingsRows[0]?.settings,
+    );
+    await session.database
+      .update(applicationSettings)
+      .set({
+        defaults: { ...currentDefaults, sourceContent: changedConfig },
+        settings: { ...currentSettings, sourceContent: changedConfig },
+        version: 2,
+      })
+      .where(eq(applicationSettings.id, "runtime"));
+
+    await runSourceContentMigrationWorker(session.database, { once: true });
+
+    const overview = await repository.readOverview();
+    expect(overview.activeConfig).toEqual(changedConfig);
+    expect(overview.migration).toMatchObject({
+      activeSlot: null,
+      id: migration.id,
+      state: "failed",
+    });
+    expect(overview.migration?.errorMessage).toContain(
+      "active source-content backend changed",
+    );
+  });
+
+  it.runIf(process.env.CITELOOM_SEAWEEDFS_LIVE_TEST === "true")(
+    "cuts over from filesystem storage to a live SeaweedFS backend",
+    async () => {
+      const content = Buffer.from("live SeaweedFS migration payload");
+      const documentId = createHash("sha256").update(content).digest("hex");
+      const source = new SourceContentStore(
+        session.database,
+        sourceContentConfig,
+      );
+      await source.writeDocument({ content, documentId });
+      const targetConfig: S3SourceContentConfig = {
+        bucket: process.env.CITELOOM_SOURCE_CONTENT_S3_BUCKET ?? "citeloom",
+        credentials: { kind: "environment" },
+        endpointUrl: process.env.CITELOOM_SOURCE_CONTENT_S3_ENDPOINT
+          ?? "http://127.0.0.1:8333",
+        forcePathStyle: true,
+        kind: "s3",
+        prefix: `live-migration/${randomUUID()}`,
+        region: "us-east-1",
+      };
+      const targetBackend = new S3SourceContentBackend(targetConfig);
+
+      try {
+        await expect(migrateSourceContentBackend(
+          session.database,
+          targetConfig,
+        )).resolves.toMatchObject({ copied: 1, verifiedAtCutover: 1 });
+        const target = new SourceContentStore(session.database, targetConfig);
+        await expect(target.readDocument(documentId)).resolves.toEqual({
+          content,
+          documentId,
+        });
+      } finally {
+        await targetBackend.remove(documentId);
+      }
+    },
+  );
 });
 
 describe("PostgreSQL stored-source reindex", () => {
@@ -1773,11 +2168,13 @@ describe("PostgreSQL Docling observability", () => {
     }
     const metricsSource = {
       byteLength: content.byteLength,
-      contentPath: `/documents/${documentId}`,
       documentId,
       extension: ".pdf",
       kind: "file",
       mediaType: "application/pdf",
+      openContent: async () => {
+        throw new Error("Metrics tests do not open source content.");
+      },
       sourceFile,
     } as const;
     const request = await recorder.openRequest({
@@ -5462,6 +5859,48 @@ describe("PostgreSQL generation publication", () => {
 });
 
 describe("PostgreSQL artifact storage", () => {
+  it("publishes metadata only after staged bytes pass hash verification", async () => {
+    const sourceContentStore = new SourceContentStore(
+      session.database,
+      sourceContentConfig,
+    );
+    const expectedContent = Buffer.from("expected verified source");
+    const stagedContent = Buffer.from("tampered staged source");
+    const documentId = createHash("sha256")
+      .update(expectedContent)
+      .digest("hex");
+    const stagedSourceFile = join(
+      sourceContentConfig.directory,
+      "tampered-source.pdf",
+    );
+    const publishedSourceFile = join(
+      sourceContentConfig.directory,
+      "sha256",
+      documentId.slice(0, 2),
+      documentId,
+    );
+    await writeFile(stagedSourceFile, stagedContent);
+
+    try {
+      await expect(sourceContentStore.publishStagedDocument({
+        byteLength: stagedContent.byteLength,
+        documentId,
+        sourceFile: stagedSourceFile,
+      })).rejects.toThrow("hash does not match");
+      await expect(access(publishedSourceFile))
+        .rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(stagedSourceFile, { force: true });
+      await rm(publishedSourceFile, { force: true });
+    }
+
+    await expect(session.database
+      .select({ documentId: sourceDocuments.documentId })
+      .from(sourceDocuments)
+      .where(eq(sourceDocuments.documentId, documentId)))
+      .resolves.toEqual([]);
+  });
+
   it("round trips canonical elements and typed retrieval descriptions", async () => {
     const documentStore = new SourceDocumentStore(session.database);
     const sourceContentStore = new SourceContentStore(

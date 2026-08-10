@@ -567,11 +567,13 @@ function buildStoredBenchmarkResult(
 function buildSource() {
   return {
     byteLength: 3,
-    contentPath: `/documents/${"a".repeat(64)}`,
     documentId: "a".repeat(64),
     extension: ".pdf" as const,
     kind: "file" as const,
     mediaType: "application/pdf" as const,
+    openContent: async () => {
+      throw new Error("Configuration tests do not open source content.");
+    },
     sourceFile: "benchmark.pdf",
   };
 }
@@ -579,11 +581,13 @@ function buildSource() {
 function buildDocxSource() {
   return {
     byteLength: 4,
-    contentPath: `/documents/${"b".repeat(64)}`,
     documentId: "b".repeat(64),
     extension: ".docx" as const,
     kind: "file" as const,
     mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const,
+    openContent: async () => {
+      throw new Error("Configuration tests do not open source content.");
+    },
     sourceFile: "benchmark.docx",
   };
 }
@@ -591,11 +595,13 @@ function buildDocxSource() {
 function buildHtmlSource() {
   return {
     byteLength: 4,
-    contentPath: `/documents/${"c".repeat(64)}`,
     documentId: "c".repeat(64),
     extension: ".html" as const,
     kind: "file" as const,
     mediaType: "text/html" as const,
+    openContent: async () => {
+      throw new Error("Configuration tests do not open source content.");
+    },
     sourceFile: "benchmark.html",
   };
 }

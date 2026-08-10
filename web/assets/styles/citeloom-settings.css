@@ -1672,7 +1672,250 @@
   margin-left: 0;
 }
 
+.settings-storage-content {
+  display: grid;
+  gap: 18px;
+}
+
+.settings-storage-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.72fr) minmax(420px, 1.28fr);
+  gap: 16px;
+}
+
+.settings-storage-active,
+.settings-storage-editor,
+.settings-storage-migration {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-storage-active,
+.settings-storage-editor {
+  padding: 20px;
+}
+
+.settings-storage-active > header,
+.settings-storage-editor > header,
+.settings-storage-migration > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-storage-active > header {
+  justify-content: flex-start;
+}
+
+.settings-storage-active h2,
+.settings-storage-active p,
+.settings-storage-editor h2,
+.settings-storage-editor p,
+.settings-storage-migration h2,
+.settings-storage-migration p {
+  margin: 0;
+}
+
+.settings-storage-active header p,
+.settings-storage-editor header p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-storage-active dl {
+  display: grid;
+  gap: 0;
+  margin: 18px 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.settings-storage-active dl > div {
+  display: grid;
+  grid-template-columns: 105px minmax(0, 1fr);
+  gap: 12px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-storage-active dl > div:last-child {
+  border-bottom: 0;
+}
+
+.settings-storage-active dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.settings-storage-active dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.settings-storage-boundary-note,
+.settings-storage-probe-status,
+.settings-storage-retention-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.settings-storage-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+}
+
+.settings-storage-editor > header,
+.settings-storage-editor > template,
+.settings-storage-wide-field,
+.settings-storage-s3-fields,
+.settings-storage-probe-status,
+.settings-storage-actions {
+  grid-column: 1 / -1;
+}
+
+.settings-storage-s3-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+}
+
+.settings-storage-editor .form-field {
+  align-content: start;
+}
+
+.settings-storage-editor .form-field input,
+.settings-storage-editor .form-field select {
+  height: 42px;
+  min-height: 42px;
+}
+
+.settings-storage-credential-fields {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-soft);
+}
+
+.settings-storage-credential-fields > small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.settings-storage-path-style {
+  grid-column: 1 / -1;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.settings-storage-probe-status.ready {
+  border-color: var(--cyan-border);
+  background: var(--cyan-subtle);
+  color: var(--cyan);
+}
+
+.settings-storage-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 15px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-storage-migration {
+  display: grid;
+  gap: 13px;
+  padding: 18px 20px;
+}
+
+.settings-storage-migration > header span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-storage-migration > header h2 {
+  margin-top: 3px;
+  font-size: 15px;
+}
+
+.settings-storage-migration > header > strong {
+  color: var(--cyan);
+  font-size: 19px;
+}
+
+.settings-storage-migration progress {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  accent-color: var(--cyan);
+}
+
+.settings-storage-migration-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.settings-storage-migration-counts strong {
+  color: var(--text);
+}
+
+.settings-storage-migration-error {
+  padding: 10px 12px;
+  border: 1px solid rgba(248, 113, 113, 0.32);
+  border-radius: 7px;
+  background: rgba(248, 113, 113, 0.07);
+  color: var(--danger-soft);
+  font-size: 12px;
+}
+
+.settings-storage-retention-note {
+  border-color: rgba(251, 191, 36, 0.3);
+  background: rgba(251, 191, 36, 0.07);
+}
+
+.settings-storage-migration > footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
 @media (max-width: 1100px) {
+  .settings-storage-grid {
+    grid-template-columns: 1fr;
+  }
   .settings-area-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1796,6 +2039,22 @@
 
   .settings-area-grid {
     grid-template-columns: 1fr;
+  }
+
+  .settings-storage-editor,
+  .settings-storage-s3-fields,
+  .settings-storage-credential-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-storage-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-storage-active dl > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   .settings-feature-sidebar nav {

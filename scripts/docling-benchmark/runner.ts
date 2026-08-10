@@ -891,11 +891,11 @@ async function executeCandidate(
   );
   const source: FileDocumentSource = {
     byteLength: stored.byteLength,
-    contentPath: stored.contentPath,
     documentId: stored.documentId,
     extension: input.document.extension,
     kind: "file",
     mediaType: input.document.mediaType,
+    openContent: stored.openContent,
     sourceFile: `benchmark-${stored.documentId}${input.document.extension}`,
   };
   const config = createCandidateConfig(
@@ -1031,11 +1031,11 @@ async function executeCandidateWarmup(
   );
   const source: FileDocumentSource = {
     byteLength: stored.byteLength,
-    contentPath: stored.contentPath,
     documentId: stored.documentId,
     extension: document.extension,
     kind: "file",
     mediaType: document.mediaType,
+    openContent: stored.openContent,
     sourceFile: `benchmark-warmup-${stored.documentId}${document.extension}`,
   };
   const observer = new DoclingBenchmarkObserver();
