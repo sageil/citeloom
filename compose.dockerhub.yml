@@ -4,11 +4,11 @@
 
 name: citeloom
 
-x-citeloom-image: &citeloom-image sageil/citeloom:${CITELOOM_IMAGE_TAG:-0.2.5}
+x-citeloom-image: &citeloom-image sageil/citeloom:${CITELOOM_IMAGE_TAG:-0.3.5}
 
 services:
   postgres:
-    image: sageil/citeloom-postgres:${CITELOOM_IMAGE_TAG:-0.2.5}
+    image: sageil/citeloom-postgres:${CITELOOM_IMAGE_TAG:-0.3.5}
     command: ["postgres", "-c", "shared_preload_libraries=pg_textsearch"]
     restart: unless-stopped
     environment:
@@ -26,7 +26,7 @@ services:
       retries: 12
 
   docling:
-    image: sageil/citeloom-docling:${CITELOOM_IMAGE_TAG:-0.2.5}
+    image: sageil/citeloom-docling:${CITELOOM_IMAGE_TAG:-0.3.5}
     restart: unless-stopped
     environment:
       CITELOOM_DOCLING_CHECKPOINT_DIRECTORY: /app/docling-checkpoints
@@ -48,7 +48,7 @@ services:
       start_period: 60s
 
   docling-replica:
-    image: sageil/citeloom-docling:${CITELOOM_IMAGE_TAG:-0.2.5}
+    image: sageil/citeloom-docling:${CITELOOM_IMAGE_TAG:-0.3.5}
     profiles: ["docling-scale"]
     restart: unless-stopped
     environment:
@@ -71,7 +71,7 @@ services:
       start_period: 60s
 
   hhem:
-    image: sageil/citeloom-hhem:${CITELOOM_IMAGE_TAG:-0.2.5}
+    image: sageil/citeloom-hhem:${CITELOOM_IMAGE_TAG:-0.3.5}
     restart: unless-stopped
     init: true
     environment:
@@ -110,7 +110,7 @@ services:
     image: *citeloom-image
     command: ["node", "dist/cli/index.js", "worker"]
     environment:
-      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-0.2.5}
+      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-0.3.5}
       CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS: ${CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS:-100000}
       CITELOOM_APPLICATION_ERROR_RETENTION_DAYS: ${CITELOOM_APPLICATION_ERROR_RETENTION_DAYS:-30}
       DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
@@ -143,7 +143,7 @@ services:
     image: *citeloom-image
     command: ["node", "dist/web-server.js"]
     environment:
-      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-0.2.5}
+      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-0.3.5}
       CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS: ${CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS:-100000}
       CITELOOM_APPLICATION_ERROR_RETENTION_DAYS: ${CITELOOM_APPLICATION_ERROR_RETENTION_DAYS:-30}
       CITELOOM_MAX_UPLOAD_REQUEST_MEGABYTES: ${CITELOOM_MAX_UPLOAD_REQUEST_MEGABYTES:-100}
