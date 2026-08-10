@@ -12,7 +12,7 @@
 
 ![CiteLoom product artwork with the message Private by Design](assets/citeloom-readme-private-by-design-caps.png)
 
-▶ [Watch the CiteLoom demo on YouTube](https://www.youtube.com/watch?v=_wxx2ei7dtE)
+▶ [Watch the CiteLoom demo on YouTube](https://youtu.be/DsbCPF8GD4I)
 
 CiteLoom is a Retrieval-Augmented Generation (RAG) system that lets you ask questions and chat with your documents.
 Its findings link back to the original evidence.
