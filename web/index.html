@@ -142,7 +142,7 @@
                 hx-get="./fragments/chat.html"
                 hx-push-url="./index.html?view=chat"
                 :aria-current="currentPage('chat')"
-                @click="handlePrimaryChatNavigation($event)"
+                @click.capture="handlePrimaryChatNavigation($event)"
               >
                 <span class="primary-navigation-icon">
                   <svg aria-hidden="true" class="citeloom-icon">
@@ -155,6 +155,35 @@
           </div>
 
           <nav class="task-navigation-utility-nav" aria-label="Workspace utilities">
+            <a
+              aria-label="Open the CiteLoom repository on GitHub in a new tab"
+              class="utility-navigation-button"
+              href="https://github.com/sageil/citeloom"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              <span class="utility-navigation-icon">
+                <svg aria-hidden="true" class="citeloom-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-github"></use>
+                </svg>
+              </span>
+              <span>GitHub</span>
+            </a>
+            <a
+              class="utility-navigation-button citeloom-navigation-link"
+              data-view="help"
+              href="./index.html?view=help"
+              hx-get="./fragments/help.html"
+              hx-push-url="./index.html?view=help"
+              :aria-current="currentPage('help')"
+            >
+              <span class="utility-navigation-icon">
+                <svg aria-hidden="true" class="citeloom-icon">
+                  <use href="./assets/images/citeloom-icons.svg#citeloom-help"></use>
+                </svg>
+              </span>
+              <span>Help</span>
+            </a>
             <div
               class="account-navigation-menu"
               @click.outside="closeAccountMenu()"
@@ -165,14 +194,17 @@
                 class="utility-navigation-button account-navigation-trigger"
                 type="button"
                 x-ref="accountMenuTrigger"
+                :aria-label="`Open account menu for ${currentDisplayName}`"
                 :aria-expanded="accountMenuOpen.toString()"
                 :aria-current="accountSectionIsCurrent ? 'page' : null"
+                :title="currentDisplayName"
                 @click="toggleAccountMenu()"
               >
-                <span x-text="currentDisplayName"></span>
-                <svg aria-hidden="true" class="account-navigation-caret citeloom-icon">
-                  <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
-                </svg>
+                <span
+                  aria-hidden="true"
+                  class="account-navigation-avatar"
+                  x-text="currentDisplayInitials"
+                ></span>
               </button>
 
               <div
@@ -205,18 +237,6 @@
                   <p class="account-navigation-section-label">Administration</p>
                   <a
                     class="account-navigation-item citeloom-navigation-link"
-                    data-view="users"
-                    href="./index.html?view=users"
-                    hx-get="./fragments/users.html"
-                    hx-push-url="./index.html?view=users"
-                    :aria-current="currentPage('users')"
-                    x-show="currentRole === 'admin'"
-                    @click="closeAccountMenu()"
-                  >
-                    <span>Users</span>
-                  </a>
-                  <a
-                    class="account-navigation-item citeloom-navigation-link"
                     data-view="errors"
                     href="./index.html?view=errors"
                     hx-get="./fragments/errors.html"
@@ -226,6 +246,17 @@
                     @click="closeAccountMenu()"
                   >
                     <span>Error reports</span>
+                  </a>
+                  <a
+                    class="account-navigation-item citeloom-navigation-link"
+                    data-view="security"
+                    href="./index.html?view=security"
+                    hx-get="./fragments/security.html"
+                    hx-push-url="./index.html?view=security"
+                    :aria-current="currentPage('security')"
+                    @click="closeAccountMenu()"
+                  >
+                    <span>Security</span>
                   </a>
                   <a
                     class="account-navigation-item citeloom-navigation-link"
@@ -262,35 +293,6 @@
                 </div>
               </div>
             </div>
-            <a
-              aria-label="Open the CiteLoom repository on GitHub in a new tab"
-              class="utility-navigation-button"
-              href="https://github.com/sageil/citeloom"
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              <span class="utility-navigation-icon">
-                <svg aria-hidden="true" class="citeloom-icon">
-                  <use href="./assets/images/citeloom-icons.svg#citeloom-github"></use>
-                </svg>
-              </span>
-              <span>GitHub</span>
-            </a>
-            <a
-              class="utility-navigation-button citeloom-navigation-link"
-              data-view="help"
-              href="./index.html?view=help"
-              hx-get="./fragments/help.html"
-              hx-push-url="./index.html?view=help"
-              :aria-current="currentPage('help')"
-            >
-              <span class="utility-navigation-icon">
-                <svg aria-hidden="true" class="citeloom-icon">
-                  <use href="./assets/images/citeloom-icons.svg#citeloom-help"></use>
-                </svg>
-              </span>
-              <span>Help</span>
-            </a>
           </nav>
         </header>
 
@@ -494,7 +496,7 @@
           <header>
             <span class="citeloom-confirmation-icon" aria-hidden="true">
               <svg class="citeloom-icon">
-                <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
+                <use :href="confirmationTone === 'danger' ? './assets/images/citeloom-icons.svg#citeloom-warning-circle' : './assets/images/citeloom-icons.svg#citeloom-link'"></use>
               </svg>
             </span>
             <div>
@@ -516,13 +518,14 @@
               @click="cancelConfirmation()"
             ></button>
             <button
-              class="button citeloom-confirmation-danger"
+              class="button"
+              :class="confirmationTone === 'danger' ? 'citeloom-confirmation-danger' : 'primary'"
               type="button"
               x-ref="confirmationConfirm"
               @click="confirmConfirmation()"
             >
               <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
-                <use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use>
+                <use :href="confirmationTone === 'danger' ? './assets/images/citeloom-icons.svg#citeloom-warning-circle' : './assets/images/citeloom-icons.svg#citeloom-link'"></use>
               </svg>
               <span x-text="confirmationConfirmLabel"></span>
             </button>

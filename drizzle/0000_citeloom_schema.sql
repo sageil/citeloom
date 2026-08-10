@@ -1027,6 +1027,7 @@ CREATE TABLE "user_setup_tokens" (
 	"expires_at" timestamp with time zone NOT NULL,
 	"token_digest" varchar(64) PRIMARY KEY NOT NULL,
 	"user_id" uuid NOT NULL,
+	"workspace_id" uuid NOT NULL,
 	CONSTRAINT "user_setup_tokens_token_digest_check" CHECK ("user_setup_tokens"."token_digest" ~ '^[a-f0-9]{64}$'),
 	CONSTRAINT "user_setup_tokens_expiry_check" CHECK ("user_setup_tokens"."expires_at" > "user_setup_tokens"."created_at")
 );
@@ -1058,6 +1059,41 @@ CREATE TABLE "workspace_memberships" (
 	"user_id" uuid NOT NULL,
 	"workspace_id" uuid NOT NULL,
 	CONSTRAINT "workspace_memberships_workspace_id_user_id_pk" PRIMARY KEY("workspace_id","user_id")
+);
+--> statement-breakpoint
+CREATE TABLE "workspace_security_policies" (
+	"minimum_password_length" integer DEFAULT 15 NOT NULL,
+	"require_letter_and_number" boolean DEFAULT false NOT NULL,
+	"require_special_character" boolean DEFAULT false NOT NULL,
+	"reset_link_lifetime_seconds" integer DEFAULT 86400 NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_by_user_id" uuid,
+	"version" integer DEFAULT 1 NOT NULL,
+	"workspace_id" uuid PRIMARY KEY NOT NULL,
+	CONSTRAINT "workspace_security_policies_minimum_password_length_check" CHECK ("workspace_security_policies"."minimum_password_length" BETWEEN 9 AND 64),
+	CONSTRAINT "workspace_security_policies_reset_link_lifetime_check" CHECK ("workspace_security_policies"."reset_link_lifetime_seconds" BETWEEN 900 AND 604800),
+	CONSTRAINT "workspace_security_policies_version_check" CHECK ("workspace_security_policies"."version" > 0)
+);
+--> statement-breakpoint
+CREATE TABLE "workspace_security_policy_changes" (
+	"changed_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"changed_by_user_id" uuid,
+	"id" uuid PRIMARY KEY NOT NULL,
+	"minimum_password_length" integer NOT NULL,
+	"previous_minimum_password_length" integer NOT NULL,
+	"previous_require_letter_and_number" boolean NOT NULL,
+	"previous_require_special_character" boolean NOT NULL,
+	"previous_reset_link_lifetime_seconds" integer NOT NULL,
+	"require_letter_and_number" boolean NOT NULL,
+	"require_special_character" boolean NOT NULL,
+	"reset_link_lifetime_seconds" integer NOT NULL,
+	"revoked_reset_link_count" integer NOT NULL,
+	"workspace_id" uuid NOT NULL,
+	CONSTRAINT "workspace_security_policy_changes_values_check" CHECK ("workspace_security_policy_changes"."minimum_password_length" BETWEEN 9 AND 64
+        AND "workspace_security_policy_changes"."previous_minimum_password_length" BETWEEN 9 AND 64
+        AND "workspace_security_policy_changes"."reset_link_lifetime_seconds" BETWEEN 900 AND 604800
+        AND "workspace_security_policy_changes"."previous_reset_link_lifetime_seconds" BETWEEN 900 AND 604800
+        AND "workspace_security_policy_changes"."revoked_reset_link_count" >= 0)
 );
 --> statement-breakpoint
 CREATE TABLE "workspaces" (
@@ -1265,8 +1301,13 @@ ALTER TABLE "user_sessions" ADD CONSTRAINT "user_sessions_active_workspace_id_wo
 ALTER TABLE "user_sessions" ADD CONSTRAINT "user_sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_setup_tokens" ADD CONSTRAINT "user_setup_tokens_created_by_user_id_users_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_setup_tokens" ADD CONSTRAINT "user_setup_tokens_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "user_setup_tokens" ADD CONSTRAINT "user_setup_tokens_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workspace_memberships" ADD CONSTRAINT "workspace_memberships_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workspace_memberships" ADD CONSTRAINT "workspace_memberships_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workspace_security_policies" ADD CONSTRAINT "workspace_security_policies_updated_by_user_id_users_id_fk" FOREIGN KEY ("updated_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workspace_security_policies" ADD CONSTRAINT "workspace_security_policies_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workspace_security_policy_changes" ADD CONSTRAINT "workspace_security_policy_changes_changed_by_user_id_users_id_fk" FOREIGN KEY ("changed_by_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workspace_security_policy_changes" ADD CONSTRAINT "workspace_security_policy_changes_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "application_error_events_occurred_at_idx" ON "application_error_events" USING btree ("occurred_at");--> statement-breakpoint
 CREATE INDEX "application_error_events_workspace_occurred_idx" ON "application_error_events" USING btree ("workspace_id","occurred_at","id");--> statement-breakpoint
 CREATE INDEX "application_error_events_workspace_origin_occurred_idx" ON "application_error_events" USING btree ("workspace_id","origin","occurred_at","id");--> statement-breakpoint
@@ -1352,8 +1393,10 @@ CREATE INDEX "user_sessions_user_idx" ON "user_sessions" USING btree ("user_id",
 CREATE INDEX "user_sessions_expiry_idx" ON "user_sessions" USING btree ("expires_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "user_setup_tokens_user_idx" ON "user_setup_tokens" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "user_setup_tokens_expiry_idx" ON "user_setup_tokens" USING btree ("expires_at");--> statement-breakpoint
+CREATE INDEX "user_setup_tokens_workspace_expiry_idx" ON "user_setup_tokens" USING btree ("workspace_id","expires_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "users_username_normalized_idx" ON "users" USING btree ("username_normalized");--> statement-breakpoint
 CREATE INDEX "workspace_memberships_user_idx" ON "workspace_memberships" USING btree ("user_id","workspace_id");--> statement-breakpoint
+CREATE INDEX "workspace_security_policy_changes_workspace_idx" ON "workspace_security_policy_changes" USING btree ("workspace_id","changed_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "workspaces_slug_idx" ON "workspaces" USING btree ("slug");--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION "protect_retrieval_generation_rows"()

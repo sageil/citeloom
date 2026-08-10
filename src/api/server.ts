@@ -108,6 +108,10 @@ import {
 import { readWebConfig, type WebConfig } from "./config.js";
 import type { AuthenticatedPrincipal } from "../auth/model.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
+import {
+  readSecurityWebServices,
+  registerSecurityRoutes,
+} from "./security-routes.js";
 
 export type {
   ApplicationStateRevisionSignal,
@@ -337,6 +341,14 @@ export async function buildWebServer(
     services,
     webConfig,
   });
+
+  const securityServices = readSecurityWebServices(services);
+  if (securityServices !== null) {
+    registerSecurityRoutes(server, {
+      requestPrincipals,
+      services: securityServices,
+    });
+  }
 
   server.get("/api/documents", async (request): Promise<BrowseDocumentCatalogResult> => {
     const catalogRequest = decodeDocumentCatalogQuery(request.query);

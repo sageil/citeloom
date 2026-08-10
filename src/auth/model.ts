@@ -37,3 +37,33 @@ export interface WorkspaceMember {
   userId: string;
   username: string;
 }
+
+export interface WorkspacePasswordPolicy {
+  minimumPasswordLength: number;
+  requireLetterAndNumber: boolean;
+  requireSpecialCharacter: boolean;
+}
+
+export interface WorkspaceSecurityPolicy extends WorkspacePasswordPolicy {
+  resetLinkLifetimeSeconds: number;
+  updatedAt: string;
+  version: number;
+}
+
+export type WorkspaceSecurityAdministrator = WorkspaceMember;
+
+export interface WorkspaceSecurityPolicyChange extends WorkspacePasswordPolicy {
+  changedAt: string;
+  changedByDisplayName: string | null;
+  changedByUsername: string | null;
+  id: string;
+  resetLinkLifetimeSeconds: number;
+  revokedResetLinkCount: number;
+}
+
+export interface WorkspaceSecurityOverview {
+  activeResetLinkCount: number;
+  administrators: WorkspaceSecurityAdministrator[];
+  policy: WorkspaceSecurityPolicy;
+  recentChanges: WorkspaceSecurityPolicyChange[];
+}

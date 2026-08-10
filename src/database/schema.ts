@@ -312,6 +312,92 @@ export const workspaceMemberships = pgTable(
   ],
 );
 
+export const workspaceSecurityPolicies = pgTable(
+  "workspace_security_policies",
+  {
+    minimumPasswordLength: integer("minimum_password_length")
+      .notNull()
+      .default(15),
+    requireLetterAndNumber: boolean("require_letter_and_number")
+      .notNull()
+      .default(false),
+    requireSpecialCharacter: boolean("require_special_character")
+      .notNull()
+      .default(false),
+    resetLinkLifetimeSeconds: integer("reset_link_lifetime_seconds")
+      .notNull()
+      .default(86_400),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    version: integer("version").notNull().default(1),
+    workspaceId: uuid("workspace_id")
+      .primaryKey()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    check(
+      "workspace_security_policies_minimum_password_length_check",
+      sql`${table.minimumPasswordLength} BETWEEN 9 AND 64`,
+    ),
+    check(
+      "workspace_security_policies_reset_link_lifetime_check",
+      sql`${table.resetLinkLifetimeSeconds} BETWEEN 900 AND 604800`,
+    ),
+    check(
+      "workspace_security_policies_version_check",
+      sql`${table.version} > 0`,
+    ),
+  ],
+);
+
+export const workspaceSecurityPolicyChanges = pgTable(
+  "workspace_security_policy_changes",
+  {
+    changedAt: timestamp("changed_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    changedByUserId: uuid("changed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    id: uuid("id").primaryKey(),
+    minimumPasswordLength: integer("minimum_password_length").notNull(),
+    previousMinimumPasswordLength: integer("previous_minimum_password_length")
+      .notNull(),
+    previousRequireLetterAndNumber: boolean("previous_require_letter_and_number")
+      .notNull(),
+    previousRequireSpecialCharacter: boolean("previous_require_special_character")
+      .notNull(),
+    previousResetLinkLifetimeSeconds: integer(
+      "previous_reset_link_lifetime_seconds",
+    ).notNull(),
+    requireLetterAndNumber: boolean("require_letter_and_number").notNull(),
+    requireSpecialCharacter: boolean("require_special_character").notNull(),
+    resetLinkLifetimeSeconds: integer("reset_link_lifetime_seconds").notNull(),
+    revokedResetLinkCount: integer("revoked_reset_link_count").notNull(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    index("workspace_security_policy_changes_workspace_idx").on(
+      table.workspaceId,
+      table.changedAt,
+    ),
+    check(
+      "workspace_security_policy_changes_values_check",
+      sql`${table.minimumPasswordLength} BETWEEN 9 AND 64
+        AND ${table.previousMinimumPasswordLength} BETWEEN 9 AND 64
+        AND ${table.resetLinkLifetimeSeconds} BETWEEN 900 AND 604800
+        AND ${table.previousResetLinkLifetimeSeconds} BETWEEN 900 AND 604800
+        AND ${table.revokedResetLinkCount} >= 0`,
+    ),
+  ],
+);
+
 export const userSessions = pgTable(
   "user_sessions",
   {
@@ -365,10 +451,17 @@ export const userSetupTokens = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
   },
   (table) => [
     uniqueIndex("user_setup_tokens_user_idx").on(table.userId),
     index("user_setup_tokens_expiry_idx").on(table.expiresAt),
+    index("user_setup_tokens_workspace_expiry_idx").on(
+      table.workspaceId,
+      table.expiresAt,
+    ),
     check(
       "user_setup_tokens_token_digest_check",
       sql`${table.tokenDigest} ~ '^[a-f0-9]{64}$'`,

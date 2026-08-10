@@ -1432,6 +1432,9 @@ BEGIN
   INSERT INTO "workspaces" ("id", "name", "slug")
   VALUES (administrator_workspace_id, 'CiteLoom', 'citeloom');
 
+  INSERT INTO "workspace_security_policies" ("workspace_id")
+  VALUES (administrator_workspace_id);
+
   INSERT INTO "users" (
     "display_name",
     "id",

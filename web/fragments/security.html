@@ -1,0 +1,125 @@
+<section class="security-page" x-data="citeloomSecurityPage" x-init="initialize()">
+  <header class="security-header">
+    <div>
+      <div class="security-title-row">
+        <h1>Security</h1>
+        <span class="security-admin-badge">
+          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-shield"></use></svg>
+          Administrators only
+        </span>
+      </div>
+      <p>Manage workspace sign-in and recovery security.</p>
+    </div>
+  </header>
+
+  <p class="security-loading" x-show="loading">Loading security settings…</p>
+
+  <div class="security-load-failed" x-cloak x-show="!loading &amp;&amp; loadFailed">
+    <span>Security settings are unavailable.</span>
+    <button class="button secondary" type="button" @click="loadOverview()">Try again</button>
+  </div>
+
+  <div class="security-content" x-cloak x-show="!loading &amp;&amp; !loadFailed">
+    <section class="security-users-column" aria-label="Users and access">
+      <div
+        class="workspace-user-management-host"
+        hx-get="./fragments/workspace-users-management.html"
+        hx-target="this"
+        hx-trigger="load"
+        hx-swap="innerHTML"
+      >
+        <p class="access-user-loading">Loading workspace users…</p>
+      </div>
+    </section>
+
+    <div class="security-policy-column">
+      <form class="security-policy-panel" @submit.prevent="savePolicy()">
+        <header class="security-section-heading">
+          <h2>Password &amp; recovery policy</h2>
+          <p>These settings apply when a password is created or changed. Existing passwords remain valid.</p>
+        </header>
+
+        <div class="security-policy-fields">
+          <label class="security-policy-field" for="security-minimum-length">
+            <span class="security-field-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg></span>
+            <span class="security-field-copy"><strong>Minimum password length</strong><small>Choose between 9 and 64 characters.</small></span>
+            <span class="security-number-control">
+              <input id="security-minimum-length" max="64" min="9" required type="number" x-model.number="minimumPasswordLength" />
+              <span>characters</span>
+            </span>
+          </label>
+
+          <label class="security-policy-field" for="security-reset-lifetime">
+            <span class="security-field-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use></svg></span>
+            <span class="security-field-copy"><strong>Password reset link lifetime</strong><small>New setup and reset links use this lifetime.</small></span>
+            <select id="security-reset-lifetime" x-model.number="resetLinkLifetimeSeconds">
+              <option value="900">15 minutes</option>
+              <option value="1800">30 minutes</option>
+              <option value="3600">1 hour</option>
+              <option value="14400">4 hours</option>
+              <option value="43200">12 hours</option>
+              <option value="86400">24 hours</option>
+              <option value="172800">2 days</option>
+              <option value="259200">3 days</option>
+              <option value="604800">7 days</option>
+            </select>
+          </label>
+        </div>
+
+        <fieldset class="security-rules">
+          <legend>Password content requirements</legend>
+          <label>
+            <input type="checkbox" x-model="requireLetterAndNumber" />
+            <span><strong>Require letters and numbers</strong><small>Passwords must include at least one letter and one number.</small></span>
+          </label>
+          <label>
+            <input type="checkbox" x-model="requireSpecialCharacter" />
+            <span><strong>Require a special character</strong><small>Passwords must include punctuation or another symbol.</small></span>
+          </label>
+        </fieldset>
+
+        <label class="security-revoke-on-save" :class="{ disabled: activeResetLinkCount === 0 }">
+          <input :disabled="activeResetLinkCount === 0" type="checkbox" x-model="invalidateOutstandingResetLinks" />
+          <span>
+            <strong>Invalidate outstanding reset links when this policy is saved</strong>
+            <small x-text="activeResetLinkCount === 0 ? 'There are no active links to revoke.' : `${activeResetLinkCount} active ${activeResetLinkCount === 1 ? 'link' : 'links'} will be revoked.`"></small>
+          </span>
+        </label>
+
+        <footer class="security-policy-actions">
+          <button class="button secondary" :disabled="busy || !policyChanged" type="button" @click="discardChanges()">Discard</button>
+          <button class="button primary" :disabled="busy || (!policyChanged &amp;&amp; !invalidateOutstandingResetLinks)" type="submit">
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg>
+            <span x-text="busy ? 'Saving…' : 'Save policy'"></span>
+          </button>
+        </footer>
+      </form>
+
+      <section class="security-reset-links">
+        <header class="security-section-heading"><h2>Outstanding reset links</h2></header>
+        <div class="security-reset-summary">
+          <span class="security-link-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-link"></use></svg></span>
+          <span><strong x-text="`${activeResetLinkCount} active`"></strong><small>Active password setup and reset links</small></span>
+          <button class="button secondary" :disabled="busy || activeResetLinkCount === 0" type="button" @click="revokeAllLinks()">
+            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-link"></use></svg>
+            <span>Revoke all links</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <section class="security-history" x-cloak x-show="!loading &amp;&amp; !loadFailed">
+    <header class="security-section-heading"><h2>Recent policy changes</h2></header>
+    <p class="security-history-empty" x-show="recentChanges.length === 0">No policy changes have been recorded yet.</p>
+    <ol x-show="recentChanges.length &gt; 0">
+      <template x-for="change in recentChanges" :key="change.id">
+        <li>
+          <span class="security-history-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use></svg></span>
+          <span><strong x-text="change.changedByDisplayName ?? 'Former administrator'"></strong><small x-text="formatChange(change)"></small></span>
+          <time :datetime="change.changedAt" x-text="formatDate(change.changedAt)"></time>
+        </li>
+      </template>
+    </ol>
+  </section>
+</section>

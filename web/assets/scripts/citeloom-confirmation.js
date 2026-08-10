@@ -7,7 +7,7 @@ import {
 
 const CONFIRMATION_REQUEST_EVENT = "citeloom:confirmation-request";
 const CONFIRMATION_RESPONSE_EVENT = "citeloom:confirmation-response";
-const confirmationTones = Object.freeze(["danger"]);
+const confirmationTones = Object.freeze(["danger", "default"]);
 let confirmationRequestSequence = 0;
 
 export function requestConfirmation(request) {

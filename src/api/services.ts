@@ -140,7 +140,9 @@ import {
 import type {
   LoginInput,
   NormalizedUserIdentity,
+  UpdateWorkspaceSecurityPolicyInput,
 } from "../auth/boundary.js";
+import type { PasswordInput } from "../auth/password.js";
 import type {
   AuthenticatedPrincipal,
   AuthenticationSession,
@@ -148,8 +150,11 @@ import type {
   WorkspaceMemberAddition,
   WorkspaceMember,
   WorkspaceRole,
+  WorkspacePasswordPolicy,
+  WorkspaceSecurityOverview,
 } from "../auth/model.js";
 import { AuthenticationStore } from "../auth/store.js";
+import { WorkspaceSecurityPolicyStore } from "../auth/security-policy-store.js";
 import {
   OpenAICodexCredentialStore,
   type OpenAICodexConnectionState,
@@ -339,7 +344,7 @@ export interface WebServices {
   authenticate: (input: LoginInput) => Promise<AuthenticationSession>;
   completePasswordSetup: (
     setupToken: string,
-    password: string,
+    password: PasswordInput,
   ) => Promise<AuthenticationSession>;
   copyEmbeddingInputFormat: (
     sourceId: string,
@@ -365,7 +370,7 @@ export interface WebServices {
   changePassword: (
     principal: AuthenticatedPrincipal,
     currentPassword: string,
-    newPassword: string,
+    newPassword: PasswordInput,
   ) => Promise<void>;
   listWorkspaceMembers: (
     principal: AuthenticatedPrincipal,
@@ -419,9 +424,24 @@ export interface WebServices {
   ) => Promise<EffectiveApplicationSettings>;
 }
 
+export interface SecurityWebServices {
+  readPasswordPolicy: (
+    principal: AuthenticatedPrincipal,
+  ) => Promise<WorkspacePasswordPolicy>;
+  readWorkspaceSecurityOverview: (
+    principal: AuthenticatedPrincipal,
+  ) => Promise<WorkspaceSecurityOverview>;
+  updateWorkspaceSecurityPolicy: (
+    principal: AuthenticatedPrincipal,
+    input: UpdateWorkspaceSecurityPolicyInput,
+  ) => Promise<WorkspaceSecurityOverview>;
+}
+
+export type ApplicationWebServices = WebServices & SecurityWebServices;
+
 export interface OwnedWebServices {
   close(): Promise<void>;
-  services: WebServices;
+  services: ApplicationWebServices;
 }
 
 export interface SettingsReloadController {
@@ -675,9 +695,9 @@ export function createWebServices(
   config: AppConfig,
   manager: ApplicationRuntimeManager,
   revisions: ApplicationStateRevisionSource,
-): WebServices {
+): ApplicationWebServices {
   const doclingTopology = readDoclingServiceTopologyFromConfig(config);
-  const services: WebServices = {
+  const services: ApplicationWebServices = {
     authenticate: async (input) => manager.withRuntime(async (runtime) => {
       const authentication = new AuthenticationStore(runtime.database);
       return authentication.authenticate(input);
@@ -769,6 +789,12 @@ export function createWebServices(
         );
       });
     },
+    readPasswordPolicy: async (principal) => {
+      return manager.withRuntime(async (runtime) => {
+        const securityPolicy = new WorkspaceSecurityPolicyStore(runtime.database);
+        return securityPolicy.readPasswordPolicy(principal);
+      });
+    },
     readRevisions: async () => manager.withRuntime(async (runtime) => {
       return readApplicationStateRevisions(runtime.database);
     }),
@@ -779,6 +805,12 @@ export function createWebServices(
         doclingTopology,
       );
     }),
+    readWorkspaceSecurityOverview: async (principal) => {
+      return manager.withRuntime(async (runtime) => {
+        const securityPolicy = new WorkspaceSecurityPolicyStore(runtime.database);
+        return securityPolicy.readOverview(principal);
+      });
+    },
     reportApplicationError: async (error, context) => {
       return manager.withRuntime(async (runtime) => {
         const reporter = new ApplicationErrorReporter(runtime.database);
@@ -839,6 +871,12 @@ export function createWebServices(
         await manager.reload(settings.config);
       }
       return settings;
+    },
+    updateWorkspaceSecurityPolicy: async (principal, input) => {
+      return manager.withRuntime(async (runtime) => {
+        const securityPolicy = new WorkspaceSecurityPolicyStore(runtime.database);
+        return securityPolicy.update(principal, input);
+      });
     },
   };
   return services;

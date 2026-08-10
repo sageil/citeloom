@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { readPassword } from "./password.js";
+import {
+  readPasswordInput,
+  type PasswordInput,
+} from "./password.js";
 import { workspaceRoleSchema, type WorkspaceRole } from "./model.js";
 
 const usernameSchema = z.string()
@@ -38,12 +41,21 @@ export interface LoginInput {
 
 export interface ChangePasswordInput {
   currentPassword: string;
-  newPassword: string;
+  newPassword: PasswordInput;
 }
 
 export interface CreateWorkspaceMemberInput {
   identity: NormalizedUserIdentity;
   role: WorkspaceRole;
+}
+
+export interface UpdateWorkspaceSecurityPolicyInput {
+  expectedVersion: number;
+  invalidateOutstandingResetLinks: boolean;
+  minimumPasswordLength: number;
+  requireLetterAndNumber: boolean;
+  requireSpecialCharacter: boolean;
+  resetLinkLifetimeSeconds: number;
 }
 
 export function normalizeUserIdentity(input: {
@@ -89,7 +101,7 @@ export function decodeLoginInput(input: unknown): LoginInput {
 }
 
 export function decodePasswordSetupInput(input: unknown): {
-  password: string;
+  password: PasswordInput;
   setupToken: string;
 } {
   const candidate = z.object({
@@ -97,7 +109,7 @@ export function decodePasswordSetupInput(input: unknown): {
     setupToken: z.string().min(32).max(200),
   }).strict().parse(input);
   return {
-    password: readPassword(candidate.password),
+    password: readPasswordInput(candidate.password),
     setupToken: candidate.setupToken,
   };
 }
@@ -109,8 +121,21 @@ export function decodeChangePasswordInput(input: unknown): ChangePasswordInput {
   }).strict().parse(input);
   return {
     currentPassword: candidate.currentPassword,
-    newPassword: readPassword(candidate.newPassword),
+    newPassword: readPasswordInput(candidate.newPassword),
   };
+}
+
+export function decodeWorkspaceSecurityPolicyUpdate(
+  input: unknown,
+): UpdateWorkspaceSecurityPolicyInput {
+  return z.object({
+    expectedVersion: z.number().int().positive(),
+    invalidateOutstandingResetLinks: z.boolean(),
+    minimumPasswordLength: z.number().int().min(9).max(64),
+    requireLetterAndNumber: z.boolean(),
+    requireSpecialCharacter: z.boolean(),
+    resetLinkLifetimeSeconds: z.number().int().min(900).max(604_800),
+  }).strict().parse(input);
 }
 
 export function decodeCreateWorkspaceMemberInput(

@@ -1,5 +1,5 @@
 {
-  "id": "2dbd8856-c906-4d26-8490-88d221175c92",
+  "id": "7fc28e48-f2e3-4cf9-96de-2112278ada38",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -8883,6 +8883,12 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
         }
       },
       "indexes": {
@@ -8904,6 +8910,27 @@
         "user_setup_tokens_expiry_idx": {
           "name": "user_setup_tokens_expiry_idx",
           "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "user_setup_tokens_workspace_expiry_idx": {
+          "name": "user_setup_tokens_workspace_expiry_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "expires_at",
               "isExpression": false,
@@ -8937,6 +8964,19 @@
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "user_setup_tokens_workspace_id_workspaces_id_fk": {
+          "name": "user_setup_tokens_workspace_id_workspaces_id_fk",
+          "tableFrom": "user_setup_tokens",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
           ],
           "columnsTo": [
             "id"
@@ -9194,6 +9234,259 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.workspace_security_policies": {
+      "name": "workspace_security_policies",
+      "schema": "",
+      "columns": {
+        "minimum_password_length": {
+          "name": "minimum_password_length",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 15
+        },
+        "require_letter_and_number": {
+          "name": "require_letter_and_number",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "require_special_character": {
+          "name": "require_special_character",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "reset_link_lifetime_seconds": {
+          "name": "reset_link_lifetime_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 86400
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by_user_id": {
+          "name": "updated_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "workspace_security_policies_updated_by_user_id_users_id_fk": {
+          "name": "workspace_security_policies_updated_by_user_id_users_id_fk",
+          "tableFrom": "workspace_security_policies",
+          "tableTo": "users",
+          "columnsFrom": [
+            "updated_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "workspace_security_policies_workspace_id_workspaces_id_fk": {
+          "name": "workspace_security_policies_workspace_id_workspaces_id_fk",
+          "tableFrom": "workspace_security_policies",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "workspace_security_policies_minimum_password_length_check": {
+          "name": "workspace_security_policies_minimum_password_length_check",
+          "value": "\"workspace_security_policies\".\"minimum_password_length\" BETWEEN 9 AND 64"
+        },
+        "workspace_security_policies_reset_link_lifetime_check": {
+          "name": "workspace_security_policies_reset_link_lifetime_check",
+          "value": "\"workspace_security_policies\".\"reset_link_lifetime_seconds\" BETWEEN 900 AND 604800"
+        },
+        "workspace_security_policies_version_check": {
+          "name": "workspace_security_policies_version_check",
+          "value": "\"workspace_security_policies\".\"version\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.workspace_security_policy_changes": {
+      "name": "workspace_security_policy_changes",
+      "schema": "",
+      "columns": {
+        "changed_at": {
+          "name": "changed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "changed_by_user_id": {
+          "name": "changed_by_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "minimum_password_length": {
+          "name": "minimum_password_length",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "previous_minimum_password_length": {
+          "name": "previous_minimum_password_length",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "previous_require_letter_and_number": {
+          "name": "previous_require_letter_and_number",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "previous_require_special_character": {
+          "name": "previous_require_special_character",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "previous_reset_link_lifetime_seconds": {
+          "name": "previous_reset_link_lifetime_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "require_letter_and_number": {
+          "name": "require_letter_and_number",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "require_special_character": {
+          "name": "require_special_character",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reset_link_lifetime_seconds": {
+          "name": "reset_link_lifetime_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_reset_link_count": {
+          "name": "revoked_reset_link_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "workspace_security_policy_changes_workspace_idx": {
+          "name": "workspace_security_policy_changes_workspace_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "changed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "workspace_security_policy_changes_changed_by_user_id_users_id_fk": {
+          "name": "workspace_security_policy_changes_changed_by_user_id_users_id_fk",
+          "tableFrom": "workspace_security_policy_changes",
+          "tableTo": "users",
+          "columnsFrom": [
+            "changed_by_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "workspace_security_policy_changes_workspace_id_workspaces_id_fk": {
+          "name": "workspace_security_policy_changes_workspace_id_workspaces_id_fk",
+          "tableFrom": "workspace_security_policy_changes",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "workspace_security_policy_changes_values_check": {
+          "name": "workspace_security_policy_changes_values_check",
+          "value": "\"workspace_security_policy_changes\".\"minimum_password_length\" BETWEEN 9 AND 64\n        AND \"workspace_security_policy_changes\".\"previous_minimum_password_length\" BETWEEN 9 AND 64\n        AND \"workspace_security_policy_changes\".\"reset_link_lifetime_seconds\" BETWEEN 900 AND 604800\n        AND \"workspace_security_policy_changes\".\"previous_reset_link_lifetime_seconds\" BETWEEN 900 AND 604800\n        AND \"workspace_security_policy_changes\".\"revoked_reset_link_count\" >= 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.workspaces": {

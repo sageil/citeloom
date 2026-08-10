@@ -273,7 +273,7 @@ function decodeDefaultAnswerModelResponse(
   };
 }
 
-const defaultAnswerGenerationPrompt: AnswerGenerationPrompt = {
+export const ASK_GENERATION_PROMPT: AnswerGenerationPrompt = {
   buildUserPromptFrame: buildAnswerUserPromptFrame,
   createEvidenceReferences: createDefaultEvidenceReferences,
   responseContract: defaultAnswerResponse,
@@ -294,7 +294,7 @@ export async function answerQuestion(
   generationSettings: AppliedGenerationSettings,
   runTelemetry: RunTelemetry = noopRunTelemetry,
   conversationTurns: readonly AnswerConversationTurn[] = [],
-  prompt: AnswerGenerationPrompt = defaultAnswerGenerationPrompt,
+  prompt: AnswerGenerationPrompt = ASK_GENERATION_PROMPT,
 ): Promise<GeneratedAnswerResult> {
   return generateAnswer(
     models,
@@ -322,7 +322,7 @@ export async function streamAnswerQuestion(
   options: AnswerGenerationOptions = {},
 ): Promise<GeneratedAnswerResult> {
   const conversationTurns = options.conversationTurns ?? [];
-  const prompt = options.prompt ?? defaultAnswerGenerationPrompt;
+  const prompt = options.prompt ?? ASK_GENERATION_PROMPT;
   const receiveAnswerContent = options.receiveAnswerContent ?? ignoreAnswerContent;
   return generateAnswer(
     models,
@@ -931,7 +931,7 @@ export function buildAnswerContent(
   retrieved: RetrievedElement[],
   expandedRetrievalWindowIds: ReadonlySet<string> = new Set(),
   conversationTurns: readonly AnswerConversationTurn[] = [],
-  prompt: AnswerGenerationPrompt = defaultAnswerGenerationPrompt,
+  prompt: AnswerGenerationPrompt = ASK_GENERATION_PROMPT,
 ): UserContent {
   const allowedEvidenceRefs = prompt.createEvidenceReferences(retrieved);
   const request = prepareAnswerRequest(

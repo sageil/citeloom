@@ -161,6 +161,18 @@ const routes = Object.freeze({
     pageStyles: ["./assets/styles/citeloom-overview.css"],
     title: "CiteLoom",
   },
+  security: {
+    fragment: "./fragments/security.html",
+    pageScript: {
+      id: "security",
+      source: "./citeloom-security.js",
+    },
+    pageStyles: [
+      "./assets/styles/citeloom-access.css",
+      "./assets/styles/citeloom-security.css",
+    ],
+    title: "Security | CiteLoom",
+  },
   settings: {
     fragment: "./fragments/settings.html",
     pageScript: {
@@ -169,15 +181,6 @@ const routes = Object.freeze({
     },
     pageStyles: ["./assets/styles/citeloom-settings.css"],
     title: "Settings | CiteLoom",
-  },
-  users: {
-    fragment: "./fragments/users.html",
-    pageScript: {
-      id: "users",
-      source: "./citeloom-users.js",
-    },
-    pageStyles: ["./assets/styles/citeloom-access.css"],
-    title: "Users | CiteLoom",
   },
   "system-health": {
     fragment: "./fragments/system-health.html",
@@ -199,9 +202,10 @@ const pathViews = Object.freeze({
   "/help": "help",
   "/login": "login",
   "/overview": "overview",
+  "/security": "security",
   "/settings": "settings",
   "/system-health": "system-health",
-  "/users": "users",
+  "/users": "security",
 });
 
 const loadedPageScripts = new Set();
@@ -809,9 +813,13 @@ function registerShell(alpine) {
     get accountSectionIsCurrent() {
       return this.activeView === "account"
         || this.activeView === "errors"
-        || this.activeView === "users"
+        || this.activeView === "security"
         || this.activeView === "settings"
         || this.activeView === "system-health";
+    },
+
+    get currentDisplayInitials() {
+      return this.currentDisplayName.slice(0, 2).toLocaleUpperCase();
     },
 
     initialize() {
@@ -1128,7 +1136,7 @@ function registerShell(alpine) {
       }
       this.chatSwitcherPending = false;
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
       this.requestChatSwitcher();
     },
 
