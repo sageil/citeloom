@@ -55,6 +55,7 @@ Choose the guide that matches the work you need to do.
 
 | Goal | Guide |
 | --- | --- |
+| Review release highlights | [Release notes](docs/releases.md) |
 | Learn the available workflows and product limits | [Features](docs/features.md) |
 | Install or deploy CiteLoom | [Deployment](docs/deployment.md) |
 | Configure providers, search, speech, and document processing | [Configuration](docs/configuration.md) |
