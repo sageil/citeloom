@@ -2,7 +2,7 @@
 
 > Private documents, woven into cited answers.
 
-![Version](https://img.shields.io/badge/version-0.3.5-0ea5e9)
+![Version](https://img.shields.io/badge/version-0.3.6-0ea5e9)
 ![Node.js](https://img.shields.io/badge/node-26.5.0-339933)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
@@ -33,7 +33,7 @@ The [feature guide](docs/features.md) lists the supported formats, user features
 
 ## Install CiteLoom
 
-The supplied Docker Compose deployment includes the web application, worker, PostgreSQL, Docling document conversion, HHEM citation-support checks, and local HTTPS through Caddy.
+The Docker Compose deployment includes the web application, worker, PostgreSQL, Docling document conversion, HHEM citation-support checks, and local HTTPS through Caddy.
 Model providers run separately and are selected in Settings after installation.
 
 Follow [Deployment](docs/deployment.md) to install published images or build the stack from source.
