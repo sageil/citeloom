@@ -102,6 +102,36 @@ export function createSourceContentStorageActions() {
         && state !== "cancel_requested";
     },
 
+    sourceContentStorageDraftMatchesActive() {
+      const active = this.sourceContentStorage?.active;
+      if (active === undefined) {
+        return false;
+      }
+      return storageDraftMatchesActive(
+        this.sourceContentStorageDraft,
+        active,
+      );
+    },
+
+    sourceContentStorageStatusReady() {
+      return this.sourceContentStorageProbePassed
+        || this.sourceContentStorageDraftMatchesActive();
+    },
+
+    sourceContentStorageStatusMessage() {
+      const matchesActive = this.sourceContentStorageDraftMatchesActive();
+      if (matchesActive && this.sourceContentStorageProbePassed) {
+        return "Active connection test passed. This configuration is already active, so no migration is needed.";
+      }
+      if (matchesActive) {
+        return "This configuration is already active. Change a setting to create a migration target.";
+      }
+      if (this.sourceContentStorageProbePassed) {
+        return "Connection test passed. The target accepted a write and delete probe.";
+      }
+      return "Test the connection before starting a migration.";
+    },
+
     sourceContentMigrationProgress() {
       const migration = this.sourceContentStorage?.migration;
       if (migration === null || migration === undefined) {
@@ -210,6 +240,7 @@ export function createSourceContentStorageActions() {
         || this.sourceContentStorageBusy
         || !this.sourceContentStorageProbePassed
         || this.sourceContentMigrationActive()
+        || this.sourceContentStorageDraftMatchesActive()
       ) {
         return;
       }
@@ -429,6 +460,37 @@ function createStorageDraft(active) {
   draft.prefix = active.prefix;
   draft.region = active.region;
   return draft;
+}
+
+function storageDraftMatchesActive(draft, active) {
+  if (draft === null || draft.kind !== active.kind) {
+    return false;
+  }
+  if (active.kind === "filesystem") {
+    return draft.directory.trim() === active.directory.trim();
+  }
+  if (draft.credentialSource !== active.credentialSource) {
+    return false;
+  }
+  if (
+    draft.credentialSource === "static"
+    && (draft.accessKeyId.trim() !== "" || draft.secretAccessKey !== "")
+  ) {
+    return false;
+  }
+  let endpointUrl;
+  try {
+    endpointUrl = readHttpEndpoint(draft.endpointUrl);
+  } catch {
+    return false;
+  }
+  const activeEndpointUrl = readHttpEndpoint(active.endpointUrl);
+  const prefix = draft.prefix.trim().replace(/^\/+|\/+$/gu, "");
+  return draft.bucket.trim() === active.bucket
+    && endpointUrl === activeEndpointUrl
+    && draft.forcePathStyle === active.forcePathStyle
+    && prefix === active.prefix
+    && draft.region.trim() === active.region;
 }
 
 function buildStorageTarget(draft) {

@@ -1689,8 +1689,7 @@
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
+  background: transparent;
 }
 
 .settings-storage-active,

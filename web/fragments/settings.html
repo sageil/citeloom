@@ -797,7 +797,7 @@
           </section>
 
           <section class="settings-storage-editor" aria-labelledby="settings-storage-editor-title">
-            <header><div><h2 id="settings-storage-editor-title">Migration target</h2><p>Test a destination, then start a verified background migration.</p></div><span class="setting-source">Administrator</span></header>
+            <header><div><h2 id="settings-storage-editor-title">Migration target</h2><p>Test a destination, then start a verified background migration.</p></div><span class="setting-source" x-text="sourceContentStorageDraftMatchesActive() ? 'Already active' : 'Administrator'"></span></header>
 
             <label class="form-field">
               <span>Backend</span>
@@ -833,15 +833,15 @@
             </div>
             </template>
 
-            <div class="settings-storage-probe-status" :class="{ ready: sourceContentStorageProbePassed }">
-              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use :href="sourceContentStorageProbePassed ? './assets/images/citeloom-icons.svg#citeloom-status-check' : './assets/images/citeloom-icons.svg#citeloom-warning-circle'"></use></svg>
-              <span x-text="sourceContentStorageProbePassed ? 'Connection test passed. The target accepted a write and delete probe.' : 'Test the connection before starting a migration.'"></span>
+            <div class="settings-storage-probe-status" :class="{ ready: sourceContentStorageStatusReady() }" role="status">
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use :href="sourceContentStorageStatusReady() ? './assets/images/citeloom-icons.svg#citeloom-status-check' : './assets/images/citeloom-icons.svg#citeloom-warning-circle'"></use></svg>
+              <span x-text="sourceContentStorageStatusMessage()"></span>
             </div>
 
             <footer class="settings-storage-actions">
-              <button class="button secondary" type="button" :disabled="sourceContentStorageBusy || sourceContentMigrationActive()" @click="resetSourceContentStorageDraft()">Reset</button>
+              <button class="button secondary" type="button" :disabled="sourceContentStorageBusy || sourceContentMigrationActive() || sourceContentStorageDraftMatchesActive()" @click="resetSourceContentStorageDraft()">Reset</button>
               <button class="button secondary" type="button" :aria-busy="sourceContentStorageBusy" :disabled="sourceContentStorageBusy || sourceContentMigrationActive()" @click="testSourceContentStorage()">Test connection</button>
-              <button class="button primary" type="button" :disabled="sourceContentStorageBusy || sourceContentMigrationActive() || !sourceContentStorageProbePassed" @click="startSourceContentMigration()">Start migration</button>
+              <button class="button primary" type="button" :disabled="sourceContentStorageBusy || sourceContentMigrationActive() || sourceContentStorageDraftMatchesActive() || !sourceContentStorageProbePassed" @click="startSourceContentMigration()">Start migration</button>
             </footer>
           </section>
         </div>
