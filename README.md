@@ -33,7 +33,7 @@ The [feature guide](docs/features.md) lists the supported formats, user features
 
 ## Install CiteLoom
 
-The supplied Docker Compose deployment includes the web application, worker, PostgreSQL, Docling document conversion, HHEM citation-support checks, and local HTTPS through Caddy.
+The Docker Compose deployment includes the web application, worker, PostgreSQL, Docling document conversion, HHEM citation-support checks, and local HTTPS through Caddy.
 Model providers run separately and are selected in Settings after installation.
 
 Follow [Deployment](docs/deployment.md) to install published images or build the stack from source.
