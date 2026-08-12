@@ -39,6 +39,7 @@ import {
   readNoticeEvent,
   readNoticeKind,
 } from "./citeloom-notices.js";
+import { clearSettingsScopePreference } from "./citeloom-settings-scope.js";
 import { readWorkspaceSummaries } from "./citeloom-workspaces.js";
 
 const defaultView = "overview";
@@ -1232,6 +1233,7 @@ function registerShell(alpine) {
           method: "PUT",
         });
         await readJsonResponse(response, "Workspace switch");
+        clearSettingsScopePreference();
         window.location.reload();
       } catch (error) {
         this.workspaceSwitching = false;
@@ -1792,6 +1794,7 @@ function registerShell(alpine) {
 
     async signOut() {
       this.clearDocumentNotifications();
+      clearSettingsScopePreference();
       try {
         await fetch("/api/auth/logout", { method: "POST" });
       } finally {

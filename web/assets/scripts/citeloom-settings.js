@@ -22,6 +22,10 @@ import {
 } from "./citeloom-settings-history.js";
 import { createSettingsResetActions } from "./citeloom-settings-resets.js";
 import {
+  readSettingsScopePreference,
+  writeSettingsScopePreference,
+} from "./citeloom-settings-scope.js";
+import {
   createSourceContentStorageActions,
 } from "./citeloom-source-content-storage.js";
 import {
@@ -1204,7 +1208,7 @@ function readOpenAICodexModelsResponse(value) {
 }
 
 export function registerPage(alpine) {
-  let rememberedSettingsScope = null;
+  let rememberedSettingsScope = readSettingsScopePreference();
 
   alpine.data("citeloomSettingsPage", () => ({
     abortController: null,
@@ -1722,6 +1726,7 @@ export function registerPage(alpine) {
       this.settings = settings;
       this.settingsScopeRequest = settings.scope.kind;
       rememberedSettingsScope = settings.scope.kind;
+      writeSettingsScopePreference(settings.scope.kind);
       if (!this.locationStateRestored) {
         this.locationStateRestored = true;
         this.restoreLocationState();
