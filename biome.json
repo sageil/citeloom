@@ -19,16 +19,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "preset": "recommended",
-      "complexity": {
-        "noUselessEscapeInRegex": "off",
-        "noUselessStringRaw": "off",
-        "noUselessUndefinedInitialization": "off",
-        "useRegexLiterals": "off"
-      },
-      "suspicious": {
-        "noImplicitAnyLet": "error"
-      }
+      "preset": "recommended"
     }
   },
   "assist": {
