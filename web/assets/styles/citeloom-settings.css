@@ -10,6 +10,10 @@
   flex: 0 0 auto;
 }
 
+.settings-header-scope select {
+  min-width: 150px;
+}
+
 .settings-message.warning p {
   margin: 0;
 }
@@ -85,7 +89,7 @@
 .settings-control-row > .form-control {
   flex: 1;
   border-radius: 6px;
-  background: var(--surface);
+  background: var(--control-background);
   font-size: 13px;
 }
 
@@ -650,6 +654,10 @@
   min-height: 32px;
   padding: 0 10px;
   font-size: 11px;
+}
+
+.settings-feature-managed-note {
+  margin: 0 0 0 30px;
 }
 
 .settings-resolved-result {
@@ -1502,7 +1510,7 @@
   padding: 0 10px;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: var(--surface);
+  background: var(--control-background);
   color: var(--text);
   font: inherit;
 }
@@ -1564,7 +1572,7 @@
   padding: 0 11px;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
-  background: var(--surface-soft);
+  background: var(--control-background);
   color: var(--text);
   cursor: pointer;
   font: inherit;
@@ -1762,7 +1770,7 @@
   overflow-wrap: anywhere;
 }
 
-.settings-storage-boundary-note,
+.settings-boundary-note,
 .settings-storage-probe-status,
 .settings-storage-retention-note {
   display: flex;
@@ -1771,10 +1779,18 @@
   padding: 11px 12px;
   border: 1px solid var(--border);
   border-radius: 7px;
-  background: var(--surface-soft);
   color: var(--muted);
   font-size: 11px;
   line-height: 1.5;
+}
+
+.settings-boundary-note {
+  background: transparent;
+}
+
+.settings-storage-probe-status,
+.settings-storage-retention-note {
+  background: var(--surface-soft);
 }
 
 .settings-storage-editor {
@@ -1816,7 +1832,7 @@
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: 7px;
-  background: var(--surface-soft);
+  background: transparent;
 }
 
 .settings-storage-credential-fields > small {

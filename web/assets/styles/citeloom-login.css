@@ -235,7 +235,7 @@
   margin: 0;
   border: 1px solid var(--border-strong);
   border-radius: 4px;
-  background: rgba(11, 16, 32, 0.5);
+  background: var(--control-background);
 }
 
 .login-checkbox-control {

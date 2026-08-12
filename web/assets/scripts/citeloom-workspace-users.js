@@ -11,7 +11,17 @@ import { dispatchNotice } from "./citeloom-notices.js";
 function readMember(value) {
   const member = readPlainObject(value, "workspace member");
   return {
+    access: readEnum(
+      member.access,
+      ["enabled", "disabled"],
+      "member workspace access",
+    ),
     displayName: readNonEmptyString(member.displayName, "member display name"),
+    globalRole: readEnum(
+      member.globalRole,
+      ["global_admin", "standard"],
+      "member global role",
+    ),
     role: readEnum(member.role, ["admin", "member"], "member role"),
     state: readEnum(member.state, ["active", "pending", "suspended"], "member state"),
     userId: readNonEmptyString(member.userId, "member identifier"),
@@ -70,6 +80,16 @@ export function createWorkspaceUserManagement(options = {}) {
       void this.loadUsers();
     },
 
+    destroyUserManagement() {
+      this.addUserOpen = false;
+      this.members = [];
+      this.setupLinkCopied = false;
+      this.setupUrl = "";
+      this.userManagementBusy = false;
+      this.userManagementLoadFailed = false;
+      this.userManagementLoading = true;
+    },
+
     openAddUser() {
       this.addUserOpen = true;
       this.setupLinkCopied = false;
@@ -83,6 +103,16 @@ export function createWorkspaceUserManagement(options = {}) {
       const first = words[0]?.[0] ?? "";
       const last = words.length > 1 ? words.at(-1)?.[0] ?? "" : words[0]?.[1] ?? "";
       return `${first}${last}`.toLocaleUpperCase();
+    },
+
+    enabledWorkspaceUserCount() {
+      let count = 0;
+      for (const member of this.members) {
+        if (member.access === "enabled") {
+          count += 1;
+        }
+      }
+      return count;
     },
 
     async copySetupLink() {
@@ -190,6 +220,40 @@ export function createWorkspaceUserManagement(options = {}) {
         dispatchNotice(
           "error",
           error instanceof Error ? error.message : "The role could not be changed.",
+        );
+        await this.loadUsers();
+      } finally {
+        this.userManagementBusy = false;
+      }
+    },
+
+    async changeAccess(member, access) {
+      this.userManagementBusy = true;
+      try {
+        const response = await fetch(
+          `/api/workspace/members/${encodeURIComponent(member.userId)}/access`,
+          {
+            body: JSON.stringify({ access }),
+            headers: { "Content-Type": "application/json" },
+            method: "PUT",
+          },
+        );
+        if (!response.ok) {
+          await readJsonResponse(response, "Change workspace access");
+        }
+        await this.loadUsers();
+        const action = access === "enabled" ? "enabled" : "disabled";
+        dispatchNotice(
+          "success",
+          `${member.displayName}'s workspace access was ${action}.`,
+        );
+        await this.afterWorkspaceUserMutation();
+      } catch (error) {
+        dispatchNotice(
+          "error",
+          error instanceof Error
+            ? error.message
+            : "Workspace access could not be changed.",
         );
         await this.loadUsers();
       } finally {

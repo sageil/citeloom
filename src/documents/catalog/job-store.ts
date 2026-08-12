@@ -50,6 +50,7 @@ import {
   doclingConversionRuns,
   doclingTaskCheckpoints,
   ingestionJobs,
+  sourceLibraries,
 } from "../../database/schema.js";
 import {
   persistApplicationErrorEvent,
@@ -1118,6 +1119,13 @@ export class CatalogJobStore {
     const result = await this.database.transaction(async (
       transaction,
     ): Promise<RetryFailedJobResult> => {
+      const libraryAvailable = await lockActiveJobSourceLibrary(
+        transaction,
+        sourceFile,
+      );
+      if (!libraryAvailable) {
+        return { kind: "not-found" };
+      }
       const job = await readLockedIngestionJob(transaction, sourceFile);
       if (job === null) {
         return { kind: "not-found" };
@@ -1354,6 +1362,34 @@ async function readLockedIngestionJob(
     return null;
   }
   return decodeIngestionJob(row);
+}
+
+async function lockActiveJobSourceLibrary(
+  transaction: CatalogJobTransaction,
+  sourceFile: string,
+): Promise<boolean> {
+  const jobs = await transaction
+    .select({ sourceLibraryId: ingestionJobs.sourceLibraryId })
+    .from(ingestionJobs)
+    .where(eq(ingestionJobs.sourceFile, sourceFile))
+    .limit(1);
+  const job = jobs[0];
+  if (job === undefined) {
+    return false;
+  }
+  if (job.sourceLibraryId === null) {
+    return true;
+  }
+  const libraries = await transaction
+    .select({ id: sourceLibraries.id })
+    .from(sourceLibraries)
+    .where(and(
+      eq(sourceLibraries.id, job.sourceLibraryId),
+      eq(sourceLibraries.state, "active"),
+    ))
+    .for("update")
+    .limit(1);
+  return libraries[0] !== undefined;
 }
 
 async function persistRetriedIngestionJob(

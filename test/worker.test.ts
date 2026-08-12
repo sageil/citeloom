@@ -463,6 +463,7 @@ function buildRunningJob(): IngestionJob {
     pageCount: null,
     phase: "discovered",
     sourceFile: "/documents/test.pdf",
+    sourceLibraryId: null,
     state: "running",
     tables: 0,
     tags: [],

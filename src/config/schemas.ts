@@ -65,7 +65,7 @@ const applicationErrorRetentionEnvironmentSchema = z.object({
     .default(30),
 });
 
-export const runtimeSettingsSchema = z.object({
+export const runtimeSettingsObjectSchema = z.object({
   answerMinimumOutputTokens: z.number().int().min(1),
   answerProviderSafetyMarginTokens: z.number().int().min(0),
   aiMetricsEnabled: z.boolean(),
@@ -137,22 +137,26 @@ export const runtimeSettingsSchema = z.object({
   ttsTimeoutSeconds: z.number().int().min(1).max(300),
   workerConcurrency: z.number().int().min(1).max(16),
   workerFallbackPollMs: z.number().int().min(1_000).max(300_000),
-}).strict().superRefine((settings, context) => {
-  if (settings.retrievalCandidates < settings.topK) {
-    context.addIssue({
-      code: "custom",
-      message: "Matching sections reviewed must be equal to or greater than Sections available for answers",
-      path: ["retrievalCandidates"],
-    });
-  }
-  if (settings.doclingTimeoutSeconds > settings.doclingMaxTimeoutSeconds) {
-    context.addIssue({
-      code: "custom",
-      message: "must be greater than or equal to doclingTimeoutSeconds",
-      path: ["doclingMaxTimeoutSeconds"],
-    });
-  }
-});
+}).strict();
+
+export const runtimeSettingsSchema = runtimeSettingsObjectSchema.superRefine(
+  (settings, context) => {
+    if (settings.retrievalCandidates < settings.topK) {
+      context.addIssue({
+        code: "custom",
+        message: "Matching sections reviewed must be equal to or greater than Sections available for answers",
+        path: ["retrievalCandidates"],
+      });
+    }
+    if (settings.doclingTimeoutSeconds > settings.doclingMaxTimeoutSeconds) {
+      context.addIssue({
+        code: "custom",
+        message: "must be greater than or equal to doclingTimeoutSeconds",
+        path: ["doclingMaxTimeoutSeconds"],
+      });
+    }
+  },
+);
 
 export function readDatabaseEnvironment(
   environment: NodeJS.ProcessEnv,

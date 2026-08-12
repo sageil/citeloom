@@ -143,6 +143,7 @@ describe("CiteLoom settings resets", () => {
       const chatField = { key: "chatTemperature" };
       page.settings = { fields: [chatField] };
       page.featureFieldsByCapability.chat = [chatField];
+      page.featureDefinitionsByCapability.chat = { label: "Chat" };
       page.selectedFeatureCapability = "chat";
       page.submitSettingsUpdate = vi.fn(async () => true);
 
@@ -178,6 +179,64 @@ describe("CiteLoom settings resets", () => {
     expect(fragment).toContain('@click="resetSelectedFeature()"');
     expect(fragment).toContain('@click="resetSelectedProvider()"');
     expect(fragment).toContain('@click="resetRuntimeContext()"');
+  });
+});
+
+describe("CiteLoom settings scope selection", () => {
+  it("binds the visible scope selector to the existing request scope state", async () => {
+    const fragment = await readFile(
+      new URL("../web/fragments/settings.html", import.meta.url),
+      "utf8",
+    );
+
+    expect(fragment).toContain('x-model="settingsScopeRequest"');
+    expect(fragment).not.toContain(':value="settings?.scope.kind"');
+  });
+
+  it("places workspace lifecycle and user access in their matching scopes", async () => {
+    const fragment = await readFile(
+      new URL("../web/fragments/settings.html", import.meta.url),
+      "utf8",
+    );
+
+    expect(fragment).toContain("@click=\"selectArea('Workspaces')\"");
+    expect(fragment).toContain("@click=\"selectArea('Users &amp; access')\"");
+    expect(fragment).toContain("Create workspace");
+    expect(fragment).toContain("./fragments/workspace-users-management.html");
+  });
+
+  it("restores the active scope when the user keeps unsaved changes", async () => {
+    await withConfirmation(false, async () => {
+      const page = createSettingsPage();
+      page.loading = false;
+      page.pending = { topK: "set" };
+      page.settings = {
+        scope: {
+          editableProviderConnections: false,
+          kind: "workspace",
+        },
+      };
+      page.settingsScopeRequest = "organization";
+      page.loadSettings = vi.fn();
+
+      await page.changeSettingsScope("organization");
+
+      expect(page.settingsScopeRequest).toBe("workspace");
+      expect(page.loadSettings).not.toHaveBeenCalled();
+    });
+  });
+
+  it("keeps the selected scope when the settings page is recreated", () => {
+    const pageFactory = createSettingsPageFactory();
+    const page = pageFactory();
+    page.locationStateRestored = true;
+
+    page.applySettings(buildSettingsScopeFixture("organization"));
+
+    const recreatedPage = pageFactory();
+    expect(recreatedPage.settingsRequestUrl()).toBe(
+      "/api/settings?scope=organization",
+    );
   });
 });
 
@@ -371,7 +430,10 @@ describe("CiteLoom source-content storage settings", () => {
     expect(fragment).toContain('@click="cancelSourceContentMigration()"');
     expect(fragment).toContain("Credentials are write-only");
     expect(fragment).toContain(
-      "selectedArea !== 'Object storage' &amp;&amp; selectedArea !== 'Startup and deployment'",
+      '<select class="form-control compact-header-control" :aria-label="`${workspace.name} access to ${library.name}`"',
+    );
+    expect(fragment).toContain(
+      "selectedArea !== 'Object storage' &amp;&amp; selectedArea !== 'Source libraries' &amp;&amp; selectedArea !== 'Users &amp; access' &amp;&amp; selectedArea !== 'Workspaces' &amp;&amp; selectedArea !== 'Startup and deployment'",
     );
   });
 });
@@ -441,18 +503,21 @@ function jsonResponse(value) {
   });
 }
 
+function buildSettingsScopeFixture(kind) {
+  return {
+    features: [],
+    fields: [],
+    providers: {
+      catalog: [],
+      connections: [],
+    },
+    scope: { kind },
+  };
+}
+
 function createSettingsPage({ reactiveResetState = false } = {}) {
-  let pageFactory = null;
   const rawValues = new WeakMap();
-  registerPage({
-    data(name, factory) {
-      expect(name).toBe("citeloomSettingsPage");
-      pageFactory = factory;
-    },
-    raw(value) {
-      return rawValues.get(value) ?? value;
-    },
-  });
+  const pageFactory = createSettingsPageFactory(rawValues);
   const page = pageFactory();
   if (!reactiveResetState) {
     return page;
@@ -464,6 +529,23 @@ function createSettingsPage({ reactiveResetState = false } = {}) {
   page.drafts = createReactiveProxy(page.drafts, rawValues);
   page.pending = createReactiveProxy(page.pending, rawValues);
   return page;
+}
+
+function createSettingsPageFactory(rawValues = new WeakMap()) {
+  let pageFactory = null;
+  registerPage({
+    data(name, factory) {
+      expect(name).toBe("citeloomSettingsPage");
+      pageFactory = factory;
+    },
+    raw(value) {
+      return rawValues.get(value) ?? value;
+    },
+  });
+  if (pageFactory === null) {
+    throw new Error("The settings page factory was not registered.");
+  }
+  return pageFactory;
 }
 
 function createReactiveProxy(value, rawValues) {

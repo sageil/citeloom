@@ -66,6 +66,7 @@ export interface IndexedDocument extends DocumentStatistics {
   generationId: string;
   indexedAt: string;
   sourceFile: string;
+  sourceLibraryId: string | null;
   tags: string[];
   versionId: string;
 }
@@ -91,6 +92,7 @@ export interface IngestionJobBase extends DocumentStatistics {
   controlError: string | null;
   controlState: IngestionControlState;
   sourceFile: string;
+  sourceLibraryId: string | null;
   tags: string[];
   updatedAt: string;
   uploadedByUserId: string | null;

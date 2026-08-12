@@ -11,6 +11,7 @@ import type { SystemStatus } from "../ingestion/worker.js";
 import type { DoctorCheck } from "../observability/doctor.js";
 import type { TelemetryDashboardSummary } from "../observability/store.js";
 import type { RuntimeWebServices } from "./services.js";
+import type { AuthenticatedPrincipal } from "../auth/model.js";
 
 export interface DashboardResponse {
   catalog: BrowseDocumentCatalogResult;
@@ -81,13 +82,14 @@ export function buildDiagnosticResponseChecks(
 
 export async function buildDashboardResponse(
   runtime: RuntimeWebServices,
+  principal: AuthenticatedPrincipal,
   maximumUploadRequestBytes: number,
 ): Promise<DashboardResponse> {
   const effectiveConfig = runtime.config;
   const [catalog, revisions, system, telemetry] = await Promise.all([
-    runtime.browseDocuments(DEFAULT_DOCUMENT_CATALOG_REQUEST),
+    runtime.browseDocuments(principal, DEFAULT_DOCUMENT_CATALOG_REQUEST),
     runtime.readRevisions(),
-    runtime.readStatus(),
+    runtime.readStatus(principal),
     runtime.readTelemetry(),
   ]);
   let reranker: DashboardResponse["inferenceRuntime"]["reranker"] = null;

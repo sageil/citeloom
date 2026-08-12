@@ -130,6 +130,7 @@
   text-transform: uppercase;
 }
 
+.collections-rail > .shared-source-label,
 .collections-rail > .saved-view-label {
   margin-top: 22px;
   padding-top: 16px;
@@ -585,7 +586,7 @@
   border: 1px solid var(--border-strong);
   border-radius: 7px;
   outline: 0;
-  background: rgba(15, 23, 42, 0.6);
+  background: var(--control-background);
   color: var(--text);
 }
 
@@ -819,7 +820,7 @@
   place-items: center;
   border: 1px solid var(--border-strong);
   border-radius: 7px;
-  background: rgba(10, 16, 31, 0.72);
+  background: var(--control-background);
   color: var(--muted);
 }
 
@@ -1542,6 +1543,7 @@
     margin: 0 0 7px;
   }
 
+  .collections-rail > .shared-source-label,
   .collections-rail > .saved-view-label {
     margin-top: 10px;
     padding-top: 10px;

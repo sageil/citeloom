@@ -8,6 +8,7 @@ export {
   readApplicationErrorRetentionConfig,
   readDoclingProcessConfiguration,
   readDoclingServiceTopology,
+  runtimeSettingsObjectSchema,
   runtimeSettingsSchema,
 } from "./schemas.js";
 export {

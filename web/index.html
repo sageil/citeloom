@@ -229,10 +229,33 @@
                   <span>My account</span>
                 </a>
 
+                <div class="account-navigation-workspaces">
+                  <p class="account-navigation-section-label">Workspace</p>
+                  <label class="account-navigation-workspace-select">
+                    <span class="visually-hidden">Current workspace</span>
+                    <select
+                      :disabled="workspaceSwitching || workspaces.length < 2"
+                      x-ref="workspaceSelect"
+                      @change="switchWorkspace($event.target.value)"
+                    >
+                      <template x-if="workspaces.length === 0 &amp;&amp; currentWorkspaceId !== null">
+                        <option :value="currentWorkspaceId" x-text="currentWorkspaceName"></option>
+                      </template>
+                      <template x-for="workspace in workspaces" :key="workspace.id">
+                        <option
+                          :selected="workspace.id === currentWorkspaceId"
+                          :value="workspace.id"
+                          x-text="workspace.name"
+                        ></option>
+                      </template>
+                    </select>
+                  </label>
+                </div>
+
                 <div
                   class="account-navigation-admin"
                   x-cloak
-                  x-show="currentRole === 'admin'"
+                  x-show="currentRole === 'admin' || currentGlobalRole === 'global_admin'"
                 >
                   <p class="account-navigation-section-label">Administration</p>
                   <a
@@ -254,6 +277,7 @@
                     hx-get="./fragments/security.html"
                     hx-push-url="./index.html?view=security"
                     :aria-current="currentPage('security')"
+                    x-show="currentRole === 'admin'"
                     @click="closeAccountMenu()"
                   >
                     <span>Security</span>
@@ -265,6 +289,7 @@
                     hx-get="./fragments/settings.html"
                     hx-push-url="./index.html?view=settings"
                     :aria-current="currentPage('settings')"
+                    x-show="currentRole === 'admin' || currentGlobalRole === 'global_admin'"
                     @click="closeAccountMenu()"
                   >
                     <span>Settings</span>
@@ -276,6 +301,7 @@
                     hx-get="./fragments/system-health.html"
                     hx-push-url="./index.html?view=system-health"
                     :aria-current="currentPage('system-health')"
+                    x-show="currentGlobalRole === 'global_admin'"
                     @click="closeAccountMenu()"
                   >
                     <span>System health</span>

@@ -1,26 +1,43 @@
 import { randomUUID } from "node:crypto";
 
 import { and, asc, count, eq, gt, ne } from "drizzle-orm";
+import { z } from "zod";
 
 import type { CiteLoomDatabase } from "../database/client.js";
 import {
+  applicationSettings,
   userPasswordCredentials,
   userSessions,
   userSetupTokens,
   users,
+  sourceLibraries,
+  workspaceAuditEvents,
   workspaceMemberships,
   workspaceSecurityPolicies,
+  workspaceSettings,
   workspaces,
 } from "../database/schema.js";
+import {
+  EMPTY_WORKSPACE_SETTINGS,
+  parseStoredWorkspaceSettings,
+  type StoredWorkspaceSettings,
+} from "../workspaces/settings-persistence.js";
 import type {
   AuthenticatedPrincipal,
   AuthenticationSession,
   PendingUserSetup,
   WorkspaceMember,
   WorkspaceMemberAddition,
+  WorkspaceMembershipAccess,
   WorkspaceRole,
+  WorkspaceSummary,
 } from "./model.js";
-import type { LoginInput, NormalizedUserIdentity } from "./boundary.js";
+import type {
+  CreateWorkspaceInput,
+  LoginInput,
+  NormalizedUserIdentity,
+  RenameWorkspaceInput,
+} from "./boundary.js";
 import {
   hashPassword,
   hashValidatedPassword,
@@ -30,20 +47,30 @@ import {
 } from "./password.js";
 import { createOpaqueToken, digestOpaqueToken } from "./token.js";
 import {
-  requireWorkspaceAdministrator,
+  requireGlobalAdministrator,
+  requireWorkspaceOrGlobalAdministrator,
 } from "./authorization.js";
 import {
   DEFAULT_WORKSPACE_SECURITY_POLICY,
   WorkspaceSecurityPolicyStore,
 } from "./security-policy-store.js";
 
-export { WorkspaceAuthorizationError } from "./authorization.js";
+export {
+  GlobalAuthorizationError,
+  WorkspaceAuthorizationError,
+} from "./authorization.js";
 
 const sessionIdleLifetimeSeconds = 2 * 60 * 60;
 const rememberedSessionIdleLifetimeSeconds = 7 * 24 * 60 * 60;
 const sessionAbsoluteLifetimeMs = 12 * 60 * 60 * 1_000;
 const rememberedSessionAbsoluteLifetimeMs = 30 * 24 * 60 * 60 * 1_000;
 const dummyPasswordHash = hashPassword("invalid-password-placeholder");
+const POSTGRES_UNIQUE_VIOLATION_CODE = "23505";
+const WORKSPACE_NAME_UNIQUE_CONSTRAINT = "workspaces_name_normalized_idx";
+const postgresConstraintErrorSchema = z.object({
+  code: z.string(),
+  constraint: z.string().min(1),
+}).passthrough();
 
 export class AuthenticationRejectedError extends Error {
   public constructor() {
@@ -77,6 +104,48 @@ export class WorkspaceMemberNotFoundError extends Error {
   public constructor() {
     super("The workspace member was not found.");
     this.name = "WorkspaceMemberNotFoundError";
+  }
+}
+
+export class WorkspaceMemberAccessConflictError extends Error {
+  public constructor() {
+    super("You cannot disable your own access to the current workspace.");
+    this.name = "WorkspaceMemberAccessConflictError";
+  }
+}
+
+export class ProtectedGlobalAdministratorError extends Error {
+  public constructor() {
+    super("Global administrator workspace access cannot be reduced.");
+    this.name = "ProtectedGlobalAdministratorError";
+  }
+}
+
+export class WorkspaceNameUnavailableError extends Error {
+  public constructor() {
+    super("The requested workspace name is unavailable.");
+    this.name = "WorkspaceNameUnavailableError";
+  }
+}
+
+export class WorkspaceUnavailableError extends Error {
+  public constructor() {
+    super("The requested workspace is unavailable.");
+    this.name = "WorkspaceUnavailableError";
+  }
+}
+
+export class WorkspaceArchiveConflictError extends Error {
+  public constructor() {
+    super("Switch to another workspace before archiving this workspace.");
+    this.name = "WorkspaceArchiveConflictError";
+  }
+}
+
+export class WorkspaceConfigurationSourceUnavailableError extends Error {
+  public constructor() {
+    super("The workspace selected for copying is unavailable.");
+    this.name = "WorkspaceConfigurationSourceUnavailableError";
   }
 }
 
@@ -120,6 +189,7 @@ export class AuthenticationStore {
       const rows = await transaction
         .select({
           displayName: users.displayName,
+          globalRole: users.globalRole,
           role: workspaceMemberships.role,
           state: users.state,
           userId: users.id,
@@ -140,6 +210,8 @@ export class AuthenticationStore {
         .where(and(
           eq(userSetupTokens.tokenDigest, tokenDigest),
           gt(userSetupTokens.expiresAt, now),
+          eq(workspaceMemberships.access, "enabled"),
+          eq(workspaces.state, "active"),
         ))
         .orderBy(asc(workspaces.createdAt), asc(workspaces.id))
         .limit(1)
@@ -198,6 +270,7 @@ export class AuthenticationStore {
     const rows = await this.database
       .select({
         displayName: users.displayName,
+        globalRole: users.globalRole,
         passwordHash: userPasswordCredentials.passwordHash,
         role: workspaceMemberships.role,
         state: users.state,
@@ -213,7 +286,11 @@ export class AuthenticationStore {
       )
       .innerJoin(workspaceMemberships, eq(workspaceMemberships.userId, users.id))
       .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
-      .where(eq(users.usernameNormalized, input.usernameNormalized))
+      .where(and(
+        eq(users.usernameNormalized, input.usernameNormalized),
+        eq(workspaceMemberships.access, "enabled"),
+        eq(workspaces.state, "active"),
+      ))
       .orderBy(asc(workspaces.createdAt), asc(workspaces.id))
       .limit(1);
     const row = rows[0];
@@ -256,6 +333,7 @@ export class AuthenticationStore {
       .select({
         displayName: users.displayName,
         expiresAt: userSessions.expiresAt,
+        globalRole: users.globalRole,
         idleTimeoutSeconds: userSessions.idleTimeoutSeconds,
         lastSeenAt: userSessions.lastSeenAt,
         role: workspaceMemberships.role,
@@ -275,7 +353,11 @@ export class AuthenticationStore {
           eq(workspaceMemberships.workspaceId, workspaces.id),
         ),
       )
-      .where(eq(userSessions.tokenDigest, tokenDigest))
+      .where(and(
+        eq(userSessions.tokenDigest, tokenDigest),
+        eq(workspaceMemberships.access, "enabled"),
+        eq(workspaces.state, "active"),
+      ))
       .limit(1);
     const row = rows[0];
     if (row === undefined) {
@@ -305,6 +387,256 @@ export class AuthenticationStore {
     await this.database
       .delete(userSessions)
       .where(eq(userSessions.tokenDigest, digestOpaqueToken(sessionToken)));
+  }
+
+  public async createWorkspace(
+    principal: AuthenticatedPrincipal,
+    input: CreateWorkspaceInput,
+  ): Promise<WorkspaceSummary> {
+    requireGlobalAdministrator(principal);
+    const workspaceId = randomUUID();
+    const sourceLibraryId = randomUUID();
+    const now = this.now();
+    try {
+      await this.database.transaction(async (transaction) => {
+        const settings = await readInitialWorkspaceSettings(
+          transaction,
+          principal,
+          input,
+        );
+        await transaction.insert(workspaces).values({
+          createdAt: now,
+          id: workspaceId,
+          name: input.name,
+          state: "active",
+          updatedAt: now,
+        });
+        await transaction.insert(workspaceSecurityPolicies).values({
+          workspaceId,
+        });
+        await transaction.insert(workspaceSettings).values({
+          settings,
+          updatedAt: now,
+          updatedByUserId: principal.userId,
+          version: 1,
+          workspaceId,
+        });
+        await transaction.insert(sourceLibraries).values({
+          createdAt: now,
+          id: sourceLibraryId,
+          kind: "private",
+          name: `${input.name} sources`,
+          ownerWorkspaceId: workspaceId,
+          state: "active",
+          updatedAt: now,
+        });
+        const administratorRows = await transaction
+          .select({ userId: users.id })
+          .from(users)
+          .where(and(
+            eq(users.globalRole, "global_admin"),
+            eq(users.state, "active"),
+          ));
+        if (!administratorRows.some((administrator) => {
+          return administrator.userId === principal.userId;
+        })) {
+          throw new WorkspaceUnavailableError();
+        }
+        await transaction.insert(workspaceMemberships).values(
+          administratorRows.map((administrator) => ({
+            access: "enabled" as const,
+            createdAt: now,
+            role: "admin" as const,
+            updatedAt: now,
+            userId: administrator.userId,
+            workspaceId,
+          })),
+        );
+        await transaction.insert(workspaceAuditEvents).values({
+          actorUserId: principal.userId,
+          createdAt: now,
+          eventType: "workspace.created",
+          id: randomUUID(),
+          workspaceId,
+        });
+        const updatedSessions = await transaction
+          .update(userSessions)
+          .set({ activeWorkspaceId: workspaceId, lastSeenAt: now })
+          .where(and(
+            eq(userSessions.tokenDigest, principal.sessionTokenDigest),
+            eq(userSessions.userId, principal.userId),
+          ))
+          .returning({ tokenDigest: userSessions.tokenDigest });
+        if (updatedSessions[0] === undefined) {
+          throw new WorkspaceUnavailableError();
+        }
+      });
+    } catch (error: unknown) {
+      const constraintName = readUniqueConstraintName(error);
+      if (constraintName === WORKSPACE_NAME_UNIQUE_CONSTRAINT) {
+        throw new WorkspaceNameUnavailableError();
+      }
+      throw error;
+    }
+    return {
+      id: workspaceId,
+      name: input.name,
+      role: "admin",
+    };
+  }
+
+  public async renameWorkspace(
+    principal: AuthenticatedPrincipal,
+    workspaceId: string,
+    input: RenameWorkspaceInput,
+  ): Promise<void> {
+    requireGlobalAdministrator(principal);
+    const now = this.now();
+    try {
+      await this.database.transaction(async (transaction) => {
+        const workspaceRows = await transaction
+          .select({ id: workspaces.id })
+          .from(workspaces)
+          .where(and(
+            eq(workspaces.id, workspaceId),
+            eq(workspaces.state, "active"),
+          ))
+          .for("update")
+          .limit(1);
+        if (workspaceRows[0] === undefined) {
+          throw new WorkspaceUnavailableError();
+        }
+        await transaction
+          .update(workspaces)
+          .set({ name: input.name, updatedAt: now })
+          .where(eq(workspaces.id, workspaceId));
+        await transaction.insert(workspaceAuditEvents).values({
+          actorUserId: principal.userId,
+          createdAt: now,
+          eventType: "workspace.renamed",
+          id: randomUUID(),
+          workspaceId,
+        });
+      });
+    } catch (error: unknown) {
+      const constraintName = readUniqueConstraintName(error);
+      if (constraintName === WORKSPACE_NAME_UNIQUE_CONSTRAINT) {
+        throw new WorkspaceNameUnavailableError();
+      }
+      throw error;
+    }
+  }
+
+  public async archiveWorkspace(
+    principal: AuthenticatedPrincipal,
+    workspaceId: string,
+  ): Promise<void> {
+    requireGlobalAdministrator(principal);
+    if (workspaceId === principal.workspaceId) {
+      throw new WorkspaceArchiveConflictError();
+    }
+    const now = this.now();
+    await this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .where(and(
+          eq(workspaces.id, workspaceId),
+          eq(workspaces.state, "active"),
+        ))
+        .for("update")
+        .limit(1);
+      if (rows[0] === undefined) {
+        throw new WorkspaceUnavailableError();
+      }
+      await transaction.insert(workspaceAuditEvents).values({
+        actorUserId: principal.userId,
+        createdAt: now,
+        eventType: "workspace.archived",
+        id: randomUUID(),
+        workspaceId,
+      });
+      await transaction
+        .update(sourceLibraries)
+        .set({ state: "archived", updatedAt: now })
+        .where(and(
+          eq(sourceLibraries.kind, "private"),
+          eq(sourceLibraries.ownerWorkspaceId, workspaceId),
+        ));
+      await transaction
+        .delete(userSessions)
+        .where(eq(userSessions.activeWorkspaceId, workspaceId));
+      await transaction
+        .update(workspaces)
+        .set({ state: "archived", updatedAt: now })
+        .where(eq(workspaces.id, workspaceId));
+    });
+  }
+
+  public async listWorkspaces(
+    principal: AuthenticatedPrincipal,
+  ): Promise<WorkspaceSummary[]> {
+    return this.database
+      .select({
+        id: workspaces.id,
+        name: workspaces.name,
+        role: workspaceMemberships.role,
+      })
+      .from(workspaceMemberships)
+      .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
+      .where(and(
+        eq(workspaceMemberships.access, "enabled"),
+        eq(workspaceMemberships.userId, principal.userId),
+        eq(workspaces.state, "active"),
+      ))
+      .orderBy(asc(workspaces.name), asc(workspaces.id));
+  }
+
+  public async switchWorkspace(
+    principal: AuthenticatedPrincipal,
+    workspaceId: string,
+  ): Promise<AuthenticatedPrincipal> {
+    const rows = await this.database
+      .select({
+        displayName: users.displayName,
+        globalRole: users.globalRole,
+        role: workspaceMemberships.role,
+        state: users.state,
+        userId: users.id,
+        username: users.username,
+        workspaceId: workspaces.id,
+        workspaceName: workspaces.name,
+      })
+      .from(users)
+      .innerJoin(
+        workspaceMemberships,
+        eq(workspaceMemberships.userId, users.id),
+      )
+      .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
+      .where(and(
+        eq(users.id, principal.userId),
+        eq(users.state, "active"),
+        eq(workspaceMemberships.access, "enabled"),
+        eq(workspaces.id, workspaceId),
+        eq(workspaces.state, "active"),
+      ))
+      .limit(1);
+    const row = rows[0];
+    if (row === undefined) {
+      throw new WorkspaceUnavailableError();
+    }
+    const updated = await this.database
+      .update(userSessions)
+      .set({ activeWorkspaceId: workspaceId, lastSeenAt: this.now() })
+      .where(and(
+        eq(userSessions.tokenDigest, principal.sessionTokenDigest),
+        eq(userSessions.userId, principal.userId),
+      ))
+      .returning({ tokenDigest: userSessions.tokenDigest });
+    if (updated[0] === undefined) {
+      throw new WorkspaceUnavailableError();
+    }
+    return buildPrincipal(row, principal.sessionTokenDigest);
   }
 
   public async changePassword(
@@ -390,6 +722,7 @@ export class AuthenticationStore {
             throw new UsernameUnavailableError();
           }
           await transaction.insert(workspaceMemberships).values({
+            access: "enabled",
             createdAt: now,
             role,
             updatedAt: now,
@@ -408,6 +741,7 @@ export class AuthenticationStore {
           usernameNormalized: identity.usernameNormalized,
         });
         await transaction.insert(workspaceMemberships).values({
+          access: "enabled",
           createdAt: now,
           role,
           updatedAt: now,
@@ -444,7 +778,9 @@ export class AuthenticationStore {
     requireAdministrator(principal);
     const rows = await this.database
       .select({
+        access: workspaceMemberships.access,
         displayName: users.displayName,
+        globalRole: users.globalRole,
         role: workspaceMemberships.role,
         state: users.state,
         userId: users.id,
@@ -478,6 +814,7 @@ export class AuthenticationStore {
         .from(workspaceMemberships)
         .innerJoin(users, eq(users.id, workspaceMemberships.userId))
         .where(and(
+          eq(workspaceMemberships.access, "enabled"),
           eq(workspaceMemberships.workspaceId, principal.workspaceId),
           eq(workspaceMemberships.userId, userId),
           eq(users.state, "active"),
@@ -514,7 +851,12 @@ export class AuthenticationStore {
     requireAdministrator(principal);
     await this.database.transaction(async (transaction) => {
       const membershipRows = await transaction
-        .select({ role: workspaceMemberships.role, state: users.state })
+        .select({
+          access: workspaceMemberships.access,
+          globalRole: users.globalRole,
+          role: workspaceMemberships.role,
+          state: users.state,
+        })
         .from(workspaceMemberships)
         .innerJoin(users, eq(users.id, workspaceMemberships.userId))
         .where(and(
@@ -527,7 +869,10 @@ export class AuthenticationStore {
       if (membership === undefined) {
         throw new WorkspaceMemberNotFoundError();
       }
-      if (membership.role === "admin") {
+      if (membership.globalRole === "global_admin") {
+        throw new ProtectedGlobalAdministratorError();
+      }
+      if (membership.access === "enabled" && membership.role === "admin") {
         await requireAnotherAdministrator(transaction, principal.workspaceId, userId);
       }
       await transaction.delete(userSessions).where(and(
@@ -562,8 +907,13 @@ export class AuthenticationStore {
     requireAdministrator(principal);
     await this.database.transaction(async (transaction) => {
       const membershipRows = await transaction
-        .select({ role: workspaceMemberships.role })
+        .select({
+          access: workspaceMemberships.access,
+          globalRole: users.globalRole,
+          role: workspaceMemberships.role,
+        })
         .from(workspaceMemberships)
+        .innerJoin(users, eq(users.id, workspaceMemberships.userId))
         .where(and(
           eq(workspaceMemberships.workspaceId, principal.workspaceId),
           eq(workspaceMemberships.userId, userId),
@@ -574,7 +924,14 @@ export class AuthenticationStore {
       if (membership === undefined) {
         throw new WorkspaceMemberNotFoundError();
       }
-      if (membership.role === "admin" && role === "member") {
+      if (membership.globalRole === "global_admin" && role !== "admin") {
+        throw new ProtectedGlobalAdministratorError();
+      }
+      if (
+        membership.access === "enabled"
+        && membership.role === "admin"
+        && role === "member"
+      ) {
         await requireAnotherAdministrator(transaction, principal.workspaceId, userId);
       }
       await transaction
@@ -584,6 +941,72 @@ export class AuthenticationStore {
           eq(workspaceMemberships.workspaceId, principal.workspaceId),
           eq(workspaceMemberships.userId, userId),
         ));
+    });
+  }
+
+  public async changeWorkspaceMemberAccess(
+    principal: AuthenticatedPrincipal,
+    userId: string,
+    access: WorkspaceMembershipAccess,
+  ): Promise<void> {
+    requireAdministrator(principal);
+    if (userId === principal.userId && access === "disabled") {
+      throw new WorkspaceMemberAccessConflictError();
+    }
+    await this.database.transaction(async (transaction) => {
+      const membershipRows = await transaction
+        .select({
+          access: workspaceMemberships.access,
+          globalRole: users.globalRole,
+          role: workspaceMemberships.role,
+          state: users.state,
+        })
+        .from(workspaceMemberships)
+        .innerJoin(users, eq(users.id, workspaceMemberships.userId))
+        .where(and(
+          eq(workspaceMemberships.workspaceId, principal.workspaceId),
+          eq(workspaceMemberships.userId, userId),
+        ))
+        .for("update")
+        .limit(1);
+      const membership = membershipRows[0];
+      if (membership === undefined) {
+        throw new WorkspaceMemberNotFoundError();
+      }
+      if (membership.access === access) {
+        return;
+      }
+      if (
+        membership.globalRole === "global_admin"
+        && access === "disabled"
+      ) {
+        throw new ProtectedGlobalAdministratorError();
+      }
+      if (
+        access === "disabled"
+        && membership.access === "enabled"
+        && membership.role === "admin"
+        && membership.state === "active"
+      ) {
+        await requireAnotherAdministrator(
+          transaction,
+          principal.workspaceId,
+          userId,
+        );
+      }
+      await transaction
+        .update(workspaceMemberships)
+        .set({ access, updatedAt: this.now() })
+        .where(and(
+          eq(workspaceMemberships.workspaceId, principal.workspaceId),
+          eq(workspaceMemberships.userId, userId),
+        ));
+      if (access === "disabled") {
+        await transaction.delete(userSessions).where(and(
+          eq(userSessions.activeWorkspaceId, principal.workspaceId),
+          eq(userSessions.userId, userId),
+        ));
+      }
     });
   }
 }
@@ -604,12 +1027,56 @@ async function readResetLinkLifetimeSecondsForIssue(
     ?? DEFAULT_WORKSPACE_SECURITY_POLICY.resetLinkLifetimeSeconds;
 }
 
+async function readInitialWorkspaceSettings(
+  transaction: Parameters<Parameters<CiteLoomDatabase["transaction"]>[0]>[0],
+  principal: AuthenticatedPrincipal,
+  input: CreateWorkspaceInput,
+): Promise<StoredWorkspaceSettings> {
+  if (input.configuration.kind === "organization-defaults") {
+    return structuredClone(EMPTY_WORKSPACE_SETTINGS);
+  }
+  const applicationRows = await transaction
+    .select({ id: applicationSettings.id })
+    .from(applicationSettings)
+    .limit(1)
+    .for("share");
+  if (applicationRows[0] === undefined) {
+    throw new Error("The database does not contain application settings.");
+  }
+  const rows = await transaction
+    .select({ settings: workspaceSettings.settings })
+    .from(workspaceSettings)
+    .innerJoin(
+      workspaceMemberships,
+      and(
+        eq(workspaceMemberships.access, "enabled"),
+        eq(workspaceMemberships.workspaceId, workspaceSettings.workspaceId),
+        eq(workspaceMemberships.userId, principal.userId),
+      ),
+    )
+    .innerJoin(
+      workspaces,
+      and(
+        eq(workspaces.id, workspaceSettings.workspaceId),
+        eq(workspaces.state, "active"),
+      ),
+    )
+    .where(eq(workspaceSettings.workspaceId, input.configuration.workspaceId))
+    .limit(1);
+  const row = rows[0];
+  if (row === undefined) {
+    throw new WorkspaceConfigurationSourceUnavailableError();
+  }
+  return parseStoredWorkspaceSettings(row.settings);
+}
+
 function requireAdministrator(principal: AuthenticatedPrincipal): void {
-  requireWorkspaceAdministrator(principal);
+  requireWorkspaceOrGlobalAdministrator(principal);
 }
 
 function buildPrincipal(row: {
   displayName: string;
+  globalRole: AuthenticatedPrincipal["globalRole"];
   role: WorkspaceRole;
   userId: string;
   username: string;
@@ -617,7 +1084,9 @@ function buildPrincipal(row: {
   workspaceName: string;
 }, sessionTokenDigest: string): AuthenticatedPrincipal {
   return {
+    dataScope: "workspace",
     displayName: row.displayName,
+    globalRole: row.globalRole,
     role: row.role,
     sessionTokenDigest,
     userId: row.userId,
@@ -627,15 +1096,26 @@ function buildPrincipal(row: {
   };
 }
 
+function readUniqueConstraintName(error: unknown): string | null {
+  const databaseError = decodeDatabaseConstraintError(error);
+  if (databaseError?.code !== POSTGRES_UNIQUE_VIOLATION_CODE) {
+    return null;
+  }
+  return databaseError.constraint;
+}
+
+function decodeDatabaseConstraintError(
+  error: unknown,
+): z.output<typeof postgresConstraintErrorSchema> | null {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+  const decoded = postgresConstraintErrorSchema.safeParse(error.cause);
+  return decoded.success ? decoded.data : null;
+}
+
 function isUniqueConstraintError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null || !("cause" in error)) {
-    return false;
-  }
-  const cause = error.cause;
-  if (typeof cause !== "object" || cause === null || !("code" in cause)) {
-    return false;
-  }
-  return cause.code === "23505";
+  return readUniqueConstraintName(error) !== null;
 }
 
 async function requireAnotherAdministrator(
@@ -648,6 +1128,7 @@ async function requireAnotherAdministrator(
     .from(workspaceMemberships)
     .innerJoin(users, eq(users.id, workspaceMemberships.userId))
     .where(and(
+      eq(workspaceMemberships.access, "enabled"),
       eq(workspaceMemberships.workspaceId, workspaceId),
       eq(workspaceMemberships.role, "admin"),
       eq(users.state, "active"),

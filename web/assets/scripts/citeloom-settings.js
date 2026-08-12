@@ -24,6 +24,15 @@ import { createSettingsResetActions } from "./citeloom-settings-resets.js";
 import {
   createSourceContentStorageActions,
 } from "./citeloom-source-content-storage.js";
+import {
+  createSourceLibraryAdministrationActions,
+} from "./citeloom-source-libraries.js";
+import {
+  createWorkspaceAdministrationActions,
+} from "./citeloom-workspaces.js";
+import {
+  createWorkspaceUserManagement,
+} from "./citeloom-workspace-users.js";
 
 const providerCapabilities = Object.freeze([
   "answer",
@@ -87,18 +96,11 @@ const providerAuthenticationMethods = Object.freeze([
   "api-token",
   "openai-device",
 ]);
-const capabilityLabels = Object.freeze({
-  answer: "Ask",
-  chat: "Chat",
-  embedding: "Embedding space",
-  queryExpansion: "Query Expansion",
-  reranking: "Search ranking",
-  speechToText: "Speech input",
-  indexing: "Indexing model",
-  textToSpeech: "Spoken answers",
-});
 const startupGroupName = "Startup and deployment";
 const objectStorageAreaName = "Object storage";
+const sourceLibraryAreaName = "Source libraries";
+const workspaceAdministrationAreaName = "Workspaces";
+const workspaceUsersAreaName = "Users & access";
 const doclingAdvancedFieldKeys = Object.freeze([
   "doclingPdfBackend",
   "doclingTocEnabled",
@@ -114,22 +116,25 @@ const doclingVlmFieldKeys = Object.freeze([
 
 function readApplicationSettings(value) {
   const response = readPlainObject(value, "application settings");
+  const features = readProviderFeatures(response.features);
   const embeddingInputFormats = readEmbeddingInputFormats(
     response.embeddingInputFormats,
   );
   const fields = readRuntimeSettingFields(response.fields);
-  const embeddingSpace = readEmbeddingSpaceStatus(
-    response.embeddingSpace,
-    fields,
-  );
+  const embeddingSpace = response.embeddingSpace === null
+    ? null
+    : readEmbeddingSpaceStatus(response.embeddingSpace, fields);
   const providers = readProviderSettings(response.providers);
+  const scope = readSettingsScope(response.scope);
   const startupSettings = readStartupSettings(response.startupSettings);
   const warnings = readConfigurationWarnings(response.warnings);
   return {
     embeddingSpace,
     embeddingInputFormats,
+    features,
     fields,
     providers,
+    scope,
     startupSettings,
     updatedAt: readNullableNonEmptyString(
       response.updatedAt,
@@ -137,6 +142,80 @@ function readApplicationSettings(value) {
     ),
     version: readNonNegativeInteger(response.version, "settings version"),
     warnings,
+  };
+}
+
+function readProviderFeatures(value) {
+  const values = readArray(value, "application features");
+  const features = [];
+  const capabilities = new Set();
+  for (const value of values) {
+    const feature = readPlainObject(value, "application feature");
+    const capability = readEnum(
+      feature.capability,
+      providerCapabilities,
+      "application feature capability",
+    );
+    if (capabilities.has(capability)) {
+      throw new Error(`The ${capability} application feature appears more than once.`);
+    }
+    capabilities.add(capability);
+    features.push({
+      capability,
+      description: readNonEmptyString(
+        feature.description,
+        "application feature description",
+      ),
+      label: readNonEmptyString(feature.label, "application feature label"),
+      source: readEnum(
+        feature.source,
+        runtimeSources,
+        "application feature source",
+      ),
+    });
+  }
+  if (features.length === 0) {
+    throw new Error("At least one application feature is required.");
+  }
+  return features;
+}
+
+function readSettingsScope(value) {
+  const scope = readPlainObject(value, "settings scope");
+  const available = [];
+  const kinds = new Set();
+  for (const value of readArray(scope.available, "available settings scopes")) {
+    const option = readPlainObject(value, "available settings scope");
+    const kind = readEnum(
+      option.kind,
+      ["organization", "workspace"],
+      "settings scope kind",
+    );
+    if (kinds.has(kind)) {
+      throw new Error(`The ${kind} settings scope appears more than once.`);
+    }
+    kinds.add(kind);
+    available.push({
+      kind,
+      label: readNonEmptyString(option.label, "settings scope label"),
+    });
+  }
+  const kind = readEnum(
+    scope.kind,
+    ["organization", "workspace"],
+    "active settings scope",
+  );
+  if (!kinds.has(kind)) {
+    throw new Error("The active settings scope is unavailable.");
+  }
+  return {
+    available,
+    editableProviderConnections: readBoolean(
+      scope.editableProviderConnections,
+      "provider connection edit permission",
+    ),
+    kind,
+    label: readNonEmptyString(scope.label, "active settings scope label"),
   };
 }
 
@@ -1125,6 +1204,8 @@ function readOpenAICodexModelsResponse(value) {
 }
 
 export function registerPage(alpine) {
+  let rememberedSettingsScope = null;
+
   alpine.data("citeloomSettingsPage", () => ({
     abortController: null,
     credentialClears: [],
@@ -1132,9 +1213,10 @@ export function registerPage(alpine) {
     drafts: {},
     doclingAdvancedExpanded: false,
     errorMessage: "",
-    featureCapabilities: [...providerCapabilities],
+    featureCapabilities: [],
     featureAdvancedOpen: false,
     featureFieldsByCapability: {},
+    featureDefinitionsByCapability: {},
     groups: [],
     inputFormatBusy: false,
     inputFormatDraft: null,
@@ -1158,21 +1240,33 @@ export function registerPage(alpine) {
     saved: false,
     saving: false,
     selectedArea: null,
-    selectedFeatureCapability: "answer",
-    selectedProviderCapability: "answer",
+    selectedFeatureCapability: null,
+    selectedProviderCapability: null,
     selectedProviderId: null,
     selectedRuntimeFieldKey: null,
     selectedStartupKey: null,
     settings: null,
+    settingsScopeRequest: rememberedSettingsScope,
     settingsRevision: null,
     settingsRevisionListener: null,
     settingsHistoryListener: null,
     sourceFilter: "all",
     ...createSettingsResetActions(alpine),
     ...createSourceContentStorageActions(),
+    ...createSourceLibraryAdministrationActions(),
+    ...createWorkspaceAdministrationActions(),
+    ...createWorkspaceUserManagement({
+      title: "Users & access",
+    }),
 
     get areaCount() {
-      return this.groups.length + 4;
+      return this.groups.length
+        + 2
+        + (this.settings?.scope.editableProviderConnections === true ? 4 : 0);
+    },
+
+    get organizationSettingsVisible() {
+      return this.settings?.scope.editableProviderConnections === true;
     },
 
     get browsingAreas() {
@@ -1286,15 +1380,24 @@ export function registerPage(alpine) {
         this.settingsRevisionListener,
       );
       await this.loadSettings();
-      await Promise.all([
-        this.loadOpenAICodexAuth(),
-        this.loadSourceContentStorage(),
-      ]);
+      if (this.organizationSettingsVisible) {
+        await Promise.all([
+          this.loadOpenAICodexAuth(),
+          this.loadSourceContentStorage(),
+          this.loadSourceLibraryAdministration(),
+          this.loadWorkspaceAdministration(),
+        ]);
+      } else {
+        await this.loadUsers();
+      }
     },
 
     destroy() {
       this.abortController?.abort();
       this.destroySourceContentStorage();
+      this.destroySourceLibraryAdministration();
+      this.destroyWorkspaceAdministration();
+      this.destroyUserManagement();
       if (this.openAICodexPollTimer !== null) {
         clearTimeout(this.openAICodexPollTimer);
       }
@@ -1316,7 +1419,7 @@ export function registerPage(alpine) {
       this.loading = true;
       this.errorMessage = "";
       try {
-        const response = await fetch("/api/settings", {
+        const response = await fetch(this.settingsRequestUrl(), {
           headers: { accept: "application/json" },
           signal: controller.signal,
         });
@@ -1332,6 +1435,68 @@ export function registerPage(alpine) {
         if (!controller.signal.aborted) {
           this.loading = false;
         }
+      }
+    },
+
+    settingsRequestUrl() {
+      const scope = this.settingsScopeRequest ?? this.settings?.scope.kind;
+      if (scope === null || scope === undefined) {
+        return "/api/settings";
+      }
+      return `/api/settings?scope=${encodeURIComponent(scope)}`;
+    },
+
+    async changeSettingsScope(scope) {
+      const normalized = readEnum(
+        scope,
+        ["organization", "workspace"],
+        "selected settings scope",
+      );
+      const activeScope = this.settings?.scope.kind;
+      if (activeScope === undefined) {
+        return;
+      }
+      if (normalized === activeScope || this.loading) {
+        this.settingsScopeRequest = activeScope;
+        return;
+      }
+      if (this.changeCount > 0) {
+        const confirmed = await requestConfirmation({
+          cancelLabel: "Keep editing",
+          confirmLabel: "Discard changes",
+          description: "Unsaved settings changes will be discarded when you switch scope.",
+          title: "Switch settings scope?",
+          tone: "danger",
+        });
+        if (!confirmed) {
+          this.settingsScopeRequest = activeScope;
+          return;
+        }
+      }
+      this.settingsScopeRequest = normalized;
+      this.selectedArea = null;
+      this.locationStateRestored = false;
+      await this.loadSettings();
+      this.settingsScopeRequest = this.settings.scope.kind;
+      if (this.organizationSettingsVisible) {
+        this.destroyUserManagement();
+        await Promise.all([
+          this.loadOpenAICodexAuth(),
+          this.loadSourceContentStorage(),
+          this.loadSourceLibraryAdministration(),
+          this.loadWorkspaceAdministration(),
+        ]);
+      } else {
+        this.destroySourceContentStorage();
+        this.destroySourceLibraryAdministration();
+        this.destroyWorkspaceAdministration();
+        if (this.openAICodexPollTimer !== null) {
+          clearTimeout(this.openAICodexPollTimer);
+          this.openAICodexPollTimer = null;
+        }
+        this.openAICodexAuth = null;
+        this.sourceContentStorage = null;
+        await this.loadUsers();
       }
     },
 
@@ -1522,7 +1687,12 @@ export function registerPage(alpine) {
       this.drafts = createDrafts(settings.fields);
       this.groups = groupRuntimeFields(settings.fields);
       const featureFieldsByCapability = {};
-      for (const capability of providerCapabilities) {
+      const featureDefinitionsByCapability = {};
+      this.featureCapabilities = settings.features.map((feature) => {
+        featureDefinitionsByCapability[feature.capability] = feature;
+        return feature.capability;
+      });
+      for (const capability of this.featureCapabilities) {
         featureFieldsByCapability[capability] = [];
       }
       for (const field of settings.fields) {
@@ -1531,6 +1701,10 @@ export function registerPage(alpine) {
         }
       }
       this.featureFieldsByCapability = featureFieldsByCapability;
+      this.featureDefinitionsByCapability = featureDefinitionsByCapability;
+      if (!this.featureCapabilities.includes(this.selectedFeatureCapability)) {
+        this.selectedFeatureCapability = this.featureCapabilities[0];
+      }
       const currentProviderStillExists = settings.providers.catalog.some((profile) => {
         return profile.id === this.selectedProviderId;
       });
@@ -1546,6 +1720,8 @@ export function registerPage(alpine) {
           this.selectedProviderProfile?.capabilities[0]?.capability ?? null;
       }
       this.settings = settings;
+      this.settingsScopeRequest = settings.scope.kind;
+      rememberedSettingsScope = settings.scope.kind;
       if (!this.locationStateRestored) {
         this.locationStateRestored = true;
         this.restoreLocationState();
@@ -1553,12 +1729,22 @@ export function registerPage(alpine) {
     },
 
     areaExists(area) {
+      if (area === "Application Features") {
+        return true;
+      }
       if (
-        area === "Application Features"
-        || area === "Providers"
-        || area === objectStorageAreaName
-        || area === startupGroupName
+        this.organizationSettingsVisible
+        && (
+          area === "Providers"
+          || area === objectStorageAreaName
+          || area === sourceLibraryAreaName
+          || area === startupGroupName
+          || area === workspaceAdministrationAreaName
+        )
       ) {
+        return true;
+      }
+      if (!this.organizationSettingsVisible && area === workspaceUsersAreaName) {
         return true;
       }
       return this.groups.some((group) => group.name === area);
@@ -1587,7 +1773,12 @@ export function registerPage(alpine) {
         location.item = this.selectedStartupKey;
         return location;
       }
-      if (this.selectedArea === objectStorageAreaName) {
+      if (
+        this.selectedArea === objectStorageAreaName
+        || this.selectedArea === sourceLibraryAreaName
+        || this.selectedArea === workspaceAdministrationAreaName
+        || this.selectedArea === workspaceUsersAreaName
+      ) {
         return location;
       }
       if (this.selectedArea !== null) {
@@ -1621,9 +1812,9 @@ export function registerPage(alpine) {
         }
         this.selectArea(location.area);
         if (location.area === "Application Features") {
-          const capability = providerCapabilities.includes(location.item)
+          const capability = this.featureCapabilities.includes(location.item)
             ? location.item
-            : "answer";
+            : this.featureCapabilities[0];
           this.selectFeature(capability);
           return;
         }
@@ -1637,7 +1828,12 @@ export function registerPage(alpine) {
           }
           return;
         }
-        if (location.area === objectStorageAreaName) {
+        if (
+          location.area === objectStorageAreaName
+          || location.area === sourceLibraryAreaName
+          || location.area === workspaceAdministrationAreaName
+          || location.area === workspaceUsersAreaName
+        ) {
           return;
         }
         if (location.item !== null) {
@@ -2223,6 +2419,9 @@ export function registerPage(alpine) {
         "Embedding model": "Choose how CiteLoom converts document content and questions into representations used for semantic search.",
         "Search ranking": "Choose how CiteLoom orders and filters semantic search results.",
         "Object storage": "Choose where CiteLoom keeps original source-document content and migrate it safely.",
+        "Source libraries": "Share common sources with selected workspaces while keeping each workspace's private sources isolated.",
+        "Users & access": "Manage who can use the current workspace and what role each person has.",
+        Workspaces: "Create and rename workspaces without moving their settings or sources.",
         "Speech input": "Choose how CiteLoom turns recorded questions into text.",
         "Spoken answers": "Choose how CiteLoom creates and plays answer audio.",
         "Usage diagnostics": "Choose whether CiteLoom records AI request times and usage.",
@@ -2246,7 +2445,14 @@ export function registerPage(alpine) {
 
     fieldSourceLabel(field) {
       if (this.pending[field.key] === "reset") {
-        return "Default after save";
+        return this.settings?.scope.kind === "workspace"
+          ? "Organization default after save"
+          : "Default after save";
+      }
+      if (this.settings?.scope.kind === "workspace") {
+        return field.source === "database"
+          ? "Workspace override"
+          : "Organization default";
       }
       return field.source === "database" ? "Saved value" : "Default value";
     },
@@ -2283,7 +2489,7 @@ export function registerPage(alpine) {
       this.saved = false;
       this.errorMessage = "";
       try {
-        const response = await fetch("/api/settings", {
+        const response = await fetch(this.settingsRequestUrl(), {
           body: JSON.stringify({
             changes,
             expectedVersion: this.settings.version,
@@ -2333,13 +2539,14 @@ export function registerPage(alpine) {
     },
 
     capabilityLabel(capability) {
-      return capabilityLabels[capability];
+      return this.featureDefinitionsByCapability[capability]?.label
+        ?? capability;
     },
 
     selectFeature(capability) {
       this.selectedFeatureCapability = readEnum(
         capability,
-        providerCapabilities,
+        this.featureCapabilities,
         "selected feature",
       );
       this.featureAdvancedOpen = false;
@@ -2347,22 +2554,28 @@ export function registerPage(alpine) {
     },
 
     selectedFeatureDescription() {
-      const descriptions = {
-        answer: "Choose how CiteLoom answers questions in Ask.",
-        chat: "Choose how CiteLoom responds in document chats.",
-        embedding: "Configure the application-wide vector space used to index and search documents.",
-        queryExpansion: "Choose whether CiteLoom creates alternative searches and how their results influence ordering.",
-        reranking: "Choose how CiteLoom orders semantic search results.",
-        speechToText: "Choose how CiteLoom turns recorded questions into text.",
-        indexing: "Choose the model CiteLoom uses to prepare Docling output for search, including images, tables, and document structure.",
-        textToSpeech: "Choose how CiteLoom creates spoken answers.",
-      };
-      return descriptions[this.selectedFeatureCapability];
+      return this.featureDefinitionsByCapability[
+        this.selectedFeatureCapability
+      ]?.description ?? "";
+    },
+
+    featureSourceClass(capability) {
+      return this.featureDefinitionsByCapability[capability]?.source ?? "";
+    },
+
+    featureSourceLabel(capability) {
+      const source = this.featureDefinitionsByCapability[capability]?.source;
+      if (this.settings?.scope.kind !== "workspace") {
+        return "Organization setting";
+      }
+      return source === "database"
+        ? "Workspace override"
+        : "Organization default";
     },
 
     featureWithoutCredentialCount() {
       let count = 0;
-      for (const capability of providerCapabilities) {
+      for (const capability of this.featureCapabilities) {
         if (
           this.featureProviderId(capability) !== null
           && !this.featureCredentialConfigured(capability)
@@ -2710,7 +2923,7 @@ export function registerPage(alpine) {
       }
       const labels = [];
       for (const entry of profile.capabilities) {
-        labels.push(capabilityLabels[entry.capability]);
+        labels.push(this.capabilityLabel(entry.capability));
       }
       return labels.join(", ");
     },

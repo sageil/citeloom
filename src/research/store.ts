@@ -76,6 +76,7 @@ import type { ClaimEvidenceSource } from "../answers/claim-verification.js";
 import {
   SourceDocumentStore,
 } from "../documents/storage/source-document-store.js";
+import { buildAccessibleSourceLibraryCondition } from "../workspaces/source-library-access.js";
 import { SourceContentStore } from "../documents/storage/source-content-store.js";
 import {
   decodeDocumentFormat,
@@ -417,6 +418,7 @@ export class ResearchStore {
   public constructor(
     private readonly database: CiteLoomDatabase,
     private readonly config: AppConfig,
+    private readonly workspaceId: string | null = null,
   ) {}
 
   public async createThread(title: string): Promise<ResearchThread> {
@@ -428,7 +430,10 @@ export class ResearchStore {
       const existingRows = await transaction
         .select({ id: researchThreads.id })
         .from(researchThreads)
-        .where(sql`lower(${researchThreads.title}) = lower(${normalizedTitle})`)
+        .where(and(
+          sql`lower(${researchThreads.title}) = lower(${normalizedTitle})`,
+          this.threadWorkspaceCondition(),
+        ))
         .orderBy(desc(researchThreads.updatedAt))
         .limit(1);
       const existing = existingRows[0];
@@ -443,6 +448,7 @@ export class ResearchStore {
         id,
         title: normalizedTitle,
         updatedAt: now,
+        workspaceId: this.workspaceId,
       });
       return id;
     });
@@ -464,6 +470,7 @@ export class ResearchStore {
       })
       .from(researchThreads)
       .leftJoin(researchTurns, eq(researchTurns.threadId, researchThreads.id))
+      .where(this.threadWorkspaceCondition())
       .groupBy(researchThreads.id)
       .orderBy(desc(researchThreads.updatedAt));
     const summaries: ResearchThreadSummary[] = [];
@@ -492,7 +499,10 @@ export class ResearchStore {
   public async deleteThread(id: string): Promise<void> {
     const deleted = await this.database
       .delete(researchThreads)
-      .where(eq(researchThreads.id, id))
+      .where(and(
+        eq(researchThreads.id, id),
+        this.threadWorkspaceCondition(),
+      ))
       .returning({ id: researchThreads.id });
     if (deleted[0] === undefined) {
       throw new ResearchRecordNotFoundError(
@@ -505,7 +515,10 @@ export class ResearchStore {
     const threadRows = await this.database
       .select()
       .from(researchThreads)
-      .where(eq(researchThreads.id, id))
+      .where(and(
+        eq(researchThreads.id, id),
+        this.threadWorkspaceCondition(),
+      ))
       .limit(1);
     const rawThread = threadRows[0];
     if (rawThread === undefined) {
@@ -551,7 +564,10 @@ export class ResearchStore {
       const threadRows = await transaction
         .select({ id: researchThreads.id })
         .from(researchThreads)
-        .where(eq(researchThreads.id, normalized.threadId))
+        .where(and(
+          eq(researchThreads.id, normalized.threadId),
+          this.threadWorkspaceCondition(),
+        ))
         .for("update")
         .limit(1);
       if (threadRows[0] === undefined) {
@@ -852,7 +868,12 @@ export class ResearchStore {
         documentVersions,
         eq(documentVersions.id, citationRecords.documentVersionId),
       )
-      .where(eq(citationRecords.id, id))
+      .innerJoin(researchTurns, eq(researchTurns.id, citationRecords.turnId))
+      .innerJoin(researchThreads, eq(researchThreads.id, researchTurns.threadId))
+      .where(and(
+        eq(citationRecords.id, id),
+        this.threadWorkspaceCondition(),
+      ))
       .limit(1);
     const rawCitation = rows[0];
     if (rawCitation === undefined) {
@@ -894,7 +915,14 @@ export class ResearchStore {
         version: documentVersions.version,
       })
       .from(documentVersions)
-      .where(eq(documentVersions.sourceFile, sourceFile))
+      .innerJoin(
+        indexedDocuments,
+        eq(indexedDocuments.sourceFile, documentVersions.sourceFile),
+      )
+      .where(and(
+        eq(documentVersions.sourceFile, sourceFile),
+        this.documentWorkspaceCondition(),
+      ))
       .orderBy(desc(documentVersions.version));
     return rows.map(decodeDocumentVersionRecord);
   }
@@ -917,7 +945,14 @@ export class ResearchStore {
         version: documentVersions.version,
       })
       .from(documentVersions)
-      .where(eq(documentVersions.id, id))
+      .innerJoin(
+        indexedDocuments,
+        eq(indexedDocuments.sourceFile, documentVersions.sourceFile),
+      )
+      .where(and(
+        eq(documentVersions.id, id),
+        this.documentWorkspaceCondition(),
+      ))
       .limit(1);
     const row = rows[0];
     return row === undefined ? null : decodeDocumentVersionRecord(row);
@@ -934,7 +969,14 @@ export class ResearchStore {
         sourceFile: documentVersions.sourceFile,
       })
       .from(documentVersions)
-      .where(eq(documentVersions.id, versionId))
+      .innerJoin(
+        indexedDocuments,
+        eq(indexedDocuments.sourceFile, documentVersions.sourceFile),
+      )
+      .where(and(
+        eq(documentVersions.id, versionId),
+        this.documentWorkspaceCondition(),
+      ))
       .limit(1);
     const row = rows[0];
     if (row === undefined) {
@@ -962,27 +1004,11 @@ export class ResearchStore {
     previousVersionId: string,
     currentVersionId: string,
   ): Promise<DocumentVersionDifference | null> {
-    const rows = await this.database
-      .select({
-        elementSetId: documentVersions.elementSetId,
-        id: documentVersions.id,
-        sourceFile: documentVersions.sourceFile,
-      })
-      .from(documentVersions)
-      .where(inArray(documentVersions.id, [previousVersionId, currentVersionId]));
-    const versions = new Map<string, {
-      elementSetId: string;
-      sourceFile: string;
-    }>();
-    for (const row of rows) {
-      versions.set(row.id, {
-        elementSetId: row.elementSetId,
-        sourceFile: row.sourceFile,
-      });
-    }
-    const previous = versions.get(previousVersionId);
-    const current = versions.get(currentVersionId);
-    if (previous === undefined || current === undefined) {
+    const [previous, current] = await Promise.all([
+      this.readDocumentVersion(previousVersionId),
+      this.readDocumentVersion(currentVersionId),
+    ]);
+    if (previous === null || current === null) {
       return null;
     }
     if (previous.sourceFile !== current.sourceFile) {
@@ -1580,7 +1606,11 @@ export class ResearchStore {
     const turnRows = await this.database
       .select({ id: researchTurns.id })
       .from(researchTurns)
-      .where(eq(researchTurns.id, input.turnId))
+      .innerJoin(researchThreads, eq(researchThreads.id, researchTurns.threadId))
+      .where(and(
+        eq(researchTurns.id, input.turnId),
+        this.threadWorkspaceCondition(),
+      ))
       .limit(1);
     if (turnRows[0] === undefined) {
       throw new ResearchRecordNotFoundError(
@@ -1608,6 +1638,23 @@ export class ResearchStore {
         "Feedback citation does not belong to the selected turn.",
       );
     }
+  }
+
+  private threadWorkspaceCondition() {
+    if (this.workspaceId === null) {
+      return undefined;
+    }
+    return eq(researchThreads.workspaceId, this.workspaceId);
+  }
+
+  private documentWorkspaceCondition() {
+    if (this.workspaceId === null) {
+      return undefined;
+    }
+    return buildAccessibleSourceLibraryCondition(
+      indexedDocuments.sourceLibraryId,
+      this.workspaceId,
+    );
   }
 }
 

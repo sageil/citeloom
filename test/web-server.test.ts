@@ -61,11 +61,14 @@ import type { AuthenticatedPrincipal } from "../src/auth/model.js";
 import {
   AuthenticationRejectedError,
   WorkspaceAuthorizationError,
+  WorkspaceNameUnavailableError,
 } from "../src/auth/store.js";
 import type {
   DoctorCheck,
   DoctorLiveChecks,
 } from "../src/observability/doctor.js";
+import { SourceLibraryArchiveConflictError } from "../src/workspaces/source-library-store.js";
+import { SourceLibraryDeletionConflictError } from "../src/workspaces/source-library-deletion.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -352,7 +355,59 @@ describe("web server boundary", () => {
         payload: { displayName: "Another User", username: "another" },
         url: "/api/workspace/members",
       });
+      const fragmentResponse = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        method: "GET",
+        url: "/fragments/workspace-users-management.html",
+      });
       expect(response.statusCode).toBe(403);
+      expect(fragmentResponse.statusCode).toBe(403);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("decodes workspace access changes before updating membership", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "standard");
+    const changeWorkspaceMemberAccess = vi.fn<
+      WebServices["changeWorkspaceMemberAccess"]
+    >();
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        changeWorkspaceMemberAccess,
+        readSession: async () => principal,
+      }),
+      staticDirectory: null,
+    });
+    const memberId = "00000000-0000-4000-8000-000000000401";
+
+    try {
+      const cookies = { "__Host-citeloom_session": "private-session-token" };
+      const headers = { origin: "https://localhost:3443" };
+      const response = await server.inject({
+        cookies,
+        headers,
+        method: "PUT",
+        payload: { access: "disabled" },
+        url: `/api/workspace/members/${memberId}/access`,
+      });
+      const invalidResponse = await server.inject({
+        cookies,
+        headers,
+        method: "PUT",
+        payload: { access: "paused" },
+        url: `/api/workspace/members/${memberId}/access`,
+      });
+
+      expect(response.statusCode).toBe(204);
+      expect(changeWorkspaceMemberAccess).toHaveBeenCalledOnce();
+      expect(changeWorkspaceMemberAccess).toHaveBeenCalledWith(
+        principal,
+        memberId,
+        "disabled",
+      );
+      expect(invalidResponse.statusCode).toBe(400);
     } finally {
       await server.close();
     }
@@ -386,6 +441,605 @@ describe("web server boundary", () => {
         "correct horse battery staple",
         "a newer secure passphrase",
       );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("creates and switches workspaces for a global administrator", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "global_admin");
+    const createdWorkspace = {
+      id: "00000000-0000-4000-8000-000000000401",
+      name: "Legal Research",
+      role: "admin" as const,
+    };
+    const createWorkspace = vi.fn<WebServices["createWorkspace"]>(
+      async () => createdWorkspace,
+    );
+    const listWorkspaces = vi.fn<WebServices["listWorkspaces"]>(
+      async () => [createdWorkspace],
+    );
+    const switchWorkspace = vi.fn<WebServices["switchWorkspace"]>(
+      async (current, workspaceId) => ({
+        ...current,
+        workspaceId,
+        workspaceName: createdWorkspace.name,
+      }),
+    );
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        createWorkspace,
+        listWorkspaces,
+        readSession: async () => principal,
+        switchWorkspace,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const cookies = { "__Host-citeloom_session": "private-session-token" };
+      const headers = { origin: "https://localhost:3443" };
+      const created = await server.inject({
+        cookies,
+        headers,
+        method: "POST",
+        payload: { name: "Legal Research" },
+        url: "/api/workspaces",
+      });
+      const listed = await server.inject({
+        cookies,
+        method: "GET",
+        url: "/api/workspaces",
+      });
+      const switched = await server.inject({
+        cookies,
+        headers,
+        method: "PUT",
+        payload: { workspaceId: createdWorkspace.id },
+        url: "/api/auth/session/workspace",
+      });
+
+      expect(created.statusCode).toBe(201);
+      expect(created.json()).toEqual(createdWorkspace);
+      expect(createWorkspace).toHaveBeenCalledWith(principal, {
+        configuration: { kind: "organization-defaults" },
+        name: "Legal Research",
+      });
+      expect(listed.json()).toEqual([createdWorkspace]);
+      expect(switched.statusCode).toBe(200);
+      expect(switched.json()).toMatchObject({
+        user: { globalRole: "global_admin" },
+        workspace: {
+          id: createdWorkspace.id,
+          name: createdWorkspace.name,
+        },
+      });
+      expect(switchWorkspace).toHaveBeenCalledWith(
+        principal,
+        createdWorkspace.id,
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("decodes a workspace settings copy source during creation", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "global_admin");
+    const sourceWorkspaceId = "00000000-0000-4000-8000-000000000311";
+    const createWorkspace = vi.fn<WebServices["createWorkspace"]>(async () => ({
+      id: "00000000-0000-4000-8000-000000000312",
+      name: "Copied Workspace",
+      role: "admin",
+    }));
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        createWorkspace,
+        readSession: async () => principal,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "POST",
+        payload: {
+          configuration: {
+            kind: "workspace-copy",
+            workspaceId: sourceWorkspaceId,
+          },
+          name: "Copied Workspace",
+        },
+        url: "/api/workspaces",
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(createWorkspace).toHaveBeenCalledWith(principal, {
+        configuration: {
+          kind: "workspace-copy",
+          workspaceId: sourceWorkspaceId,
+        },
+        name: "Copied Workspace",
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("renames a workspace for a global administrator", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "global_admin");
+    const renameWorkspace = vi.fn<WebServices["renameWorkspace"]>();
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readSession: async () => principal,
+        renameWorkspace,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "PATCH",
+        payload: { name: "  Knowledge Operations  " },
+        url: `/api/workspaces/${principal.workspaceId}`,
+      });
+
+      expect(response.statusCode).toBe(204);
+      expect(renameWorkspace).toHaveBeenCalledWith(
+        principal,
+        principal.workspaceId,
+        { name: "Knowledge Operations" },
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reports a duplicate workspace name as a conflict", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "global_admin");
+    const createWorkspace = vi.fn<WebServices["createWorkspace"]>(async () => {
+      throw new WorkspaceNameUnavailableError();
+    });
+    const renameWorkspace = vi.fn<WebServices["renameWorkspace"]>(async () => {
+      throw new WorkspaceNameUnavailableError();
+    });
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        createWorkspace,
+        readSession: async () => principal,
+        renameWorkspace,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "PATCH",
+        payload: { name: "Existing workspace" },
+        url: `/api/workspaces/${principal.workspaceId}`,
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({
+        error: {
+          code: "invalid_request",
+          message: "The requested workspace name is unavailable.",
+        },
+      });
+      const createResponse = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "POST",
+        payload: { name: "Existing workspace" },
+        url: "/api/workspaces",
+      });
+      expect(createResponse.statusCode).toBe(409);
+      expect(createResponse.json()).toEqual({
+        error: {
+          code: "invalid_request",
+          message: "The requested workspace name is unavailable.",
+        },
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("does not allow a workspace administrator to create a workspace", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "standard");
+    const createWorkspace = vi.fn<WebServices["createWorkspace"]>();
+    const renameWorkspace = vi.fn<WebServices["renameWorkspace"]>();
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        createWorkspace,
+        readSession: async () => principal,
+        renameWorkspace,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "POST",
+        payload: { name: "Forbidden" },
+        url: "/api/workspaces",
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(createWorkspace).not.toHaveBeenCalled();
+      const renameResponse = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "PATCH",
+        payload: { name: "Forbidden Rename" },
+        url: `/api/workspaces/${principal.workspaceId}`,
+      });
+      expect(renameResponse.statusCode).toBe(403);
+      expect(renameWorkspace).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("manages shared source libraries only through global administration", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "global_admin");
+    const library = {
+      access: "manage" as const,
+      id: "00000000-0000-4000-8000-000000000402",
+      kind: "shared" as const,
+      name: "Common Sources",
+    };
+    const targetWorkspaceId = "00000000-0000-4000-8000-000000000403";
+    const createSharedSourceLibrary = vi.fn<
+      WebServices["createSharedSourceLibrary"]
+    >(async () => library);
+    const listSourceLibraries = vi.fn<WebServices["listSourceLibraries"]>(
+      async () => [library],
+    );
+    const setSourceLibraryGrant = vi.fn<
+      WebServices["setSourceLibraryGrant"]
+    >(async () => undefined);
+    const archiveSharedSourceLibrary = vi.fn<
+      WebServices["archiveSharedSourceLibrary"]
+    >(async () => undefined);
+    const deleteSharedSourceLibrary = vi.fn<
+      WebServices["deleteSharedSourceLibrary"]
+    >(async () => undefined);
+    const renameSharedSourceLibrary = vi.fn<
+      WebServices["renameSharedSourceLibrary"]
+    >(async () => undefined);
+    const restoreSharedSourceLibrary = vi.fn<
+      WebServices["restoreSharedSourceLibrary"]
+    >(async () => undefined);
+    const readSourceLibraryAdministration = vi.fn<
+      WebServices["readSourceLibraryAdministration"]
+    >(async () => ({
+      libraries: [{
+        grants: [{ access: "manage", workspaceId: principal.workspaceId }],
+        id: library.id,
+        name: library.name,
+        state: "active",
+      }],
+      workspaces: [{ id: principal.workspaceId, name: principal.workspaceName }],
+    }));
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        archiveSharedSourceLibrary,
+        createSharedSourceLibrary,
+        deleteSharedSourceLibrary,
+        listSourceLibraries,
+        readSourceLibraryAdministration,
+        readSession: async () => principal,
+        renameSharedSourceLibrary,
+        restoreSharedSourceLibrary,
+        setSourceLibraryGrant,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const cookies = { "__Host-citeloom_session": "private-session-token" };
+      const headers = { origin: "https://localhost:3443" };
+      const listed = await server.inject({
+        cookies,
+        method: "GET",
+        url: "/api/source-libraries",
+      });
+      const administration = await server.inject({
+        cookies,
+        method: "GET",
+        url: "/api/source-libraries/administration",
+      });
+      const created = await server.inject({
+        cookies,
+        headers,
+        method: "POST",
+        payload: { name: "Common Sources" },
+        url: "/api/source-libraries",
+      });
+      const granted = await server.inject({
+        cookies,
+        headers,
+        method: "PUT",
+        payload: { access: "use" },
+        url: `/api/source-libraries/${library.id}/grants/${targetWorkspaceId}`,
+      });
+      const renamed = await server.inject({
+        cookies,
+        headers,
+        method: "PATCH",
+        payload: { name: "Organization Handbook" },
+        url: `/api/source-libraries/${library.id}`,
+      });
+      const archived = await server.inject({
+        cookies,
+        headers,
+        method: "POST",
+        url: `/api/source-libraries/${library.id}/archive`,
+      });
+      const restored = await server.inject({
+        cookies,
+        headers,
+        method: "POST",
+        url: `/api/source-libraries/${library.id}/restore`,
+      });
+      const deleted = await server.inject({
+        cookies,
+        headers,
+        method: "DELETE",
+        url: `/api/source-libraries/${library.id}`,
+      });
+
+      expect(listed.json()).toEqual([library]);
+      expect(administration.statusCode).toBe(200);
+      expect(administration.json()).toEqual({
+        libraries: [{
+          grants: [{ access: "manage", workspaceId: principal.workspaceId }],
+          id: library.id,
+          name: library.name,
+          state: "active",
+        }],
+        workspaces: [{
+          id: principal.workspaceId,
+          name: principal.workspaceName,
+        }],
+      });
+      expect(readSourceLibraryAdministration).toHaveBeenCalledWith(principal);
+      expect(created.statusCode).toBe(201);
+      expect(createSharedSourceLibrary).toHaveBeenCalledWith(principal, {
+        name: "Common Sources",
+      });
+      expect(granted.statusCode).toBe(204);
+      expect(setSourceLibraryGrant).toHaveBeenCalledWith(
+        principal,
+        library.id,
+        targetWorkspaceId,
+        "use",
+      );
+      expect(renamed.statusCode).toBe(204);
+      expect(renameSharedSourceLibrary).toHaveBeenCalledWith(
+        principal,
+        library.id,
+        { name: "Organization Handbook" },
+      );
+      expect(archived.statusCode).toBe(204);
+      expect(archiveSharedSourceLibrary).toHaveBeenCalledWith(
+        principal,
+        library.id,
+      );
+      expect(restored.statusCode).toBe(204);
+      expect(restoreSharedSourceLibrary).toHaveBeenCalledWith(
+        principal,
+        library.id,
+      );
+      expect(deleted.statusCode).toBe(202);
+      expect(deleteSharedSourceLibrary).toHaveBeenCalledWith(
+        principal,
+        library.id,
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("does not expose source library administration to workspace administrators", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "standard");
+    const libraryId = "00000000-0000-4000-8000-000000000402";
+    const archiveSharedSourceLibrary = vi.fn<
+      WebServices["archiveSharedSourceLibrary"]
+    >();
+    const deleteSharedSourceLibrary = vi.fn<
+      WebServices["deleteSharedSourceLibrary"]
+    >();
+    const renameSharedSourceLibrary = vi.fn<
+      WebServices["renameSharedSourceLibrary"]
+    >();
+    const restoreSharedSourceLibrary = vi.fn<
+      WebServices["restoreSharedSourceLibrary"]
+    >();
+    const readSourceLibraryAdministration = vi.fn<
+      WebServices["readSourceLibraryAdministration"]
+    >();
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        archiveSharedSourceLibrary,
+        deleteSharedSourceLibrary,
+        readSession: async () => principal,
+        readSourceLibraryAdministration,
+        renameSharedSourceLibrary,
+        restoreSharedSourceLibrary,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        method: "GET",
+        url: "/api/source-libraries/administration",
+      });
+      const headers = { origin: "https://localhost:3443" };
+      const renamed = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers,
+        method: "PATCH",
+        payload: { name: "Restricted" },
+        url: `/api/source-libraries/${libraryId}`,
+      });
+      const archived = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers,
+        method: "POST",
+        url: `/api/source-libraries/${libraryId}/archive`,
+      });
+      const restored = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers,
+        method: "POST",
+        url: `/api/source-libraries/${libraryId}/restore`,
+      });
+      const deleted = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers,
+        method: "DELETE",
+        url: `/api/source-libraries/${libraryId}`,
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(renamed.statusCode).toBe(403);
+      expect(archived.statusCode).toBe(403);
+      expect(restored.statusCode).toBe(403);
+      expect(deleted.statusCode).toBe(403);
+      expect(readSourceLibraryAdministration).not.toHaveBeenCalled();
+      expect(archiveSharedSourceLibrary).not.toHaveBeenCalled();
+      expect(deleteSharedSourceLibrary).not.toHaveBeenCalled();
+      expect(renameSharedSourceLibrary).not.toHaveBeenCalled();
+      expect(restoreSharedSourceLibrary).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reports active ingestion as a shared library archive conflict", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "global_admin");
+    const libraryId = "00000000-0000-4000-8000-000000000402";
+    const archiveSharedSourceLibrary = vi.fn<
+      WebServices["archiveSharedSourceLibrary"]
+    >(async () => {
+      throw new SourceLibraryArchiveConflictError();
+    });
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        archiveSharedSourceLibrary,
+        readSession: async () => principal,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "POST",
+        url: `/api/source-libraries/${libraryId}/archive`,
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({
+        error: {
+          code: "invalid_request",
+          message: "The shared library cannot be archived while documents are processing.",
+        },
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reports a shared library permanent deletion conflict", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "global_admin");
+    const libraryId = "00000000-0000-4000-8000-000000000402";
+    const deleteSharedSourceLibrary = vi.fn<
+      WebServices["deleteSharedSourceLibrary"]
+    >(async () => {
+      throw new SourceLibraryDeletionConflictError(
+        "The shared library cannot be deleted while documents are processing.",
+      );
+    });
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        deleteSharedSourceLibrary,
+        readSession: async () => principal,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "DELETE",
+        url: `/api/source-libraries/${libraryId}`,
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({
+        error: {
+          code: "invalid_request",
+          message: "The shared library cannot be deleted while documents are processing.",
+        },
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("delegates member document deletion to library authorization", async () => {
+    const principal = buildAuthenticatedPrincipal("member", "standard");
+    const documentId = "d".repeat(64);
+    const sourceFile = "/documents/shared-handbook.pdf";
+    const deleteIndexedDocument = vi.fn<
+      NonNullable<RuntimeWebServices["deleteIndexedDocument"]>
+    >(async () => ({ kind: "deleted", sourceFile }));
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        deleteIndexedDocument,
+        readSession: async () => principal,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "DELETE",
+        payload: { sourceFile },
+        url: `/api/documents/${documentId}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(deleteIndexedDocument).toHaveBeenCalledWith(principal, {
+        documentId,
+        sourceFile,
+      });
     } finally {
       await server.close();
     }
@@ -566,6 +1220,7 @@ describe("web server boundary", () => {
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual(buildSourceDiscoveryResponse());
       expect(searchSources).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
         buildSourceDiscoveryRequest(),
         expect.any(AbortSignal),
       );
@@ -1150,15 +1805,32 @@ describe("web server boundary", () => {
     }
   });
 
-  it("limits source-content storage configuration to administrators", async () => {
+  it("allows workspace settings while limiting deployment controls to global administrators", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "standard");
+    const readSettings = vi.fn<WebServices["readSettings"]>();
+    const readWorkspaceSettings = vi.fn<WebServices["readWorkspaceSettings"]>(
+      async () => ({
+        ...buildEffectiveSettings(),
+        providerOverrideCapabilities: [],
+      }),
+    );
+    const updateWorkspaceSettings = vi.fn<
+      WebServices["updateWorkspaceSettings"]
+    >(async () => ({
+      ...buildEffectiveSettings(),
+      providerOverrideCapabilities: ["answer"],
+    }));
     const readSourceContentStorage = vi.fn<
       WebServices["readSourceContentStorage"]
     >();
     const server = await buildProductionWebServer(buildConfig(), {
       logger: false,
       services: buildServices({
-        readSession: async () => buildAuthenticatedPrincipal("member"),
+        readSession: async () => principal,
+        readSettings,
+        readWorkspaceSettings,
         readSourceContentStorage,
+        updateWorkspaceSettings,
       }),
       staticDirectory: null,
     });
@@ -1169,9 +1841,220 @@ describe("web server boundary", () => {
         method: "GET",
         url: "/api/source-content-storage",
       });
+      const settingsResponse = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        method: "GET",
+        url: "/api/settings",
+      });
+      const diagnosticsResponse = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "POST",
+        url: "/api/diagnostics",
+      });
+      const settingsUpdateResponse = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "PUT",
+        payload: {
+          changes: [{ action: "set", key: "topK", value: 12 }],
+          expectedVersion: 1,
+        },
+        url: "/api/settings",
+      });
+      const systemHealthResponse = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        method: "GET",
+        url: "/system-health",
+      });
+      const systemHealthFragmentResponse = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        method: "GET",
+        url: "/fragments/system-health.html",
+      });
+      const settingsFragmentResponse = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        method: "GET",
+        url: "/fragments/settings.html",
+      });
+      const usersFragmentResponse = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        method: "GET",
+        url: "/fragments/workspace-users-management.html",
+      });
 
       expect(response.statusCode).toBe(403);
+      expect(settingsResponse.statusCode).toBe(200);
+      expect(settingsResponse.json()).toMatchObject({
+        embeddingInputFormats: [],
+        embeddingSpace: null,
+        scope: {
+          editableProviderConnections: false,
+          kind: "workspace",
+          label: principal.workspaceName,
+        },
+        startupSettings: [],
+        warnings: [],
+      });
+      expect(settingsResponse.json().fields.map((field: { key: string }) => {
+        return field.key;
+      })).not.toContain("doclingBaseUrl");
+      const featureCapabilities = settingsResponse.json().features.map(
+        (feature: { capability: string }) => feature.capability,
+      );
+      expect(featureCapabilities).not.toContain("embedding");
+      expect(featureCapabilities).not.toContain("indexing");
+      expect(settingsUpdateResponse.statusCode).toBe(200);
+      expect(diagnosticsResponse.statusCode).toBe(403);
+      expect(systemHealthResponse.statusCode).toBe(403);
+      expect(systemHealthFragmentResponse.statusCode).toBe(403);
+      expect(settingsFragmentResponse.statusCode).toBe(404);
+      expect(usersFragmentResponse.statusCode).toBe(404);
+      expect(readSettings).not.toHaveBeenCalled();
+      expect(readWorkspaceSettings).toHaveBeenCalledWith(principal);
+      expect(updateWorkspaceSettings).toHaveBeenCalledWith(principal, {
+        changes: [{ key: "topK", value: 12 }],
+        expectedVersion: 1,
+        providerChanges: [],
+      });
       expect(readSourceContentStorage).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("defaults global workspace administrators to the active workspace settings", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "global_admin");
+    const readSettings = vi.fn<WebServices["readSettings"]>(
+      async () => buildEffectiveSettings(),
+    );
+    const readWorkspaceSettings = vi.fn<WebServices["readWorkspaceSettings"]>(
+      async () => ({
+        ...buildEffectiveSettings(),
+        providerOverrideCapabilities: [],
+      }),
+    );
+    const updateWorkspaceSettings = vi.fn<
+      WebServices["updateWorkspaceSettings"]
+    >(async () => ({
+      ...buildEffectiveSettings(),
+      providerOverrideCapabilities: [],
+    }));
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readSession: async () => principal,
+        readSettings,
+        readWorkspaceSettings,
+        updateWorkspaceSettings,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        method: "GET",
+        url: "/api/settings",
+      });
+      const organizationResponse = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        method: "GET",
+        url: "/api/settings?scope=organization",
+      });
+      const updateResponse = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "PUT",
+        payload: {
+          changes: [{ action: "set", key: "topK", value: 12 }],
+          expectedVersion: 1,
+        },
+        url: "/api/settings",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        scope: {
+          available: [
+            { kind: "organization", label: "Organization" },
+            { kind: "workspace", label: principal.workspaceName },
+          ],
+          editableProviderConnections: false,
+          kind: "workspace",
+          label: principal.workspaceName,
+        },
+      });
+      expect(organizationResponse.statusCode).toBe(200);
+      expect(organizationResponse.json()).toMatchObject({
+        scope: {
+          editableProviderConnections: true,
+          kind: "organization",
+          label: "Organization",
+        },
+      });
+      expect(updateResponse.statusCode).toBe(200);
+      expect(readWorkspaceSettings).toHaveBeenCalledWith(principal);
+      expect(readSettings).toHaveBeenCalledOnce();
+      expect(updateWorkspaceSettings).toHaveBeenCalledWith(principal, {
+        changes: [{ key: "topK", value: 12 }],
+        expectedVersion: 1,
+        providerChanges: [],
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("allows global administrators to manage the current workspace regardless of workspace role", async () => {
+    const principal = buildAuthenticatedPrincipal("member", "global_admin");
+    const readWorkspaceSettings = vi.fn<WebServices["readWorkspaceSettings"]>(
+      async () => ({
+        ...buildEffectiveSettings(),
+        providerOverrideCapabilities: [],
+      }),
+    );
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readSession: async () => principal,
+        readWorkspaceSettings,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const cookies = { "__Host-citeloom_session": "private-session-token" };
+      const fragmentResponse = await server.inject({
+        cookies,
+        method: "GET",
+        url: "/fragments/settings.html",
+      });
+      const settingsResponse = await server.inject({
+        cookies,
+        method: "GET",
+        url: "/api/settings",
+      });
+      const usersFragmentResponse = await server.inject({
+        cookies,
+        method: "GET",
+        url: "/fragments/workspace-users-management.html",
+      });
+
+      expect(fragmentResponse.statusCode).toBe(404);
+      expect(usersFragmentResponse.statusCode).toBe(404);
+      expect(settingsResponse.statusCode).toBe(200);
+      expect(settingsResponse.json()).toMatchObject({
+        scope: {
+          available: [
+            { kind: "organization", label: "Organization" },
+            { kind: "workspace", label: principal.workspaceName },
+          ],
+          editableProviderConnections: false,
+          kind: "workspace",
+        },
+      });
+      expect(readWorkspaceSettings).toHaveBeenCalledWith(principal);
     } finally {
       await server.close();
     }
@@ -1560,6 +2443,7 @@ describe("web server boundary", () => {
   });
 
   it("decodes document catalog filters before browsing a bounded page", async () => {
+    const sourceLibraryId = "00000000-0000-4000-8000-000000000405";
     let receivedRequest: BrowseDocumentCatalogRequest | null = null;
     const removedDocument = buildBrowserDocument({
       displayStatus: "reindex-required",
@@ -1569,7 +2453,7 @@ describe("web server boundary", () => {
       sourceFile: "/documents/removed.pdf",
     });
     const services = buildServices({
-      browseDocuments: async (request) => {
+      browseDocuments: async (_principal, request) => {
         receivedRequest = request;
         return buildCatalogResult([removedDocument]);
       },
@@ -1583,7 +2467,7 @@ describe("web server boundary", () => {
     try {
       const response = await server.inject({
         method: "GET",
-        url: "/api/documents?collection=tag%3Alegal&page=2&pageSize=50&search=privacy&sort=name-asc&status=reindex-required&tag=statute",
+        url: `/api/documents?collection=tag%3Alegal&page=2&pageSize=50&search=privacy&sourceLibraryId=${sourceLibraryId}&sort=name-asc&status=reindex-required&tag=statute`,
       });
 
       expect(response.statusCode).toBe(200);
@@ -1611,6 +2495,7 @@ describe("web server boundary", () => {
         page: 2,
         pageSize: 50,
         search: "privacy",
+        sourceLibraryId,
         sort: "name-asc",
         status: "reindex-required",
         tag: "statute",
@@ -1673,6 +2558,7 @@ describe("web server boundary", () => {
       expect(response.headers["content-type"]).toContain("application/pdf");
       expect(response.rawPayload).toEqual(content);
       expect(readDocumentFile).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
         { documentId, sourceFile },
       );
     } finally {
@@ -1730,6 +2616,7 @@ describe("web server boundary", () => {
 
       expect(response.statusCode).toBe(404);
       expect(readDocumentFile).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
         {
           documentId: "a".repeat(64),
           sourceFile,
@@ -1769,7 +2656,7 @@ describe("web server boundary", () => {
   it("decodes a scoped question before streaming the RAG pipeline", async () => {
     let receivedQuestion: QuestionRequest | null = null;
     const services = buildServices({
-      streamAnswer: (request) => {
+      streamAnswer: (_principal, request) => {
         receivedQuestion = request;
         return createAnswerStream("The milestone is Friday.");
       },
@@ -2031,7 +2918,7 @@ describe("web server boundary", () => {
         url: "/api/transcriptions",
       });
       await vi.waitFor(() => expect(firstTranscribe).toHaveBeenCalledOnce());
-      services.run = replacementServices.run;
+      services.runInWorkspace = replacementServices.runInWorkspace;
       firstGate.resolve(undefined);
 
       await expect(acceptedResponse.then((response) => response.json())).resolves.toEqual({
@@ -2267,16 +3154,19 @@ describe("web server boundary", () => {
 
   it("streams supported uploads and normalizes ingestion options", async () => {
     const uploadDirectory = await createTemporaryDirectory();
+    const sourceLibraryId = "00000000-0000-4000-8000-000000000404";
     let receivedDocuments: StagedIngestionDocument[] = [];
     const receivedContents: string[] = [];
-    let receivedOptions: Parameters<RuntimeWebServices["ingest"]>[1] | null = null;
+    let receivedOptions: Parameters<RuntimeWebServices["ingest"]>[2] | null = null;
+    let receivedSourceLibraryId: string | null = null;
     const services = buildServices({
-      ingest: async (documents, options) => {
+      ingest: async (_principal, documents, options, _uploadRoot, libraryId) => {
         receivedDocuments = [...documents];
         for (const document of documents) {
           receivedContents.push(await readFile(document.sourceFile, "utf8"));
         }
         receivedOptions = options;
+        receivedSourceLibraryId = libraryId;
         return { documents: [], failures: [] };
       },
     });
@@ -2290,6 +3180,7 @@ describe("web server boundary", () => {
     try {
       const form = new FormData();
       form.append("force", "true");
+      form.append("sourceLibraryId", sourceLibraryId);
       form.append("tags", "Finance,quarterly,finance");
       form.append("documents", new Blob(["<html>Revenue</html>"], { type: "text/html" }), "report.HTML");
       form.append("documents", new Blob(["docx bytes"]), "handbook.docx");
@@ -2308,6 +3199,7 @@ describe("web server boundary", () => {
         recursive: false,
         tags: ["finance", "quarterly"],
       });
+      expect(receivedSourceLibraryId).toBe(sourceLibraryId);
       expect(receivedDocuments.map((document) => ({
         byteLength: document.byteLength,
         documentId: document.documentId,
@@ -2375,7 +3267,7 @@ describe("web server boundary", () => {
   it("queues a failed job retry from its stored durable phase", async () => {
     const sourceFile = "/app/documents/uploads/group/handbook.pdf";
     const retryFailedJob = vi.fn<RuntimeWebServices["retryFailedJob"]>(
-      async (requestedSourceFile) => {
+      async (_principal, requestedSourceFile) => {
         return {
           job: buildPendingJob(requestedSourceFile),
           kind: "retried",
@@ -2402,7 +3294,10 @@ describe("web server boundary", () => {
         state: "pending",
         updatedAt: "2026-07-14T04:00:00.000Z",
       });
-      expect(retryFailedJob).toHaveBeenCalledWith(sourceFile);
+      expect(retryFailedJob).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        sourceFile,
+      );
     } finally {
       await server.close();
     }
@@ -2412,7 +3307,7 @@ describe("web server boundary", () => {
     const documentId = "a".repeat(64);
     const sourceFile = "/app/documents/uploads/group/handbook.pdf";
     const reindexDocument = vi.fn<RuntimeWebServices["reindexDocument"]>(
-      async (request) => ({
+      async (_principal, request) => ({
         documentId: request.documentId,
         kind: "queued",
         sourceFile: request.sourceFile,
@@ -2438,6 +3333,7 @@ describe("web server boundary", () => {
         status: "queued",
       });
       expect(reindexDocument).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
         { documentId, sourceFile },
         {
           isAdministrator: true,
@@ -2452,7 +3348,7 @@ describe("web server boundary", () => {
   it("passes the authenticated member to document reindexing", async () => {
     const principal = buildAuthenticatedPrincipal("member");
     const reindexDocument = vi.fn<RuntimeWebServices["reindexDocument"]>(
-      async (request) => ({
+      async (_principal, request) => ({
         documentId: request.documentId,
         kind: "queued",
         sourceFile: request.sourceFile,
@@ -2480,6 +3376,7 @@ describe("web server boundary", () => {
 
       expect(response.statusCode).toBe(202);
       expect(reindexDocument).toHaveBeenCalledWith(
+        principal,
         {
           documentId: "a".repeat(64),
           sourceFile: "/app/documents/uploads/group/handbook.pdf",
@@ -2611,6 +3508,7 @@ describe("web server boundary", () => {
 
       expect(response.statusCode).toBe(202);
       expect(requestIngestionControl).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
         sourceFile,
         "pause",
         {
@@ -2730,13 +3628,19 @@ describe("research API boundary", () => {
       });
 
       expect(created.statusCode).toBe(201);
-      expect(createResearchThread).toHaveBeenCalledWith("Quarterly evidence");
+      expect(createResearchThread).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        "Quarterly evidence",
+      );
       expect(listed.json()).toEqual([expect.objectContaining({ id: thread.id })]);
       expect(reopened.json()).toMatchObject({ id: thread.id });
       expect(exported.headers["content-type"]).toContain("text/markdown");
       expect(exported.headers["content-disposition"]).toContain("thread.md");
       expect(deleted.statusCode).toBe(204);
-      expect(deleteResearchThread).toHaveBeenCalledWith(thread.id);
+      expect(deleteResearchThread).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        thread.id,
+      );
     } finally {
       await server.close();
     }
@@ -2774,7 +3678,10 @@ describe("research API boundary", () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(listDocumentVersions).toHaveBeenCalledWith(sourceFile);
+      expect(listDocumentVersions).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        sourceFile,
+      );
       expect(response.json()).toEqual([version]);
       expect(response.json()[0]).not.toHaveProperty("elementIds");
     } finally {
@@ -2845,13 +3752,16 @@ describe("research API boundary", () => {
       });
       expect(invalidFeedback.statusCode).toBe(400);
       expect(validFeedback.statusCode).toBe(200);
-      expect(addResearchFeedback).toHaveBeenCalledWith({
-        citationId,
-        comment: null,
-        dimension: "citation-correctness",
-        rating: -1,
-        turnId,
-      }, "00000000-0000-4000-8000-000000000000");
+      expect(addResearchFeedback).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        {
+          citationId,
+          comment: null,
+          dimension: "citation-correctness",
+          rating: -1,
+          turnId,
+        },
+      );
     } finally {
       await server.close();
     }
@@ -2862,31 +3772,48 @@ describe("research API boundary", () => {
 type TestWebServiceOverrides = Partial<RuntimeWebServices>
   & Partial<Pick<
     WebServices,
+    | "archiveSharedSourceLibrary"
+    | "archiveWorkspace"
     | "authenticate"
     | "cancelSourceContentMigration"
     | "changePassword"
+    | "changeWorkspaceMemberAccess"
     | "changeWorkspaceMemberRole"
     | "completePasswordSetup"
     | "copyEmbeddingInputFormat"
+    | "createSharedSourceLibrary"
+    | "deleteSharedSourceLibrary"
     | "createEmbeddingInputFormat"
     | "createPasswordReset"
+    | "createWorkspace"
     | "createWorkspaceMember"
+    | "listWorkspaces"
+    | "listSourceLibraries"
     | "listWorkspaceMembers"
     | "openAICodex"
     | "purgeApplicationErrors"
     | "readApplicationErrors"
     | "readSession"
+    | "readSourceLibraryAdministration"
     | "readSettings"
+    | "readWorkspaceSettings"
     | "readSourceContentStorage"
     | "reportApplicationError"
     | "removeWorkspaceMember"
+    | "renameSharedSourceLibrary"
+    | "renameWorkspace"
+    | "restoreSharedSourceLibrary"
     | "retireEmbeddingInputFormat"
     | "revokeSession"
+    | "revokeSourceLibraryGrant"
     | "reviseEmbeddingInputFormat"
     | "queueSourceContentMigration"
     | "subscribeRevisions"
+    | "switchWorkspace"
+    | "setSourceLibraryGrant"
     | "testSourceContentStorage"
     | "updateSettings"
+    | "updateWorkspaceSettings"
   >>;
 
 function buildReadyDiagnosticCheck(): DoctorCheck {
@@ -2910,7 +3837,7 @@ function buildServices(
     browseDocuments: async () => buildCatalogResult(),
     compareDocumentVersions: async () => null,
     config: buildConfig(),
-    createResearchThread: async (title) => ({
+    createResearchThread: async (_principal, title) => ({
       createdAt: "2026-07-15T12:00:00.000Z",
       id: "00000000-0000-4000-8000-000000000001",
       title,
@@ -2951,10 +3878,16 @@ function buildServices(
     ...overrides,
   };
   return {
+    archiveSharedSourceLibrary: overrides.archiveSharedSourceLibrary
+      ?? (async () => undefined),
+    archiveWorkspace: overrides.archiveWorkspace ?? (async () => undefined),
     authenticate: overrides.authenticate ?? (async () => {
       throw new Error("Authentication is not configured in boundary tests.");
     }),
     changePassword: overrides.changePassword ?? (async () => {
+      throw new Error("Authentication is not configured in boundary tests.");
+    }),
+    changeWorkspaceMemberAccess: overrides.changeWorkspaceMemberAccess ?? (async () => {
       throw new Error("Authentication is not configured in boundary tests.");
     }),
     changeWorkspaceMemberRole: overrides.changeWorkspaceMemberRole ?? (async () => {
@@ -2969,13 +3902,23 @@ function buildServices(
       ?? (async () => buildEmbeddingInputFormatRecord()),
     createEmbeddingInputFormat: overrides.createEmbeddingInputFormat
       ?? (async () => buildEmbeddingInputFormatRecord()),
+    createSharedSourceLibrary: overrides.createSharedSourceLibrary ?? (async () => {
+      throw new Error("Source library management is not configured in boundary tests.");
+    }),
+    deleteSharedSourceLibrary: overrides.deleteSharedSourceLibrary
+      ?? (async () => undefined),
     createPasswordReset: overrides.createPasswordReset ?? (async () => {
       throw new Error("Authentication is not configured in boundary tests.");
     }),
     createWorkspaceMember: overrides.createWorkspaceMember ?? (async () => {
       throw new Error("Authentication is not configured in boundary tests.");
     }),
+    createWorkspace: overrides.createWorkspace ?? (async () => {
+      throw new Error("Authentication is not configured in boundary tests.");
+    }),
     listWorkspaceMembers: overrides.listWorkspaceMembers ?? (async () => []),
+    listWorkspaces: overrides.listWorkspaces ?? (async () => []),
+    listSourceLibraries: overrides.listSourceLibraries ?? (async () => []),
     openAICodex: overrides.openAICodex ?? {
       disconnect: async () => undefined,
       readConnectionState: async () => ({
@@ -2992,6 +3935,10 @@ function buildServices(
       ?? (async () => buildApplicationErrorPage()),
     readRevisions: effectiveRuntimeServices.readRevisions,
     readSettings: overrides.readSettings ?? (async () => buildEffectiveSettings()),
+    readWorkspaceSettings: overrides.readWorkspaceSettings ?? (async () => ({
+      ...buildEffectiveSettings(),
+      providerOverrideCapabilities: [],
+    })),
     readSourceContentStorage: overrides.readSourceContentStorage
       ?? (async () => ({
         activeConfig: buildConfig().sourceContent,
@@ -3007,13 +3954,38 @@ function buildServices(
     retireEmbeddingInputFormat: overrides.retireEmbeddingInputFormat
       ?? (async () => buildEmbeddingInputFormatRecord()),
     readSession: overrides.readSession ?? (async () => null),
+    readSourceLibraryAdministration:
+      overrides.readSourceLibraryAdministration ?? (async () => ({
+        libraries: [],
+        workspaces: [],
+      })),
+    renameSharedSourceLibrary: overrides.renameSharedSourceLibrary
+      ?? (async () => undefined),
+    renameWorkspace: overrides.renameWorkspace ?? (async () => undefined),
+    restoreSharedSourceLibrary: overrides.restoreSharedSourceLibrary
+      ?? (async () => undefined),
     revokeSession: overrides.revokeSession ?? (async () => undefined),
+    revokeSourceLibraryGrant: overrides.revokeSourceLibraryGrant
+      ?? (async () => undefined),
+    switchWorkspace: overrides.switchWorkspace ?? (async (principal) => principal),
+    setSourceLibraryGrant: overrides.setSourceLibraryGrant
+      ?? (async () => undefined),
     run: async (operation) => operation(effectiveRuntimeServices),
+    runInWorkspace: async (_principal, operation) => {
+      return operation(effectiveRuntimeServices);
+    },
     runManaged: async (operation) => {
       const task = await operation(effectiveRuntimeServices);
       return task.value;
     },
+    runManagedInWorkspace: async (_principal, operation) => {
+      const task = await operation(effectiveRuntimeServices);
+      return task.value;
+    },
     stream: (operation) => operation(effectiveRuntimeServices),
+    streamInWorkspace: (_principal, operation) => {
+      return operation(effectiveRuntimeServices);
+    },
     subscribeRevisions: overrides.subscribeRevisions ?? (() => () => undefined),
     reviseEmbeddingInputFormat: overrides.reviseEmbeddingInputFormat
       ?? (async () => buildEmbeddingInputFormatRecord()),
@@ -3027,6 +3999,10 @@ function buildServices(
     testSourceContentStorage: overrides.testSourceContentStorage
       ?? (async () => undefined),
     updateSettings: overrides.updateSettings ?? (async () => buildEffectiveSettings()),
+    updateWorkspaceSettings: overrides.updateWorkspaceSettings ?? (async () => ({
+      ...buildEffectiveSettings(),
+      providerOverrideCapabilities: [],
+    })),
   };
 }
 
@@ -3068,9 +4044,14 @@ function buildSourceDiscoveryRequest() {
 
 function buildAuthenticatedPrincipal(
   role: "admin" | "member",
+  globalRole: "global_admin" | "standard" = role === "admin"
+    ? "global_admin"
+    : "standard",
 ): AuthenticatedPrincipal {
   return {
+    dataScope: "workspace",
     displayName: "Test User",
+    globalRole,
     role,
     sessionTokenDigest: "a".repeat(64),
     userId: "00000000-0000-4000-8000-000000000301",
@@ -3220,6 +4201,7 @@ function buildBrowserDocument(
     phase: null,
     queryStatus: "ready",
     sourceFile: "/documents/handbook.docx",
+    sourceLibraryId: "00000000-0000-4000-8000-000000000405",
     status: "ready",
     tables: 1,
     tags: ["handbook"],
@@ -3282,6 +4264,7 @@ function buildPendingJob(sourceFile: string): PendingIngestionJob {
     pageCount: null,
     phase: "normalized",
     sourceFile,
+    sourceLibraryId: null,
     state: "pending",
     tables: 1,
     tags: ["legal"],

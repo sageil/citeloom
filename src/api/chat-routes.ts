@@ -101,7 +101,7 @@ export function registerChatRoutes(
       const abort = (): void => abortController.abort();
       request.raw.once("aborted", abort);
       reply.raw.once("close", abort);
-      const stream = services.stream((runtime) => {
+      const stream = services.streamInWorkspace(principal, (runtime) => {
         if (runtime.streamChatMessage === undefined) {
           throw new Error("Chat generation is not configured.");
         }

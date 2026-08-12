@@ -26,6 +26,24 @@
           </template>
         </div>
 
+        <p class="shared-source-label" x-cloak x-show="sharedSourceLibraries.length > 0">Shared sources</p>
+        <div class="collection-links" x-cloak x-show="sharedSourceLibraries.length > 0">
+          <template x-for="library in sharedSourceLibraries" :key="library.id">
+            <button
+              type="button"
+              :aria-current="sourceLibraryId === library.id ? 'page' : null"
+              :class="{ active: sourceLibraryId === library.id }"
+              @click="selectSharedSource(library.id)"
+            >
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+              </svg>
+              <span class="truncate" x-text="library.name"></span>
+              <small>Shared</small>
+            </button>
+          </template>
+        </div>
+
         <p class="saved-view-label">Saved views</p>
         <div class="collection-links">
           <button
@@ -511,14 +529,14 @@
                     <button
                       type="button"
                       :aria-label="`Remove ${tag} tag`"
-                      x-show="selectedDocument.activeDocumentId !== null"
+                      x-show="selectedDocument.activeDocumentId !== null &amp;&amp; canManageDocument(selectedDocument)"
                       :disabled="actionKind !== null"
                       @click="removeTagDraft(tag)"
                     >×</button>
                   </span>
                 </template>
               </div>
-              <div class="inspector-tag-entry" x-show="selectedDocument.activeDocumentId !== null">
+              <div class="inspector-tag-entry" x-show="selectedDocument.activeDocumentId !== null &amp;&amp; canManageDocument(selectedDocument)">
                 <input
                   aria-label="Add a document tag"
                   autocomplete="off"
@@ -544,7 +562,8 @@
                 x-show="tagErrorMessage !== ''"
                 x-text="tagErrorMessage"
               ></p>
-              <small x-show="selectedDocument.activeDocumentId !== null">Press Enter to add each tag, then save your changes.</small>
+              <small x-show="selectedDocument.activeDocumentId !== null &amp;&amp; canManageDocument(selectedDocument)">Press Enter to add each tag, then save your changes.</small>
+              <small x-show="selectedDocument.activeDocumentId !== null &amp;&amp; !canManageDocument(selectedDocument)">Manage access is required to change tags.</small>
               <small x-show="selectedDocument.activeDocumentId === null">Tags can be changed after this document is indexed.</small>
             </div>
           </details>
@@ -659,7 +678,7 @@
           <section
             class="inspector-document-controls inspector-ingestion-controls"
             x-cloak
-            x-show="(currentRole === 'admin' || (currentUserId !== null &amp;&amp; selectedDocument.uploadedByUserId === currentUserId)) &amp;&amp; (selectedDocument.status === 'pending' || selectedDocument.status === 'running' || selectedDocument.status === 'failed')"
+            x-show="(canManageDocument(selectedDocument) || (currentUserId !== null &amp;&amp; selectedDocument.uploadedByUserId === currentUserId)) &amp;&amp; (selectedDocument.status === 'pending' || selectedDocument.status === 'running' || selectedDocument.status === 'failed')"
           >
             <div class="inspector-management-actions inspector-control-actions">
               <button
@@ -713,7 +732,7 @@
 
           <section
             class="inspector-document-controls"
-            x-show="selectedDocument.status === 'ready' || (currentRole === 'admin' &amp;&amp; selectedDocument.status !== 'pending' &amp;&amp; selectedDocument.status !== 'running')"
+            x-show="canManageDocument(selectedDocument) &amp;&amp; selectedDocument.status !== 'pending' &amp;&amp; selectedDocument.status !== 'running'"
           >
             <div
               class="inspector-management-actions inspector-control-actions"
@@ -722,7 +741,7 @@
               <button
                 class="button secondary"
                 type="button"
-                x-show="selectedDocument.status === 'ready'"
+                x-show="canManageDocument(selectedDocument) &amp;&amp; selectedDocument.status === 'ready'"
                 :disabled="actionKind !== null"
                 @click="actionConfirmation = 'reindex'"
               >
@@ -734,7 +753,7 @@
               <button
                 class="button danger"
                 type="button"
-                x-show="currentRole === 'admin' &amp;&amp; selectedDocument.status !== 'pending' &amp;&amp; selectedDocument.status !== 'running'"
+                x-show="canManageDocument(selectedDocument) &amp;&amp; selectedDocument.status !== 'pending' &amp;&amp; selectedDocument.status !== 'running'"
                 :disabled="actionKind !== null"
                 @click="actionConfirmation = 'delete'"
               >

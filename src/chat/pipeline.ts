@@ -201,6 +201,8 @@ export async function answerChatMessageWithRuntime(
       runTelemetry,
       createChatRetrievalConfig(runtime.config),
       "interactive-answer",
+      undefined,
+      principal.dataScope === "all" ? null : principal.workspaceId,
     );
 
     await store.transitionRun(

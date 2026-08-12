@@ -11,9 +11,6 @@ import {
 } from "./citeloom-boundaries.js";
 import { requestConfirmation } from "./citeloom-confirmation.js";
 import { dispatchNotice } from "./citeloom-notices.js";
-import {
-  createWorkspaceUserManagement,
-} from "./citeloom-workspace-users.js";
 
 function readAdministrator(value) {
   const administrator = readPlainObject(value, "security administrator");
@@ -133,11 +130,6 @@ function copyEditablePolicy(policy) {
 
 export function registerPage(alpine) {
   alpine.data("citeloomSecurityPage", () => ({
-    ...createWorkspaceUserManagement({
-      actionsLabel: "Security actions",
-      showRoleGuide: false,
-      title: "Users & access",
-    }),
     activeResetLinkCount: 0,
     administrators: [],
     busy: false,
@@ -164,7 +156,6 @@ export function registerPage(alpine) {
 
     initialize() {
       void this.loadOverview();
-      this.initializeUserManagement();
     },
 
     applyOverview(overview) {

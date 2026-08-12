@@ -36,7 +36,7 @@
         hx-get="./fragments/system-health.html"
         hx-push-url="./index.html?view=system-health"
         x-cloak
-        x-show="currentRole === 'admin'"
+        x-show="currentGlobalRole === 'global_admin'"
       >Open system health</a>
     </div>
     <button
@@ -96,6 +96,16 @@
       </div>
 
       <div class="ingestion-settings">
+        <div class="form-field" x-cloak x-show="sourceLibraries.length > 1">
+          <label for="ingestion-source-library">Source library</label>
+          <select id="ingestion-source-library" x-model="sourceLibraryId">
+            <template x-for="library in sourceLibraries" :key="library.id">
+              <option :value="library.id" x-text="library.name"></option>
+            </template>
+          </select>
+          <span class="field-help">Private sources stay in this workspace. Shared sources are available to every workspace with a grant.</span>
+        </div>
+
         <div class="form-field tag-field">
           <label for="ingestion-tags">Tags</label>
           <div class="tag-entry">

@@ -41,6 +41,10 @@ import {
   readRetryPhase,
 } from "./citeloom-document-presentation.js";
 import { dispatchNotice } from "./citeloom-notices.js";
+import {
+  buildSourceLibraryViewUrl,
+  readSourceLibrarySummaries,
+} from "./citeloom-source-libraries.js";
 
 const catalogSorts = Object.freeze([
   "name-asc",
@@ -56,6 +60,7 @@ const catalogStatuses = Object.freeze([
   "ready",
   "reindex-required",
 ]);
+
 const displayStatuses = Object.freeze([
   "failed",
   "pending",
@@ -339,6 +344,10 @@ function readCatalogEntry(value) {
     controlError,
     controlState,
     sourceFile,
+    sourceLibraryId: readNullableUuid(
+      document.sourceLibraryId,
+      "document source library ID",
+    ),
     statusDetail: statusCopy.detail,
     statusLabel: statusCopy.label,
     status,
@@ -826,7 +835,10 @@ export function registerPage(alpine) {
     searchTimerId: null,
     selectedDocument: null,
     selectionSearch: "",
+    sharedSourceLibraries: [],
     sort: "updated-desc",
+    sourceLibraryAccessById: {},
+    sourceLibraryId: null,
     status: "all",
     tagFilter: "",
     tagDraft: "",
@@ -896,7 +908,7 @@ export function registerPage(alpine) {
       return Math.max(1, Math.ceil(this.total / this.pageSize));
     },
 
-    init() {
+    async init() {
       this.documentsRevisionListener = () => {
         this.scheduleCatalogRefresh();
       };
@@ -924,7 +936,70 @@ export function registerPage(alpine) {
         this.syncElapsedTimer();
       };
       document.addEventListener("visibilitychange", this.visibilityListener);
-      void this.loadCatalog();
+      const sourceLibraryAvailable = await this.loadSourceLibraryContext();
+      if (!sourceLibraryAvailable) {
+        this.loading = false;
+        return;
+      }
+      await this.loadCatalog();
+    },
+
+    async loadSourceLibraryContext() {
+      const parameters = new URLSearchParams(window.location.search);
+      const requestedLibraryId = parameters.get("source-library");
+      const hasRequestedLibrary = requestedLibraryId !== null
+        && requestedLibraryId.trim() !== "";
+      this.sourceLibraryId = hasRequestedLibrary ? requestedLibraryId : null;
+      try {
+        const response = await fetch("/api/source-libraries", {
+          headers: { accept: "application/json" },
+        });
+        const libraries = await readJsonResponse(
+          response,
+          "Source library request",
+          readSourceLibrarySummaries,
+        );
+        const accessById = {};
+        const sharedLibraries = [];
+        let selectedLibraryAvailable = false;
+        for (const library of libraries) {
+          accessById[library.id] = library.access;
+          if (library.kind === "shared") {
+            sharedLibraries.push(library);
+          }
+          if (library.id === requestedLibraryId) {
+            selectedLibraryAvailable = true;
+          }
+        }
+        this.sharedSourceLibraries = sharedLibraries;
+        this.sourceLibraryAccessById = accessById;
+        if (!hasRequestedLibrary) {
+          return true;
+        }
+        if (selectedLibraryAvailable) {
+          return true;
+        }
+        this.loadErrorMessage = "The selected source library is unavailable.";
+        return false;
+      } catch (error) {
+        this.loadErrorMessage = error instanceof Error
+          ? error.message
+          : "The selected source library could not be loaded.";
+        return false;
+      }
+    },
+
+    canManageDocument(document) {
+      if (document.sourceLibraryId === null) {
+        return this.currentDataScope === "all";
+      }
+      return this.sourceLibraryAccessById[document.sourceLibraryId] === "manage";
+    },
+
+    selectSharedSource(libraryId) {
+      window.location.assign(
+        buildSourceLibraryViewUrl("documents", libraryId),
+      );
     },
 
     destroy() {
@@ -1010,6 +1085,9 @@ export function registerPage(alpine) {
         status: this.status,
         tag: this.tagFilter,
       });
+      if (this.sourceLibraryId !== null) {
+        parameters.set("sourceLibraryId", this.sourceLibraryId);
+      }
       try {
         const response = await fetch(`/api/documents?${parameters.toString()}`, {
           headers: { accept: "application/json" },

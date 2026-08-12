@@ -452,16 +452,16 @@
   <citeloom-evidence-window></citeloom-evidence-window>
 
   <div
-    class="dialog-backdrop chat-modal-backdrop"
+    class="dialog-backdrop creation-modal-backdrop"
     x-cloak
     x-show="newChatOpen"
     @click.self="closeNewChat()"
     @keydown.escape.window="newChatOpen &amp;&amp; closeNewChat()"
   >
-    <form class="dialog chat-modal" role="dialog" aria-modal="true" aria-labelledby="new-chat-title" @submit.prevent="createConversation()">
-      <header class="chat-modal-header">
+    <form class="dialog creation-modal" role="dialog" aria-modal="true" aria-labelledby="new-chat-title" @submit.prevent="createConversation()">
+      <header class="creation-modal-header">
         <p class="section-kicker" id="new-chat-title">Create chat</p>
-        <button class="icon-button chat-icon-button" type="button" aria-label="Close" @click="closeNewChat()">
+        <button class="icon-button creation-modal-close" type="button" aria-label="Close" @click="closeNewChat()">
           <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg>
         </button>
       </header>
@@ -688,9 +688,9 @@
         </div>
       </section>
 
-      <p class="chat-modal-error" role="alert" x-show="newChatErrorMessage !== ''" x-text="newChatErrorMessage"></p>
+      <p class="creation-modal-error" role="alert" x-show="newChatErrorMessage !== ''" x-text="newChatErrorMessage"></p>
 
-      <footer class="dialog-actions chat-modal-actions">
+      <footer class="dialog-actions creation-modal-actions">
         <button class="button secondary" type="button" :disabled="busy" @click="closeNewChat()">Cancel</button>
         <button class="button primary" type="submit" :disabled="busy || newChatCatalogLoading || !newChatCanCreate">
           <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-ask"></use></svg>

@@ -12,6 +12,7 @@ import {
   readBasename,
 } from "./citeloom-document-presentation.js";
 import { dispatchNotice } from "./citeloom-notices.js";
+import { readSourceLibrarySummaries } from "./citeloom-source-libraries.js";
 
 const ingestionStatuses = Object.freeze([
   "already-exists",
@@ -212,10 +213,52 @@ export function registerPage(alpine) {
     errorMessage: "",
     files: [],
     force: false,
+    sourceLibraries: [],
+    sourceLibraryId: "",
+    sourceLibraryUnavailable: false,
     submitting: false,
     tagDraft: "",
     tags: [],
     uploadController: null,
+
+    async init() {
+      try {
+        const value = await readJsonResponse(
+          await fetch("/api/source-libraries", {
+            headers: { accept: "application/json" },
+          }),
+          "Source library request",
+        );
+        const libraries = readSourceLibrarySummaries(value);
+        const manageableLibraries = [];
+        for (const library of libraries) {
+          if (library.access !== "manage") {
+            continue;
+          }
+          manageableLibraries.push(library);
+        }
+        this.sourceLibraries = manageableLibraries;
+        const requestedLibraryId = new URLSearchParams(
+          window.location.search,
+        ).get("source-library");
+        const requestedLibrary = manageableLibraries.find((library) => {
+          return library.id === requestedLibraryId;
+        });
+        if (requestedLibraryId !== null && requestedLibrary === undefined) {
+          this.sourceLibraryUnavailable = true;
+          this.sourceLibraryId = "";
+          this.errorMessage = "The selected source library is unavailable for uploads.";
+          return;
+        }
+        this.sourceLibraryId = requestedLibrary?.id
+          ?? manageableLibraries[0]?.id
+          ?? "";
+      } catch (error) {
+        this.errorMessage = error instanceof Error
+          ? error.message
+          : "Source libraries could not be loaded.";
+      }
+    },
 
     get selectedFileCountLabel() {
       const suffix = this.files.length === 1 ? "document" : "documents";
@@ -305,6 +348,10 @@ export function registerPage(alpine) {
     },
 
     async submit() {
+      if (this.sourceLibraryUnavailable) {
+        this.errorMessage = "The selected source library is unavailable for uploads.";
+        return;
+      }
       if (this.files.length === 0) {
         this.errorMessage = "Select at least one document.";
         return;
@@ -336,6 +383,9 @@ export function registerPage(alpine) {
       const submittedTags = this.commitTagDraft();
       const body = new FormData();
       body.append("force", String(this.force));
+      if (this.sourceLibraryId !== "") {
+        body.append("sourceLibraryId", this.sourceLibraryId);
+      }
       body.append("tags", submittedTags.join(","));
       for (const file of this.files) {
         body.append("documents", file, file.name);

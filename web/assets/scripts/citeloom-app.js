@@ -39,6 +39,7 @@ import {
   readNoticeEvent,
   readNoticeKind,
 } from "./citeloom-notices.js";
+import { readWorkspaceSummaries } from "./citeloom-workspaces.js";
 
 const defaultView = "overview";
 const helpAnchorPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
@@ -167,10 +168,7 @@ const routes = Object.freeze({
       id: "security",
       source: "./citeloom-security.js",
     },
-    pageStyles: [
-      "./assets/styles/citeloom-access.css",
-      "./assets/styles/citeloom-security.css",
-    ],
+    pageStyles: ["./assets/styles/citeloom-security.css"],
     title: "Security | CiteLoom",
   },
   settings: {
@@ -179,7 +177,11 @@ const routes = Object.freeze({
       id: "settings",
       source: "./citeloom-settings.js",
     },
-    pageStyles: ["./assets/styles/citeloom-settings.css"],
+    pageStyles: [
+      "./assets/styles/citeloom-access.css",
+      "./assets/styles/citeloom-settings.css",
+      "./assets/styles/citeloom-settings-source-libraries.css",
+    ],
     title: "Settings | CiteLoom",
   },
   "system-health": {
@@ -710,10 +712,13 @@ function registerShell(alpine) {
     confirmationRestoreFocusElement: null,
     confirmationTitle: "",
     confirmationTone: "danger",
+    currentDataScope: null,
     currentDisplayName: "Account",
+    currentGlobalRole: null,
     currentRole: null,
     currentUserId: null,
     currentWorkspaceId: null,
+    currentWorkspaceName: "Workspace",
     dashboardErrorMessage: "",
     dashboardHasData: false,
     dashboardRefreshQueued: false,
@@ -752,6 +757,8 @@ function registerShell(alpine) {
     workflow: { activeStep: 0, processingCount: 0, visible: false },
     workflowEventSource: null,
     workflowRefreshTimerId: null,
+    workspaces: [],
+    workspaceSwitching: false,
 
     get diagnosticsGroups() {
       return groupDiagnosticChecks(this.diagnosticsChecks);
@@ -1151,21 +1158,92 @@ function registerShell(alpine) {
         const workspace = readObject(session.workspace, "session workspace");
         const userId = readNonEmptyString(user.id, "user ID");
         const workspaceId = readNonEmptyString(workspace.id, "workspace ID");
+        this.currentDataScope = readEnum(
+          user.dataScope,
+          ["all", "workspace"],
+          "data scope",
+        );
         this.currentDisplayName = readNonEmptyString(
           user.displayName,
           "user display name",
         );
+        this.currentGlobalRole = readEnum(
+          user.globalRole,
+          ["global_admin", "standard"],
+          "global role",
+        );
         this.currentRole = readEnum(workspace.role, ["admin", "member"], "workspace role");
         this.currentUserId = userId;
         this.currentWorkspaceId = workspaceId;
+        this.currentWorkspaceName = readNonEmptyString(
+          workspace.name,
+          "workspace name",
+        );
         this.loadDocumentNotifications(userId, workspaceId);
       } catch {
+        this.currentDataScope = null;
         this.currentDisplayName = "Account";
+        this.currentGlobalRole = null;
         this.currentRole = null;
         this.currentUserId = null;
         this.currentWorkspaceId = null;
+        this.currentWorkspaceName = "Workspace";
+        this.workspaces = [];
         this.documentNotificationStorageKey = null;
         this.broadcastAllDocumentNotificationStates();
+        return;
+      }
+      try {
+        await this.loadWorkspaces();
+      } catch (error) {
+        this.workspaces = [];
+        this.showNotice(
+          "error",
+          error instanceof Error
+            ? error.message
+            : "The workspace list could not be loaded.",
+        );
+      }
+    },
+
+    async loadWorkspaces() {
+      const response = await fetch("/api/workspaces", {
+        headers: { accept: "application/json" },
+      });
+      this.workspaces = await readJsonResponse(
+        response,
+        "Workspace request",
+        readWorkspaceSummaries,
+      );
+    },
+
+    async switchWorkspace(workspaceId) {
+      if (workspaceId === this.currentWorkspaceId || this.workspaceSwitching) {
+        return;
+      }
+      this.workspaceSwitching = true;
+      try {
+        const response = await fetch("/api/auth/session/workspace", {
+          body: JSON.stringify({ workspaceId }),
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+          },
+          method: "PUT",
+        });
+        await readJsonResponse(response, "Workspace switch");
+        window.location.reload();
+      } catch (error) {
+        this.workspaceSwitching = false;
+        this.$nextTick(() => {
+          if (this.$refs.workspaceSelect instanceof HTMLSelectElement) {
+            this.$refs.workspaceSelect.value = this.currentWorkspaceId ?? "";
+          }
+        });
+        this.showNotice(
+          "error",
+          error instanceof Error ? error.message : "Workspace switch failed.",
+        );
       }
     },
 

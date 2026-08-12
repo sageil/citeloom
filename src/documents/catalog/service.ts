@@ -17,6 +17,7 @@ import { openDatabase } from "../../database/client.js";
 import type { DocumentMediaType } from "../format.js";
 import { SourceContentStore } from "../storage/source-content-store.js";
 import { indexedDocuments, ingestionJobs } from "../../database/schema.js";
+import { buildAccessibleSourceLibraryCondition } from "../../workspaces/source-library-access.js";
 
 export interface ReadDocumentFileRequest {
   documentId: string;
@@ -71,17 +72,20 @@ export async function browseCatalogEntries(
 export async function browseCatalogEntriesWithRuntime(
   runtime: ApplicationRuntime,
   request: BrowseDocumentCatalogRequest,
+  workspaceId: string | null = null,
 ): Promise<BrowseDocumentCatalogResult> {
   return browseDocumentCatalog(
     runtime.query,
     runtime.config.embeddingSpace.id,
     request,
+    workspaceId,
   );
 }
 
 export async function updateIndexedDocumentTagsWithRuntime(
   runtime: ApplicationRuntime,
   request: UpdateIndexedDocumentTagsRequest,
+  workspaceId: string | null = null,
 ): Promise<UpdateIndexedDocumentTagsResult | null> {
   return runtime.database.transaction(async (transaction) => {
     const matchingDocuments = await transaction
@@ -91,6 +95,13 @@ export async function updateIndexedDocumentTagsWithRuntime(
         and(
           eq(indexedDocuments.documentId, request.documentId),
           eq(indexedDocuments.sourceFile, request.sourceFile),
+          workspaceId === null
+            ? undefined
+            : buildAccessibleSourceLibraryCondition(
+                indexedDocuments.sourceLibraryId,
+                workspaceId,
+                "manage",
+              ),
         ),
       )
       .limit(1)
@@ -101,11 +112,29 @@ export async function updateIndexedDocumentTagsWithRuntime(
     await transaction
       .update(indexedDocuments)
       .set({ tags: request.tags })
-      .where(eq(indexedDocuments.sourceFile, request.sourceFile));
+      .where(and(
+        eq(indexedDocuments.sourceFile, request.sourceFile),
+        workspaceId === null
+          ? undefined
+          : buildAccessibleSourceLibraryCondition(
+              indexedDocuments.sourceLibraryId,
+              workspaceId,
+              "manage",
+            ),
+      ));
     await transaction
       .update(ingestionJobs)
       .set({ tags: request.tags })
-      .where(eq(ingestionJobs.sourceFile, request.sourceFile));
+      .where(and(
+        eq(ingestionJobs.sourceFile, request.sourceFile),
+        workspaceId === null
+          ? undefined
+          : buildAccessibleSourceLibraryCondition(
+              ingestionJobs.sourceLibraryId,
+              workspaceId,
+              "manage",
+            ),
+      ));
     return {
       sourceFile: request.sourceFile,
       tags: request.tags,
@@ -147,8 +176,9 @@ export async function readIndexedDocumentFile(
 export async function readIndexedDocumentFileWithRuntime(
   runtime: ApplicationRuntime,
   request: ReadDocumentFileRequest,
+  workspaceId: string | null = null,
 ): Promise<IndexedDocumentFile | null> {
-  const catalog = new DocumentCatalog(runtime.database);
+  const catalog = new DocumentCatalog(runtime.database, { workspaceId });
   const documentStore = new SourceContentStore(
     runtime.database,
     runtime.config.sourceContent,

@@ -20,18 +20,6 @@
   </div>
 
   <div class="security-content" x-cloak x-show="!loading &amp;&amp; !loadFailed">
-    <section class="security-users-column" aria-label="Users and access">
-      <div
-        class="workspace-user-management-host"
-        hx-get="./fragments/workspace-users-management.html"
-        hx-target="this"
-        hx-trigger="load"
-        hx-swap="innerHTML"
-      >
-        <p class="access-user-loading">Loading workspace users…</p>
-      </div>
-    </section>
-
     <div class="security-policy-column">
       <form class="security-policy-panel" @submit.prevent="savePolicy()">
         <header class="security-section-heading">

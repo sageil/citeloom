@@ -9,7 +9,9 @@ export function createSettingsResetActions(alpine) {
       const confirmed = await requestConfirmation({
         cancelLabel: "Keep settings",
         confirmLabel: "Reset all settings",
-        description: "This immediately restores every application and provider setting to its default value. This cannot be undone.",
+        description: this.settings.scope?.kind === "workspace"
+          ? "This immediately removes every workspace override so organization defaults are used. This cannot be undone."
+          : "This immediately restores every application and provider setting to its default value. This cannot be undone.",
         title: "Reset all settings?",
         tone: "danger",
       });

@@ -6,6 +6,7 @@
   text-rendering: optimizeLegibility;
   --background: #060914;
   --button-primary-background: #192138;
+  --control-background: transparent;
   --surface: #0b1020;
   --surface-raised: #111827;
   --surface-soft: #131b2e;
@@ -132,7 +133,7 @@ textarea:focus-visible,
   padding: 0 14px;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: rgba(10, 16, 31, 0.72);
+  background: var(--control-background);
   font-weight: 620;
   letter-spacing: 0.005em;
   transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
@@ -202,7 +203,7 @@ textarea:focus-visible,
   padding: 3px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--surface-opaque);
+  background: var(--control-background);
 }
 
 .segmented-control > button {
@@ -236,7 +237,7 @@ textarea:focus-visible,
   padding: 0 10px;
   border: 1px solid var(--border-strong);
   border-radius: 7px;
-  background: var(--surface);
+  background: var(--control-background);
   color: var(--muted);
 }
 
@@ -313,6 +314,116 @@ textarea:focus-visible,
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.creation-modal {
+  display: flex;
+  width: min(900px, 100%);
+  flex-direction: column;
+  gap: 18px;
+  padding: 26px;
+  overflow-y: auto;
+  font-family: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+}
+
+.creation-modal-backdrop {
+  background: var(--background);
+  backdrop-filter: none;
+}
+
+.creation-modal .section-kicker {
+  margin: 0;
+  color: var(--cyan);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.creation-modal-header {
+  position: relative;
+  padding-right: 52px;
+}
+
+.creation-modal-description {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.creation-modal-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 36px;
+  min-height: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--control-background);
+}
+
+.creation-modal-close .citeloom-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.creation-modal-error,
+.creation-modal-field-error {
+  color: #fda4af;
+  font-size: 11px;
+}
+
+.creation-modal-error {
+  margin: -6px 0 0;
+}
+
+.creation-modal-field-error {
+  margin-top: 2px;
+}
+
+.creation-modal .form-control[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px var(--danger-subtle);
+}
+
+.creation-modal .form-control[aria-invalid="true"]:focus-visible {
+  outline-color: var(--danger);
+}
+
+.creation-modal-actions {
+  margin-top: 0;
+}
+
+.creation-modal-actions .button {
+  min-width: 102px;
+}
+
+@media (max-width: 900px) {
+  .creation-modal {
+    padding: 22px;
+  }
+}
+
+@media (max-width: 680px) {
+  .creation-modal-backdrop {
+    padding: 12px;
+  }
+
+  .creation-modal {
+    max-height: calc(100vh - 24px);
+    gap: 14px;
+    padding: 18px;
+    overflow-y: auto;
+  }
+
+  .creation-modal-actions {
+    position: sticky;
+    bottom: -18px;
+    padding: 14px 0 0;
+    background: var(--background);
+  }
 }
 
 .popover {
@@ -698,7 +809,7 @@ h3 {
   width: 100%;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: #090e1c;
+  background: var(--control-background);
   color: var(--text);
 }
 
@@ -763,7 +874,7 @@ textarea.form-control {
   padding: 5px 8px;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: #090e1c;
+  background: var(--control-background);
 }
 
 .tag-entry:focus-within {
@@ -850,7 +961,7 @@ textarea.form-control {
   padding: 2px;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  background: var(--surface-raised);
+  background: var(--control-background);
   transition: background 160ms ease, border-color 160ms ease;
 }
 

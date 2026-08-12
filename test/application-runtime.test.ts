@@ -369,6 +369,45 @@ describe("application runtime", () => {
     await manager.shutdown();
   });
 
+  it("retains a runtime lease while an asynchronous request stream is prepared", async () => {
+    const runtimes = new Map<number, TestRuntime>();
+    const preparationGate = createDeferred<void>();
+    const preparationStarted = createDeferred<void>();
+    const manager = await ApplicationRuntimeManager.start(
+      buildConfig(0),
+      async (config) => {
+        const runtime = buildTestRuntime(config.settingsVersion);
+        runtimes.set(config.settingsVersion, runtime);
+        return runtime.runtime;
+      },
+    );
+    const stream = manager.streamWithRuntimeAsync(async (runtime) => {
+      preparationStarted.resolve();
+      await preparationGate.promise;
+      return new ReadableStream<number>({
+        start(controller) {
+          controller.enqueue(runtime.config.settingsVersion);
+          controller.close();
+        },
+      });
+    });
+    const reader = stream.getReader();
+    const firstRead = reader.read();
+    await preparationStarted.promise;
+
+    await manager.reload(buildConfig(1));
+    expect(runtimes.get(0)?.close).not.toHaveBeenCalled();
+
+    preparationGate.resolve();
+    await expect(firstRead).resolves.toEqual({ done: false, value: 0 });
+    await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
+    await vi.waitFor(() => {
+      expect(runtimes.get(0)?.close).toHaveBeenCalledOnce();
+    });
+
+    await manager.shutdown();
+  });
+
   it("retains a runtime lease until managed work completes", async () => {
     const runtimes = new Map<number, TestRuntime>();
     const completion = createDeferred<void>();

@@ -14,6 +14,7 @@ import type { UpdateWorkspaceSecurityPolicyInput } from "./boundary.js";
 import type {
   AuthenticatedPrincipal,
   WorkspacePasswordPolicy,
+  WorkspaceSecurityAdministrator,
   WorkspaceSecurityOverview,
   WorkspaceSecurityPolicy,
 } from "./model.js";
@@ -56,7 +57,10 @@ export class WorkspaceSecurityPolicyStore {
         workspaceSecurityPolicies,
         eq(workspaceSecurityPolicies.workspaceId, workspaceMemberships.workspaceId),
       )
-      .where(eq(workspaceMemberships.userId, userId));
+      .where(and(
+        eq(workspaceMemberships.access, "enabled"),
+        eq(workspaceMemberships.userId, userId),
+      ));
 
     const effectivePolicy: WorkspacePasswordPolicy = {
       minimumPasswordLength: 0,
@@ -193,6 +197,7 @@ export class WorkspaceSecurityPolicyStore {
         .from(workspaceMemberships)
         .innerJoin(users, eq(users.id, workspaceMemberships.userId))
         .where(and(
+          eq(workspaceMemberships.access, "enabled"),
           eq(workspaceMemberships.workspaceId, workspaceId),
           eq(workspaceMemberships.role, "admin"),
         ))
@@ -223,9 +228,20 @@ export class WorkspaceSecurityPolicyStore {
         .limit(recentPolicyChangeLimit),
     ]);
 
+    const normalizedAdministrators: WorkspaceSecurityAdministrator[] = [];
+    for (const administrator of administrators) {
+      normalizedAdministrators.push({
+        displayName: administrator.displayName,
+        role: "admin",
+        state: administrator.state,
+        userId: administrator.userId,
+        username: administrator.username,
+      });
+    }
+
     return {
       activeResetLinkCount: resetLinkCounts[0]?.value ?? 0,
-      administrators,
+      administrators: normalizedAdministrators,
       policy,
       recentChanges: recentChanges.map((change) => ({
         ...change,

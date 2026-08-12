@@ -19,18 +19,26 @@ import {
   OpenAICodexDeviceAuthController,
 } from "../providers/openai-codex-device-auth.js";
 import { OpenAICodexOAuthError } from "../providers/openai-codex-oauth.js";
-import { requireAdministratorPrincipal } from "./authentication-routes.js";
+import {
+  requireGlobalAdministratorPrincipal,
+  requireRequestPrincipal,
+  requireWorkspaceOrGlobalAdministratorPrincipal,
+} from "./authentication-routes.js";
 import type { WebConfig } from "./config.js";
 import {
   decodeApplicationSettingsUpdate,
   decodeCopyEmbeddingInputFormatRequest,
   decodeEmbeddingInputFormatDefinition,
   decodeResourceId,
+  decodeSettingsScopeQuery,
+  type SettingsScope,
   WebRequestError,
 } from "./request-boundary.js";
 import type { WebServices } from "./services.js";
 import {
   buildApplicationSettingsResponse,
+  buildOrganizationSettingsScope,
+  buildWorkspaceSettingsScope,
   type ApplicationSettingsResponse,
 } from "./settings-response.js";
 
@@ -56,14 +64,47 @@ export function registerSettingsRoutes(
   server.get(
     "/api/settings",
     async (request): Promise<ApplicationSettingsResponse> => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      const principal = requireRequestPrincipal(requestPrincipals, request);
+      const defaultScope = defaultSettingsScope(principal);
+      const scope = decodeSettingsScopeQuery(request.query, defaultScope);
+      if (scope === "workspace") {
+        if (principal.dataScope !== "workspace") {
+          throw new WebRequestError(
+            409,
+            "Workspace settings are unavailable when authentication is disabled.",
+          );
+        }
+        requireWorkspaceOrGlobalAdministratorPrincipal(requestPrincipals, request);
+        const settings = await services.readWorkspaceSettings(principal);
+        return buildApplicationSettingsResponse(
+          settings,
+          config,
+          webConfig,
+          buildWorkspaceSettingsScope(
+            principal.workspaceName,
+            principal.globalRole === "global_admin",
+          ),
+        );
+      }
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       const settings = await services.readSettings();
-      return buildApplicationSettingsResponse(settings, config, webConfig);
+      return buildApplicationSettingsResponse(
+        settings,
+        config,
+        webConfig,
+        buildOrganizationSettingsScope(
+          principal.dataScope === "workspace"
+            && (
+              principal.role === "admin"
+              || principal.globalRole === "global_admin"
+            ),
+        ),
+      );
     },
   );
 
   server.post("/api/embedding-input-formats", async (request, reply) => {
-    requireAdministratorPrincipal(requestPrincipals, request);
+    requireGlobalAdministratorPrincipal(requestPrincipals, request);
     const definition = decodeEmbeddingInputFormatDefinition(request.body);
     const format = await services.createEmbeddingInputFormat(definition);
     return reply.status(201).send({ id: format.id });
@@ -72,7 +113,7 @@ export function registerSettingsRoutes(
   server.post(
     "/api/embedding-input-formats/:id/copies",
     async (request, reply) => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       const id = decodeResourceId(request.params);
       const copy = decodeCopyEmbeddingInputFormatRequest(request.body);
       try {
@@ -87,7 +128,7 @@ export function registerSettingsRoutes(
   server.post(
     "/api/embedding-input-formats/:id/revisions",
     async (request, reply) => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       const id = decodeResourceId(request.params);
       const definition = decodeEmbeddingInputFormatDefinition(request.body);
       try {
@@ -103,7 +144,7 @@ export function registerSettingsRoutes(
   );
 
   server.delete("/api/embedding-input-formats/:id", async (request) => {
-    requireAdministratorPrincipal(requestPrincipals, request);
+    requireGlobalAdministratorPrincipal(requestPrincipals, request);
     const id = decodeResourceId(request.params);
     try {
       const format = await services.retireEmbeddingInputFormat(id);
@@ -116,11 +157,31 @@ export function registerSettingsRoutes(
   server.put(
     "/api/settings",
     async (request): Promise<ApplicationSettingsResponse> => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      const principal = requireRequestPrincipal(requestPrincipals, request);
+      const defaultScope = defaultSettingsScope(principal);
+      const scope = decodeSettingsScopeQuery(request.query, defaultScope);
       const settingsRequest = decodeApplicationSettingsUpdate(request.body);
       let settings: EffectiveApplicationSettings;
       try {
-        settings = await services.updateSettings(settingsRequest);
+        if (scope === "workspace") {
+          if (principal.dataScope !== "workspace") {
+            throw new WebRequestError(
+              409,
+              "Workspace settings are unavailable when authentication is disabled.",
+            );
+          }
+          requireWorkspaceOrGlobalAdministratorPrincipal(
+            requestPrincipals,
+            request,
+          );
+          settings = await services.updateWorkspaceSettings(
+            principal,
+            settingsRequest,
+          );
+        } else {
+          requireGlobalAdministratorPrincipal(requestPrincipals, request);
+          settings = await services.updateSettings(settingsRequest);
+        }
       } catch (error: unknown) {
         if (error instanceof SettingsVersionConflictError) {
           throw new WebRequestError(409, error.message);
@@ -130,12 +191,29 @@ export function registerSettingsRoutes(
         }
         throw error;
       }
-      return buildApplicationSettingsResponse(settings, config, webConfig);
+      const responseScope = scope === "workspace"
+        ? buildWorkspaceSettingsScope(
+          principal.workspaceName,
+          principal.globalRole === "global_admin",
+        )
+        : buildOrganizationSettingsScope(
+          principal.dataScope === "workspace"
+            && (
+              principal.role === "admin"
+              || principal.globalRole === "global_admin"
+            ),
+        );
+      return buildApplicationSettingsResponse(
+        settings,
+        config,
+        webConfig,
+        responseScope,
+      );
     },
   );
 
   server.get("/api/providers/openai-codex/auth", async (request, reply) => {
-    requireAdministratorPrincipal(requestPrincipals, request);
+    requireGlobalAdministratorPrincipal(requestPrincipals, request);
     reply.header("Cache-Control", "private, no-store");
     const connection = await services.openAICodex.readConnectionState();
     return {
@@ -147,7 +225,7 @@ export function registerSettingsRoutes(
   server.post(
     "/api/providers/openai-codex/device-authorization",
     async (request, reply) => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       reply.header("Cache-Control", "private, no-store");
       try {
         const flow = await openAICodexDeviceAuth.start();
@@ -161,7 +239,7 @@ export function registerSettingsRoutes(
   server.delete(
     "/api/providers/openai-codex/device-authorization",
     async (request, reply) => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       reply.header("Cache-Control", "private, no-store");
       const flow = await openAICodexDeviceAuth.cancel();
       return { flow };
@@ -171,7 +249,7 @@ export function registerSettingsRoutes(
   server.delete(
     "/api/providers/openai-codex/auth",
     async (request, reply) => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       reply.header("Cache-Control", "private, no-store");
       await openAICodexDeviceAuth.cancel();
       try {
@@ -186,7 +264,7 @@ export function registerSettingsRoutes(
   server.get(
     "/api/providers/openai-codex/models",
     async (request, reply) => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       reply.header("Cache-Control", "private, no-store");
       try {
         const models = await services.openAICodex.readModels(
@@ -198,6 +276,21 @@ export function registerSettingsRoutes(
       }
     },
   );
+}
+
+function defaultSettingsScope(
+  principal: AuthenticatedPrincipal,
+): SettingsScope {
+  if (
+    principal.dataScope === "workspace"
+    && (
+      principal.role === "admin"
+      || principal.globalRole === "global_admin"
+    )
+  ) {
+    return "workspace";
+  }
+  return "organization";
 }
 
 function mapEmbeddingInputFormatError(error: unknown): unknown {

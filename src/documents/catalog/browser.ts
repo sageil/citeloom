@@ -89,6 +89,7 @@ const browserDocumentSchema = z.object({
   phase: z.enum(["discovered", "normalized", "indexed"]).nullable(),
   queryStatus: queryStatusSchema,
   sourceFile: z.string().min(1),
+  sourceLibraryId: z.uuid().nullable(),
   status: z.enum(["ready", "pending", "running", "failed"]),
   tables: z.number().int().nonnegative(),
   tags: z.array(z.string()),
@@ -225,6 +226,7 @@ export interface BrowserDocument extends CatalogEntry {
   mediaDescriptionProgress: DocumentMediaDescriptionProgress;
   phase: IngestionPhase | null;
   queryStatus: DocumentQueryStatus;
+  sourceLibraryId: string | null;
 }
 
 export interface DocumentTagFacet {
@@ -273,6 +275,7 @@ export interface BrowseDocumentCatalogRequest {
   page: number;
   pageSize: 25 | 50 | 100;
   search: string;
+  sourceLibraryId: string | null;
   sort: DocumentSort;
   status: DocumentStatusFilter;
   tag: string | null;
@@ -295,6 +298,7 @@ export const DEFAULT_DOCUMENT_CATALOG_REQUEST: BrowseDocumentCatalogRequest = {
   page: 1,
   pageSize: 25,
   search: "",
+  sourceLibraryId: null,
   sort: "updated-desc",
   status: "all",
   tag: null,
@@ -304,6 +308,7 @@ export async function browseDocumentCatalog(
   query: SqlQueryExecutor,
   embeddingSpaceId: string,
   request: BrowseDocumentCatalogRequest,
+  workspaceId: string | null = null,
 ): Promise<BrowseDocumentCatalogResult> {
   const offset = (request.page - 1) * request.pageSize;
   const rows = await query.execute("browse-document-catalog", [
@@ -315,6 +320,8 @@ export async function browseDocumentCatalog(
     request.sort,
     request.pageSize,
     offset,
+    workspaceId ?? "",
+    request.sourceLibraryId ?? "",
   ]);
   const row = rows[0];
   const result = browserRowSchema.safeParse(row);

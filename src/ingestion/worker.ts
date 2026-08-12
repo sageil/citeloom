@@ -38,6 +38,7 @@ import {
   runSourceContentMigrationWorker,
   type SourceContentMigrationWorkerOptions,
 } from "../documents/storage/source-content-migration-runner.js";
+import { buildAccessibleSourceLibraryCondition } from "../workspaces/source-library-access.js";
 
 export interface WorkerOptions {
   once: boolean;
@@ -229,16 +230,19 @@ export async function readSystemStatus(config: AppConfig): Promise<SystemStatus>
 
 export async function readSystemStatusWithRuntime(
   runtime: ApplicationRuntime,
+  workspaceId: string | null = null,
 ): Promise<SystemStatus> {
   return readSystemStatusFromDatabase(
     runtime.database,
     runtime.config.scheduling.providers,
+    workspaceId,
   );
 }
 
 async function readSystemStatusFromDatabase(
   database: CiteLoomDatabase,
   providers: readonly ProviderConcurrencyConfig[],
+  workspaceId: string | null = null,
 ): Promise<SystemStatus> {
   const currentTime = new Date();
   const activeWorkerThreshold = new Date(
@@ -256,7 +260,15 @@ async function readSystemStatusFromDatabase(
         state: ingestionJobs.state,
       })
       .from(ingestionJobs)
-      .where(eq(ingestionJobs.controlState, "active"))
+      .where(and(
+        eq(ingestionJobs.controlState, "active"),
+        workspaceId === null
+          ? undefined
+          : buildAccessibleSourceLibraryCondition(
+              ingestionJobs.sourceLibraryId,
+              workspaceId,
+            ),
+      ))
       .orderBy(asc(ingestionJobs.nextAttemptAt), asc(ingestionJobs.sourceFile)),
     database
       .select()

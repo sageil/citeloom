@@ -1,17 +1,34 @@
 import { z } from "zod";
 
 export const workspaceRoleSchema = z.enum(["admin", "member"]);
+export const globalRoleSchema = z.enum(["global_admin", "standard"]);
+export const workspaceMembershipAccessSchema = z.enum([
+  "enabled",
+  "disabled",
+]);
 
 export type WorkspaceRole = z.output<typeof workspaceRoleSchema>;
+export type GlobalRole = z.output<typeof globalRoleSchema>;
+export type WorkspaceMembershipAccess = z.output<
+  typeof workspaceMembershipAccessSchema
+>;
 
 export interface AuthenticatedPrincipal {
+  dataScope: "all" | "workspace";
   displayName: string;
+  globalRole: GlobalRole;
   role: WorkspaceRole;
   sessionTokenDigest: string;
   userId: string;
   username: string;
   workspaceId: string;
   workspaceName: string;
+}
+
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  role: WorkspaceRole;
 }
 
 export interface AuthenticationSession {
@@ -31,7 +48,9 @@ export type WorkspaceMemberAddition =
   | ({ kind: "setup" } & PendingUserSetup);
 
 export interface WorkspaceMember {
+  access: WorkspaceMembershipAccess;
   displayName: string;
+  globalRole: GlobalRole;
   role: WorkspaceRole;
   state: "active" | "pending" | "suspended";
   userId: string;
@@ -50,7 +69,13 @@ export interface WorkspaceSecurityPolicy extends WorkspacePasswordPolicy {
   version: number;
 }
 
-export type WorkspaceSecurityAdministrator = WorkspaceMember;
+export interface WorkspaceSecurityAdministrator {
+  displayName: string;
+  role: "admin";
+  state: "active" | "pending" | "suspended";
+  userId: string;
+  username: string;
+}
 
 export interface WorkspaceSecurityPolicyChange extends WorkspacePasswordPolicy {
   changedAt: string;

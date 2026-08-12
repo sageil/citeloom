@@ -158,7 +158,10 @@ import {
   sourceContentDeletions,
   sourceContentMigrations,
   sourceDocuments,
+  sourceLibraries,
   users,
+  workspaceLibraryGrants,
+  workspaces,
   workerHeartbeats,
 } from "../src/database/schema.js";
 import {
@@ -291,6 +294,7 @@ async function prepareTestIngestion(
   maxAttempts: number = 3,
   duplicateSourceRoot: string | null = null,
   uploadedByUserId: string | null = null,
+  sourceLibraryId: string | null = null,
 ) {
   await ensureTestSourceMetadata(documentId);
   return catalog.prepareIngestion({
@@ -302,6 +306,7 @@ async function prepareTestIngestion(
     maxAttempts,
     requestedTags,
     sourceFile,
+    sourceLibraryId,
     uploadedByUserId,
   });
 }
@@ -2924,7 +2929,29 @@ describe("PostgreSQL research records", () => {
 
   it("persists immutable evidence, versions, feedback, and reviewed development cases", async () => {
     const config = buildTestConfig();
-    const research = new ResearchStore(session.database, config);
+    const workspaceRows = await session.database
+      .select({
+        libraryId: sourceLibraries.id,
+        workspaceId: workspaces.id,
+      })
+      .from(sourceLibraries)
+      .innerJoin(workspaces, eq(workspaces.id, sourceLibraries.ownerWorkspaceId))
+      .where(and(
+        eq(sourceLibraries.kind, "private"),
+        eq(sourceLibraries.state, "active"),
+        eq(workspaces.state, "active"),
+      ))
+      .orderBy(asc(workspaces.createdAt), asc(workspaces.id))
+      .limit(1);
+    const workspace = workspaceRows[0];
+    if (workspace === undefined) {
+      throw new Error("Expected a workspace source library for research.");
+    }
+    const research = new ResearchStore(
+      session.database,
+      config,
+      workspace.workspaceId,
+    );
     const sourceStore = new SourceDocumentStore(session.database);
     const sourceContentStore = new SourceContentStore(
       session.database,
@@ -2994,6 +3021,7 @@ describe("PostgreSQL research records", () => {
       images: 0,
       pageCount: 1,
       sourceFile,
+      sourceLibraryId: workspace.libraryId,
       tables: 0,
       tags: ["finance"],
       textChunks: 1,
@@ -3142,6 +3170,15 @@ describe("PostgreSQL research records", () => {
       previousVersionId: oldVersionId,
       removedElementIds: [],
     });
+    const inaccessibleResearch = new ResearchStore(
+      session.database,
+      config,
+      randomUUID(),
+    );
+    await expect(inaccessibleResearch.compareDocumentVersions(
+      oldVersionId,
+      newVersionId,
+    )).resolves.toBeNull();
 
     const markdown = await research.exportThread(thread.id, "markdown");
     expect(markdown?.content).toContain(oldVersionId);
@@ -3697,6 +3734,237 @@ afterAll(async () => {
 });
 
 describe("PostgreSQL document catalog", () => {
+  it("returns only documents from source libraries available to the workspace", async () => {
+    const originalRows = await session.database
+      .select({
+        libraryId: sourceLibraries.id,
+        workspaceId: workspaces.id,
+      })
+      .from(sourceLibraries)
+      .innerJoin(workspaces, eq(workspaces.id, sourceLibraries.ownerWorkspaceId))
+      .where(and(
+        eq(sourceLibraries.kind, "private"),
+        eq(workspaces.state, "active"),
+      ))
+      .orderBy(asc(workspaces.createdAt), asc(workspaces.id))
+      .limit(1);
+    const original = originalRows[0];
+    if (original === undefined) {
+      throw new Error("Expected the bootstrap workspace source library.");
+    }
+    const secondWorkspaceId = randomUUID();
+    const secondLibraryId = randomUUID();
+    const sharedLibraryId = randomUUID();
+    const originalSourceFile = "/documents/original-workspace.pdf";
+    const secondSourceFile = "/documents/second-workspace.pdf";
+    const sharedSourceFile = "/documents/shared-workspace.pdf";
+    const originalDocumentId = "7".repeat(64);
+    const secondDocumentId = "8".repeat(64);
+    const sharedDocumentId = "9".repeat(64);
+    await session.database.insert(workspaces).values({
+      id: secondWorkspaceId,
+      name: "Second catalog workspace",
+      state: "active",
+    });
+    await session.database.insert(sourceLibraries).values({
+      id: secondLibraryId,
+      kind: "private",
+      name: "Second catalog sources",
+      ownerWorkspaceId: secondWorkspaceId,
+      state: "active",
+    });
+    await session.database.insert(sourceLibraries).values({
+      id: sharedLibraryId,
+      kind: "shared",
+      name: "Shared catalog sources",
+      ownerWorkspaceId: null,
+      state: "active",
+    });
+
+    try {
+      const catalog = new DocumentCatalog(session.database);
+      await prepareTestIngestion(
+        catalog,
+        originalSourceFile,
+        originalDocumentId,
+        space768.id,
+        [],
+        false,
+        3,
+        null,
+        null,
+        original.libraryId,
+      );
+      await prepareTestIngestion(
+        catalog,
+        secondSourceFile,
+        secondDocumentId,
+        space768.id,
+        [],
+        false,
+        3,
+        null,
+        null,
+        secondLibraryId,
+      );
+      await prepareTestIngestion(
+        catalog,
+        sharedSourceFile,
+        sharedDocumentId,
+        space768.id,
+        [],
+        false,
+        3,
+        null,
+        null,
+        sharedLibraryId,
+      );
+      const request: BrowseDocumentCatalogRequest = {
+        collection: { kind: "all" },
+        page: 1,
+        pageSize: 25,
+        search: "",
+        sourceLibraryId: null,
+        sort: "name-asc",
+        status: "all",
+        tag: null,
+      };
+
+      const originalCatalog = await browseDocumentCatalog(
+        session.query,
+        space768.id,
+        request,
+        original.workspaceId,
+      );
+      const secondCatalog = await browseDocumentCatalog(
+        session.query,
+        space768.id,
+        request,
+        secondWorkspaceId,
+      );
+
+      expect(originalCatalog.documents.map((document) => document.sourceFile))
+        .toEqual([originalSourceFile]);
+      expect(secondCatalog.documents.map((document) => document.sourceFile))
+        .toEqual([secondSourceFile]);
+
+      await session.database.insert(workspaceLibraryGrants).values([
+        {
+          access: "manage",
+          libraryId: sharedLibraryId,
+          workspaceId: original.workspaceId,
+        },
+        {
+          access: "use",
+          libraryId: sharedLibraryId,
+          workspaceId: secondWorkspaceId,
+        },
+      ]);
+
+      const originalCatalogWithSharedSources = await browseDocumentCatalog(
+        session.query,
+        space768.id,
+        request,
+        original.workspaceId,
+      );
+      const secondCatalogWithSharedSources = await browseDocumentCatalog(
+        session.query,
+        space768.id,
+        request,
+        secondWorkspaceId,
+      );
+
+      expect(originalCatalogWithSharedSources.documents.map((document) => {
+        return document.sourceFile;
+      })).toEqual([originalSourceFile, sharedSourceFile]);
+      expect(secondCatalogWithSharedSources.documents.map((document) => {
+        return document.sourceFile;
+      })).toEqual([secondSourceFile, sharedSourceFile]);
+
+      const sharedLibraryRequest: BrowseDocumentCatalogRequest = {
+        ...request,
+        sourceLibraryId: sharedLibraryId,
+      };
+      const scopedSharedCatalog = await browseDocumentCatalog(
+        session.query,
+        space768.id,
+        sharedLibraryRequest,
+        secondWorkspaceId,
+      );
+      expect(scopedSharedCatalog.documents.map((document) => {
+        return document.sourceFile;
+      })).toEqual([sharedSourceFile]);
+
+      await session.database
+        .update(sourceLibraries)
+        .set({ state: "archived" })
+        .where(eq(sourceLibraries.id, sharedLibraryId));
+      const catalogWithArchivedLibrary = await browseDocumentCatalog(
+        session.query,
+        space768.id,
+        request,
+        secondWorkspaceId,
+      );
+      expect(catalogWithArchivedLibrary.documents.map((document) => {
+        return document.sourceFile;
+      })).toEqual([secondSourceFile]);
+      await session.database
+        .update(sourceLibraries)
+        .set({ state: "active" })
+        .where(eq(sourceLibraries.id, sharedLibraryId));
+      const catalogAfterRestore = await browseDocumentCatalog(
+        session.query,
+        space768.id,
+        sharedLibraryRequest,
+        secondWorkspaceId,
+      );
+      expect(catalogAfterRestore.documents.map((document) => {
+        return document.sourceFile;
+      })).toEqual([sharedSourceFile]);
+
+      await session.database
+        .delete(workspaceLibraryGrants)
+        .where(and(
+          eq(workspaceLibraryGrants.libraryId, sharedLibraryId),
+          eq(workspaceLibraryGrants.workspaceId, secondWorkspaceId),
+        ));
+
+      const secondCatalogAfterRevocation = await browseDocumentCatalog(
+        session.query,
+        space768.id,
+        request,
+        secondWorkspaceId,
+      );
+      expect(secondCatalogAfterRevocation.documents.map((document) => {
+        return document.sourceFile;
+      })).toEqual([secondSourceFile]);
+    } finally {
+      await session.database
+        .delete(ingestionJobs)
+        .where(inArray(ingestionJobs.sourceFile, [
+          originalSourceFile,
+          secondSourceFile,
+          sharedSourceFile,
+        ]));
+      await session.database
+        .delete(sourceDocuments)
+        .where(inArray(sourceDocuments.documentId, [
+          originalDocumentId,
+          secondDocumentId,
+          sharedDocumentId,
+        ]));
+      await session.database
+        .delete(sourceLibraries)
+        .where(inArray(sourceLibraries.id, [
+          secondLibraryId,
+          sharedLibraryId,
+        ]));
+      await session.database
+        .delete(workspaces)
+        .where(eq(workspaces.id, secondWorkspaceId));
+    }
+  });
+
   it("preserves immutable retrieval generations when duplicate uploads are reconciled", async () => {
     const documentId = "d".repeat(64);
     const elementId = "e".repeat(64);
@@ -3995,6 +4263,7 @@ describe("PostgreSQL document catalog", () => {
       page: 1,
       pageSize: 25,
       search: "",
+      sourceLibraryId: null,
       sort: "name-asc",
       status: "all",
       tag: null,

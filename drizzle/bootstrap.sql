@@ -1386,6 +1386,7 @@ BEGIN
     INNER JOIN "workspace_memberships" AS membership
       ON membership."user_id" = application_user."id"
     WHERE application_user."state" = 'active'
+      AND membership."access" = 'enabled'
       AND membership."role" = 'admin';
 
     IF ready_administrator_count = 0 THEN
@@ -1426,14 +1427,36 @@ BEGIN
   administrator_user_id := gen_random_uuid();
   administrator_workspace_id := gen_random_uuid();
 
-  INSERT INTO "workspaces" ("id", "name", "slug")
-  VALUES (administrator_workspace_id, 'CiteLoom', 'citeloom');
+  INSERT INTO "workspaces" ("id", "name")
+  VALUES (administrator_workspace_id, 'DefaultSpace');
 
   INSERT INTO "workspace_security_policies" ("workspace_id")
   VALUES (administrator_workspace_id);
 
+  INSERT INTO "workspace_settings" ("settings", "workspace_id")
+  VALUES (
+    '{"providerFeatures":[],"runtime":{},"schemaVersion":1}'::jsonb,
+    administrator_workspace_id
+  );
+
+  INSERT INTO "source_libraries" (
+    "id",
+    "kind",
+    "name",
+    "owner_workspace_id",
+    "state"
+  )
+  VALUES (
+    gen_random_uuid(),
+    'private',
+    'DefaultSpace sources',
+    administrator_workspace_id,
+    'active'
+  );
+
   INSERT INTO "users" (
     "display_name",
+    "global_role",
     "id",
     "state",
     "username",
@@ -1441,6 +1464,7 @@ BEGIN
   )
   VALUES (
     administrator_display_name,
+    'global_admin',
     administrator_user_id,
     'active',
     administrator_username,
@@ -1450,7 +1474,12 @@ BEGIN
   INSERT INTO "user_password_credentials" ("password_hash", "user_id")
   VALUES (administrator_password_hash, administrator_user_id);
 
-  INSERT INTO "workspace_memberships" ("role", "user_id", "workspace_id")
-  VALUES ('admin', administrator_user_id, administrator_workspace_id);
+  INSERT INTO "workspace_memberships" (
+    "access",
+    "role",
+    "user_id",
+    "workspace_id"
+  )
+  VALUES ('enabled', 'admin', administrator_user_id, administrator_workspace_id);
 END;
 $bootstrap$;

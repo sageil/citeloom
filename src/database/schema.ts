@@ -31,6 +31,7 @@ import type {
   DoclingServiceIdentity,
 } from "../docling/protocol/run-metadata.js";
 import type { StoredApplicationSettings } from "../providers/settings-persistence.js";
+import type { StoredWorkspaceSettings } from "../workspaces/settings-persistence.js";
 import type { SourceContentConfig } from "../config/types.js";
 import type { MatchedDocument } from "../retrieval/document-retrieval.js";
 import type { EmbeddingSpaceRowCounts } from "../embedding/space/types.js";
@@ -232,7 +233,26 @@ export const userAccountState = pgEnum("user_account_state", [
   "suspended",
 ]);
 
+export const globalRole = pgEnum("global_role", ["global_admin", "standard"]);
+export const workspaceMembershipAccess = pgEnum(
+  "workspace_membership_access",
+  ["enabled", "disabled"],
+);
 export const workspaceRole = pgEnum("workspace_role", ["admin", "member"]);
+export const workspaceState = pgEnum("workspace_state", ["active", "archived"]);
+export const sourceLibraryKind = pgEnum("source_library_kind", [
+  "private",
+  "shared",
+]);
+export const sourceLibraryState = pgEnum("source_library_state", [
+  "active",
+  "archived",
+  "deleting",
+]);
+export const sourceLibraryAccess = pgEnum("source_library_access", [
+  "use",
+  "manage",
+]);
 
 export const users = pgTable(
   "users",
@@ -241,6 +261,7 @@ export const users = pgTable(
       .notNull()
       .defaultNow(),
     displayName: text("display_name").notNull(),
+    globalRole: globalRole("global_role").notNull().default("standard"),
     id: uuid("id").primaryKey(),
     state: userAccountState("state").notNull().default("pending"),
     username: varchar("username", { length: 100 }).notNull(),
@@ -276,16 +297,91 @@ export const workspaces = pgTable(
       .defaultNow(),
     id: uuid("id").primaryKey(),
     name: text("name").notNull(),
-    slug: varchar("slug", { length: 100 }).notNull(),
+    state: workspaceState("state").notNull().default("active"),
     updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
       .notNull()
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("workspaces_slug_idx").on(table.slug),
+    uniqueIndex("workspaces_name_normalized_idx")
+      .on(sql`lower(trim(${table.name}))`),
+  ],
+);
+
+export const sourceLibraries = pgTable(
+  "source_libraries",
+  {
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    id: uuid("id").primaryKey(),
+    kind: sourceLibraryKind("kind").notNull(),
+    name: text("name").notNull(),
+    ownerWorkspaceId: uuid("owner_workspace_id").references(
+      () => workspaces.id,
+      { onDelete: "restrict" },
+    ),
+    state: sourceLibraryState("state").notNull().default("active"),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("source_libraries_private_workspace_idx")
+      .on(table.ownerWorkspaceId)
+      .where(sql`${table.kind} = 'private'`),
+    index("source_libraries_owner_idx").on(table.ownerWorkspaceId, table.state),
     check(
-      "workspaces_slug_check",
-      sql`${table.slug} ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'`,
+      "source_libraries_owner_check",
+      sql`(${table.kind} = 'private' AND ${table.ownerWorkspaceId} IS NOT NULL)
+        OR (${table.kind} = 'shared' AND ${table.ownerWorkspaceId} IS NULL)`,
+    ),
+    check(
+      "source_libraries_name_check",
+      sql`length(trim(${table.name})) > 0`,
+    ),
+  ],
+);
+
+export const workspaceLibraryGrants = pgTable(
+  "workspace_library_grants",
+  {
+    access: sourceLibraryAccess("access").notNull().default("use"),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    libraryId: uuid("library_id")
+      .notNull()
+      .references(() => sourceLibraries.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.workspaceId, table.libraryId] }),
+    index("workspace_library_grants_library_idx").on(
+      table.libraryId,
+      table.workspaceId,
+    ),
+  ],
+);
+
+export const sourceLibraryDeletionSources = pgTable(
+  "source_library_deletion_sources",
+  {
+    documentId: varchar("document_id", { length: 64 }).notNull(),
+    libraryId: uuid("library_id")
+      .notNull()
+      .references(() => sourceLibraries.id, { onDelete: "cascade" }),
+    sourceFile: text("source_file").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.libraryId, table.sourceFile, table.documentId],
+    }),
+    index("source_library_deletion_sources_library_idx").on(
+      table.libraryId,
+      table.sourceFile,
     ),
   ],
 );
@@ -293,6 +389,7 @@ export const workspaces = pgTable(
 export const workspaceMemberships = pgTable(
   "workspace_memberships",
   {
+    access: workspaceMembershipAccess("access").notNull().default("enabled"),
     createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -355,6 +452,38 @@ export const workspaceSecurityPolicies = pgTable(
   ],
 );
 
+export const workspaceSettings = pgTable(
+  "workspace_settings",
+  {
+    settings: jsonb("settings")
+      .$type<StoredWorkspaceSettings>()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    version: integer("version").notNull().default(1),
+    workspaceId: uuid("workspace_id")
+      .primaryKey()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    check(
+      "workspace_settings_document_check",
+      sql`jsonb_typeof(${table.settings}) = 'object'
+        AND jsonb_typeof(${table.settings}->'providerFeatures') = 'array'
+        AND jsonb_typeof(${table.settings}->'runtime') = 'object'
+        AND ${table.settings}->>'schemaVersion' = '1'`,
+    ),
+    check(
+      "workspace_settings_version_check",
+      sql`${table.version} > 0`,
+    ),
+  ],
+);
+
 export const workspaceSecurityPolicyChanges = pgTable(
   "workspace_security_policy_changes",
   {
@@ -395,6 +524,33 @@ export const workspaceSecurityPolicyChanges = pgTable(
         AND ${table.resetLinkLifetimeSeconds} BETWEEN 900 AND 604800
         AND ${table.previousResetLinkLifetimeSeconds} BETWEEN 900 AND 604800
         AND ${table.revokedResetLinkCount} >= 0`,
+    ),
+  ],
+);
+
+export const workspaceAuditEvents = pgTable(
+  "workspace_audit_events",
+  {
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    eventType: varchar("event_type", { length: 100 }).notNull(),
+    id: uuid("id").primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    index("workspace_audit_events_workspace_idx").on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+    check(
+      "workspace_audit_events_type_check",
+      sql`length(trim(${table.eventType})) > 0`,
     ),
   ],
 );
@@ -882,6 +1038,10 @@ export const indexedDocuments = pgTable(
       .defaultNow(),
     pageCount: integer("page_count"),
     sourceFile: text("source_file").primaryKey(),
+    sourceLibraryId: uuid("source_library_id").references(
+      () => sourceLibraries.id,
+      { onDelete: "restrict" },
+    ),
     tables: integer("tables").notNull().default(0),
     tags: text("tags").array().notNull().default([]),
     textChunks: integer("text_chunks").notNull().default(0),
@@ -896,6 +1056,10 @@ export const indexedDocuments = pgTable(
       sql`${table.pageCount} IS NULL OR ${table.pageCount} > 0`,
     ),
     index("indexed_documents_document_id_idx").on(table.documentId),
+    index("indexed_documents_library_idx").on(
+      table.sourceLibraryId,
+      table.sourceFile,
+    ),
     index("indexed_documents_tags_gin_idx").using("gin", table.tags),
   ],
 );
@@ -1035,6 +1199,10 @@ export const ingestionJobs = pgTable(
     controlError: text("control_error"),
     controlState: ingestionControlState("control_state").notNull().default("active"),
     sourceFile: text("source_file").primaryKey(),
+    sourceLibraryId: uuid("source_library_id").references(
+      () => sourceLibraries.id,
+      { onDelete: "restrict" },
+    ),
     state: ingestionState("state").notNull().default("pending"),
     tables: integer("tables").notNull().default(0),
     tags: text("tags").array().notNull().default([]),
@@ -1048,6 +1216,10 @@ export const ingestionJobs = pgTable(
     }),
   },
   (table) => [
+    index("ingestion_jobs_library_idx").on(
+      table.sourceLibraryId,
+      table.sourceFile,
+    ),
     check(
       "ingestion_jobs_docling_run_config_check",
       sql`${table.doclingRunId} IS NULL OR ${table.doclingAttemptConfig} IS NOT NULL`,
@@ -1345,16 +1517,28 @@ export const ingestionEmbeddingManifests = pgTable(
   ],
 );
 
-export const researchThreads = pgTable("research_threads", {
-  createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  id: uuid("id").primaryKey(),
-  title: text("title").notNull(),
-  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const researchThreads = pgTable(
+  "research_threads",
+  {
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    id: uuid("id").primaryKey(),
+    title: text("title").notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    workspaceId: uuid("workspace_id").references(() => workspaces.id, {
+      onDelete: "cascade",
+    }),
+  },
+  (table) => [
+    index("research_threads_workspace_updated_idx").on(
+      table.workspaceId,
+      table.updatedAt,
+    ),
+  ],
+);
 
 export const chatConversations = pgTable(
   "chat_conversations",
