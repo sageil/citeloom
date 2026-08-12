@@ -10,6 +10,10 @@ function normalizeWorkspaceName(value) {
   return value.trim().toLocaleLowerCase("en-US");
 }
 
+export function canAdministerWorkspace(role, globalRole) {
+  return role === "admin" || globalRole === "global_admin";
+}
+
 function readWorkspaceSummary(value, label) {
   const workspace = readPlainObject(value, label);
   return {
@@ -35,141 +39,120 @@ export function readWorkspaceSummaries(value) {
 
 export function createWorkspaceAdministrationActions() {
   return {
-    workspaceAdministration: null,
-    workspaceAdministrationBusy: false,
-    workspaceAdministrationError: "",
-    workspaceEditorConfigurationKind: "organization-defaults",
-    workspaceEditorError: "",
-    workspaceEditorMode: "create",
-    workspaceEditorName: "",
-    workspaceEditorOpen: false,
-    workspaceEditorRestoreFocusElement: null,
-    workspaceEditorSourceWorkspaceId: "",
-    workspaceEditorTargetId: null,
+    workspaceActionBusy: false,
+    workspaceCreateConfigurationKind: "organization-defaults",
+    workspaceCreateError: "",
+    workspaceCreateName: "",
+    workspaceCreateOpen: false,
+    workspaceCreateRestoreFocusElement: null,
+    workspaceCreateSourceWorkspaceId: "",
+    workspaceNameDraft: "",
+    workspaceNameError: "",
 
-    workspaceEditorCopySources() {
-      return this.workspaceAdministration ?? [];
+    managedWorkspaces() {
+      const workspaces = [];
+      for (const target of this.settings?.scope.available ?? []) {
+        if (target.kind !== "workspace") {
+          continue;
+        }
+        workspaces.push({
+          id: target.id,
+          name: target.label,
+          role: "admin",
+        });
+      }
+      return workspaces;
     },
 
-    workspaceEditorNameValidationMessage() {
-      const normalizedName = normalizeWorkspaceName(this.workspaceEditorName);
+    canRenameSelectedWorkspace() {
+      if (this.settings?.scope.kind !== "workspace") {
+        return false;
+      }
+      for (const target of this.settings.scope.available) {
+        if (target.kind === "organization") {
+          return true;
+        }
+      }
+      return false;
+    },
+
+    workspaceNameValidationMessage(name, excludedWorkspaceId = null) {
+      const normalizedName = normalizeWorkspaceName(name);
       if (normalizedName === "") {
         return "";
       }
-      for (const workspace of this.workspaceEditorCopySources()) {
-        if (workspace.id === this.workspaceEditorTargetId) {
+      for (const workspace of this.managedWorkspaces()) {
+        if (workspace.id === excludedWorkspaceId) {
           continue;
         }
         if (normalizeWorkspaceName(workspace.name) === normalizedName) {
-          return `A workspace named ${this.workspaceEditorName.trim()} already exists.`;
+          return `A workspace named ${name.trim()} already exists.`;
         }
       }
       return "";
     },
 
-    workspaceEditorCopySourceValidationMessage() {
-      if (
-        this.workspaceEditorMode !== "create"
-        || this.workspaceEditorConfigurationKind !== "workspace-copy"
-      ) {
+    workspaceCreateSourceValidationMessage() {
+      if (this.workspaceCreateConfigurationKind !== "workspace-copy") {
         return "";
       }
-      const sourceExists = this.workspaceEditorCopySources().some((workspace) => {
-        return workspace.id === this.workspaceEditorSourceWorkspaceId;
-      });
-      return sourceExists ? "" : "Select a workspace to copy.";
+      for (const workspace of this.managedWorkspaces()) {
+        if (workspace.id === this.workspaceCreateSourceWorkspaceId) {
+          return "";
+        }
+      }
+      return "Select a workspace to copy.";
     },
 
-    workspaceEditorCanSubmit() {
-      if (
-        this.workspaceAdministrationBusy
-        || this.workspaceEditorName.trim() === ""
-        || this.workspaceEditorNameValidationMessage() !== ""
-      ) {
-        return false;
-      }
-      if (this.workspaceEditorMode === "rename") {
-        return this.workspaceEditorTargetId !== null;
-      }
-      return this.workspaceEditorCopySourceValidationMessage() === "";
+    workspaceCreateCanSubmit() {
+      return !this.workspaceActionBusy
+        && this.workspaceCreateName.trim() !== ""
+        && this.workspaceNameValidationMessage(this.workspaceCreateName) === ""
+        && this.workspaceCreateSourceValidationMessage() === "";
     },
 
-    async loadWorkspaceAdministration() {
-      this.workspaceAdministrationBusy = true;
-      this.workspaceAdministrationError = "";
-      try {
-        const response = await fetch("/api/workspaces", {
-          headers: { accept: "application/json" },
-        });
-        this.workspaceAdministration = await readJsonResponse(
-          response,
-          "Workspace administration request",
-          readWorkspaceSummaries,
-        );
-      } catch (error) {
-        this.workspaceAdministrationError = error instanceof Error
-          ? error.message
-          : "Workspaces could not be loaded.";
-      } finally {
-        this.workspaceAdministrationBusy = false;
-      }
-    },
-
-    destroyWorkspaceAdministration() {
-      this.workspaceAdministration = null;
-      this.workspaceAdministrationBusy = false;
-      this.workspaceAdministrationError = "";
-      this.closeWorkspaceEditor();
+    destroyWorkspaceActions() {
+      this.workspaceActionBusy = false;
+      this.workspaceCreateError = "";
+      this.workspaceNameError = "";
+      this.closeWorkspaceCreate();
     },
 
     openWorkspaceCreate() {
-      if (this.workspaceAdministrationBusy) {
+      if (this.workspaceActionBusy) {
         return;
       }
-      this.workspaceEditorConfigurationKind = "organization-defaults";
-      this.workspaceEditorError = "";
-      this.workspaceEditorMode = "create";
-      this.workspaceEditorName = "";
-      this.workspaceEditorSourceWorkspaceId = this.currentWorkspaceId
-        ?? this.workspaceEditorCopySources()[0]?.id
+      this.workspaceCreateConfigurationKind = "organization-defaults";
+      this.workspaceCreateError = "";
+      this.workspaceCreateName = "";
+      this.workspaceCreateSourceWorkspaceId = this.currentWorkspaceId
+        ?? this.managedWorkspaces()[0]?.id
         ?? "";
-      this.workspaceEditorTargetId = null;
-      this.openWorkspaceEditor();
-    },
-
-    openWorkspaceRename(workspace) {
-      if (this.workspaceAdministrationBusy) {
-        return;
-      }
-      this.workspaceEditorError = "";
-      this.workspaceEditorMode = "rename";
-      this.workspaceEditorName = workspace.name;
-      this.workspaceEditorTargetId = workspace.id;
-      this.openWorkspaceEditor();
-    },
-
-    openWorkspaceEditor() {
-      this.workspaceEditorRestoreFocusElement = document.activeElement instanceof HTMLElement
+      this.workspaceCreateRestoreFocusElement = document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
-      this.workspaceEditorOpen = true;
-      this.$nextTick(() => this.$refs.workspaceEditorName?.focus());
+      this.workspaceCreateOpen = true;
+      this.$nextTick(() => this.$refs.workspaceCreateName?.focus());
     },
 
-    closeWorkspaceEditor() {
-      if (this.workspaceAdministrationBusy && this.workspaceEditorOpen) {
+    async openWorkspaceManagement(workspace) {
+      await this.changeSettingsTarget(workspace.id, "Workspace");
+    },
+
+    closeWorkspaceCreate() {
+      if (this.workspaceActionBusy && this.workspaceCreateOpen) {
         return;
       }
-      const restoreFocusElement = this.workspaceEditorRestoreFocusElement;
-      this.workspaceEditorOpen = false;
-      this.workspaceEditorRestoreFocusElement = null;
+      const restoreFocusElement = this.workspaceCreateRestoreFocusElement;
+      this.workspaceCreateOpen = false;
+      this.workspaceCreateRestoreFocusElement = null;
       if (restoreFocusElement?.isConnected === true) {
         this.$nextTick(() => restoreFocusElement.focus());
       }
     },
 
-    cycleWorkspaceEditorFocus(event) {
-      const dialog = this.$refs.workspaceEditorDialog;
+    cycleWorkspaceCreateFocus(event) {
+      const dialog = this.$refs.workspaceCreateDialog;
       if (!(dialog instanceof HTMLElement)) {
         return;
       }
@@ -192,23 +175,12 @@ export function createWorkspaceAdministrationActions() {
       }
     },
 
-    async submitWorkspaceEditor() {
-      if (!this.workspaceEditorCanSubmit()) {
-        return;
-      }
-      if (this.workspaceEditorMode === "rename") {
-        await this.renameWorkspace();
-        return;
-      }
-      await this.createWorkspace();
-    },
-
     async createWorkspace() {
-      if (!this.workspaceEditorCanSubmit()) {
+      if (!this.workspaceCreateCanSubmit()) {
         return;
       }
-      this.workspaceAdministrationBusy = true;
-      this.workspaceEditorError = "";
+      this.workspaceActionBusy = true;
+      this.workspaceCreateError = "";
       try {
         const response = await fetch("/api/workspaces", {
           body: JSON.stringify(this.buildWorkspaceCreationRequest()),
@@ -218,62 +190,130 @@ export function createWorkspaceAdministrationActions() {
           },
           method: "POST",
         });
-        await readJsonResponse(
+        const workspace = await readJsonResponse(
           response,
           "Workspace creation",
           (value) => readWorkspaceSummary(value, "created workspace"),
         );
-        window.location.reload();
+        this.registerWorkspace(workspace);
+        this.workspaceActionBusy = false;
+        this.closeWorkspaceCreate();
+        await this.changeSettingsTarget(workspace.id, "Workspace");
       } catch (error) {
-        this.workspaceEditorError = error instanceof Error
+        this.workspaceCreateError = error instanceof Error
           ? error.message
           : "Workspace creation failed.";
-        this.workspaceAdministrationBusy = false;
+        this.workspaceActionBusy = false;
       }
     },
 
     buildWorkspaceCreationRequest() {
       let configuration = { kind: "organization-defaults" };
-      if (this.workspaceEditorConfigurationKind === "workspace-copy") {
+      if (this.workspaceCreateConfigurationKind === "workspace-copy") {
         configuration = {
           kind: "workspace-copy",
-          workspaceId: this.workspaceEditorSourceWorkspaceId,
+          workspaceId: this.workspaceCreateSourceWorkspaceId,
         };
       }
       return {
         configuration,
-        name: this.workspaceEditorName,
+        name: this.workspaceCreateName,
       };
     },
 
-    async renameWorkspace() {
-      if (
-        !this.workspaceEditorCanSubmit()
-        || this.workspaceEditorTargetId === null
-      ) {
+    registerWorkspace(workspace) {
+      this.settings.scope.available.push({
+        id: workspace.id,
+        kind: "workspace",
+        label: workspace.name,
+      });
+      this.settings.scope.available.sort((left, right) => {
+        if (left.kind === "organization") {
+          return -1;
+        }
+        if (right.kind === "organization") {
+          return 1;
+        }
+        return left.label.localeCompare(right.label);
+      });
+      this.workspaces.push(workspace);
+      this.workspaces.sort((left, right) => left.name.localeCompare(right.name));
+    },
+
+    syncWorkspaceNameDraft() {
+      if (this.settings?.scope.kind !== "workspace") {
+        this.workspaceNameDraft = "";
+        this.workspaceNameError = "";
         return;
       }
-      this.workspaceAdministrationBusy = true;
-      this.workspaceEditorError = "";
+      this.workspaceNameDraft = this.settings.scope.label;
+      this.workspaceNameError = "";
+    },
+
+    workspaceNameCanSave() {
+      const scope = this.settings?.scope;
+      if (
+        scope?.kind !== "workspace"
+        || !this.canRenameSelectedWorkspace()
+        || this.workspaceActionBusy
+      ) {
+        return false;
+      }
+      return this.workspaceNameDraft.trim() !== ""
+        && this.workspaceNameDraft.trim() !== scope.label
+        && this.workspaceNameValidationMessage(
+          this.workspaceNameDraft,
+          scope.id,
+        ) === "";
+    },
+
+    async saveWorkspaceName() {
+      if (!this.workspaceNameCanSave()) {
+        return;
+      }
+      const workspaceId = this.settings.scope.id;
+      this.workspaceActionBusy = true;
+      this.workspaceNameError = "";
       try {
-        const workspaceId = encodeURIComponent(this.workspaceEditorTargetId);
-        const response = await fetch(`/api/workspaces/${workspaceId}`, {
-          body: JSON.stringify({ name: this.workspaceEditorName }),
+        const encodedWorkspaceId = encodeURIComponent(workspaceId);
+        const response = await fetch(`/api/workspaces/${encodedWorkspaceId}`, {
+          body: JSON.stringify({ name: this.workspaceNameDraft }),
           headers: {
             accept: "application/json",
             "content-type": "application/json",
           },
           method: "PATCH",
         });
-        if (!response.ok) {
-          await readJsonResponse(response, "Workspace rename");
-        }
-        window.location.reload();
+        const workspace = await readJsonResponse(
+          response,
+          "Workspace update",
+          (value) => readWorkspaceSummary(value, "updated workspace"),
+        );
+        this.updateWorkspaceName(workspace);
       } catch (error) {
-        this.workspaceEditorError = error instanceof Error
+        this.workspaceNameError = error instanceof Error
           ? error.message
-          : "Workspace rename failed.";
-        this.workspaceAdministrationBusy = false;
+          : "Workspace update failed.";
+      } finally {
+        this.workspaceActionBusy = false;
+      }
+    },
+
+    updateWorkspaceName(workspace) {
+      for (const target of this.settings.scope.available) {
+        if (target.id === workspace.id) {
+          target.label = workspace.name;
+        }
+      }
+      this.settings.scope.label = workspace.name;
+      this.workspaceNameDraft = workspace.name;
+      for (const availableWorkspace of this.workspaces ?? []) {
+        if (availableWorkspace.id === workspace.id) {
+          availableWorkspace.name = workspace.name;
+        }
+      }
+      if (this.currentWorkspaceId === workspace.id) {
+        this.currentWorkspaceName = workspace.name;
       }
     },
   };

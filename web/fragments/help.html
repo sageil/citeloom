@@ -418,7 +418,23 @@
           <h2 id="accounts-and-administration" tabindex="-1">Accounts and administration</h2>
           <div>
             <p>Every user can change their own password under Account and access.</p>
-            <p>Workspace administrators can add and remove users, assign member or administrator roles, create time-limited setup or password-reset links, and configure providers and features.</p>
+            <p>Global administrators manage organization user accounts and password links from Security. Workspace administrators manage only workspace membership, roles, and access from Settings.</p>
+            <h3>Create and activate a user</h3>
+            <ol>
+              <li>Open Security, choose Create user, and enter the new account's username and display name.</li>
+              <li>Open Settings, select the destination workspace, and open Workspace.</li>
+              <li>Choose Add user, select the existing setup-pending account, choose its workspace role, and add it to the workspace.</li>
+              <li>Return to Security and create the user's password setup link.</li>
+              <li>Share the single-use link with the user before its displayed expiration time.</li>
+            </ol>
+            <h3>Reset a user's password</h3>
+            <ol>
+              <li>Open Security and find the active organization account.</li>
+              <li>Open Actions and choose Create reset link.</li>
+              <li>Share the single-use link with the user before its displayed expiration time. Their current password remains active until the link is used.</li>
+            </ol>
+            <h3>Change workspace access</h3>
+            <p>Open Settings, select the workspace, and open Workspace. Add user assigns an existing organization account. Remove from workspace removes only that membership and does not delete the account or its access to other workspaces.</p>
             <p>System health shows the active runtime, service capacity, and scheduling information. Service readiness checks connectivity and model availability without inference. Optional live tests are selected separately and may use provider credits or local compute.</p>
             <p>Error reports contain sanitized operational failures for administrators. Purge logs requires confirmation, removes the retained database error records visible to the workspace, and does not delete Docker or host logs.</p>
             <p>Settings resets require confirmation. The confirmation identifies whether the reset affects one value, one feature or panel, or all runtime settings.</p>

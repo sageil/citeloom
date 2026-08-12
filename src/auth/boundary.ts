@@ -42,10 +42,12 @@ export interface ChangePasswordInput {
   newPassword: PasswordInput;
 }
 
-export interface CreateWorkspaceMemberInput {
-  identity: NormalizedUserIdentity;
+export interface AddWorkspaceMemberInput {
   role: WorkspaceRole;
+  userId: string;
 }
+
+export type CreateOrganizationUserInput = NormalizedUserIdentity;
 
 export interface CreateWorkspaceInput {
   configuration: WorkspaceConfigurationSource;
@@ -147,18 +149,27 @@ export function decodeWorkspaceSecurityPolicyUpdate(
   }).strict().parse(input);
 }
 
-export function decodeCreateWorkspaceMemberInput(
+export function decodeAddWorkspaceMemberInput(
   input: unknown,
-): CreateWorkspaceMemberInput {
+): AddWorkspaceMemberInput {
+  return z.object({
+    role: workspaceRoleSchema.default("member"),
+    userId: z.uuid(),
+  }).strict().parse(input);
+}
+
+export function decodeCreateOrganizationUserInput(
+  input: unknown,
+): CreateOrganizationUserInput {
   const candidate = z.object({
     displayName: z.unknown(),
-    role: workspaceRoleSchema.default("member"),
     username: z.unknown(),
   }).strict().parse(input);
-  return {
-    identity: normalizeUserIdentity(candidate),
-    role: candidate.role,
-  };
+  return normalizeUserIdentity(candidate);
+}
+
+export function decodeOrganizationUserId(input: unknown): string {
+  return z.object({ userId: z.uuid() }).strict().parse(input).userId;
 }
 
 export function decodeCreateWorkspaceInput(input: unknown): CreateWorkspaceInput {
@@ -200,6 +211,12 @@ export function decodeWorkspaceMemberAccessInput(
     .access;
 }
 
-export function decodeWorkspaceMemberId(input: unknown): string {
-  return z.object({ userId: z.uuid() }).strict().parse(input).userId;
+export function decodeWorkspaceMemberTarget(input: unknown): {
+  userId: string;
+  workspaceId: string;
+} {
+  return z.object({
+    userId: z.uuid(),
+    workspaceId: z.uuid(),
+  }).strict().parse(input);
 }

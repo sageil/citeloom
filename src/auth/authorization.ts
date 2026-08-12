@@ -14,21 +14,24 @@ export class GlobalAuthorizationError extends Error {
   }
 }
 
-export function requireWorkspaceAdministrator(
+export function canAdministerWorkspace(
   principal: AuthenticatedPrincipal,
-): void {
-  if (principal.role !== "admin") {
-    throw new WorkspaceAuthorizationError();
+  workspaceId: string,
+): boolean {
+  if (principal.dataScope === "all") {
+    return principal.workspaceId === workspaceId;
   }
+  if (principal.globalRole === "global_admin") {
+    return true;
+  }
+  return principal.workspaceId === workspaceId && principal.role === "admin";
 }
 
-export function requireWorkspaceOrGlobalAdministrator(
+export function requireWorkspaceAdministrator(
   principal: AuthenticatedPrincipal,
+  workspaceId: string,
 ): void {
-  if (
-    principal.role !== "admin"
-    && principal.globalRole !== "global_admin"
-  ) {
+  if (!canAdministerWorkspace(principal, workspaceId)) {
     throw new WorkspaceAuthorizationError(
       "Workspace or global administrator access is required.",
     );

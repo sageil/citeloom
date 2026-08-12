@@ -42,8 +42,14 @@ import {
   readLocationView,
   routes,
 } from "./page-routing.js";
-import { clearSettingsScopePreference } from "./settings-scope.js";
-import { readWorkspaceSummaries } from "./workspaces.js";
+import {
+  clearSettingsTargetPreference,
+  writeSettingsTargetPreference,
+} from "./settings-target.js";
+import {
+  canAdministerWorkspace,
+  readWorkspaceSummaries,
+} from "./workspaces.js";
 
 const documentNotificationRefreshDebounceMs = 250;
 const workflowRefreshIntervalMs = 60_000;
@@ -166,6 +172,13 @@ function registerShell(alpine) {
         || this.activeView === "security"
         || this.activeView === "settings"
         || this.activeView === "system-health";
+    },
+
+    get canAdministerCurrentWorkspace() {
+      return canAdministerWorkspace(
+        this.currentRole,
+        this.currentGlobalRole,
+      );
     },
 
     get currentDisplayInitials() {
@@ -529,7 +542,9 @@ function registerShell(alpine) {
           method: "PUT",
         });
         await readJsonResponse(response, "Workspace switch");
-        clearSettingsScopePreference();
+        if (this.currentGlobalRole !== "global_admin") {
+          writeSettingsTargetPreference(workspaceId);
+        }
         window.location.reload();
       } catch (error) {
         this.workspaceSwitching = false;
@@ -1059,9 +1074,19 @@ function registerShell(alpine) {
       }
     },
 
+    prepareSettingsNavigation() {
+      if (this.currentGlobalRole === "global_admin") {
+        writeSettingsTargetPreference("organization");
+        return;
+      }
+      if (this.currentWorkspaceId !== null) {
+        writeSettingsTargetPreference(this.currentWorkspaceId);
+      }
+    },
+
     async signOut() {
       this.clearDocumentNotifications();
-      clearSettingsScopePreference();
+      clearSettingsTargetPreference();
       try {
         await fetch("/api/auth/logout", { method: "POST" });
       } finally {

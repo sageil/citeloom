@@ -1,12 +1,13 @@
 import type { FastifyInstance } from "fastify";
 
+import { decodeWorkspaceId } from "../auth/boundary.js";
 import type { AuthenticatedPrincipal } from "../auth/model.js";
-import type { AppConfig } from "../config/index.js";
 import {
-  type EffectiveApplicationSettings,
-  SettingsValidationError,
-  SettingsVersionConflictError,
-} from "../app/settings.js";
+  WorkspaceAuthorizationError,
+  WorkspaceUnavailableError,
+} from "../auth/store.js";
+import type { AppConfig } from "../config/index.js";
+import { SettingsValidationError, SettingsVersionConflictError } from "../app/settings.js";
 import {
   EmbeddingInputFormatInUseError,
   EmbeddingInputFormatNotFoundError,
@@ -22,7 +23,7 @@ import { OpenAICodexOAuthError } from "../providers/openai-codex-oauth.js";
 import {
   requireGlobalAdministratorPrincipal,
   requireRequestPrincipal,
-  requireWorkspaceOrGlobalAdministratorPrincipal,
+  requireWorkspaceAdministratorPrincipal,
 } from "./authentication-routes.js";
 import type { WebConfig } from "./config.js";
 import {
@@ -30,8 +31,6 @@ import {
   decodeCopyEmbeddingInputFormatRequest,
   decodeEmbeddingInputFormatDefinition,
   decodeResourceId,
-  decodeSettingsScopeQuery,
-  type SettingsScope,
   WebRequestError,
 } from "./request-boundary.js";
 import type { WebServices } from "./services.js";
@@ -65,40 +64,61 @@ export function registerSettingsRoutes(
     "/api/settings",
     async (request): Promise<ApplicationSettingsResponse> => {
       const principal = requireRequestPrincipal(requestPrincipals, request);
-      const defaultScope = defaultSettingsScope(principal);
-      const scope = decodeSettingsScopeQuery(request.query, defaultScope);
-      if (scope === "workspace") {
-        if (principal.dataScope !== "workspace") {
-          throw new WebRequestError(
-            409,
-            "Workspace settings are unavailable when authentication is disabled.",
-          );
-        }
-        requireWorkspaceOrGlobalAdministratorPrincipal(requestPrincipals, request);
-        const settings = await services.readWorkspaceSettings(principal);
+      const workspaces = await services.listWorkspaces(principal);
+      if (principal.globalRole !== "global_admin") {
+        requireWorkspaceAdministratorPrincipal(
+          requestPrincipals,
+          request,
+          principal.workspaceId,
+        );
+        const workspace = requireSettingsWorkspace(
+          workspaces,
+          principal.workspaceId,
+        );
+        const settings = await readSettingsWorkspace(
+          services,
+          principal,
+          workspace.id,
+        );
         return buildApplicationSettingsResponse(
           settings,
           config,
           webConfig,
-          buildWorkspaceSettingsScope(
-            principal.workspaceName,
-            principal.globalRole === "global_admin",
-          ),
+          buildWorkspaceSettingsScope(workspace, [workspace], false),
         );
       }
-      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       const settings = await services.readSettings();
       return buildApplicationSettingsResponse(
         settings,
         config,
         webConfig,
-        buildOrganizationSettingsScope(
-          principal.dataScope === "workspace"
-            && (
-              principal.role === "admin"
-              || principal.globalRole === "global_admin"
-            ),
-        ),
+        buildOrganizationSettingsScope(workspaces),
+      );
+    },
+  );
+
+  server.get(
+    "/api/workspaces/:workspaceId/settings",
+    async (request): Promise<ApplicationSettingsResponse> => {
+      const principal = requireRequestPrincipal(requestPrincipals, request);
+      const workspaceId = decodeWorkspaceId(request.params);
+      requireWorkspaceAdministratorPrincipal(
+        requestPrincipals,
+        request,
+        workspaceId,
+      );
+      const workspaces = await services.listWorkspaces(principal);
+      const workspace = requireSettingsWorkspace(workspaces, workspaceId);
+      const settings = await readSettingsWorkspace(
+        services,
+        principal,
+        workspaceId,
+      );
+      return buildApplicationSettingsResponse(
+        settings,
+        config,
+        webConfig,
+        buildSettingsWorkspaceScope(principal, workspace, workspaces),
       );
     },
   );
@@ -158,57 +178,51 @@ export function registerSettingsRoutes(
     "/api/settings",
     async (request): Promise<ApplicationSettingsResponse> => {
       const principal = requireRequestPrincipal(requestPrincipals, request);
-      const defaultScope = defaultSettingsScope(principal);
-      const scope = decodeSettingsScopeQuery(request.query, defaultScope);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       const settingsRequest = decodeApplicationSettingsUpdate(request.body);
-      let settings: EffectiveApplicationSettings;
       try {
-        if (scope === "workspace") {
-          if (principal.dataScope !== "workspace") {
-            throw new WebRequestError(
-              409,
-              "Workspace settings are unavailable when authentication is disabled.",
-            );
-          }
-          requireWorkspaceOrGlobalAdministratorPrincipal(
-            requestPrincipals,
-            request,
-          );
-          settings = await services.updateWorkspaceSettings(
-            principal,
-            settingsRequest,
-          );
-        } else {
-          requireGlobalAdministratorPrincipal(requestPrincipals, request);
-          settings = await services.updateSettings(settingsRequest);
-        }
-      } catch (error: unknown) {
-        if (error instanceof SettingsVersionConflictError) {
-          throw new WebRequestError(409, error.message);
-        }
-        if (error instanceof SettingsValidationError) {
-          throw new WebRequestError(400, error.message);
-        }
-        throw error;
-      }
-      const responseScope = scope === "workspace"
-        ? buildWorkspaceSettingsScope(
-          principal.workspaceName,
-          principal.globalRole === "global_admin",
-        )
-        : buildOrganizationSettingsScope(
-          principal.dataScope === "workspace"
-            && (
-              principal.role === "admin"
-              || principal.globalRole === "global_admin"
-            ),
+        const settings = await services.updateSettings(settingsRequest);
+        const workspaces = await services.listWorkspaces(principal);
+        return buildApplicationSettingsResponse(
+          settings,
+          config,
+          webConfig,
+          buildOrganizationSettingsScope(workspaces),
         );
-      return buildApplicationSettingsResponse(
-        settings,
-        config,
-        webConfig,
-        responseScope,
+      } catch (error: unknown) {
+        throw mapSettingsUpdateError(error);
+      }
+    },
+  );
+
+  server.put(
+    "/api/workspaces/:workspaceId/settings",
+    async (request): Promise<ApplicationSettingsResponse> => {
+      const principal = requireRequestPrincipal(requestPrincipals, request);
+      const workspaceId = decodeWorkspaceId(request.params);
+      requireWorkspaceAdministratorPrincipal(
+        requestPrincipals,
+        request,
+        workspaceId,
       );
+      const settingsRequest = decodeApplicationSettingsUpdate(request.body);
+      try {
+        const settings = await services.updateWorkspaceSettings(
+          principal,
+          workspaceId,
+          settingsRequest,
+        );
+        const workspaces = await services.listWorkspaces(principal);
+        const workspace = requireSettingsWorkspace(workspaces, workspaceId);
+        return buildApplicationSettingsResponse(
+          settings,
+          config,
+          webConfig,
+          buildSettingsWorkspaceScope(principal, workspace, workspaces),
+        );
+      } catch (error: unknown) {
+        throw mapSettingsUpdateError(error);
+      }
     },
   );
 
@@ -278,19 +292,59 @@ export function registerSettingsRoutes(
   );
 }
 
-function defaultSettingsScope(
-  principal: AuthenticatedPrincipal,
-): SettingsScope {
-  if (
-    principal.dataScope === "workspace"
-    && (
-      principal.role === "admin"
-      || principal.globalRole === "global_admin"
-    )
-  ) {
-    return "workspace";
+function requireSettingsWorkspace(
+  workspaces: Awaited<ReturnType<WebServices["listWorkspaces"]>>,
+  workspaceId: string,
+) {
+  for (const workspace of workspaces) {
+    if (workspace.id === workspaceId && workspace.role === "admin") {
+      return workspace;
+    }
   }
-  return "organization";
+  throw new WebRequestError(404, "The workspace is unavailable.");
+}
+
+function buildSettingsWorkspaceScope(
+  principal: AuthenticatedPrincipal,
+  workspace: Awaited<ReturnType<WebServices["listWorkspaces"]>>[number],
+  workspaces: Awaited<ReturnType<WebServices["listWorkspaces"]>>,
+) {
+  if (principal.globalRole === "global_admin") {
+    return buildWorkspaceSettingsScope(workspace, workspaces, true);
+  }
+  return buildWorkspaceSettingsScope(workspace, [workspace], false);
+}
+
+async function readSettingsWorkspace(
+  services: WebServices,
+  principal: AuthenticatedPrincipal,
+  workspaceId: string,
+) {
+  try {
+    return await services.readWorkspaceSettings(principal, workspaceId);
+  } catch (error: unknown) {
+    throw mapWorkspaceSettingsError(error);
+  }
+}
+
+function mapSettingsUpdateError(error: unknown): unknown {
+  if (error instanceof SettingsVersionConflictError) {
+    return new WebRequestError(409, error.message);
+  }
+  if (error instanceof SettingsValidationError) {
+    return new WebRequestError(400, error.message);
+  }
+  return mapWorkspaceSettingsError(error);
+}
+
+function mapWorkspaceSettingsError(error: unknown): unknown {
+  if (error instanceof WorkspaceAuthorizationError) {
+    return new WebRequestError(403, error.message);
+  }
+  if (error instanceof WorkspaceUnavailableError) {
+    return new WebRequestError(404, error.message);
+  }
+  return error;
 }
 
 function mapEmbeddingInputFormatError(error: unknown): unknown {

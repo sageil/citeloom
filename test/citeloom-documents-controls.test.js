@@ -6,6 +6,11 @@ import {
   registerPage,
 } from "../web/assets/scripts/documents.js";
 import { readDocumentCatalog } from "../web/assets/scripts/document-catalog-schema.js";
+import {
+  findHtmlElementByAttribute,
+  htmlElementHasClass,
+  readHtmlElements,
+} from "./html-test-helpers.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -90,17 +95,26 @@ describe("CiteLoom document ingestion controls", () => {
       new URL("../web/fragments/documents.html", import.meta.url),
       "utf8",
     );
-    const actionLayoutMatches = fragment.match(
-      /class="inspector-management-actions inspector-control-actions"/g,
+    const elements = readHtmlElements(fragment);
+    const actionLayouts = elements.filter((element) => {
+      return htmlElementHasClass(element, "inspector-control-actions");
+    });
+    const pauseButton = findHtmlElementByAttribute(
+      elements,
+      "@click",
+      "controlIngestion(selectedDocument, 'pause')",
+    );
+    const cancelButton = findHtmlElementByAttribute(
+      elements,
+      "@click",
+      "actionConfirmation = 'cancel-ingestion'",
     );
 
-    expect(actionLayoutMatches).toHaveLength(2);
-    expect(fragment).toMatch(
-      /class="button secondary"[\s\S]*?Pause ingestion/,
-    );
-    expect(fragment).toMatch(
-      /class="button danger"[\s\S]*?Cancel ingestion/,
-    );
+    expect(actionLayouts).toHaveLength(2);
+    expect(pauseButton.tagName).toBe("button");
+    expect(htmlElementHasClass(pauseButton, "secondary")).toBe(true);
+    expect(cancelButton.tagName).toBe("button");
+    expect(htmlElementHasClass(cancelButton, "danger")).toBe(true);
     expect(fragment).toContain(
       "This stops the reindex and keeps the current version available.",
     );

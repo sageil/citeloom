@@ -257,7 +257,7 @@
                 <div
                   class="account-navigation-admin"
                   x-cloak
-                  x-show="currentRole === 'admin' || currentGlobalRole === 'global_admin'"
+                  x-show="canAdministerCurrentWorkspace"
                 >
                   <p class="account-navigation-section-label">Administration</p>
                   <a
@@ -267,7 +267,7 @@
                     hx-get="./fragments/errors.html"
                     hx-push-url="./index.html?view=errors"
                     :aria-current="currentPage('errors')"
-                    x-show="currentRole === 'admin'"
+                    x-show="canAdministerCurrentWorkspace"
                     @click="closeAccountMenu()"
                   >
                     <span>Error reports</span>
@@ -279,7 +279,7 @@
                     hx-get="./fragments/security.html"
                     hx-push-url="./index.html?view=security"
                     :aria-current="currentPage('security')"
-                    x-show="currentRole === 'admin'"
+                    x-show="canAdministerCurrentWorkspace"
                     @click="closeAccountMenu()"
                   >
                     <span>Security</span>
@@ -291,8 +291,8 @@
                     hx-get="./fragments/settings.html"
                     hx-push-url="./index.html?view=settings"
                     :aria-current="currentPage('settings')"
-                    x-show="currentRole === 'admin' || currentGlobalRole === 'global_admin'"
-                    @click="closeAccountMenu()"
+                    x-show="canAdministerCurrentWorkspace"
+                    @click="prepareSettingsNavigation(); closeAccountMenu()"
                   >
                     <span>Settings</span>
                   </a>

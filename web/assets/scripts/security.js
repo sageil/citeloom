@@ -10,6 +10,7 @@ import {
   readTimestamp,
 } from "./boundary-readers.js";
 import { requestConfirmation } from "./confirmation.js";
+import { createOrganizationUserManagement } from "./organization-users.js";
 
 function readAdministrator(value) {
   const administrator = readPlainObject(value, "security administrator");
@@ -129,6 +130,7 @@ function copyEditablePolicy(policy) {
 
 export function registerPage(alpine) {
   alpine.data("citeloomSecurityPage", () => ({
+    ...createOrganizationUserManagement(),
     activeResetLinkCount: 0,
     administrators: [],
     busy: false,
@@ -156,6 +158,7 @@ export function registerPage(alpine) {
 
     initialize() {
       void this.loadOverview();
+      this.initializeOrganizationUserManagement();
     },
 
     applyOverview(overview) {

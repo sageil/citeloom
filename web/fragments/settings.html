@@ -17,11 +17,11 @@
           class="form-control compact-header-control"
           aria-label="Settings scope"
           :disabled="loading || saving"
-          x-model="settingsScopeRequest"
-          @change="changeSettingsScope($event.target.value)"
+          :value="settings?.scope.id ?? ''"
+          @change="changeSettingsTargetFromControl($event.target)"
         >
-          <template x-for="scope in settings?.scope.available ?? []" :key="scope.kind">
-            <option :value="scope.kind" x-text="scope.label"></option>
+          <template x-for="scope in settings?.scope.available ?? []" :key="scope.id">
+            <option :selected="scope.id === settings.scope.id" :value="scope.id" x-text="scope.label"></option>
           </template>
         </select>
       </label>
@@ -160,19 +160,19 @@
           </svg>
           <span>
             <strong>Workspaces</strong>
-            <small x-text="workspaceAdministration === null ? 'Create and manage workspaces' : `${workspaceAdministration.length} active workspaces`"></small>
+            <small x-text="`${managedWorkspaces().length} active workspaces`"></small>
           </span>
           <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
             <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
           </svg>
         </button>
-        <button type="button" x-show="!organizationSettingsVisible" @click="selectArea('Users &amp; access')">
+        <button type="button" x-show="workspaceManagementVisible" @click="selectArea('Workspace')">
           <svg aria-hidden="true" class="citeloom-icon">
             <use href="./assets/images/citeloom-icons.svg#citeloom-user-plus"></use>
           </svg>
           <span>
-            <strong>Users &amp; access</strong>
-            <small x-text="userManagementLoading ? 'Workspace membership and roles' : `${enabledWorkspaceUserCount()} of ${members.length} users enabled`"></small>
+            <strong>Workspace</strong>
+            <small x-text="userManagementLoading ? `Manage ${settings.scope.label} details and access` : `${enabledWorkspaceUserCount()} of ${members.length} users enabled`"></small>
           </span>
           <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
             <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
@@ -817,37 +817,95 @@
     </section>
     </template>
 
-    <section
-      class="settings-search-results settings-workspace-users-workbench"
-      x-show="selectedArea === 'Users &amp; access'"
-    >
-      <div
-        class="workspace-user-management-host"
-        hx-get="./fragments/workspace-users-management.html"
-        hx-target="this"
-        hx-trigger="load"
-        hx-swap="innerHTML"
-      >
-        <p class="access-user-loading">Loading workspace users.</p>
+    <template x-if="selectedArea === 'Workspace'">
+    <section class="settings-search-results settings-workspace-management-workbench">
+      <div class="settings-administration-content">
+        <section class="settings-administration-list" aria-labelledby="settings-workspace-details-title">
+          <header>
+            <div><h2 id="settings-workspace-details-title">Workspace details</h2><p>Manage the workspace name, membership, roles, and access in one place.</p></div>
+            <span class="setting-source" x-text="canRenameSelectedWorkspace() ? 'Global administrator' : 'Workspace administrator'"></span>
+          </header>
+          <form class="settings-workspace-details-form" @submit.prevent="saveWorkspaceName()">
+            <div class="form-field">
+              <label for="workspace-name">Name</label>
+              <div class="settings-workspace-name-control">
+                <input id="workspace-name" class="form-control" maxlength="200" required type="text" x-model.trim="workspaceNameDraft" :disabled="!canRenameSelectedWorkspace() || workspaceActionBusy" :aria-invalid="(workspaceNameValidationMessage(workspaceNameDraft, settings.scope.id) !== '').toString()" @input="workspaceNameError = ''" />
+                <button class="button primary" type="submit" x-show="canRenameSelectedWorkspace()" :disabled="!workspaceNameCanSave()" x-text="workspaceActionBusy ? 'Saving…' : 'Save name'">Save name</button>
+              </div>
+              <small x-show="canRenameSelectedWorkspace()">Changing the name does not move or rename sources, settings, or memberships.</small>
+              <small x-show="!canRenameSelectedWorkspace()">Only a global administrator can rename a workspace.</small>
+              <small class="creation-modal-field-error" role="alert" x-show="workspaceNameValidationMessage(workspaceNameDraft, settings.scope.id) !== ''" x-text="workspaceNameValidationMessage(workspaceNameDraft, settings.scope.id)"></small>
+            </div>
+          </form>
+          <p class="field-error" role="alert" x-cloak x-show="workspaceNameError !== ''" x-text="workspaceNameError"></p>
+        </section>
+
+        <div class="workspace-user-management" @keydown.escape.window="addMemberOpen &amp;&amp; closeAddMember()">
+          <p class="field-error" role="alert" x-cloak x-show="userManagementError !== ''" x-text="userManagementError"></p>
+          <section class="access-users-panel access-card">
+            <header class="access-users-heading">
+              <div><h2 x-text="userManagementTitle"></h2><p x-text="`Manage membership, roles, and access for ${settings.scope.label}.`"></p></div>
+              <div class="compact-header-actions">
+                <button class="button secondary compact-header-control" :disabled="userManagementLoading" type="button" @click="loadUsers()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use></svg><span>Refresh</span></button>
+                <button class="button primary compact-header-control compact-header-primary" :disabled="userManagementBusy || userManagementLoading" type="button" @click="openAddMember()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-user-plus"></use></svg><span>Add user</span></button>
+              </div>
+            </header>
+
+            <div class="access-role-guide" x-show="showUserRoleGuide" aria-label="Workspace role guidance">
+              <div><strong>Admin</strong><span>Can manage users, roles, and workspace settings.</span></div>
+              <div><strong>Member</strong><span>Can use workspace features and manage content.</span></div>
+            </div>
+
+            <div class="access-user-table" :aria-busy="userManagementLoading">
+              <div class="access-user-table-heading" aria-hidden="true"><span>User</span><span>Account</span><span>Role</span><span>Access</span><span x-text="userManagementActionsLabel"></span></div>
+              <p class="access-user-loading" x-show="userManagementLoading">Loading users…</p>
+              <div class="access-user-load-failed" x-cloak x-show="!userManagementLoading &amp;&amp; userManagementLoadFailed"><span>Workspace users are unavailable.</span><button class="button secondary" type="button" @click="loadUsers()">Try again</button></div>
+              <p class="access-user-loading" x-show="!userManagementLoading &amp;&amp; !userManagementLoadFailed &amp;&amp; members.length === 0">No users are in this workspace yet.</p>
+              <template x-for="member in members" :key="member.userId">
+                <article class="access-user-row" :class="{ disabled: member.access === 'disabled' }">
+                  <div class="access-user-identity">
+                    <span class="access-user-avatar" x-text="workspaceUserInitials(member.displayName)"></span>
+                    <span><strong class="truncate" x-text="member.displayName"></strong><small class="truncate" x-text="member.globalRole === 'global_admin' ? `@${member.username} · Global administrator` : `@${member.username}`"></small></span>
+                  </div>
+                  <span class="access-user-state"><i :class="`state-${member.state}`"></i><span x-text="member.state"></span></span>
+                  <select class="form-control compact-header-control access-user-row-control" :value="member.role" :disabled="userManagementBusy || member.globalRole === 'global_admin'" @change="changeRole(member, $event.target.value)" :aria-label="`Role for ${member.username}`"><option value="member">Member</option><option value="admin">Admin</option></select>
+                  <select class="form-control compact-header-control access-user-row-control" :value="member.access" :disabled="userManagementBusy || member.globalRole === 'global_admin' || member.userId === currentUserId" @change="changeAccess(member, $event.target.value)" :aria-label="`Workspace access for ${member.username}`"><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select>
+                  <details class="access-user-actions" x-show="member.globalRole !== 'global_admin'" @click.outside="$el.open = false">
+                    <summary class="access-user-row-control" :aria-label="`Workspace actions for ${member.username}`"><span>Actions</span><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-settings"></use></svg></summary>
+                    <div>
+                      <button class="danger" :disabled="userManagementBusy" type="button" @click="$el.closest('details').removeAttribute('open'); requestRemoveUser(member)"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use></svg><span>Remove from workspace</span></button>
+                    </div>
+                  </details>
+                  <span class="access-user-row-control access-user-required" x-show="member.globalRole === 'global_admin'">Required</span>
+                </article>
+              </template>
+            </div>
+            <footer class="access-users-footer"><span x-text="userManagementLoading ? 'Loading users…' : `${enabledWorkspaceUserCount()} of ${members.length} users enabled`"></span><span class="access-administrator-invariant"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-shield"></use></svg>At least one enabled administrator is required.</span></footer>
+          </section>
+
+          <div class="access-drawer-backdrop" x-cloak x-show="addMemberOpen" @click.self="closeAddMember()">
+            <aside class="access-add-drawer" role="dialog" aria-modal="true" aria-labelledby="add-member-title">
+              <header><div><h2 id="add-member-title">Add user</h2><p>Give an existing CiteLoom account access to this workspace.</p></div><button class="button access-close-button" type="button" aria-label="Close add user form" @click="closeAddMember()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg></button></header>
+              <form @submit.prevent="addWorkspaceMember()">
+                <label><span>User</span><select required :value="selectedMemberCandidateId" :disabled="userManagementBusy || memberCandidates.length === 0" @change="selectMemberCandidate($event.target.value)"><option disabled value="">Select an existing user</option><template x-for="candidate in memberCandidates" :key="candidate.userId"><option :value="candidate.userId" x-text="`${candidate.displayName} (@${candidate.username})${candidate.state === 'pending' ? ' · Setup pending' : ''}${candidate.globalRole === 'global_admin' ? ' · Global administrator' : ''}`"></option></template></select><small x-show="memberCandidates.length > 0">Active and setup-pending accounts that are not already members are shown.</small><small x-show="memberCandidates.length === 0">Every available user is already a member of this workspace.</small></label>
+                <label><span>Role</span><select x-model="memberRoleDraft" :disabled="userManagementBusy || selectedMemberCandidateIsGlobalAdministrator()"><option value="member">Member</option><option value="admin">Admin</option></select><small x-show="selectedMemberCandidateIsGlobalAdministrator()">Global administrators always have the Admin role.</small></label>
+                <div class="access-drawer-guidance"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-info"></use></svg><p><strong>Role guidance</strong><span>Admins can manage users and roles. Members can use the workspace but cannot manage users.</span></p></div>
+                <footer><button class="button access-secondary-button" :disabled="userManagementBusy" type="button" @click="closeAddMember()">Cancel</button><button class="button access-primary-button" :disabled="userManagementBusy || selectedMemberCandidateId === ''" type="submit" x-text="userManagementBusy ? 'Adding…' : 'Add to workspace'"></button></footer>
+              </form>
+            </aside>
+          </div>
+        </div>
       </div>
     </section>
+    </template>
 
     <template x-if="selectedArea === 'Workspaces'">
     <section class="settings-search-results settings-workspace-administration-workbench">
-      <div class="status-message settings-message error" role="alert" x-cloak x-show="workspaceAdministrationError !== ''">
-        <svg aria-hidden="true" class="citeloom-icon status-icon error"><use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use></svg>
-        <span x-text="workspaceAdministrationError"></span>
-        <button class="text-button citeloom-settings-retry" type="button" x-show="workspaceAdministration === null &amp;&amp; !workspaceAdministrationBusy" @click="loadWorkspaceAdministration()">Retry</button>
-      </div>
-
-      <p class="settings-loading" x-show="workspaceAdministration === null &amp;&amp; workspaceAdministrationBusy">Loading workspaces.</p>
-
-      <template x-if="workspaceAdministration !== null">
       <div class="settings-administration-content">
         <div class="settings-feature-health" aria-label="Workspace summary">
-          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg><span><strong x-text="`${workspaceAdministration.length} active workspaces`"></strong><small>Available to organization administrators</small></span></div>
-          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><span><strong x-text="currentWorkspaceName"></strong><small>Current workspace</small></span></div>
-          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><span><strong>Global administrator</strong><small>Required to create or rename workspaces</small></span></div>
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg><span><strong x-text="`${managedWorkspaces().length} active workspaces`"></strong><small>Available to organization administrators</small></span></div>
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><span><strong x-text="currentWorkspaceName"></strong><small>Current application workspace</small></span></div>
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><span><strong>Global administrator</strong><small>Can create and edit every workspace</small></span></div>
         </div>
 
         <div class="settings-administration-grid">
@@ -856,7 +914,7 @@
               <span class="settings-feature-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg></span>
               <div><h2 id="settings-workspace-create-title">Create workspace</h2><p>Start with organization defaults or copy another workspace's overrides.</p></div>
             </header>
-            <button class="button primary" type="button" :disabled="workspaceAdministrationBusy" @click="openWorkspaceCreate()">Create workspace</button>
+            <button class="button primary" type="button" :disabled="workspaceActionBusy" @click="openWorkspaceCreate()">Create workspace</button>
             <div class="settings-boundary-note">
               <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-info"></use></svg>
               <span>Every active global administrator is added to the new workspace as an administrator.</span>
@@ -864,13 +922,13 @@
           </section>
 
           <section class="settings-administration-list" aria-labelledby="settings-workspace-list-title">
-            <header><div><h2 id="settings-workspace-list-title">Active workspaces</h2><p>Rename workspace metadata without changing settings, sources, or memberships.</p></div><span class="setting-source">Global administrator</span></header>
-            <div class="settings-administration-empty" x-show="workspaceAdministration.length === 0">
+            <header><div><h2 id="settings-workspace-list-title">Active workspaces</h2><p>Edit each workspace's settings, details, membership, roles, and access.</p></div><span class="setting-source">Global administrator</span></header>
+            <div class="settings-administration-empty" x-show="managedWorkspaces().length === 0">
               <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg>
               <div><strong>No workspaces available</strong><span>Create the first workspace to configure isolated settings and sources.</span></div>
             </div>
-            <div class="settings-administration-records" x-show="workspaceAdministration.length > 0">
-              <template x-for="workspace in workspaceAdministration" :key="workspace.id">
+            <div class="settings-administration-records" x-show="managedWorkspaces().length > 0">
+              <template x-for="workspace in managedWorkspaces()" :key="workspace.id">
                 <article class="settings-administration-record">
                   <header>
                     <div class="settings-administration-identity">
@@ -878,7 +936,7 @@
                     </div>
                     <div class="settings-administration-actions">
                       <span class="setting-source" x-show="workspace.id === currentWorkspaceId">Current</span>
-                      <button class="button secondary" type="button" :disabled="workspaceAdministrationBusy" @click="openWorkspaceRename(workspace)">Rename</button>
+                      <button class="button secondary" type="button" :disabled="workspaceActionBusy" @click="openWorkspaceManagement(workspace)">Edit</button>
                     </div>
                   </header>
                 </article>
@@ -887,7 +945,6 @@
           </section>
         </div>
       </div>
-      </template>
     </section>
     </template>
 
@@ -1120,7 +1177,7 @@
     </section>
     </template>
 
-    <template x-if="!browsingAreas &amp;&amp; selectedArea !== 'Application Features' &amp;&amp; selectedArea !== 'Providers' &amp;&amp; selectedArea !== 'Object storage' &amp;&amp; selectedArea !== 'Source libraries' &amp;&amp; selectedArea !== 'Users &amp; access' &amp;&amp; selectedArea !== 'Workspaces' &amp;&amp; selectedArea !== 'Startup and deployment'">
+    <template x-if="!browsingAreas &amp;&amp; selectedArea !== 'Application Features' &amp;&amp; selectedArea !== 'Providers' &amp;&amp; selectedArea !== 'Object storage' &amp;&amp; selectedArea !== 'Source libraries' &amp;&amp; selectedArea !== 'Workspace' &amp;&amp; selectedArea !== 'Workspaces' &amp;&amp; selectedArea !== 'Startup and deployment'">
     <section class="settings-search-results settings-feature-workbench settings-runtime-workbench" aria-live="polite">
       <div class="empty-state settings-empty-results" x-show="filteredFields.length === 0">
         <svg aria-hidden="true" class="citeloom-icon">
@@ -1204,61 +1261,61 @@
   <div
     class="dialog-backdrop creation-modal-backdrop"
     x-cloak
-    x-show="workspaceEditorOpen"
-    @click.self="closeWorkspaceEditor()"
-    @keydown.escape.window="workspaceEditorOpen &amp;&amp; closeWorkspaceEditor()"
+    x-show="workspaceCreateOpen"
+    @click.self="closeWorkspaceCreate()"
+    @keydown.escape.window="workspaceCreateOpen &amp;&amp; closeWorkspaceCreate()"
   >
     <form
-      aria-describedby="workspace-editor-description"
-      aria-labelledby="workspace-editor-title"
+      aria-describedby="workspace-create-description"
+      aria-labelledby="workspace-create-title"
       aria-modal="true"
       class="dialog creation-modal"
       role="dialog"
-      x-ref="workspaceEditorDialog"
-      :aria-busy="workspaceAdministrationBusy"
-      @keydown.tab="cycleWorkspaceEditorFocus($event)"
-      @submit.prevent="submitWorkspaceEditor()"
+      x-ref="workspaceCreateDialog"
+      :aria-busy="workspaceActionBusy"
+      @keydown.tab="cycleWorkspaceCreateFocus($event)"
+      @submit.prevent="createWorkspace()"
     >
       <header class="creation-modal-header">
         <div>
-          <h2 class="section-kicker" id="workspace-editor-title" x-text="workspaceEditorMode === 'rename' ? 'Rename workspace' : 'Create workspace'">Create workspace</h2>
-          <p class="creation-modal-description" id="workspace-editor-description" x-text="workspaceEditorMode === 'rename' ? 'Settings, sources, and memberships remain attached to this workspace.' : 'Every global administrator will be added as a workspace administrator.'">Every global administrator will be added as a workspace administrator.</p>
+          <h2 class="section-kicker" id="workspace-create-title">Create workspace</h2>
+          <p class="creation-modal-description" id="workspace-create-description">Every global administrator will be added as a workspace administrator.</p>
         </div>
-        <button aria-label="Close workspace form" class="icon-button creation-modal-close" :disabled="workspaceAdministrationBusy" type="button" @click="closeWorkspaceEditor()">
+        <button aria-label="Close workspace form" class="icon-button creation-modal-close" :disabled="workspaceActionBusy" type="button" @click="closeWorkspaceCreate()">
           <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg>
         </button>
       </header>
       <label class="form-field">
         <span>Name</span>
-        <input class="form-control" x-ref="workspaceEditorName" aria-describedby="workspace-editor-name-help workspace-editor-name-error" :aria-invalid="(workspaceEditorNameValidationMessage() !== '').toString()" maxlength="200" required type="text" x-model.trim="workspaceEditorName" @input="workspaceEditorError = ''" />
-        <small id="workspace-editor-name-help">The name shown to workspace members.</small>
-        <small class="creation-modal-field-error" id="workspace-editor-name-error" role="alert" x-show="workspaceEditorNameValidationMessage() !== ''" x-text="workspaceEditorNameValidationMessage()"></small>
+        <input class="form-control" x-ref="workspaceCreateName" aria-describedby="workspace-create-name-help workspace-create-name-error" :aria-invalid="(workspaceNameValidationMessage(workspaceCreateName) !== '').toString()" maxlength="200" required type="text" x-model.trim="workspaceCreateName" @input="workspaceCreateError = ''" />
+        <small id="workspace-create-name-help">The name shown to workspace members.</small>
+        <small class="creation-modal-field-error" id="workspace-create-name-error" role="alert" x-show="workspaceNameValidationMessage(workspaceCreateName) !== ''" x-text="workspaceNameValidationMessage(workspaceCreateName)"></small>
       </label>
-      <fieldset class="workspace-create-configuration" :disabled="workspaceEditorMode !== 'create'" x-show="workspaceEditorMode === 'create'">
+      <fieldset class="workspace-create-configuration">
         <legend>Initial settings</legend>
-        <label class="workspace-create-configuration-option" :class="{ selected: workspaceEditorConfigurationKind === 'organization-defaults' }">
-          <input name="workspace-configuration" type="radio" value="organization-defaults" x-model="workspaceEditorConfigurationKind" @change="workspaceEditorError = ''" />
+        <label class="workspace-create-configuration-option" :class="{ selected: workspaceCreateConfigurationKind === 'organization-defaults' }">
+          <input name="workspace-configuration" type="radio" value="organization-defaults" x-model="workspaceCreateConfigurationKind" @change="workspaceCreateError = ''" />
           <span><strong>Use organization defaults</strong><small>Inherit current defaults and future organization changes.</small></span>
         </label>
-        <label class="workspace-create-configuration-option" :class="{ selected: workspaceEditorConfigurationKind === 'workspace-copy' }">
-          <input name="workspace-configuration" type="radio" value="workspace-copy" x-model="workspaceEditorConfigurationKind" @change="workspaceEditorError = ''" />
+        <label class="workspace-create-configuration-option" :class="{ selected: workspaceCreateConfigurationKind === 'workspace-copy' }">
+          <input name="workspace-configuration" type="radio" value="workspace-copy" x-model="workspaceCreateConfigurationKind" @change="workspaceCreateError = ''" />
           <span><strong>Copy workspace settings</strong><small>Start with another workspace's explicit overrides.</small></span>
         </label>
-        <label class="form-field workspace-create-source" x-show="workspaceEditorConfigurationKind === 'workspace-copy'">
+        <label class="form-field workspace-create-source" x-show="workspaceCreateConfigurationKind === 'workspace-copy'">
           <span>Copy from</span>
-          <select class="form-control" aria-describedby="workspace-editor-source-help workspace-editor-source-error" :aria-invalid="(workspaceEditorCopySourceValidationMessage() !== '').toString()" :disabled="workspaceEditorCopySources().length === 0" :required="workspaceEditorConfigurationKind === 'workspace-copy'" x-model="workspaceEditorSourceWorkspaceId" @change="workspaceEditorError = ''">
-            <template x-for="workspace in workspaceEditorCopySources()" :key="workspace.id">
+          <select class="form-control" aria-describedby="workspace-create-source-help workspace-create-source-error" :aria-invalid="(workspaceCreateSourceValidationMessage() !== '').toString()" :disabled="managedWorkspaces().length === 0" :required="workspaceCreateConfigurationKind === 'workspace-copy'" x-model="workspaceCreateSourceWorkspaceId" @change="workspaceCreateError = ''">
+            <template x-for="workspace in managedWorkspaces()" :key="workspace.id">
               <option :value="workspace.id" x-text="workspace.name"></option>
             </template>
           </select>
-          <small id="workspace-editor-source-help">Provider credentials and infrastructure remain organization-managed.</small>
-          <small class="creation-modal-field-error" id="workspace-editor-source-error" role="alert" x-show="workspaceEditorCopySourceValidationMessage() !== ''" x-text="workspaceEditorCopySourceValidationMessage()"></small>
+          <small id="workspace-create-source-help">Provider credentials and infrastructure remain organization-managed.</small>
+          <small class="creation-modal-field-error" id="workspace-create-source-error" role="alert" x-show="workspaceCreateSourceValidationMessage() !== ''" x-text="workspaceCreateSourceValidationMessage()"></small>
         </label>
       </fieldset>
-      <p class="creation-modal-error" role="alert" x-show="workspaceEditorError" x-text="workspaceEditorError"></p>
+      <p class="creation-modal-error" role="alert" x-show="workspaceCreateError" x-text="workspaceCreateError"></p>
       <footer class="dialog-actions creation-modal-actions">
-        <button class="button secondary" :disabled="workspaceAdministrationBusy" type="button" @click="closeWorkspaceEditor()">Cancel</button>
-        <button class="button primary" :disabled="!workspaceEditorCanSubmit()" type="submit" x-text="workspaceAdministrationBusy ? (workspaceEditorMode === 'rename' ? 'Renaming…' : 'Creating…') : (workspaceEditorMode === 'rename' ? 'Save name' : 'Create workspace')"></button>
+        <button class="button secondary" :disabled="workspaceActionBusy" type="button" @click="closeWorkspaceCreate()">Cancel</button>
+        <button class="button primary" :disabled="!workspaceCreateCanSubmit()" type="submit" x-text="workspaceActionBusy ? 'Creating…' : 'Create workspace'"></button>
       </footer>
     </form>
   </div>

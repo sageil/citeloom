@@ -33,13 +33,10 @@ import {
   sourceLibraryAreaName,
   startupGroupName,
   thinkingModes,
-  workspaceAdministrationAreaName,
-  workspaceUsersAreaName,
+  workspacesAreaName,
+  workspaceManagementAreaName,
 } from "./settings-schema.js";
-import {
-  readSettingsScopePreference,
-  writeSettingsScopePreference,
-} from "./settings-scope.js";
+import { createSettingsTargetActions } from "./settings-target.js";
 import {
   createSourceContentStorageActions,
 } from "./source-content-storage.js";
@@ -367,10 +364,7 @@ function readOpenAICodexModelsResponse(value) {
 }
 
 export function registerPage(alpine) {
-  let rememberedSettingsScope = readSettingsScopePreference();
-
   alpine.data("citeloomSettingsPage", () => ({
-    abortController: null,
     credentialClears: [],
     credentialDrafts: {},
     drafts: {},
@@ -409,27 +403,49 @@ export function registerPage(alpine) {
     selectedRuntimeFieldKey: null,
     selectedStartupKey: null,
     settings: null,
-    settingsScopeRequest: rememberedSettingsScope,
     settingsRevision: null,
     settingsRevisionListener: null,
     settingsHistoryListener: null,
     sourceFilter: "all",
     ...createSettingsResetActions(alpine),
+    ...createSettingsTargetActions(readSettingsResponse),
     ...createSourceContentStorageActions(),
     ...createSourceLibraryAdministrationActions(),
     ...createWorkspaceAdministrationActions(),
     ...createWorkspaceUserManagement({
-      title: "Users & access",
+      title: "Workspace access",
     }),
 
     get areaCount() {
-      return this.groups.length
-        + 2
-        + (this.settings?.scope.editableProviderConnections === true ? 4 : 0);
+      return this.availableAreaNames().length;
     },
 
     get organizationSettingsVisible() {
-      return this.settings?.scope.editableProviderConnections === true;
+      return this.settings?.scope.kind === "organization";
+    },
+
+    get workspaceManagementVisible() {
+      return this.settings?.scope.kind === "workspace";
+    },
+
+    availableAreaNames() {
+      const names = ["Application Features"];
+      for (const group of this.groups) {
+        names.push(group.name);
+      }
+      if (this.organizationSettingsVisible) {
+        names.push(
+          workspacesAreaName,
+          "Providers",
+          objectStorageAreaName,
+          sourceLibraryAreaName,
+          startupGroupName,
+        );
+      }
+      if (this.workspaceManagementVisible) {
+        names.push(workspaceManagementAreaName);
+      }
+      return [...new Set(names)];
     },
 
     get browsingAreas() {
@@ -543,23 +559,14 @@ export function registerPage(alpine) {
         this.settingsRevisionListener,
       );
       await this.loadSettings();
-      if (this.organizationSettingsVisible) {
-        await Promise.all([
-          this.loadOpenAICodexAuth(),
-          this.loadSourceContentStorage(),
-          this.loadSourceLibraryAdministration(),
-          this.loadWorkspaceAdministration(),
-        ]);
-      } else {
-        await this.loadUsers();
-      }
+      await this.loadScopeResources();
     },
 
     destroy() {
-      this.abortController?.abort();
+      this.destroySettingsTargetActions();
       this.destroySourceContentStorage();
       this.destroySourceLibraryAdministration();
-      this.destroyWorkspaceAdministration();
+      this.destroyWorkspaceActions();
       this.destroyUserManagement();
       if (this.openAICodexPollTimer !== null) {
         clearTimeout(this.openAICodexPollTimer);
@@ -572,94 +579,6 @@ export function registerPage(alpine) {
       }
       if (this.settingsHistoryListener !== null) {
         window.removeEventListener("popstate", this.settingsHistoryListener);
-      }
-    },
-
-    async loadSettings() {
-      this.abortController?.abort();
-      const controller = new AbortController();
-      this.abortController = controller;
-      this.loading = true;
-      this.errorMessage = "";
-      try {
-        const response = await fetch(this.settingsRequestUrl(), {
-          headers: { accept: "application/json" },
-          signal: controller.signal,
-        });
-        const settings = await readSettingsResponse(response, "Settings request");
-        this.applySettings(settings);
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          this.errorMessage = error instanceof Error
-            ? error.message
-            : "The settings request failed.";
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          this.loading = false;
-        }
-      }
-    },
-
-    settingsRequestUrl() {
-      const scope = this.settingsScopeRequest ?? this.settings?.scope.kind;
-      if (scope === null || scope === undefined) {
-        return "/api/settings";
-      }
-      return `/api/settings?scope=${encodeURIComponent(scope)}`;
-    },
-
-    async changeSettingsScope(scope) {
-      const normalized = readEnum(
-        scope,
-        ["organization", "workspace"],
-        "selected settings scope",
-      );
-      const activeScope = this.settings?.scope.kind;
-      if (activeScope === undefined) {
-        return;
-      }
-      if (normalized === activeScope || this.loading) {
-        this.settingsScopeRequest = activeScope;
-        return;
-      }
-      if (this.changeCount > 0) {
-        const confirmed = await requestConfirmation({
-          cancelLabel: "Keep editing",
-          confirmLabel: "Discard changes",
-          description: "Unsaved settings changes will be discarded when you switch scope.",
-          title: "Switch settings scope?",
-          tone: "danger",
-        });
-        if (!confirmed) {
-          this.settingsScopeRequest = activeScope;
-          return;
-        }
-      }
-      this.settingsScopeRequest = normalized;
-      this.selectedArea = null;
-      this.locationStateRestored = false;
-      await this.loadSettings();
-      this.settingsScopeRequest = this.settings.scope.kind;
-      if (this.organizationSettingsVisible) {
-        this.destroyUserManagement();
-        await Promise.all([
-          this.loadOpenAICodexAuth(),
-          this.loadSourceContentStorage(),
-          this.loadSourceLibraryAdministration(),
-          this.loadWorkspaceAdministration(),
-        ]);
-      } else {
-        this.destroySourceContentStorage();
-        this.destroySourceLibraryAdministration();
-        this.destroyWorkspaceAdministration();
-        if (this.openAICodexPollTimer !== null) {
-          clearTimeout(this.openAICodexPollTimer);
-          this.openAICodexPollTimer = null;
-        }
-        this.openAICodexAuth = null;
-        this.sourceContentStorage = null;
-        await this.loadUsers();
       }
     },
 
@@ -868,9 +787,8 @@ export function registerPage(alpine) {
           this.selectedProviderProfile?.capabilities[0]?.capability ?? null;
       }
       this.settings = settings;
-      this.settingsScopeRequest = settings.scope.kind;
-      rememberedSettingsScope = settings.scope.kind;
-      writeSettingsScopePreference(settings.scope.kind);
+      this.syncWorkspaceNameDraft();
+      this.rememberSettingsTarget(settings.scope.id);
       if (!this.locationStateRestored) {
         this.locationStateRestored = true;
         this.restoreLocationState();
@@ -888,12 +806,12 @@ export function registerPage(alpine) {
           || area === objectStorageAreaName
           || area === sourceLibraryAreaName
           || area === startupGroupName
-          || area === workspaceAdministrationAreaName
+          || area === workspacesAreaName
         )
       ) {
         return true;
       }
-      if (!this.organizationSettingsVisible && area === workspaceUsersAreaName) {
+      if (this.workspaceManagementVisible && area === workspaceManagementAreaName) {
         return true;
       }
       return this.groups.some((group) => group.name === area);
@@ -925,8 +843,8 @@ export function registerPage(alpine) {
       if (
         this.selectedArea === objectStorageAreaName
         || this.selectedArea === sourceLibraryAreaName
-        || this.selectedArea === workspaceAdministrationAreaName
-        || this.selectedArea === workspaceUsersAreaName
+        || this.selectedArea === workspacesAreaName
+        || this.selectedArea === workspaceManagementAreaName
       ) {
         return location;
       }
@@ -980,8 +898,8 @@ export function registerPage(alpine) {
         if (
           location.area === objectStorageAreaName
           || location.area === sourceLibraryAreaName
-          || location.area === workspaceAdministrationAreaName
-          || location.area === workspaceUsersAreaName
+          || location.area === workspacesAreaName
+          || location.area === workspaceManagementAreaName
         ) {
           return;
         }
@@ -1558,8 +1476,8 @@ export function registerPage(alpine) {
         "Search ranking": "Choose how CiteLoom orders and filters semantic search results.",
         "Object storage": "Choose where CiteLoom keeps original source-document content and migrate it safely.",
         "Source libraries": "Share common sources with selected workspaces while keeping each workspace's private sources isolated.",
-        "Users & access": "Manage who can use the current workspace and what role each person has.",
-        Workspaces: "Create and rename workspaces without moving their settings or sources.",
+        Workspace: "Manage this workspace's details, membership, roles, and access.",
+        Workspaces: "Create workspaces and open any workspace for unified management.",
         "Speech input": "Choose how CiteLoom turns recorded questions into text.",
         "Spoken answers": "Choose how CiteLoom creates and plays answer audio.",
         "Usage diagnostics": "Choose whether CiteLoom records AI request times and usage.",

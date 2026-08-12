@@ -115,8 +115,6 @@ export interface UpdateApplicationSettingsRequest {
   providerChanges: NormalizedProviderSettingsChange[];
 }
 
-export type SettingsScope = "organization" | "workspace";
-
 export interface CopyEmbeddingInputFormatRequest {
   name: string;
 }
@@ -306,9 +304,6 @@ const updateApplicationSettingsSchema = z.object({
     });
   }
 });
-const settingsScopeQuerySchema = z.object({
-  scope: z.enum(["organization", "workspace"]).optional(),
-}).strict();
 const copyEmbeddingInputFormatSchema = z.object({
   name: z.string().trim().min(1).max(100),
 }).strict();
@@ -729,17 +724,6 @@ export function decodeApplicationSettingsUpdate(
     expectedVersion: result.data.expectedVersion,
     providerChanges: result.data.providerChanges,
   };
-}
-
-export function decodeSettingsScopeQuery(
-  value: unknown,
-  defaultScope: SettingsScope,
-): SettingsScope {
-  const result = settingsScopeQuerySchema.safeParse(value);
-  if (!result.success) {
-    throw new WebRequestError(400, "The settings scope is invalid.");
-  }
-  return result.data.scope ?? defaultScope;
 }
 
 export function decodeEmbeddingInputFormatDefinition(

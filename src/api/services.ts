@@ -101,9 +101,9 @@ import type {
 } from "./request-boundary.js";
 import { readSystemStatusWithRuntime } from "../ingestion/worker.js";
 import type {
+  CreateOrganizationUserInput,
   CreateWorkspaceInput,
   LoginInput,
-  NormalizedUserIdentity,
   RenameWorkspaceInput,
   UpdateWorkspaceSecurityPolicyInput,
 } from "../auth/boundary.js";
@@ -111,8 +111,9 @@ import type { PasswordInput } from "../auth/password.js";
 import type {
   AuthenticatedPrincipal,
   AuthenticationSession,
-  PendingUserSetup,
-  WorkspaceMemberAddition,
+  OrganizationUserAccount,
+  UserPasswordLink,
+  WorkspaceMemberCandidate,
   WorkspaceMember,
   WorkspaceMembershipAccess,
   WorkspaceRole,
@@ -122,6 +123,7 @@ import type {
 } from "../auth/model.js";
 import { AuthenticationStore } from "../auth/store.js";
 import { WorkspaceSecurityPolicyStore } from "../auth/security-policy-store.js";
+import { UserAccountStore } from "../auth/user-account-store.js";
 import {
   authorizeCatalogSourceForPrincipal,
   authorizeDocumentVersionForPrincipal,
@@ -208,11 +210,12 @@ export interface WebServices {
   createEmbeddingInputFormat: (
     definition: EmbeddingInputFormatDefinition,
   ) => Promise<EmbeddingInputFormatRecord>;
-  createWorkspaceMember: (
+  addWorkspaceMember: (
     principal: AuthenticatedPrincipal,
-    identity: NormalizedUserIdentity,
+    workspaceId: string,
+    userId: string,
     role: WorkspaceRole,
-  ) => Promise<WorkspaceMemberAddition>;
+  ) => Promise<void>;
   createWorkspace: (
     principal: AuthenticatedPrincipal,
     input: CreateWorkspaceInput,
@@ -229,17 +232,15 @@ export interface WebServices {
     principal: AuthenticatedPrincipal,
     libraryId: string,
   ) => Promise<void>;
-  createPasswordReset: (
-    principal: AuthenticatedPrincipal,
-    userId: string,
-  ) => Promise<PendingUserSetup>;
   changeWorkspaceMemberRole: (
     principal: AuthenticatedPrincipal,
+    workspaceId: string,
     userId: string,
     role: WorkspaceRole,
   ) => Promise<void>;
   changeWorkspaceMemberAccess: (
     principal: AuthenticatedPrincipal,
+    workspaceId: string,
     userId: string,
     access: WorkspaceMembershipAccess,
   ) => Promise<void>;
@@ -253,7 +254,12 @@ export interface WebServices {
   ) => Promise<SourceContentMigrationRecord>;
   listWorkspaceMembers: (
     principal: AuthenticatedPrincipal,
+    workspaceId: string,
   ) => Promise<WorkspaceMember[]>;
+  listWorkspaceMemberCandidates: (
+    principal: AuthenticatedPrincipal,
+    workspaceId: string,
+  ) => Promise<WorkspaceMemberCandidate[]>;
   listWorkspaces: (
     principal: AuthenticatedPrincipal,
   ) => Promise<WorkspaceSummary[]>;
@@ -267,7 +273,7 @@ export interface WebServices {
     principal: AuthenticatedPrincipal,
     workspaceId: string,
     input: RenameWorkspaceInput,
-  ) => Promise<void>;
+  ) => Promise<WorkspaceSummary>;
   renameSharedSourceLibrary: (
     principal: AuthenticatedPrincipal,
     libraryId: string,
@@ -295,6 +301,7 @@ export interface WebServices {
   readSettings: () => Promise<EffectiveApplicationSettings>;
   readWorkspaceSettings: (
     principal: AuthenticatedPrincipal,
+    workspaceId: string,
   ) => Promise<EffectiveWorkspaceSettings>;
   readSourceContentStorage: () => Promise<SourceContentStorageOverview>;
   reportApplicationError: (
@@ -343,6 +350,7 @@ export interface WebServices {
   ) => Promise<void>;
   removeWorkspaceMember: (
     principal: AuthenticatedPrincipal,
+    workspaceId: string,
     userId: string,
   ) => Promise<void>;
   retireEmbeddingInputFormat: (
@@ -364,11 +372,23 @@ export interface WebServices {
   ) => Promise<EffectiveApplicationSettings>;
   updateWorkspaceSettings: (
     principal: AuthenticatedPrincipal,
+    workspaceId: string,
     request: UpdateApplicationSettingsRequest,
   ) => Promise<EffectiveWorkspaceSettings>;
 }
 
 export interface SecurityWebServices {
+  createOrganizationUser: (
+    principal: AuthenticatedPrincipal,
+    input: CreateOrganizationUserInput,
+  ) => Promise<OrganizationUserAccount>;
+  createOrganizationUserPasswordLink: (
+    principal: AuthenticatedPrincipal,
+    userId: string,
+  ) => Promise<UserPasswordLink>;
+  listOrganizationUsers: (
+    principal: AuthenticatedPrincipal,
+  ) => Promise<OrganizationUserAccount[]>;
   readPasswordPolicy: (
     principal: AuthenticatedPrincipal,
   ) => Promise<WorkspacePasswordPolicy>;
@@ -688,17 +708,35 @@ export function createWebServices(
         return store.create(definition);
       });
     },
-    changeWorkspaceMemberRole: async (principal, userId, role) => {
+    createOrganizationUser: async (principal, input) => {
       return manager.withRuntime(async (runtime) => {
-        const authentication = new AuthenticationStore(runtime.database);
-        await authentication.changeWorkspaceMemberRole(principal, userId, role);
+        const accounts = new UserAccountStore(runtime.database);
+        return accounts.create(principal, input);
       });
     },
-    changeWorkspaceMemberAccess: async (principal, userId, access) => {
+    createOrganizationUserPasswordLink: async (principal, userId) => {
+      return manager.withRuntime(async (runtime) => {
+        const accounts = new UserAccountStore(runtime.database);
+        return accounts.createPasswordLink(principal, userId);
+      });
+    },
+    changeWorkspaceMemberRole: async (principal, workspaceId, userId, role) => {
+      return manager.withRuntime(async (runtime) => {
+        const authentication = new AuthenticationStore(runtime.database);
+        await authentication.changeWorkspaceMemberRole(
+          principal,
+          workspaceId,
+          userId,
+          role,
+        );
+      });
+    },
+    changeWorkspaceMemberAccess: async (principal, workspaceId, userId, access) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
         await authentication.changeWorkspaceMemberAccess(
           principal,
+          workspaceId,
           userId,
           access,
         );
@@ -718,10 +756,15 @@ export function createWebServices(
         return repository.requestCancellation(id);
       });
     },
-    createWorkspaceMember: async (principal, identity, role) => {
+    addWorkspaceMember: async (principal, workspaceId, userId, role) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
-        return authentication.createWorkspaceMember(principal, identity, role);
+        await authentication.addWorkspaceMember(
+          principal,
+          workspaceId,
+          userId,
+          role,
+        );
       });
     },
     createWorkspace: async (principal, input) => {
@@ -745,16 +788,25 @@ export function createWebServices(
         );
       });
     },
-    createPasswordReset: async (principal, userId) => {
+    listWorkspaceMembers: async (principal, workspaceId) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
-        return authentication.createPasswordReset(principal, userId);
+        return authentication.listWorkspaceMembers(principal, workspaceId);
       });
     },
-    listWorkspaceMembers: async (principal) => {
+    listOrganizationUsers: async (principal) => {
+      return manager.withRuntime(async (runtime) => {
+        const accounts = new UserAccountStore(runtime.database);
+        return accounts.list(principal);
+      });
+    },
+    listWorkspaceMemberCandidates: async (principal, workspaceId) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
-        return authentication.listWorkspaceMembers(principal);
+        return authentication.listWorkspaceMemberCandidates(
+          principal,
+          workspaceId,
+        );
       });
     },
     listWorkspaces: async (principal) => {
@@ -772,7 +824,7 @@ export function createWebServices(
     renameWorkspace: async (principal, workspaceId, input) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
-        await authentication.renameWorkspace(principal, workspaceId, input);
+        return authentication.renameWorkspace(principal, workspaceId, input);
       });
     },
     readSourceLibraryAdministration: async (principal) => {
@@ -849,11 +901,16 @@ export function createWebServices(
         doclingTopology,
       );
     }),
-    readWorkspaceSettings: async (principal) => {
+    readWorkspaceSettings: async (principal, workspaceId) => {
       return manager.withRuntime(async (runtime) => {
+        const authentication = new AuthenticationStore(runtime.database);
+        await authentication.readWorkspaceForAdministration(
+          principal,
+          workspaceId,
+        );
         const repository = new WorkspaceSettingsRepository(runtime.database);
         return repository.read(
-          principal.workspaceId,
+          workspaceId,
           config.database,
           doclingTopology,
         );
@@ -948,10 +1005,10 @@ export function createWebServices(
         await libraries.setGrant(principal, libraryId, workspaceId, access);
       });
     },
-    removeWorkspaceMember: async (principal, userId) => {
+    removeWorkspaceMember: async (principal, workspaceId, userId) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
-        await authentication.removeWorkspaceMember(principal, userId);
+        await authentication.removeWorkspaceMember(principal, workspaceId, userId);
       });
     },
     retireEmbeddingInputFormat: async (id) => {
@@ -1002,11 +1059,16 @@ export function createWebServices(
       }
       return settings;
     },
-    updateWorkspaceSettings: async (principal, request) => {
+    updateWorkspaceSettings: async (principal, workspaceId, request) => {
       return manager.withRuntime(async (runtime) => {
+        const authentication = new AuthenticationStore(runtime.database);
+        await authentication.readWorkspaceForAdministration(
+          principal,
+          workspaceId,
+        );
         const repository = new WorkspaceSettingsRepository(runtime.database);
         return repository.update(
-          principal.workspaceId,
+          workspaceId,
           principal.userId,
           config.database,
           doclingTopology,

@@ -183,47 +183,146 @@ describe("CiteLoom settings resets", () => {
 });
 
 describe("CiteLoom settings scope selection", () => {
-  it("binds the visible scope selector to the existing request scope state", async () => {
+  it("does not retain removed scope-selection aliases", async () => {
+    const [application, settings] = await Promise.all([
+      readFile(new URL("../web/assets/scripts/app.js", import.meta.url), "utf8"),
+      readFile(new URL("../web/assets/scripts/settings.js", import.meta.url), "utf8"),
+    ]);
+
+    expect(application).not.toContain("clearSettingsScopePreference");
+    expect(settings).not.toContain("changeSettingsScope");
+    expect(settings).not.toContain("settingsScopeRequest");
+  });
+
+  it("binds the visible selector to the applied settings target", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/settings.html", import.meta.url),
       "utf8",
     );
 
-    expect(fragment).toContain('x-model="settingsScopeRequest"');
-    expect(fragment).not.toContain(':value="settings?.scope.kind"');
+    expect(fragment).toContain(":value=\"settings?.scope.id ?? ''\"");
+    expect(fragment).toContain(
+      '@change="changeSettingsTargetFromControl($event.target)"',
+    );
+    expect(fragment).not.toContain('x-model="settingsTargetRequest"');
+    expect(fragment).toContain(':key="scope.id"');
+    expect(fragment).toContain(':value="scope.id"');
   });
 
-  it("places workspace lifecycle and user access in their matching scopes", async () => {
+  it("uses one workspace editor for details and membership", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/settings.html", import.meta.url),
       "utf8",
     );
 
     expect(fragment).toContain("@click=\"selectArea('Workspaces')\"");
-    expect(fragment).toContain("@click=\"selectArea('Users &amp; access')\"");
+    expect(fragment).toContain("@click=\"selectArea('Workspace')\"");
+    expect(fragment).toContain("@click=\"openWorkspaceManagement(workspace)\"");
+    expect(fragment).toContain("@submit.prevent=\"saveWorkspaceName()\"");
+    expect(fragment).toContain("x-if=\"selectedArea === 'Workspace'\"");
     expect(fragment).toContain("Create workspace");
-    expect(fragment).toContain("./fragments/workspace-users-management.html");
+    expect(fragment.match(/class="workspace-user-management"/g)).toHaveLength(1);
+    expect(fragment).not.toContain("workspace-users-management.html");
+    expect(fragment).not.toContain("selectArea('Users &amp; access')");
   });
 
-  it("restores the active scope when the user keeps unsaved changes", async () => {
+  it("loads only organization resources for the organization target", async () => {
+    const page = createSettingsPage();
+    page.settings = buildSettingsScopeFixture("organization");
+    page.loadOpenAICodexAuth = vi.fn(async () => undefined);
+    page.loadSourceContentStorage = vi.fn(async () => undefined);
+    page.loadSourceLibraryAdministration = vi.fn(async () => undefined);
+    page.loadUsers = vi.fn(async () => undefined);
+
+    await page.loadScopeResources();
+
+    expect(page.loadOpenAICodexAuth).toHaveBeenCalledOnce();
+    expect(page.loadSourceContentStorage).toHaveBeenCalledOnce();
+    expect(page.loadSourceLibraryAdministration).toHaveBeenCalledOnce();
+    expect(page.loadUsers).not.toHaveBeenCalled();
+    expect(page.areaExists("Workspaces")).toBe(true);
+    expect(page.areaExists("Workspace")).toBe(false);
+  });
+
+  it("loads only membership resources for a workspace target", async () => {
+    const page = createSettingsPage();
+    page.settings = buildSettingsScopeFixture(TEST_WORKSPACE_ID);
+    page.loadOpenAICodexAuth = vi.fn(async () => undefined);
+    page.loadSourceContentStorage = vi.fn(async () => undefined);
+    page.loadSourceLibraryAdministration = vi.fn(async () => undefined);
+    page.loadUsers = vi.fn(async () => undefined);
+
+    await page.loadScopeResources();
+
+    expect(page.loadUsers).toHaveBeenCalledOnce();
+    expect(page.loadOpenAICodexAuth).not.toHaveBeenCalled();
+    expect(page.loadSourceContentStorage).not.toHaveBeenCalled();
+    expect(page.loadSourceLibraryAdministration).not.toHaveBeenCalled();
+    expect(page.areaExists("Workspace")).toBe(true);
+    expect(page.areaExists("Workspaces")).toBe(false);
+  });
+
+  it("keeps the control on the applied target while a target change is pending", async () => {
+    const page = createSettingsPage();
+    page.loading = false;
+    page.locationStateRestored = true;
+    page.settings = buildSettingsScopeFixture(TEST_WORKSPACE_ID);
+    page.loadScopeResources = vi.fn(async () => undefined);
+    let finishLoading;
+    page.loadSettings = vi.fn(async (targetId) => {
+      expect(targetId).toBe("organization");
+      return await new Promise((resolve) => {
+        finishLoading = () => {
+          page.locationStateRestored = true;
+          page.applySettings(buildSettingsScopeFixture("organization"));
+          resolve(true);
+        };
+      });
+    });
+    const control = { value: "organization" };
+
+    const targetChange = page.changeSettingsTargetFromControl(control);
+    await Promise.resolve();
+
+    expect(control.value).toBe(TEST_WORKSPACE_ID);
+    expect(page.settings.scope.id).toBe(TEST_WORKSPACE_ID);
+
+    finishLoading();
+    await targetChange;
+
+    expect(control.value).toBe("organization");
+    expect(page.settings.scope.id).toBe("organization");
+  });
+
+  it("restores the applied target when the user keeps unsaved changes", async () => {
     await withConfirmation(false, async () => {
       const page = createSettingsPage();
       page.loading = false;
       page.pending = { topK: "set" };
-      page.settings = {
-        scope: {
-          editableProviderConnections: false,
-          kind: "workspace",
-        },
-      };
-      page.settingsScopeRequest = "organization";
+      page.settings = buildSettingsScopeFixture(TEST_WORKSPACE_ID);
       page.loadSettings = vi.fn();
+      const control = { value: "organization" };
 
-      await page.changeSettingsScope("organization");
+      await page.changeSettingsTargetFromControl(control);
 
-      expect(page.settingsScopeRequest).toBe("workspace");
+      expect(control.value).toBe(TEST_WORKSPACE_ID);
+      expect(page.settings.scope.id).toBe(TEST_WORKSPACE_ID);
       expect(page.loadSettings).not.toHaveBeenCalled();
     });
+  });
+
+  it("restores the applied target when the target request fails", async () => {
+    const page = createSettingsPage();
+    page.loading = false;
+    page.settings = buildSettingsScopeFixture(TEST_WORKSPACE_ID);
+    page.loadSettings = vi.fn(async () => false);
+    const control = { value: "organization" };
+
+    const changed = await page.changeSettingsTargetFromControl(control);
+
+    expect(changed).toBe(false);
+    expect(control.value).toBe(TEST_WORKSPACE_ID);
+    expect(page.settings.scope.id).toBe(TEST_WORKSPACE_ID);
   });
 
   it("keeps the selected scope when the settings page is recreated", () => {
@@ -234,8 +333,19 @@ describe("CiteLoom settings scope selection", () => {
     page.applySettings(buildSettingsScopeFixture("organization"));
 
     const recreatedPage = pageFactory();
+    expect(recreatedPage.settingsRequestUrl()).toBe("/api/settings");
+  });
+
+  it("restores a selected workspace by its stable ID", () => {
+    const pageFactory = createSettingsPageFactory();
+    const page = pageFactory();
+    page.locationStateRestored = true;
+
+    page.applySettings(buildSettingsScopeFixture(TEST_WORKSPACE_ID));
+
+    const recreatedPage = pageFactory();
     expect(recreatedPage.settingsRequestUrl()).toBe(
-      "/api/settings?scope=organization",
+      `/api/workspaces/${TEST_WORKSPACE_ID}/settings`,
     );
   });
 });
@@ -433,7 +543,7 @@ describe("CiteLoom source-content storage settings", () => {
       '<select class="form-control compact-header-control" :aria-label="`${workspace.name} access to ${library.name}`"',
     );
     expect(fragment).toContain(
-      "selectedArea !== 'Object storage' &amp;&amp; selectedArea !== 'Source libraries' &amp;&amp; selectedArea !== 'Users &amp; access' &amp;&amp; selectedArea !== 'Workspaces' &amp;&amp; selectedArea !== 'Startup and deployment'",
+      "selectedArea !== 'Object storage' &amp;&amp; selectedArea !== 'Source libraries' &amp;&amp; selectedArea !== 'Workspace' &amp;&amp; selectedArea !== 'Workspaces' &amp;&amp; selectedArea !== 'Startup and deployment'",
     );
   });
 });
@@ -503,7 +613,10 @@ function jsonResponse(value) {
   });
 }
 
-function buildSettingsScopeFixture(kind) {
+const TEST_WORKSPACE_ID = "00000000-0000-4000-8000-000000000601";
+
+function buildSettingsScopeFixture(targetId) {
+  const organizationSelected = targetId === "organization";
   return {
     features: [],
     fields: [],
@@ -511,7 +624,24 @@ function buildSettingsScopeFixture(kind) {
       catalog: [],
       connections: [],
     },
-    scope: { kind },
+    scope: {
+      available: [
+        {
+          id: "organization",
+          kind: "organization",
+          label: "Organization",
+        },
+        {
+          id: TEST_WORKSPACE_ID,
+          kind: "workspace",
+          label: "DefaultSpace",
+        },
+      ],
+      editableProviderConnections: organizationSelected,
+      id: targetId,
+      kind: organizationSelected ? "organization" : "workspace",
+      label: organizationSelected ? "Organization" : "DefaultSpace",
+    },
   };
 }
 

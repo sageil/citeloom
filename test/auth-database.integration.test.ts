@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,12 +16,21 @@ import {
   FinalWorkspaceAdministratorError,
   GlobalAuthorizationError,
   ProtectedGlobalAdministratorError,
+  SetupTokenRejectedError,
   WorkspaceAuthorizationError,
   WorkspaceArchiveConflictError,
   WorkspaceMemberAccessConflictError,
+  WorkspaceMemberAlreadyExistsError,
   WorkspaceNameUnavailableError,
   WorkspaceUnavailableError,
+  WorkspaceUserUnavailableError,
 } from "../src/auth/store.js";
+import {
+  OrganizationUsernameUnavailableError,
+  OrganizationUserWorkspaceRequiredError,
+  UserAccountStore,
+} from "../src/auth/user-account-store.js";
+import { hashPassword } from "../src/auth/password.js";
 import {
   type DatabaseSession,
   migrateDatabase,
@@ -508,26 +517,240 @@ describe("authentication persistence", () => {
     }))).rejects.toBeInstanceOf(AuthenticationRejectedError);
   });
 
-  it("allows only administrators to create workspace members", async () => {
+  it("separates organization accounts, workspace membership, and password links", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(authentication);
+    const accounts = new UserAccountStore(session.database);
+    const identity = normalizeUserIdentity({
+      displayName: "Pending User",
+      username: "pending-user",
+    });
+
+    const account = await accounts.create(administrator.principal, identity);
+
+    expect(account).toMatchObject({
+      displayName: identity.displayName,
+      state: "pending",
+      username: identity.username,
+      workspaceCount: 0,
+    });
+    await expect(session.database
+      .select({ userId: workspaceMemberships.userId })
+      .from(workspaceMemberships)
+      .where(eq(workspaceMemberships.userId, account.userId)))
+      .resolves.toEqual([]);
+    await expect(accounts.createPasswordLink(
+      administrator.principal,
+      account.userId,
+    )).rejects.toBeInstanceOf(OrganizationUserWorkspaceRequiredError);
+    await expect(authentication.listWorkspaceMemberCandidates(
+      administrator.principal,
+      administrator.principal.workspaceId,
+    )).resolves.toContainEqual(expect.objectContaining({
+      state: "pending",
+      userId: account.userId,
+    }));
+
+    await authentication.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      account.userId,
+      "member",
+    );
+    await authentication.removeWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      account.userId,
+    );
+    await expect(accounts.list(administrator.principal)).resolves.toContainEqual(
+      expect.objectContaining({
+        state: "pending",
+        userId: account.userId,
+        workspaceCount: 0,
+      }),
+    );
+    await authentication.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      account.userId,
+      "member",
+    );
+    const replacedSetupLink = await accounts.createPasswordLink(
+      administrator.principal,
+      account.userId,
+    );
+    const setupLink = await accounts.createPasswordLink(
+      administrator.principal,
+      account.userId,
+    );
+    expect(setupLink.purpose).toBe("setup");
+    await expect(authentication.completePasswordSetup(
+      replacedSetupLink.setupToken,
+      "a secure password 123",
+    )).rejects.toBeInstanceOf(SetupTokenRejectedError);
+
+    const activated = await authentication.completePasswordSetup(
+      setupLink.setupToken,
+      "a secure password 123",
+    );
+    expect(activated.principal).toMatchObject({
+      role: "member",
+      userId: account.userId,
+      workspaceId: administrator.principal.workspaceId,
+    });
+    await expect(accounts.list(administrator.principal)).resolves.toContainEqual(
+      expect.objectContaining({
+        state: "active",
+        userId: account.userId,
+        workspaceCount: 1,
+      }),
+    );
+    await expect(accounts.create(activated.principal, normalizeUserIdentity({
+      displayName: "Unauthorized User",
+      username: "unauthorized-user",
+    }))).rejects.toBeInstanceOf(GlobalAuthorizationError);
+    await expect(accounts.create(administrator.principal, identity))
+      .rejects.toBeInstanceOf(OrganizationUsernameUnavailableError);
+
+    const replacedResetLink = await accounts.createPasswordLink(
+      administrator.principal,
+      account.userId,
+    );
+    const resetLink = await accounts.createPasswordLink(
+      administrator.principal,
+      account.userId,
+    );
+    expect(resetLink.purpose).toBe("reset");
+    await expect(authentication.completePasswordSetup(
+      replacedResetLink.setupToken,
+      "a newer secure password 456",
+    )).rejects.toBeInstanceOf(SetupTokenRejectedError);
+    await expect(authentication.completePasswordSetup(
+      resetLink.setupToken,
+      "a newer secure password 456",
+    )).resolves.toMatchObject({
+      principal: { userId: account.userId },
+    });
+
+    await authentication.removeWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      account.userId,
+    );
+    await expect(accounts.list(administrator.principal)).resolves.toContainEqual(
+      expect.objectContaining({
+        state: "active",
+        userId: account.userId,
+        workspaceCount: 0,
+      }),
+    );
+    await expect(accounts.createPasswordLink(
+      administrator.principal,
+      account.userId,
+    )).rejects.toBeInstanceOf(OrganizationUserWorkspaceRequiredError);
+    await expect(session.database
+      .select({ userId: userPasswordCredentials.userId })
+      .from(userPasswordCredentials)
+      .where(eq(userPasswordCredentials.userId, account.userId)))
+      .resolves.toEqual([{ userId: account.userId }]);
+  });
+
+  it("allows only administrators to add existing users to a workspace", async () => {
     await applyDatabaseBootstrap(session.database, administratorEnvironment());
     const store = new AuthenticationStore(session.database);
     const administrator = await authenticateAdministrator(store);
-    const memberSetup = await store.createWorkspaceMember(
+    const memberAccount = await createActiveUser({
+      displayName: "Member",
+      username: "member",
+    });
+    await store.addWorkspaceMember(
       administrator.principal,
-      normalizeUserIdentity({ displayName: "Member", username: "member" }),
+      administrator.principal.workspaceId,
+      memberAccount.userId,
     );
-    if (memberSetup.kind !== "setup") {
-      throw new Error("Expected a setup token for a new workspace member.");
-    }
-    const member = await store.completePasswordSetup(
-      memberSetup.setupToken,
-      "another correct horse battery staple",
+    const member = await authenticateTestUser(store, memberAccount);
+    const otherAccount = await createActiveUser({
+      displayName: "Other",
+      username: "other",
+    });
+
+    await expect(store.addWorkspaceMember(
+      member.principal,
+      member.principal.workspaceId,
+      otherAccount.userId,
+    )).rejects.toBeInstanceOf(WorkspaceAuthorizationError);
+  });
+
+  it("lists only eligible existing users and preserves accounts when membership is removed", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const store = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(store);
+    const candidate = await createActiveUser({
+      displayName: "Available User",
+      username: "available-user",
+    });
+    const suspended = await createActiveUser({
+      displayName: "Suspended User",
+      username: "suspended-user",
+    });
+    await session.database
+      .update(users)
+      .set({ state: "suspended" })
+      .where(eq(users.id, suspended.userId));
+
+    await expect(store.listWorkspaceMemberCandidates(
+      administrator.principal,
+      administrator.principal.workspaceId,
+    )).resolves.toEqual([{
+      displayName: candidate.displayName,
+      globalRole: "standard",
+      state: "active",
+      userId: candidate.userId,
+      username: candidate.username,
+    }]);
+
+    await store.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      candidate.userId,
+      "member",
+    );
+    await expect(store.listWorkspaceMemberCandidates(
+      administrator.principal,
+      administrator.principal.workspaceId,
+    )).resolves.toEqual([]);
+    await expect(store.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      candidate.userId,
+    )).rejects.toBeInstanceOf(WorkspaceMemberAlreadyExistsError);
+    await expect(store.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      suspended.userId,
+    )).rejects.toBeInstanceOf(WorkspaceUserUnavailableError);
+
+    await store.removeWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      candidate.userId,
     );
 
-    await expect(store.createWorkspaceMember(
-      member.principal,
-      normalizeUserIdentity({ displayName: "Other", username: "other" }),
-    )).rejects.toBeInstanceOf(WorkspaceAuthorizationError);
+    await expect(session.database
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, candidate.userId)))
+      .resolves.toEqual([{ id: candidate.userId }]);
+    await expect(session.database
+      .select({ userId: userPasswordCredentials.userId })
+      .from(userPasswordCredentials)
+      .where(eq(userPasswordCredentials.userId, candidate.userId)))
+      .resolves.toEqual([{ userId: candidate.userId }]);
+    await expect(store.listWorkspaceMemberCandidates(
+      administrator.principal,
+      administrator.principal.workspaceId,
+    )).resolves.toEqual([expect.objectContaining({ userId: candidate.userId })]);
   });
 
   it("protects global administrators and the final active administrator", async () => {
@@ -537,85 +760,79 @@ describe("authentication persistence", () => {
 
     await expect(store.removeWorkspaceMember(
       administrator.principal,
+      administrator.principal.workspaceId,
       administrator.principal.userId,
     )).rejects.toBeInstanceOf(ProtectedGlobalAdministratorError);
     await expect(store.changeWorkspaceMemberRole(
       administrator.principal,
+      administrator.principal.workspaceId,
       administrator.principal.userId,
       "member",
     )).rejects.toBeInstanceOf(ProtectedGlobalAdministratorError);
 
-    const secondSetup = await store.createWorkspaceMember(
+    const secondAccount = await createActiveUser({
+      displayName: "Second Administrator",
+      username: "second-admin",
+    });
+    await store.addWorkspaceMember(
       administrator.principal,
-      normalizeUserIdentity({
-        displayName: "Second Administrator",
-        username: "second-admin",
-      }),
+      administrator.principal.workspaceId,
+      secondAccount.userId,
       "admin",
     );
-    if (secondSetup.kind !== "setup") {
-      throw new Error("Expected a setup token for a new workspace administrator.");
-    }
-    const secondAdministrator = await store.completePasswordSetup(
-      secondSetup.setupToken,
-      "another correct horse battery staple",
-    );
+    const secondAdministrator = await authenticateTestUser(store, secondAccount);
     await session.database
       .update(users)
       .set({ globalRole: "standard" })
       .where(eq(users.id, administrator.principal.userId));
     await store.changeWorkspaceMemberRole(
       secondAdministrator.principal,
+      secondAdministrator.principal.workspaceId,
       administrator.principal.userId,
       "member",
     );
     await store.removeWorkspaceMember(
       secondAdministrator.principal,
+      secondAdministrator.principal.workspaceId,
       administrator.principal.userId,
     );
     await expect(store.removeWorkspaceMember(
       secondAdministrator.principal,
+      secondAdministrator.principal.workspaceId,
       secondAdministrator.principal.userId,
     )).rejects.toBeInstanceOf(FinalWorkspaceAdministratorError);
     await expect(store.changeWorkspaceMemberRole(
       secondAdministrator.principal,
+      secondAdministrator.principal.workspaceId,
       secondAdministrator.principal.userId,
       "member",
     )).rejects.toBeInstanceOf(FinalWorkspaceAdministratorError);
-    await expect(store.createWorkspaceMember(
+    await expect(store.addWorkspaceMember(
       secondAdministrator.principal,
-      normalizeUserIdentity({
-        displayName: "Initial Administrator",
-        username: administratorUsername,
-      }),
-    )).resolves.toEqual({
-      kind: "existing",
-      userId: administrator.principal.userId,
-    });
+      secondAdministrator.principal.workspaceId,
+      administrator.principal.userId,
+    )).resolves.toBeUndefined();
   });
 
   it("disables and restores workspace access without losing membership", async () => {
     await applyDatabaseBootstrap(session.database, administratorEnvironment());
     const store = new AuthenticationStore(session.database);
     const administrator = await authenticateAdministrator(store);
-    const memberSetup = await store.createWorkspaceMember(
+    const memberAccount = await createActiveUser({
+      displayName: "Workspace Member",
+      username: "workspace-member",
+    });
+    await store.addWorkspaceMember(
       administrator.principal,
-      normalizeUserIdentity({
-        displayName: "Workspace Member",
-        username: "workspace-member",
-      }),
+      administrator.principal.workspaceId,
+      memberAccount.userId,
       "member",
     );
-    if (memberSetup.kind !== "setup") {
-      throw new Error("Expected a setup token for a new workspace member.");
-    }
-    const member = await store.completePasswordSetup(
-      memberSetup.setupToken,
-      "another correct horse battery staple",
-    );
+    const member = await authenticateTestUser(store, memberAccount);
 
     await store.changeWorkspaceMemberAccess(
       administrator.principal,
+      administrator.principal.workspaceId,
       member.principal.userId,
       "disabled",
     );
@@ -626,7 +843,10 @@ describe("authentication persistence", () => {
       member.principal,
       administrator.principal.workspaceId,
     )).rejects.toBeInstanceOf(WorkspaceUnavailableError);
-    await expect(store.listWorkspaceMembers(administrator.principal))
+    await expect(store.listWorkspaceMembers(
+      administrator.principal,
+      administrator.principal.workspaceId,
+    ))
       .resolves.toEqual(expect.arrayContaining([
         expect.objectContaining({
           access: "disabled",
@@ -637,6 +857,7 @@ describe("authentication persistence", () => {
 
     await store.changeWorkspaceMemberAccess(
       administrator.principal,
+      administrator.principal.workspaceId,
       member.principal.userId,
       "enabled",
     );
@@ -665,6 +886,7 @@ describe("authentication persistence", () => {
 
     await expect(store.changeWorkspaceMemberAccess(
       administrator.principal,
+      administrator.principal.workspaceId,
       administrator.principal.userId,
       "disabled",
     )).rejects.toBeInstanceOf(WorkspaceMemberAccessConflictError);
@@ -687,6 +909,7 @@ describe("authentication persistence", () => {
 
     await expect(store.changeWorkspaceMemberAccess(
       administrator.principal,
+      administrator.principal.workspaceId,
       otherGlobalAdministratorId,
       "disabled",
     )).rejects.toBeInstanceOf(ProtectedGlobalAdministratorError);
@@ -755,12 +978,12 @@ describe("workspace provisioning and switching", () => {
         }),
       ]);
     await expect(store.readSession(administrator.token)).resolves.toMatchObject({
-      workspaceId: workspace.id,
-      workspaceName: "Legal Research",
+      workspaceId: administrator.principal.workspaceId,
+      workspaceName: administrator.principal.workspaceName,
     });
   });
 
-  it("copies only explicit settings overrides from an accessible workspace", async () => {
+  it("lets global administrators copy explicit overrides without relying on membership", async () => {
     await applyDatabaseBootstrap(session.database, administratorEnvironment());
     const store = new AuthenticationStore(session.database);
     const administrator = await authenticateAdministrator(store);
@@ -792,6 +1015,15 @@ describe("workspace provisioning and switching", () => {
       .update(workspaceSettings)
       .set({ settings: sourceSettings })
       .where(eq(workspaceSettings.workspaceId, sourceWorkspaceId));
+    await session.database
+      .delete(workspaceMemberships)
+      .where(eq(workspaceMemberships.workspaceId, sourceWorkspaceId));
+
+    await expect(store.listWorkspaces(administrator.principal)).resolves.toContainEqual({
+      id: sourceWorkspaceId,
+      name: administrator.principal.workspaceName,
+      role: "admin",
+    });
 
     const workspace = await store.createWorkspace(administrator.principal, {
       configuration: {
@@ -1000,20 +1232,19 @@ describe("workspace provisioning and switching", () => {
     await applyDatabaseBootstrap(session.database, administratorEnvironment());
     const store = new AuthenticationStore(session.database);
     const administrator = await authenticateAdministrator(store);
-    const setup = await store.createWorkspaceMember(
+    const workspaceAdministratorAccount = await createActiveUser({
+      displayName: "Workspace Administrator",
+      username: "workspace-admin",
+    });
+    await store.addWorkspaceMember(
       administrator.principal,
-      normalizeUserIdentity({
-        displayName: "Workspace Administrator",
-        username: "workspace-admin",
-      }),
+      administrator.principal.workspaceId,
+      workspaceAdministratorAccount.userId,
       "admin",
     );
-    if (setup.kind !== "setup") {
-      throw new Error("Expected setup for workspace administrator.");
-    }
-    const workspaceAdministrator = await store.completePasswordSetup(
-      setup.setupToken,
-      "another correct horse battery staple",
+    const workspaceAdministrator = await authenticateTestUser(
+      store,
+      workspaceAdministratorAccount,
     );
 
     expect(workspaceAdministrator.principal.globalRole).toBe("standard");
@@ -1032,17 +1263,16 @@ describe("workspace provisioning and switching", () => {
     await applyDatabaseBootstrap(session.database, administratorEnvironment());
     const store = new AuthenticationStore(session.database);
     const administrator = await authenticateAdministrator(store);
-    const memberSetup = await store.createWorkspaceMember(
+    const memberAccount = await createActiveUser({
+      displayName: "Member",
+      username: "member",
+    });
+    await store.addWorkspaceMember(
       administrator.principal,
-      normalizeUserIdentity({ displayName: "Member", username: "member" }),
+      administrator.principal.workspaceId,
+      memberAccount.userId,
     );
-    if (memberSetup.kind !== "setup") {
-      throw new Error("Expected setup for workspace member.");
-    }
-    const member = await store.completePasswordSetup(
-      memberSetup.setupToken,
-      "another correct horse battery staple",
-    );
+    const member = await authenticateTestUser(store, memberAccount);
     const secondWorkspace = await store.createWorkspace(administrator.principal, {
       configuration: { kind: "organization-defaults" },
       name: "Second Workspace",
@@ -1519,6 +1749,7 @@ describe("workspace provisioning and switching", () => {
         name: "Archive Me",
       },
     );
+    await store.switchWorkspace(creator.principal, workspace.id);
     const creatorInWorkspace = await store.readSession(creator.token);
     if (creatorInWorkspace === null) {
       throw new Error("Expected the creator session to remain active.");
@@ -1576,5 +1807,49 @@ async function authenticateAdministrator(store: AuthenticationStore) {
   return store.authenticate(decodeLoginInput({
     password: administratorPassword,
     username: administratorUsername,
+  }));
+}
+
+interface TestActiveUser {
+  displayName: string;
+  password: string;
+  userId: string;
+  username: string;
+}
+
+async function createActiveUser(identity: {
+  displayName: string;
+  username: string;
+}): Promise<TestActiveUser> {
+  const normalized = normalizeUserIdentity(identity);
+  const password = "another correct horse battery staple";
+  const userId = randomUUID();
+  await session.database.insert(users).values({
+    displayName: normalized.displayName,
+    globalRole: "standard",
+    id: userId,
+    state: "active",
+    username: normalized.username,
+    usernameNormalized: normalized.usernameNormalized,
+  });
+  await session.database.insert(userPasswordCredentials).values({
+    passwordHash: await hashPassword(password),
+    userId,
+  });
+  return {
+    displayName: normalized.displayName,
+    password,
+    userId,
+    username: normalized.username,
+  };
+}
+
+async function authenticateTestUser(
+  store: AuthenticationStore,
+  user: TestActiveUser,
+) {
+  return store.authenticate(decodeLoginInput({
+    password: user.password,
+    username: user.username,
   }));
 }

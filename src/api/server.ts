@@ -15,9 +15,9 @@ import { pipeUIMessageStreamToResponse } from "ai";
 import { APP_SECTION_ROUTES } from "./app-routes.js";
 import {
   registerAuthenticationRoutes,
-  requireAdministratorPrincipal,
   requireGlobalAdministratorPrincipal,
   requireRequestPrincipal,
+  requireWorkspaceAdministratorPrincipal,
 } from "./authentication-routes.js";
 import {
   isExpectedRequestCancellation,
@@ -108,6 +108,7 @@ import {
 } from "./services.js";
 import { readWebConfig, type WebConfig } from "./config.js";
 import type { AuthenticatedPrincipal } from "../auth/model.js";
+import { canAdministerWorkspace } from "../auth/authorization.js";
 import { WorkspaceSourceLibraryUnavailableError } from "../workspaces/source-library-access.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
 import { registerSourceContentStorageRoutes } from "./source-content-storage-routes.js";
@@ -322,13 +323,23 @@ export async function buildWebServer(
   });
 
   server.get("/api/errors", async (request) => {
-    const principal = requireAdministratorPrincipal(requestPrincipals, request);
+    const principal = requireRequestPrincipal(requestPrincipals, request);
+    requireWorkspaceAdministratorPrincipal(
+      requestPrincipals,
+      request,
+      principal.workspaceId,
+    );
     const errorRequest = decodeApplicationErrorQuery(request.query);
     return services.readApplicationErrors(principal, errorRequest);
   });
 
   server.delete("/api/errors", async (request) => {
-    const principal = requireAdministratorPrincipal(requestPrincipals, request);
+    const principal = requireRequestPrincipal(requestPrincipals, request);
+    requireWorkspaceAdministratorPrincipal(
+      requestPrincipals,
+      request,
+      principal.workspaceId,
+    );
     return services.purgeApplicationErrors(principal);
   });
 
@@ -974,7 +985,7 @@ function buildIngestionControlActor(
   principal: AuthenticatedPrincipal,
 ): IngestionControlActor {
   return {
-    isAdministrator: principal.role === "admin",
+    isAdministrator: canAdministerWorkspace(principal, principal.workspaceId),
     userId: principal.userId,
   };
 }

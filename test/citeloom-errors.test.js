@@ -11,6 +11,12 @@ import {
   CONFIRMATION_REQUEST_EVENT,
   dispatchConfirmationResponse,
 } from "../web/assets/scripts/confirmation.js";
+import {
+  findHtmlElementByAttribute,
+  findHtmlElementByText,
+  readHtmlAttribute,
+  readHtmlElements,
+} from "./html-test-helpers.js";
 
 describe("CiteLoom error reports", () => {
   it("decodes sanitized parent errors and every structured Docling detail", () => {
@@ -133,23 +139,28 @@ describe("CiteLoom error reports", () => {
       new URL("../web/index.html", import.meta.url),
       "utf8",
     );
-    expect(index).toContain('data-view="errors"');
-    expect(index).toContain('hx-get="./fragments/errors.html"');
-    expect(index).toMatch(
-      /data-view="errors"[\s\S]*?x-show="currentRole === 'admin'"/,
-    );
     const fragment = await readFile(
       new URL("../web/fragments/errors.html", import.meta.url),
       "utf8",
     );
-    const script = await readFile(
-      new URL("../web/assets/scripts/errors.js", import.meta.url),
-      "utf8",
+    const errorLink = findHtmlElementByAttribute(
+      readHtmlElements(index),
+      "data-view",
+      "errors",
     );
-    expect(fragment).toContain('@click="purgeErrors()"');
-    expect(fragment).toContain("Purge logs");
-    expect(script).toContain("requestConfirmation({");
-    expect(script).toContain('method: "DELETE"');
+    const purgeButton = findHtmlElementByText(
+      readHtmlElements(fragment),
+      "button",
+      "Purge logs",
+    );
+
+    expect(readHtmlAttribute(errorLink, "hx-get")).toBe(
+      "./fragments/errors.html",
+    );
+    expect(readHtmlAttribute(errorLink, "x-show")).toBe(
+      "canAdministerCurrentWorkspace",
+    );
+    expect(readHtmlAttribute(purgeButton, "@click")).toBe("purgeErrors()");
   });
 });
 

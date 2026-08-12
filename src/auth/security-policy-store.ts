@@ -10,6 +10,7 @@ import {
   workspaceMemberships,
   workspaceSecurityPolicies,
   workspaceSecurityPolicyChanges,
+  workspaces,
 } from "../database/schema.js";
 import type { UpdateWorkspaceSecurityPolicyInput } from "./boundary.js";
 import type {
@@ -48,6 +49,7 @@ export class WorkspaceSecurityPolicyStore {
         requireSpecialCharacter: workspaceSecurityPolicies.requireSpecialCharacter,
       })
       .from(workspaceMemberships)
+      .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
       .leftJoin(
         workspaceSecurityPolicies,
         eq(workspaceSecurityPolicies.workspaceId, workspaceMemberships.workspaceId),
@@ -55,6 +57,7 @@ export class WorkspaceSecurityPolicyStore {
       .where(and(
         eq(workspaceMemberships.access, "enabled"),
         eq(workspaceMemberships.userId, userId),
+        eq(workspaces.state, "active"),
       ));
 
     const effectivePolicy: WorkspacePasswordPolicy = {
@@ -84,7 +87,7 @@ export class WorkspaceSecurityPolicyStore {
   public async readOverview(
     principal: AuthenticatedPrincipal,
   ): Promise<WorkspaceSecurityOverview> {
-    requireWorkspaceAdministrator(principal);
+    requireWorkspaceAdministrator(principal, principal.workspaceId);
     return this.readOverviewForWorkspace(principal.workspaceId);
   }
 
@@ -98,7 +101,7 @@ export class WorkspaceSecurityPolicyStore {
     principal: AuthenticatedPrincipal,
     input: UpdateWorkspaceSecurityPolicyInput,
   ): Promise<WorkspaceSecurityOverview> {
-    requireWorkspaceAdministrator(principal);
+    requireWorkspaceAdministrator(principal, principal.workspaceId);
     const now = this.now();
     await this.database.transaction(async (transaction) => {
       await transaction.insert(workspaceSecurityPolicies).values({

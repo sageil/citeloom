@@ -15,7 +15,6 @@
 .access-header p,
 .access-card h2,
 .access-card p,
-.access-setup-success p,
 .access-add-drawer h2,
 .access-add-drawer p {
   margin: 0;
@@ -50,8 +49,7 @@
   padding: 20px;
 }
 
-.access-feature-icon,
-.access-success-icon {
+.access-feature-icon {
   display: grid;
   width: 42px;
   height: 42px;
@@ -107,7 +105,6 @@
 
 .access-primary-button,
 .access-secondary-button,
-.access-copy-button,
 .access-close-button {
   font: inherit;
   text-decoration: none;
@@ -122,16 +119,14 @@
   color: #dbe4f0;
 }
 
-.access-primary-button,
-.access-copy-button {
+.access-primary-button {
   border: 1px solid rgba(56, 189, 248, 0.42);
   background: var(--control-background);
   color: #38bdf8;
 }
 
 .access-primary-button:hover:not(:disabled),
-.access-secondary-button:hover:not(:disabled),
-.access-copy-button:hover:not(:disabled) {
+.access-secondary-button:hover:not(:disabled) {
   border-color: rgba(125, 211, 252, 0.72);
   background: rgba(14, 116, 144, 0.14);
   color: #bae6fd;
@@ -150,8 +145,7 @@
 }
 
 .access-primary-button:disabled,
-.access-secondary-button:disabled,
-.access-copy-button:disabled {
+.access-secondary-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -239,52 +233,6 @@
   color: var(--text);
 }
 
-.access-setup-success {
-  display: grid;
-  grid-template-columns: auto minmax(230px, 1fr) minmax(220px, 0.9fr) auto;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 18px;
-  border: 1px solid var(--cyan);
-  border-radius: 9px;
-  background: rgba(6, 182, 212, 0.055);
-}
-
-.access-success-icon {
-  border-radius: 50%;
-}
-
-.access-setup-success > div {
-  display: grid;
-  gap: 5px;
-}
-
-.access-setup-success strong {
-  font-size: 13px;
-}
-
-.access-setup-success p {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.access-setup-link {
-  overflow: hidden;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: rgba(6, 9, 20, 0.45);
-  color: var(--text);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  user-select: all;
-}
-
-.access-copy-button {
-  font-size: inherit;
-}
-
 .access-users-panel {
   overflow: visible;
   padding: 20px;
@@ -332,7 +280,7 @@
 .access-user-table-heading,
 .access-user-row {
   display: grid;
-  grid-template-columns: minmax(220px, 1.5fr) minmax(100px, 0.6fr) 120px 126px 104px;
+  grid-template-columns: minmax(220px, 1.5fr) minmax(100px, 0.6fr) repeat(3, 126px);
   align-items: center;
   gap: 20px;
 }
@@ -362,10 +310,6 @@
 
 .access-administrator-invariant .citeloom-icon {
   color: var(--cyan-bright);
-}
-
-.access-user-row.confirming {
-  padding-top: 12px;
 }
 
 .access-user-identity {
@@ -421,13 +365,22 @@
   background: var(--danger);
 }
 
-.access-user-row select {
+.access-user-row-control {
+  width: 100%;
   min-height: 38px;
   font-size: 11px;
 }
 
+.access-user-required {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
 .access-user-actions {
   position: relative;
+  width: 100%;
   justify-self: end;
 }
 
@@ -435,8 +388,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  min-width: 96px;
-  min-height: 44px;
+  min-width: 0;
   gap: 9px;
   padding: 0 12px;
   border-radius: 8px;
@@ -458,7 +410,7 @@
 .access-user-actions summary:hover,
 .access-user-actions summary:focus-visible {
   border-color: rgba(6, 182, 212, 0.7);
-  background: #17213a;
+  background: var(--cyan-subtle);
   outline: none;
 }
 
@@ -480,12 +432,12 @@
   position: absolute;
   z-index: 5;
   top: calc(100% + 6px);
-  right: -108px;
+  right: 0;
   width: 212px;
   padding: 0;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  background: #0b1221;
+  background: var(--background);
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
 }
 
@@ -497,23 +449,11 @@
   gap: 10px;
   padding: 9px 14px;
   border: 0;
-  border-radius: 0;
+  border-radius: 7px;
   background: transparent;
-  color: var(--danger);
+  color: var(--text);
   font-size: 13px;
   text-align: left;
-}
-
-.access-user-actions button + button {
-  border-top: 1px solid var(--border);
-}
-
-.access-user-actions button:first-child {
-  border-radius: 7px 7px 0 0;
-}
-
-.access-user-actions button:last-child {
-  border-radius: 0 0 7px 7px;
 }
 
 .access-user-actions button svg {
@@ -523,22 +463,18 @@
 }
 
 .access-user-actions button:hover {
-  background: var(--danger-subtle);
-}
-
-.access-user-actions button:first-child,
-.access-user-actions button:nth-child(2) {
-  color: var(--text);
-}
-
-.access-user-actions button:first-child:hover,
-.access-user-actions button:first-child:focus-visible,
-.access-user-actions button:nth-child(2):hover,
-.access-user-actions button:nth-child(2):focus-visible {
   background: var(--cyan-subtle);
 }
 
-.access-user-actions button:focus-visible {
+.access-user-actions button.danger {
+  color: var(--danger);
+}
+
+.access-user-actions button.danger:hover {
+  background: var(--danger-subtle);
+}
+
+.access-user-actions button.danger:focus-visible {
   background: var(--danger-subtle);
   outline: none;
 }
@@ -686,12 +622,8 @@
 
   .access-user-table-heading,
   .access-user-row {
-    grid-template-columns: minmax(170px, 1fr) 90px 104px 116px 96px;
+    grid-template-columns: minmax(170px, 1fr) 90px repeat(3, 116px);
     gap: 12px;
-  }
-
-  .access-user-actions > div {
-    right: 0;
   }
 }
 
@@ -740,15 +672,6 @@
     flex-direction: column;
   }
 
-  .access-setup-success {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .access-setup-link,
-  .access-copy-button {
-    grid-column: 1 / -1;
-  }
-
   .access-users-panel {
     padding: 16px;
   }
@@ -781,10 +704,6 @@
     justify-self: end;
   }
 
-  .access-user-row select {
-    width: 100%;
-  }
-
   .access-user-actions {
     justify-self: stretch;
   }
@@ -794,7 +713,6 @@
   }
 
   .access-user-actions > div {
-    right: 0;
     left: auto;
   }
 

@@ -77,8 +77,8 @@ const providerAuthenticationMethods = Object.freeze([
 export const startupGroupName = "Startup and deployment";
 export const objectStorageAreaName = "Object storage";
 export const sourceLibraryAreaName = "Source libraries";
-export const workspaceAdministrationAreaName = "Workspaces";
-export const workspaceUsersAreaName = "Users & access";
+export const workspacesAreaName = "Workspaces";
+export const workspaceManagementAreaName = "Workspace";
 export const doclingAdvancedFieldKeys = Object.freeze([
   "doclingPdfBackend",
   "doclingTocEnabled",
@@ -161,29 +161,21 @@ function readProviderFeatures(value) {
 function readSettingsScope(value) {
   const scope = readPlainObject(value, "settings scope");
   const available = [];
-  const kinds = new Set();
+  const targetIds = new Set();
   for (const value of readArray(scope.available, "available settings scopes")) {
     const option = readPlainObject(value, "available settings scope");
-    const kind = readEnum(
-      option.kind,
-      ["organization", "workspace"],
-      "settings scope kind",
-    );
-    if (kinds.has(kind)) {
-      throw new Error(`The ${kind} settings scope appears more than once.`);
+    const target = readSettingsScopeTarget(option, "available settings scope");
+    if (targetIds.has(target.id)) {
+      throw new Error(`The settings target ${target.id} appears more than once.`);
     }
-    kinds.add(kind);
+    targetIds.add(target.id);
     available.push({
-      kind,
+      ...target,
       label: readNonEmptyString(option.label, "settings scope label"),
     });
   }
-  const kind = readEnum(
-    scope.kind,
-    ["organization", "workspace"],
-    "active settings scope",
-  );
-  if (!kinds.has(kind)) {
+  const active = readSettingsScopeTarget(scope, "active settings scope");
+  if (!targetIds.has(active.id)) {
     throw new Error("The active settings scope is unavailable.");
   }
   return {
@@ -192,9 +184,28 @@ function readSettingsScope(value) {
       scope.editableProviderConnections,
       "provider connection edit permission",
     ),
-    kind,
+    ...active,
     label: readNonEmptyString(scope.label, "active settings scope label"),
   };
+}
+
+function readSettingsScopeTarget(value, label) {
+  const kind = readEnum(
+    value.kind,
+    ["organization", "workspace"],
+    `${label} kind`,
+  );
+  const id = readNonEmptyString(value.id, `${label} ID`);
+  if (kind === "organization") {
+    if (id !== "organization") {
+      throw new Error(`The ${label} organization ID is invalid.`);
+    }
+    return { id, kind };
+  }
+  if (id === "organization") {
+    throw new Error(`The ${label} workspace ID is invalid.`);
+  }
+  return { id, kind };
 }
 
 function readEmbeddingSpaceStatus(value, fields) {

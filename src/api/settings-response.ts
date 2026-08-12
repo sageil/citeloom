@@ -29,6 +29,7 @@ import {
   presentRuntimeSettingValue,
 } from "./runtime-settings-boundary.js";
 import type { EffectiveWorkspaceSettings } from "../workspaces/settings-store.js";
+import type { WorkspaceSummary } from "../auth/model.js";
 
 export interface RuntimeSettingFieldResponse {
   changeExample: string;
@@ -97,14 +98,16 @@ export interface ProviderFeatureResponse {
 }
 
 export interface SettingsScopeResponse {
-  available: Array<{
-    kind: "organization" | "workspace";
-    label: string;
-  }>;
+  available: SettingsScopeOptionResponse[];
   editableProviderConnections: boolean;
+  id: string;
   kind: "organization" | "workspace";
   label: string;
 }
+
+export type SettingsScopeOptionResponse =
+  | { id: "organization"; kind: "organization"; label: string }
+  | { id: string; kind: "workspace"; label: string };
 
 export interface EmbeddingSpaceStatusResponse {
   activeDocumentCount: number;
@@ -246,38 +249,54 @@ export function buildApplicationSettingsResponse(
 }
 
 export function buildOrganizationSettingsScope(
-  includeWorkspace = true,
+  workspaces: WorkspaceSummary[] = [],
 ): SettingsScopeResponse {
-  const available: SettingsScopeResponse["available"] = [{
-    kind: "organization",
-    label: "Organization",
-  }];
-  if (includeWorkspace) {
-    available.push({ kind: "workspace", label: "Current workspace" });
-  }
   return {
-    available,
+    available: buildAvailableSettingsScopes(workspaces, true),
     editableProviderConnections: true,
+    id: "organization",
     kind: "organization",
     label: "Organization",
   };
 }
 
 export function buildWorkspaceSettingsScope(
-  workspaceName: string,
+  workspace: WorkspaceSummary,
+  workspaces: WorkspaceSummary[],
   includeOrganization: boolean,
 ): SettingsScopeResponse {
-  const available: SettingsScopeResponse["available"] = [];
-  if (includeOrganization) {
-    available.push({ kind: "organization", label: "Organization" });
-  }
-  available.push({ kind: "workspace", label: workspaceName });
   return {
-    available,
+    available: buildAvailableSettingsScopes(workspaces, includeOrganization),
     editableProviderConnections: false,
+    id: workspace.id,
     kind: "workspace",
-    label: workspaceName,
+    label: workspace.name,
   };
+}
+
+function buildAvailableSettingsScopes(
+  workspaces: WorkspaceSummary[],
+  includeOrganization: boolean,
+): SettingsScopeOptionResponse[] {
+  const available: SettingsScopeOptionResponse[] = [];
+  if (includeOrganization) {
+    available.push({
+      id: "organization",
+      kind: "organization",
+      label: "Organization",
+    });
+  }
+  for (const workspace of workspaces) {
+    if (workspace.role !== "admin") {
+      continue;
+    }
+    available.push({
+      id: workspace.id,
+      kind: "workspace",
+      label: workspace.name,
+    });
+  }
+  return available;
 }
 
 function buildProviderFeatureResponses(

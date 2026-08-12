@@ -28,19 +28,38 @@ function readMember(value) {
   };
 }
 
+function readMemberCandidate(value) {
+  const candidate = readPlainObject(value, "workspace member candidate");
+  return {
+    displayName: readNonEmptyString(
+      candidate.displayName,
+      "candidate display name",
+    ),
+    globalRole: readEnum(
+      candidate.globalRole,
+      ["global_admin", "standard"],
+      "candidate global role",
+    ),
+    state: readEnum(
+      candidate.state,
+      ["active", "pending", "suspended"],
+      "candidate account state",
+    ),
+    userId: readNonEmptyString(candidate.userId, "candidate identifier"),
+    username: readNonEmptyString(candidate.username, "candidate username"),
+  };
+}
+
 export function createWorkspaceUserManagement(options = {}) {
   const title = options.title ?? "Workspace users";
   const showRoleGuide = options.showRoleGuide ?? true;
   const actionsLabel = options.actionsLabel ?? "Actions";
   return {
-    addUserOpen: false,
+    addMemberOpen: false,
+    memberCandidates: [],
+    memberRoleDraft: "member",
     members: [],
-    newDisplayName: "",
-    newRole: "member",
-    newUsername: "",
-    setupLinkCopied: false,
-    setupLinkPurpose: "setup",
-    setupUrl: "",
+    selectedMemberCandidateId: "",
     showUserRoleGuide: showRoleGuide,
     userManagementActionsLabel: actionsLabel,
     userManagementBusy: false,
@@ -49,31 +68,40 @@ export function createWorkspaceUserManagement(options = {}) {
     userManagementLoading: true,
     userManagementTitle: title,
 
-    userResetLinkLifetimeLabel() {
-      if (this.resetLinkLifetimeSeconds < 3_600) {
-        const minutes = this.resetLinkLifetimeSeconds / 60;
-        return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+    workspaceMembersUrl(userId = null, action = null) {
+      const scope = this.settings?.scope;
+      if (scope?.kind !== "workspace") {
+        throw new Error("Select a workspace before managing users.");
       }
-      if (this.resetLinkLifetimeSeconds < 86_400) {
-        const hours = this.resetLinkLifetimeSeconds / 3_600;
-        return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+      let url = `/api/workspaces/${encodeURIComponent(scope.id)}/members`;
+      if (userId !== null) {
+        url += `/${encodeURIComponent(userId)}`;
       }
-      const days = this.resetLinkLifetimeSeconds / 86_400;
-      return `${days} ${days === 1 ? "day" : "days"}`;
+      if (action !== null) {
+        url += `/${action}`;
+      }
+      return url;
+    },
+
+    workspaceMemberCandidatesUrl() {
+      const scope = this.settings?.scope;
+      if (scope?.kind !== "workspace") {
+        throw new Error("Select a workspace before managing users.");
+      }
+      return `/api/workspaces/${encodeURIComponent(scope.id)}/member-candidates`;
     },
 
     afterWorkspaceUserMutation() {
       return Promise.resolve();
     },
 
-    closeAddUser() {
+    closeAddMember() {
       if (this.userManagementBusy) {
         return;
       }
-      this.addUserOpen = false;
-      this.newDisplayName = "";
-      this.newRole = "member";
-      this.newUsername = "";
+      this.addMemberOpen = false;
+      this.memberRoleDraft = "member";
+      this.selectedMemberCandidateId = "";
     },
 
     initializeUserManagement() {
@@ -81,19 +109,40 @@ export function createWorkspaceUserManagement(options = {}) {
     },
 
     destroyUserManagement() {
-      this.addUserOpen = false;
+      this.addMemberOpen = false;
+      this.memberCandidates = [];
+      this.memberRoleDraft = "member";
       this.members = [];
-      this.setupLinkCopied = false;
-      this.setupUrl = "";
+      this.selectedMemberCandidateId = "";
       this.userManagementBusy = false;
       this.userManagementError = "";
       this.userManagementLoadFailed = false;
       this.userManagementLoading = true;
     },
 
-    openAddUser() {
-      this.addUserOpen = true;
-      this.setupLinkCopied = false;
+    openAddMember() {
+      this.addMemberOpen = true;
+      const candidate = this.memberCandidates[0];
+      this.selectedMemberCandidateId = candidate?.userId ?? "";
+      this.memberRoleDraft = candidate?.globalRole === "global_admin"
+        ? "admin"
+        : "member";
+    },
+
+    selectMemberCandidate(userId) {
+      this.selectedMemberCandidateId = userId;
+      if (this.selectedMemberCandidateIsGlobalAdministrator()) {
+        this.memberRoleDraft = "admin";
+      }
+    },
+
+    selectedMemberCandidateIsGlobalAdministrator() {
+      for (const candidate of this.memberCandidates) {
+        if (candidate.userId === this.selectedMemberCandidateId) {
+          return candidate.globalRole === "global_admin";
+        }
+      }
+      return false;
     },
 
     workspaceUserInitials(displayName) {
@@ -116,34 +165,42 @@ export function createWorkspaceUserManagement(options = {}) {
       return count;
     },
 
-    async copySetupLink() {
-      if (this.setupUrl === "") {
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(this.setupUrl);
-        this.setupLinkCopied = true;
-      } catch {
-        this.userManagementError =
-          "The password link could not be copied. Select and copy it manually.";
-      }
-    },
-
     async loadUsers() {
       this.userManagementLoading = true;
       this.userManagementError = "";
       this.userManagementLoadFailed = false;
       try {
-        const response = await fetch("/api/workspace/members", {
-          headers: { accept: "application/json" },
-        });
-        const value = await readJsonResponse(response, "Workspace users");
-        const rows = readArray(value, "workspace users");
+        const requestOptions = { headers: { accept: "application/json" } };
+        const responses = await Promise.all([
+          fetch(this.workspaceMembersUrl(), requestOptions),
+          fetch(this.workspaceMemberCandidatesUrl(), requestOptions),
+        ]);
+        const memberValue = await readJsonResponse(
+          responses[0],
+          "Workspace users",
+        );
+        const candidateValue = await readJsonResponse(
+          responses[1],
+          "Available workspace users",
+        );
+        const memberRows = readArray(memberValue, "workspace users");
+        const candidateRows = readArray(
+          candidateValue,
+          "available workspace users",
+        );
         const members = [];
-        for (const row of rows) {
+        for (const row of memberRows) {
           members.push(readMember(row));
         }
+        const memberCandidates = [];
+        for (const row of candidateRows) {
+          memberCandidates.push(readMemberCandidate(row));
+        }
         this.members = members;
+        this.memberCandidates = memberCandidates;
+        if (this.addMemberOpen) {
+          this.selectMemberCandidate(memberCandidates[0]?.userId ?? "");
+        }
       } catch (error) {
         this.userManagementLoadFailed = true;
         this.userManagementError = error instanceof Error
@@ -154,39 +211,33 @@ export function createWorkspaceUserManagement(options = {}) {
       }
     },
 
-    async addUser() {
+    async addWorkspaceMember() {
+      if (this.selectedMemberCandidateId === "") {
+        return;
+      }
       this.userManagementBusy = true;
       this.userManagementError = "";
-      this.setupUrl = "";
       try {
-        const response = await fetch("/api/workspace/members", {
+        const response = await fetch(this.workspaceMembersUrl(), {
           body: JSON.stringify({
-            displayName: this.newDisplayName,
-            role: this.newRole,
-            username: this.newUsername,
+            role: this.memberRoleDraft,
+            userId: this.selectedMemberCandidateId,
           }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         });
-        const value = await readJsonResponse(response, "Add user");
-        const addition = readPlainObject(value, "user addition");
-        const kind = readEnum(addition.kind, ["existing", "setup"], "user addition kind");
-        if (kind === "setup") {
-          const token = readNonEmptyString(addition.setupToken, "setup token");
-          this.setupUrl = `${window.location.origin}/login?setup=${encodeURIComponent(token)}`;
-          this.setupLinkPurpose = "setup";
+        if (!response.ok) {
+          await readJsonResponse(response, "Add user to workspace");
         }
-        this.newDisplayName = "";
-        this.newUsername = "";
-        this.newRole = "member";
-        this.addUserOpen = false;
-        this.setupLinkCopied = false;
+        this.addMemberOpen = false;
+        this.memberRoleDraft = "member";
+        this.selectedMemberCandidateId = "";
         await this.loadUsers();
         await this.afterWorkspaceUserMutation();
       } catch (error) {
         this.userManagementError = error instanceof Error
           ? error.message
-          : "The user could not be added.";
+          : "The user could not be added to this workspace.";
       } finally {
         this.userManagementBusy = false;
       }
@@ -197,7 +248,7 @@ export function createWorkspaceUserManagement(options = {}) {
       this.userManagementError = "";
       try {
         const response = await fetch(
-          `/api/workspace/members/${encodeURIComponent(member.userId)}/role`,
+          this.workspaceMembersUrl(member.userId, "role"),
           {
             body: JSON.stringify({ role }),
             headers: { "Content-Type": "application/json" },
@@ -224,7 +275,7 @@ export function createWorkspaceUserManagement(options = {}) {
       this.userManagementError = "";
       try {
         const response = await fetch(
-          `/api/workspace/members/${encodeURIComponent(member.userId)}/access`,
+          this.workspaceMembersUrl(member.userId, "access"),
           {
             body: JSON.stringify({ access }),
             headers: { "Content-Type": "application/json" },
@@ -242,48 +293,6 @@ export function createWorkspaceUserManagement(options = {}) {
           : "Workspace access could not be changed.";
         await this.loadUsers();
         this.userManagementError = message;
-      } finally {
-        this.userManagementBusy = false;
-      }
-    },
-
-    async requestPasswordReset(member) {
-      if (this.userManagementBusy || member.state !== "active") {
-        return;
-      }
-      const confirmed = await requestConfirmation({
-        cancelLabel: "Keep current access",
-        confirmLabel: "Create reset link",
-        description: `This creates a single-use password-reset link for ${member.displayName}. It expires after ${this.userResetLinkLifetimeLabel()}, and their current password remains active until the link is used.`,
-        title: `Create a reset link for ${member.displayName}?`,
-        tone: "default",
-      });
-      if (!confirmed) {
-        return;
-      }
-      await this.createPasswordReset(member);
-    },
-
-    async createPasswordReset(member) {
-      this.userManagementBusy = true;
-      this.userManagementError = "";
-      this.setupUrl = "";
-      try {
-        const response = await fetch(
-          `/api/workspace/members/${encodeURIComponent(member.userId)}/password-reset`,
-          { method: "POST" },
-        );
-        const value = await readJsonResponse(response, "Create password reset");
-        const reset = readPlainObject(value, "password reset");
-        const token = readNonEmptyString(reset.setupToken, "password-reset token");
-        this.setupUrl = `${window.location.origin}/login?setup=${encodeURIComponent(token)}&mode=reset`;
-        this.setupLinkPurpose = "reset";
-        this.setupLinkCopied = false;
-        await this.afterWorkspaceUserMutation();
-      } catch (error) {
-        this.userManagementError = error instanceof Error
-          ? error.message
-          : "The password-reset link could not be created.";
       } finally {
         this.userManagementBusy = false;
       }
@@ -311,7 +320,7 @@ export function createWorkspaceUserManagement(options = {}) {
       this.userManagementError = "";
       try {
         const response = await fetch(
-          `/api/workspace/members/${encodeURIComponent(member.userId)}`,
+          this.workspaceMembersUrl(member.userId),
           { method: "DELETE" },
         );
         if (!response.ok) {

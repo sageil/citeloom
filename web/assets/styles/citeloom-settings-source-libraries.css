@@ -255,13 +255,29 @@
   }
 }
 
-.settings-workspace-users-workbench .workspace-user-management {
+.settings-workspace-management-workbench .workspace-user-management {
   display: grid;
   gap: 18px;
 }
 
-.settings-workspace-users-workbench .access-users-panel {
+.settings-workspace-management-workbench .access-users-panel {
   border-radius: 8px;
+  background: transparent;
+}
+
+.settings-workspace-details-form {
+  width: 100%;
+}
+
+.settings-workspace-name-control {
+  display: grid;
+  grid-template-columns: minmax(240px, 48rem) auto;
+  align-items: stretch;
+  justify-content: start;
+  gap: 16px;
+}
+
+.settings-workspace-name-control .button {
   background: transparent;
 }
 
@@ -320,6 +336,14 @@
   .settings-administration-actions,
   .settings-administration-rename {
     justify-content: flex-start;
+  }
+
+  .settings-workspace-name-control {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-workspace-name-control .button {
+    width: 100%;
   }
 
   .settings-source-library-grants > label {

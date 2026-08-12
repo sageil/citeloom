@@ -38,6 +38,7 @@ import {
 import type {
   SourceDiscoveryResponse,
 } from "../src/retrieval/discovery/schema.js";
+import type { SecurityWebServices } from "../src/api/services.js";
 import { TextToSpeechUnavailableError } from "../src/providers/text-to-speech.js";
 import {
   SpeechToTextProviderError,
@@ -319,9 +320,9 @@ describe("web server boundary", () => {
     }
   });
 
-  it("maps non-admin member creation to forbidden", async () => {
+  it("maps non-admin membership changes to forbidden", async () => {
     const principal = buildAuthenticatedPrincipal("member");
-    const createWorkspaceMember = vi.fn<WebServices["createWorkspaceMember"]>(
+    const addWorkspaceMember = vi.fn<WebServices["addWorkspaceMember"]>(
       async () => {
         throw new WorkspaceAuthorizationError();
       },
@@ -329,7 +330,7 @@ describe("web server boundary", () => {
     const server = await buildProductionWebServer(buildConfig(), {
       logger: false,
       services: buildServices({
-        createWorkspaceMember,
+        addWorkspaceMember,
         readSession: async () => principal,
       }),
       staticDirectory: null,
@@ -339,16 +340,13 @@ describe("web server boundary", () => {
         cookies: { "__Host-citeloom_session": "private-session-token" },
         headers: { origin: "https://localhost:3443" },
         method: "POST",
-        payload: { displayName: "Another User", username: "another" },
-        url: "/api/workspace/members",
-      });
-      const fragmentResponse = await server.inject({
-        cookies: { "__Host-citeloom_session": "private-session-token" },
-        method: "GET",
-        url: "/fragments/workspace-users-management.html",
+        payload: {
+          role: "member",
+          userId: "00000000-0000-4000-8000-000000000401",
+        },
+        url: `/api/workspaces/${principal.workspaceId}/members`,
       });
       expect(response.statusCode).toBe(403);
-      expect(fragmentResponse.statusCode).toBe(403);
     } finally {
       await server.close();
     }
@@ -377,20 +375,21 @@ describe("web server boundary", () => {
         headers,
         method: "PUT",
         payload: { access: "disabled" },
-        url: `/api/workspace/members/${memberId}/access`,
+        url: `/api/workspaces/${principal.workspaceId}/members/${memberId}/access`,
       });
       const invalidResponse = await server.inject({
         cookies,
         headers,
         method: "PUT",
         payload: { access: "paused" },
-        url: `/api/workspace/members/${memberId}/access`,
+        url: `/api/workspaces/${principal.workspaceId}/members/${memberId}/access`,
       });
 
       expect(response.statusCode).toBe(204);
       expect(changeWorkspaceMemberAccess).toHaveBeenCalledOnce();
       expect(changeWorkspaceMemberAccess).toHaveBeenCalledWith(
         principal,
+        principal.workspaceId,
         memberId,
         "disabled",
       );
@@ -558,10 +557,18 @@ describe("web server boundary", () => {
 
   it("renames a workspace for a global administrator", async () => {
     const principal = buildAuthenticatedPrincipal("admin", "global_admin");
-    const renameWorkspace = vi.fn<WebServices["renameWorkspace"]>();
+    const renamedWorkspace = {
+      id: principal.workspaceId,
+      name: "Knowledge Operations",
+      role: "admin" as const,
+    };
+    const renameWorkspace = vi.fn<WebServices["renameWorkspace"]>(
+      async () => renamedWorkspace,
+    );
     const server = await buildProductionWebServer(buildConfig(), {
       logger: false,
       services: buildServices({
+        listWorkspaces: async () => [buildPrincipalWorkspace(principal)],
         readSession: async () => principal,
         renameWorkspace,
       }),
@@ -577,7 +584,8 @@ describe("web server boundary", () => {
         url: `/api/workspaces/${principal.workspaceId}`,
       });
 
-      expect(response.statusCode).toBe(204);
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(renamedWorkspace);
       expect(renameWorkspace).toHaveBeenCalledWith(
         principal,
         principal.workspaceId,
@@ -1080,7 +1088,7 @@ describe("web server boundary", () => {
     }
   });
 
-  it("serves error reports only to workspace administrators", async () => {
+  it("serves error reports to workspace and global administrators", async () => {
     const staticDirectory = await mkdtemp(join(tmpdir(), "citeloom-error-reports-"));
     temporaryDirectories.push(staticDirectory);
     await mkdir(join(staticDirectory, "fragments"), { recursive: true });
@@ -1184,6 +1192,30 @@ describe("web server boundary", () => {
       expect(purgeApplicationErrors).toHaveBeenCalledWith(principal);
     } finally {
       await administratorServer.close();
+    }
+
+    const globalAdministratorServer = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readSession: async () => buildAuthenticatedPrincipal(
+          "member",
+          "global_admin",
+        ),
+      }),
+      staticDirectory,
+    });
+
+    try {
+      for (const url of ["/errors", "/fragments/errors.html"]) {
+        const response = await globalAdministratorServer.inject({
+          cookies: { "__Host-citeloom_session": "private-session-token" },
+          method: "GET",
+          url,
+        });
+        expect(response.statusCode).toBe(200);
+      }
+    } finally {
+      await globalAdministratorServer.close();
     }
   });
 
@@ -1813,6 +1845,7 @@ describe("web server boundary", () => {
     const server = await buildProductionWebServer(buildConfig(), {
       logger: false,
       services: buildServices({
+        listWorkspaces: async () => [buildPrincipalWorkspace(principal)],
         readSession: async () => principal,
         readSettings,
         readWorkspaceSettings,
@@ -1847,7 +1880,7 @@ describe("web server boundary", () => {
           changes: [{ action: "set", key: "topK", value: 12 }],
           expectedVersion: 1,
         },
-        url: "/api/settings",
+        url: `/api/workspaces/${principal.workspaceId}/settings`,
       });
       const systemHealthResponse = await server.inject({
         cookies: { "__Host-citeloom_session": "private-session-token" },
@@ -1864,12 +1897,6 @@ describe("web server boundary", () => {
         method: "GET",
         url: "/fragments/settings.html",
       });
-      const usersFragmentResponse = await server.inject({
-        cookies: { "__Host-citeloom_session": "private-session-token" },
-        method: "GET",
-        url: "/fragments/workspace-users-management.html",
-      });
-
       expect(response.statusCode).toBe(403);
       expect(settingsResponse.statusCode).toBe(200);
       expect(settingsResponse.json()).toMatchObject({
@@ -1896,23 +1923,32 @@ describe("web server boundary", () => {
       expect(systemHealthResponse.statusCode).toBe(403);
       expect(systemHealthFragmentResponse.statusCode).toBe(403);
       expect(settingsFragmentResponse.statusCode).toBe(404);
-      expect(usersFragmentResponse.statusCode).toBe(404);
       expect(readSettings).not.toHaveBeenCalled();
-      expect(readWorkspaceSettings).toHaveBeenCalledWith(principal);
-      expect(updateWorkspaceSettings).toHaveBeenCalledWith(principal, {
-        changes: [{ key: "topK", value: 12 }],
-        expectedVersion: 1,
-        providerChanges: [],
-      });
+      expect(readWorkspaceSettings).toHaveBeenCalledWith(
+        principal,
+        principal.workspaceId,
+      );
+      expect(updateWorkspaceSettings).toHaveBeenCalledWith(
+        principal,
+        principal.workspaceId,
+        {
+          changes: [{ key: "topK", value: 12 }],
+          expectedVersion: 1,
+          providerChanges: [],
+        },
+      );
       expect(readSourceContentStorage).not.toHaveBeenCalled();
     } finally {
       await server.close();
     }
   });
 
-  it("defaults global workspace administrators to the active workspace settings", async () => {
+  it("uses separate organization and explicit workspace settings resources", async () => {
     const principal = buildAuthenticatedPrincipal("admin", "global_admin");
     const readSettings = vi.fn<WebServices["readSettings"]>(
+      async () => buildEffectiveSettings(),
+    );
+    const updateSettings = vi.fn<WebServices["updateSettings"]>(
       async () => buildEffectiveSettings(),
     );
     const readWorkspaceSettings = vi.fn<WebServices["readWorkspaceSettings"]>(
@@ -1930,9 +1966,11 @@ describe("web server boundary", () => {
     const server = await buildProductionWebServer(buildConfig(), {
       logger: false,
       services: buildServices({
+        listWorkspaces: async () => [buildPrincipalWorkspace(principal)],
         readSession: async () => principal,
         readSettings,
         readWorkspaceSettings,
+        updateSettings,
         updateWorkspaceSettings,
       }),
       staticDirectory: null,
@@ -1944,12 +1982,12 @@ describe("web server boundary", () => {
         method: "GET",
         url: "/api/settings",
       });
-      const organizationResponse = await server.inject({
+      const workspaceResponse = await server.inject({
         cookies: { "__Host-citeloom_session": "private-session-token" },
         method: "GET",
-        url: "/api/settings?scope=organization",
+        url: `/api/workspaces/${principal.workspaceId}/settings`,
       });
-      const updateResponse = await server.inject({
+      const organizationUpdateResponse = await server.inject({
         cookies: { "__Host-citeloom_session": "private-session-token" },
         headers: { origin: "https://localhost:3443" },
         method: "PUT",
@@ -1964,84 +2002,357 @@ describe("web server boundary", () => {
       expect(response.json()).toMatchObject({
         scope: {
           available: [
-            { kind: "organization", label: "Organization" },
-            { kind: "workspace", label: principal.workspaceName },
+            {
+              id: "organization",
+              kind: "organization",
+              label: "Organization",
+            },
+            {
+              id: principal.workspaceId,
+              kind: "workspace",
+              label: principal.workspaceName,
+            },
           ],
-          editableProviderConnections: false,
-          kind: "workspace",
-          label: principal.workspaceName,
-        },
-      });
-      expect(organizationResponse.statusCode).toBe(200);
-      expect(organizationResponse.json()).toMatchObject({
-        scope: {
           editableProviderConnections: true,
+          id: "organization",
           kind: "organization",
           label: "Organization",
         },
       });
-      expect(updateResponse.statusCode).toBe(200);
-      expect(readWorkspaceSettings).toHaveBeenCalledWith(principal);
+      expect(workspaceResponse.statusCode).toBe(200);
+      expect(workspaceResponse.json()).toMatchObject({
+        scope: {
+          editableProviderConnections: false,
+          id: principal.workspaceId,
+          kind: "workspace",
+          label: principal.workspaceName,
+        },
+      });
+      expect(organizationUpdateResponse.statusCode).toBe(200);
+      expect(readWorkspaceSettings).toHaveBeenCalledWith(
+        principal,
+        principal.workspaceId,
+      );
       expect(readSettings).toHaveBeenCalledOnce();
-      expect(updateWorkspaceSettings).toHaveBeenCalledWith(principal, {
+      expect(updateSettings).toHaveBeenCalledWith({
         changes: [{ key: "topK", value: 12 }],
         expectedVersion: 1,
         providerChanges: [],
       });
+      expect(updateWorkspaceSettings).not.toHaveBeenCalled();
     } finally {
       await server.close();
     }
   });
 
-  it("allows global administrators to manage the current workspace regardless of workspace role", async () => {
+  it("allows global administrators to manage another workspace explicitly", async () => {
     const principal = buildAuthenticatedPrincipal("member", "global_admin");
+    const targetWorkspace = {
+      id: "00000000-0000-4000-8000-000000000402",
+      name: "Target Workspace",
+      role: "admin" as const,
+    };
+    const memberId = "00000000-0000-4000-8000-000000000401";
+    const addWorkspaceMember = vi.fn<WebServices["addWorkspaceMember"]>();
+    const listWorkspaceMemberCandidates = vi.fn<
+      WebServices["listWorkspaceMemberCandidates"]
+    >(async () => [{
+      displayName: "Workspace Member",
+      globalRole: "standard",
+      state: "active",
+      userId: memberId,
+      username: "workspace-member",
+    }]);
+    const listWorkspaceMembers = vi.fn<WebServices["listWorkspaceMembers"]>(
+      async () => [],
+    );
+    const removeWorkspaceMember = vi.fn<WebServices["removeWorkspaceMember"]>();
+    const readApplicationErrors = vi.fn<WebServices["readApplicationErrors"]>(
+      async () => buildApplicationErrorPage(),
+    );
     const readWorkspaceSettings = vi.fn<WebServices["readWorkspaceSettings"]>(
       async () => ({
         ...buildEffectiveSettings(),
         providerOverrideCapabilities: [],
       }),
     );
-    const server = await buildProductionWebServer(buildConfig(), {
-      logger: false,
-      services: buildServices({
+    const securityOverview = {
+      activeResetLinkCount: 0,
+      administrators: [],
+      policy: {
+        minimumPasswordLength: 12,
+        requireLetterAndNumber: true,
+        requireSpecialCharacter: false,
+        resetLinkLifetimeSeconds: 3_600,
+        updatedAt: "2026-08-12T12:00:00.000Z",
+        version: 1,
+      },
+      recentChanges: [],
+    };
+    const readWorkspaceSecurityOverview = vi.fn(async () => securityOverview);
+    const organizationUser = {
+      displayName: "Workspace Member",
+      globalRole: "standard" as const,
+      state: "pending" as const,
+      userId: memberId,
+      username: "workspace-member",
+      workspaceCount: 0,
+    };
+    const createOrganizationUser = vi.fn<
+      SecurityWebServices["createOrganizationUser"]
+    >(async () => organizationUser);
+    const createOrganizationUserPasswordLink = vi.fn<
+      SecurityWebServices["createOrganizationUserPasswordLink"]
+    >(async () => ({
+      expiresAt: "2026-08-12T13:00:00.000Z",
+      purpose: "setup",
+      setupToken: "a".repeat(48),
+      userId: memberId,
+    }));
+    const listOrganizationUsers = vi.fn<
+      SecurityWebServices["listOrganizationUsers"]
+    >(async () => [organizationUser]);
+    const services = {
+      ...buildServices({
+        addWorkspaceMember,
+        listWorkspaceMemberCandidates,
+        listWorkspaces: async () => [targetWorkspace],
+        listWorkspaceMembers,
+        readApplicationErrors,
         readSession: async () => principal,
         readWorkspaceSettings,
+        removeWorkspaceMember,
       }),
+      createOrganizationUser,
+      createOrganizationUserPasswordLink,
+      listOrganizationUsers,
+      readPasswordPolicy: async () => securityOverview.policy,
+      readWorkspaceSecurityOverview,
+      updateWorkspaceSecurityPolicy: async () => securityOverview,
+    };
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services,
       staticDirectory: null,
     });
 
     try {
       const cookies = { "__Host-citeloom_session": "private-session-token" };
-      const fragmentResponse = await server.inject({
-        cookies,
-        method: "GET",
-        url: "/fragments/settings.html",
-      });
       const settingsResponse = await server.inject({
         cookies,
         method: "GET",
-        url: "/api/settings",
+        url: `/api/workspaces/${targetWorkspace.id}/settings`,
       });
-      const usersFragmentResponse = await server.inject({
+      const membersResponse = await server.inject({
         cookies,
         method: "GET",
-        url: "/fragments/workspace-users-management.html",
+        url: `/api/workspaces/${targetWorkspace.id}/members`,
+      });
+      const candidatesResponse = await server.inject({
+        cookies,
+        method: "GET",
+        url: `/api/workspaces/${targetWorkspace.id}/member-candidates`,
+      });
+      const addMemberResponse = await server.inject({
+        cookies,
+        headers: { origin: "https://localhost:3443" },
+        method: "POST",
+        payload: {
+          role: "member",
+          userId: memberId,
+        },
+        url: `/api/workspaces/${targetWorkspace.id}/members`,
+      });
+      const removeMemberResponse = await server.inject({
+        cookies,
+        headers: { origin: "https://localhost:3443" },
+        method: "DELETE",
+        url: `/api/workspaces/${targetWorkspace.id}/members/${memberId}`,
+      });
+      const passwordResetResponse = await server.inject({
+        cookies,
+        headers: { origin: "https://localhost:3443" },
+        method: "POST",
+        url: `/api/workspaces/${targetWorkspace.id}/members/${memberId}/password-reset`,
+      });
+      const errorsResponse = await server.inject({
+        cookies,
+        method: "GET",
+        url: "/api/errors",
+      });
+      const securityResponse = await server.inject({
+        cookies,
+        method: "GET",
+        url: "/api/security",
+      });
+      const organizationUsersResponse = await server.inject({
+        cookies,
+        method: "GET",
+        url: "/api/security/users",
+      });
+      const createOrganizationUserResponse = await server.inject({
+        cookies,
+        headers: { origin: "https://localhost:3443" },
+        method: "POST",
+        payload: {
+          displayName: "Workspace Member",
+          username: "workspace-member",
+        },
+        url: "/api/security/users",
+      });
+      const passwordLinkResponse = await server.inject({
+        cookies,
+        headers: { origin: "https://localhost:3443" },
+        method: "POST",
+        url: `/api/security/users/${memberId}/password-link`,
       });
 
-      expect(fragmentResponse.statusCode).toBe(404);
-      expect(usersFragmentResponse.statusCode).toBe(404);
       expect(settingsResponse.statusCode).toBe(200);
       expect(settingsResponse.json()).toMatchObject({
         scope: {
           available: [
             { kind: "organization", label: "Organization" },
-            { kind: "workspace", label: principal.workspaceName },
+            { kind: "workspace", label: targetWorkspace.name },
           ],
           editableProviderConnections: false,
           kind: "workspace",
         },
       });
-      expect(readWorkspaceSettings).toHaveBeenCalledWith(principal);
+      expect(membersResponse.statusCode).toBe(200);
+      expect(candidatesResponse.statusCode).toBe(200);
+      expect(candidatesResponse.json()).toEqual([{
+        displayName: "Workspace Member",
+        globalRole: "standard",
+        state: "active",
+        userId: memberId,
+        username: "workspace-member",
+      }]);
+      expect(addMemberResponse.statusCode).toBe(204);
+      expect(removeMemberResponse.statusCode).toBe(204);
+      expect(passwordResetResponse.statusCode).toBe(404);
+      expect(errorsResponse.statusCode).toBe(200);
+      expect(securityResponse.statusCode).toBe(200);
+      expect(organizationUsersResponse.statusCode).toBe(200);
+      expect(organizationUsersResponse.json()).toEqual([organizationUser]);
+      expect(createOrganizationUserResponse.statusCode).toBe(201);
+      expect(passwordLinkResponse.statusCode).toBe(201);
+      expect(readWorkspaceSettings).toHaveBeenCalledWith(
+        principal,
+        targetWorkspace.id,
+      );
+      expect(listWorkspaceMembers).toHaveBeenCalledWith(
+        principal,
+        targetWorkspace.id,
+      );
+      expect(listWorkspaceMemberCandidates).toHaveBeenCalledWith(
+        principal,
+        targetWorkspace.id,
+      );
+      expect(addWorkspaceMember).toHaveBeenCalledWith(
+        principal,
+        targetWorkspace.id,
+        memberId,
+        "member",
+      );
+      expect(removeWorkspaceMember).toHaveBeenCalledWith(
+        principal,
+        targetWorkspace.id,
+        memberId,
+      );
+      expect(readApplicationErrors).toHaveBeenCalledWith(principal, {
+        area: "all",
+        page: 1,
+        pageSize: 50,
+      });
+      expect(readWorkspaceSecurityOverview).toHaveBeenCalledWith(principal);
+      expect(createOrganizationUser).toHaveBeenCalledWith(
+        principal,
+        expect.objectContaining({
+          displayName: "Workspace Member",
+          username: "workspace-member",
+          usernameNormalized: "workspace-member",
+        }),
+      );
+      expect(createOrganizationUserPasswordLink).toHaveBeenCalledWith(
+        principal,
+        memberId,
+      );
+      expect(listOrganizationUsers).toHaveBeenCalledWith(principal);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("keeps organization account operations restricted to global administrators", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "standard");
+    const createOrganizationUser = vi.fn<
+      SecurityWebServices["createOrganizationUser"]
+    >();
+    const createOrganizationUserPasswordLink = vi.fn<
+      SecurityWebServices["createOrganizationUserPasswordLink"]
+    >();
+    const listOrganizationUsers = vi.fn<
+      SecurityWebServices["listOrganizationUsers"]
+    >();
+    const securityOverview = {
+      activeResetLinkCount: 0,
+      administrators: [],
+      policy: {
+        minimumPasswordLength: 12,
+        requireLetterAndNumber: true,
+        requireSpecialCharacter: false,
+        resetLinkLifetimeSeconds: 3_600,
+        updatedAt: "2026-08-12T12:00:00.000Z",
+        version: 1,
+      },
+      recentChanges: [],
+    };
+    const services = {
+      ...buildServices({ readSession: async () => principal }),
+      createOrganizationUser,
+      createOrganizationUserPasswordLink,
+      listOrganizationUsers,
+      readPasswordPolicy: async () => securityOverview.policy,
+      readWorkspaceSecurityOverview: async () => securityOverview,
+      updateWorkspaceSecurityPolicy: async () => securityOverview,
+    };
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services,
+      staticDirectory: null,
+    });
+
+    try {
+      const cookies = { "__Host-citeloom_session": "private-session-token" };
+      const responses = await Promise.all([
+        server.inject({
+          cookies,
+          method: "GET",
+          url: "/api/security/users",
+        }),
+        server.inject({
+          cookies,
+          headers: { origin: "https://localhost:3443" },
+          method: "POST",
+          payload: { displayName: "Jane Doe", username: "jdoe" },
+          url: "/api/security/users",
+        }),
+        server.inject({
+          cookies,
+          headers: { origin: "https://localhost:3443" },
+          method: "POST",
+          url: "/api/security/users/00000000-0000-4000-8000-000000000701/password-link",
+        }),
+      ]);
+
+      expect(responses.map((response) => response.statusCode)).toEqual([
+        403,
+        403,
+        403,
+      ]);
+      expect(createOrganizationUser).not.toHaveBeenCalled();
+      expect(createOrganizationUserPasswordLink).not.toHaveBeenCalled();
+      expect(listOrganizationUsers).not.toHaveBeenCalled();
     } finally {
       await server.close();
     }
@@ -3378,6 +3689,52 @@ describe("web server boundary", () => {
     }
   });
 
+  it("gives a global administrator workspace ingestion controls", async () => {
+    const principal = buildAuthenticatedPrincipal("member", "global_admin");
+    const reindexDocument = vi.fn<RuntimeWebServices["reindexDocument"]>(
+      async (_principal, request) => ({
+        documentId: request.documentId,
+        kind: "queued",
+        sourceFile: request.sourceFile,
+      }),
+    );
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readSession: async () => principal,
+        reindexDocument,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "POST",
+        payload: {
+          sourceFile: "/app/documents/uploads/group/handbook.pdf",
+        },
+        url: `/api/documents/${"a".repeat(64)}/reindex`,
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(reindexDocument).toHaveBeenCalledWith(
+        principal,
+        {
+          documentId: "a".repeat(64),
+          sourceFile: "/app/documents/uploads/group/handbook.pdf",
+        },
+        {
+          isAdministrator: true,
+          userId: principal.userId,
+        },
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
   it("rejects an invalid document reindex request at the HTTP boundary", async () => {
     const reindexDocument = vi.fn<RuntimeWebServices["reindexDocument"]>(
       async () => ({ kind: "not-found" }),
@@ -3759,6 +4116,7 @@ describe("research API boundary", () => {
 type TestWebServiceOverrides = Partial<RuntimeWebServices>
   & Partial<Pick<
     WebServices,
+    | "addWorkspaceMember"
     | "archiveSharedSourceLibrary"
     | "archiveWorkspace"
     | "authenticate"
@@ -3771,9 +4129,8 @@ type TestWebServiceOverrides = Partial<RuntimeWebServices>
     | "createSharedSourceLibrary"
     | "deleteSharedSourceLibrary"
     | "createEmbeddingInputFormat"
-    | "createPasswordReset"
     | "createWorkspace"
-    | "createWorkspaceMember"
+    | "listWorkspaceMemberCandidates"
     | "listWorkspaces"
     | "listSourceLibraries"
     | "listWorkspaceMembers"
@@ -3919,16 +4276,15 @@ function buildServices(
     }),
     deleteSharedSourceLibrary: overrides.deleteSharedSourceLibrary
       ?? (async () => undefined),
-    createPasswordReset: overrides.createPasswordReset ?? (async () => {
-      throw new Error("Authentication is not configured in boundary tests.");
-    }),
-    createWorkspaceMember: overrides.createWorkspaceMember ?? (async () => {
+    addWorkspaceMember: overrides.addWorkspaceMember ?? (async () => {
       throw new Error("Authentication is not configured in boundary tests.");
     }),
     createWorkspace: overrides.createWorkspace ?? (async () => {
       throw new Error("Authentication is not configured in boundary tests.");
     }),
     listWorkspaceMembers: overrides.listWorkspaceMembers ?? (async () => []),
+    listWorkspaceMemberCandidates: overrides.listWorkspaceMemberCandidates
+      ?? (async () => []),
     listWorkspaces: overrides.listWorkspaces ?? (async () => []),
     listSourceLibraries: overrides.listSourceLibraries ?? (async () => []),
     openAICodex: overrides.openAICodex ?? {
@@ -3973,7 +4329,12 @@ function buildServices(
       })),
     renameSharedSourceLibrary: overrides.renameSharedSourceLibrary
       ?? (async () => undefined),
-    renameWorkspace: overrides.renameWorkspace ?? (async () => undefined),
+    renameWorkspace: overrides.renameWorkspace
+      ?? (async (_principal, workspaceId, input) => ({
+        id: workspaceId,
+        name: input.name,
+        role: "admin",
+      })),
     restoreSharedSourceLibrary: overrides.restoreSharedSourceLibrary
       ?? (async () => undefined),
     revokeSession: overrides.revokeSession ?? (async () => undefined),
@@ -4070,6 +4431,14 @@ function buildAuthenticatedPrincipal(
     username: "test-user",
     workspaceId: "00000000-0000-4000-8000-000000000302",
     workspaceName: "Test Workspace",
+  };
+}
+
+function buildPrincipalWorkspace(principal: AuthenticatedPrincipal) {
+  return {
+    id: principal.workspaceId,
+    name: principal.workspaceName,
+    role: "admin" as const,
   };
 }
 

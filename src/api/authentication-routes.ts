@@ -3,16 +3,17 @@ import { ZodError } from "zod";
 
 import {
   decodeChangePasswordInput,
+  decodeAddWorkspaceMemberInput,
   decodeCreateWorkspaceInput,
-  decodeCreateWorkspaceMemberInput,
   decodeLoginInput,
   decodePasswordSetupInput,
   decodeRenameWorkspaceInput,
-  decodeWorkspaceMemberId,
+  decodeWorkspaceMemberTarget,
   decodeWorkspaceMemberRoleInput,
   decodeWorkspaceId,
   decodeWorkspaceMemberAccessInput,
 } from "../auth/boundary.js";
+import { canAdministerWorkspace } from "../auth/authorization.js";
 import type { AuthenticatedPrincipal } from "../auth/model.js";
 import { PasswordValidationError } from "../auth/password.js";
 import {
@@ -21,13 +22,14 @@ import {
   GlobalAuthorizationError,
   SetupTokenRejectedError,
   ProtectedGlobalAdministratorError,
-  UsernameUnavailableError,
   WorkspaceAuthorizationError,
   WorkspaceArchiveConflictError,
   WorkspaceConfigurationSourceUnavailableError,
   WorkspaceMemberNotFoundError,
+  WorkspaceMemberAlreadyExistsError,
   WorkspaceMemberAccessConflictError,
   WorkspaceNameUnavailableError,
+  WorkspaceUserUnavailableError,
   WorkspaceUnavailableError,
 } from "../auth/store.js";
 import {
@@ -65,7 +67,6 @@ const ADMINISTRATOR_WEB_PATHS = new Set([
 ]);
 const SETTINGS_ADMINISTRATOR_WEB_PATHS = new Set([
   "/fragments/settings.html",
-  "/fragments/workspace-users-management.html",
   "/settings",
 ]);
 const GLOBAL_ADMINISTRATOR_WEB_PATHS = new Set([
@@ -132,11 +133,11 @@ export function registerAuthenticationRoutes(
       }
       if (
         ADMINISTRATOR_WEB_PATHS.has(pathname)
-        && principal.role !== "admin"
+        && !canAdministerWorkspace(principal, principal.workspaceId)
       ) {
         throw new WebRequestError(
           403,
-          "Workspace administrator access is required.",
+          "Workspace or global administrator access is required.",
         );
       }
       if (
@@ -150,8 +151,7 @@ export function registerAuthenticationRoutes(
       }
       if (
         SETTINGS_ADMINISTRATOR_WEB_PATHS.has(pathname)
-        && principal.role !== "admin"
-        && principal.globalRole !== "global_admin"
+        && !canAdministerWorkspace(principal, principal.workspaceId)
       ) {
         throw new WebRequestError(
           403,
@@ -431,7 +431,7 @@ export function registerAuthenticationRoutes(
     }
   });
 
-  server.patch("/api/workspaces/:workspaceId", async (request, reply) => {
+  server.patch("/api/workspaces/:workspaceId", async (request) => {
     const principal = requireGlobalAdministratorPrincipal(
       requestPrincipals,
       request,
@@ -439,8 +439,7 @@ export function registerAuthenticationRoutes(
     const workspaceId = decodeWorkspaceId(request.params);
     const input = decodeRenameWorkspaceInput(request.body);
     try {
-      await services.renameWorkspace(principal, workspaceId, input);
-      return reply.status(204).send();
+      return await services.renameWorkspace(principal, workspaceId, input);
     } catch (error: unknown) {
       if (error instanceof WorkspaceNameUnavailableError) {
         throw new WebRequestError(409, error.message);
@@ -500,42 +499,54 @@ export function registerAuthenticationRoutes(
     }
   });
 
-  server.post("/api/workspace/members", async (request, reply) => {
+  server.post("/api/workspaces/:workspaceId/members", async (request, reply) => {
     const principal = requireRequestPrincipal(requestPrincipals, request);
-    const member = decodeCreateWorkspaceMemberInput(request.body);
+    const workspaceId = decodeWorkspaceId(request.params);
+    const member = decodeAddWorkspaceMemberInput(request.body);
     try {
-      const setup = await services.createWorkspaceMember(
+      await services.addWorkspaceMember(
         principal,
-        member.identity,
+        workspaceId,
+        member.userId,
         member.role,
       );
-      return reply.status(201).send(setup);
-    } catch (error: unknown) {
-      if (error instanceof WorkspaceAuthorizationError) {
-        throw new WebRequestError(403, error.message);
-      }
-      if (error instanceof UsernameUnavailableError) {
-        throw new WebRequestError(409, error.message);
-      }
-      throw error;
-    }
-  });
-
-  server.get("/api/workspace/members", async (request) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    try {
-      return await services.listWorkspaceMembers(principal);
+      return reply.status(204).send();
     } catch (error: unknown) {
       throw mapWorkspaceMembershipError(error);
     }
   });
 
-  server.put("/api/workspace/members/:userId/role", async (request, reply) => {
+  server.get("/api/workspaces/:workspaceId/member-candidates", async (request) => {
     const principal = requireRequestPrincipal(requestPrincipals, request);
-    const userId = decodeWorkspaceMemberId(request.params);
+    const workspaceId = decodeWorkspaceId(request.params);
+    try {
+      return await services.listWorkspaceMemberCandidates(principal, workspaceId);
+    } catch (error: unknown) {
+      throw mapWorkspaceMembershipError(error);
+    }
+  });
+
+  server.get("/api/workspaces/:workspaceId/members", async (request) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
+    const workspaceId = decodeWorkspaceId(request.params);
+    try {
+      return await services.listWorkspaceMembers(principal, workspaceId);
+    } catch (error: unknown) {
+      throw mapWorkspaceMembershipError(error);
+    }
+  });
+
+  server.put("/api/workspaces/:workspaceId/members/:userId/role", async (request, reply) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
+    const target = decodeWorkspaceMemberTarget(request.params);
     const role = decodeWorkspaceMemberRoleInput(request.body);
     try {
-      await services.changeWorkspaceMemberRole(principal, userId, role);
+      await services.changeWorkspaceMemberRole(
+        principal,
+        target.workspaceId,
+        target.userId,
+        role,
+      );
       return reply.status(204).send();
     } catch (error: unknown) {
       throw mapWorkspaceMembershipError(error);
@@ -543,15 +554,16 @@ export function registerAuthenticationRoutes(
   });
 
   server.put(
-    "/api/workspace/members/:userId/access",
+    "/api/workspaces/:workspaceId/members/:userId/access",
     async (request, reply) => {
       const principal = requireRequestPrincipal(requestPrincipals, request);
       try {
-        const userId = decodeWorkspaceMemberId(request.params);
+        const target = decodeWorkspaceMemberTarget(request.params);
         const access = decodeWorkspaceMemberAccessInput(request.body);
         await services.changeWorkspaceMemberAccess(
           principal,
-          userId,
+          target.workspaceId,
+          target.userId,
           access,
         );
         return reply.status(204).send();
@@ -561,27 +573,17 @@ export function registerAuthenticationRoutes(
     },
   );
 
-  server.post(
-    "/api/workspace/members/:userId/password-reset",
-    async (request, reply) => {
-      const principal = requireRequestPrincipal(requestPrincipals, request);
-      const userId = decodeWorkspaceMemberId(request.params);
-      try {
-        const reset = await services.createPasswordReset(principal, userId);
-        return reply.status(201).send(reset);
-      } catch (error: unknown) {
-        throw mapWorkspaceMembershipError(error);
-      }
-    },
-  );
-
   server.delete(
-    "/api/workspace/members/:userId",
+    "/api/workspaces/:workspaceId/members/:userId",
     async (request, reply) => {
       const principal = requireRequestPrincipal(requestPrincipals, request);
-      const userId = decodeWorkspaceMemberId(request.params);
+      const target = decodeWorkspaceMemberTarget(request.params);
       try {
-        await services.removeWorkspaceMember(principal, userId);
+        await services.removeWorkspaceMember(
+          principal,
+          target.workspaceId,
+          target.userId,
+        );
         return reply.status(204).send();
       } catch (error: unknown) {
         throw mapWorkspaceMembershipError(error);
@@ -601,29 +603,13 @@ export function requireRequestPrincipal<T extends object>(
   return principal;
 }
 
-export function requireAdministratorPrincipal<T extends object>(
+export function requireWorkspaceAdministratorPrincipal<T extends object>(
   principals: WeakMap<object, AuthenticatedPrincipal>,
   request: T,
+  workspaceId: string,
 ): AuthenticatedPrincipal {
   const principal = requireRequestPrincipal(principals, request);
-  if (principal.role !== "admin") {
-    throw new WebRequestError(
-      403,
-      "Workspace administrator access is required.",
-    );
-  }
-  return principal;
-}
-
-export function requireWorkspaceOrGlobalAdministratorPrincipal<T extends object>(
-  principals: WeakMap<object, AuthenticatedPrincipal>,
-  request: T,
-): AuthenticatedPrincipal {
-  const principal = requireRequestPrincipal(principals, request);
-  if (
-    principal.role !== "admin"
-    && principal.globalRole !== "global_admin"
-  ) {
+  if (!canAdministerWorkspace(principal, workspaceId)) {
     throw new WebRequestError(
       403,
       "Workspace or global administrator access is required.",
@@ -759,6 +745,15 @@ function mapWorkspaceMembershipError(error: unknown): unknown {
     return new WebRequestError(403, error.message);
   }
   if (error instanceof WorkspaceMemberNotFoundError) {
+    return new WebRequestError(404, error.message);
+  }
+  if (error instanceof WorkspaceUnavailableError) {
+    return new WebRequestError(404, error.message);
+  }
+  if (error instanceof WorkspaceMemberAlreadyExistsError) {
+    return new WebRequestError(409, error.message);
+  }
+  if (error instanceof WorkspaceUserUnavailableError) {
     return new WebRequestError(404, error.message);
   }
   if (error instanceof FinalWorkspaceAdministratorError) {

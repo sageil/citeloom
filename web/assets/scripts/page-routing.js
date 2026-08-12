@@ -63,7 +63,10 @@ export const routes = Object.freeze({
   security: {
     fragment: "./fragments/security.html",
     pageScript: { id: "security", source: "./security.js" },
-    pageStyles: ["./assets/styles/citeloom-security.css"],
+    pageStyles: [
+      "./assets/styles/citeloom-access.css",
+      "./assets/styles/citeloom-security.css",
+    ],
     title: "Security | CiteLoom",
   },
   settings: {
