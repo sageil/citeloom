@@ -3,9 +3,9 @@ import { readFile } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  readDocumentCatalog,
   registerPage,
-} from "../web/assets/scripts/citeloom-documents.js";
+} from "../web/assets/scripts/documents.js";
+import { readDocumentCatalog } from "../web/assets/scripts/document-catalog-schema.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -117,7 +117,7 @@ describe("CiteLoom document ingestion controls", () => {
           access: "manage",
           id: "00000000-0000-4000-8000-000000000500",
           kind: "private",
-          name: "DefaultSpace sources",
+          name: "DefaultSpace",
         },
         {
           access: "manage",

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createWorkspaceUserManagement,
-} from "../web/assets/scripts/citeloom-workspace-users.js";
+} from "../web/assets/scripts/workspace-users.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();

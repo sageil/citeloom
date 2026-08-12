@@ -7,6 +7,7 @@
   @keydown.escape.window="chatSwitcherOpen ? closeChatSwitcher() : (selectedCitation !== null &amp;&amp; !newChatOpen &amp;&amp; closeCitation())"
 >
   <main class="chat-workspace">
+    <p class="field-error" role="alert" x-cloak x-show="errorMessage !== ''" x-text="errorMessage"></p>
     <template x-if="conversation === null">
       <section class="empty-state chat-empty-state">
         <span class="chat-empty-icon">

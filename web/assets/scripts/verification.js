@@ -6,7 +6,7 @@ import {
   readNullableProbability,
   readPlainObject,
   readPositiveInteger,
-} from "./citeloom-boundaries.js";
+} from "./boundary-readers.js";
 
 const verificationRefreshDelayMs = 800;
 const verificationStates = Object.freeze([

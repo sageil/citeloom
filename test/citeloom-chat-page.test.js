@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { registerPage } from "../web/assets/scripts/citeloom-chat.js";
+import { registerPage } from "../web/assets/scripts/chat.js";
 
 describe("CiteLoom chat page", () => {
   it("offers speech controls for every completed assistant response", () => {

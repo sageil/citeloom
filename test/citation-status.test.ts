@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateCitationStatus,
   formatClaimStatusLabel,
-} from "../web/assets/scripts/citeloom-ask.js";
+} from "../web/assets/scripts/ask-schema.js";
 
 const citationNumber = 1;
 

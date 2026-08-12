@@ -5,11 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CONFIRMATION_REQUEST_EVENT,
   dispatchConfirmationResponse,
-} from "../web/assets/scripts/citeloom-confirmation.js";
-import { registerPage } from "../web/assets/scripts/citeloom-settings.js";
+} from "../web/assets/scripts/confirmation.js";
+import { registerPage } from "../web/assets/scripts/settings.js";
 import {
   readSourceContentStorageResponse,
-} from "../web/assets/scripts/citeloom-source-content-storage.js";
+} from "../web/assets/scripts/source-content-storage.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();

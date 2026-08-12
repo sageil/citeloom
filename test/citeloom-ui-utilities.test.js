@@ -4,9 +4,9 @@ import {
   activateSystemHealthDashboard,
   deactivateSystemHealthDashboard,
   readSystemHealthDashboard,
-} from "../web/assets/scripts/citeloom-dashboard-extensions.js";
-import { buildPdfViewerUrl } from "../web/assets/scripts/citeloom-file-links.js";
-import { focusTextArea } from "../web/assets/scripts/citeloom-focus.js";
+} from "../web/assets/scripts/dashboard-extensions.js";
+import { buildPdfViewerUrl } from "../web/assets/scripts/file-links.js";
+import { focusTextArea } from "../web/assets/scripts/focus.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();

@@ -8,9 +8,8 @@ import {
   readPlainObject,
   readPositiveInteger,
   readTimestamp,
-} from "./citeloom-boundaries.js";
-import { requestConfirmation } from "./citeloom-confirmation.js";
-import { dispatchNotice } from "./citeloom-notices.js";
+} from "./boundary-readers.js";
+import { requestConfirmation } from "./confirmation.js";
 
 function readAdministrator(value) {
   const administrator = readPlainObject(value, "security administrator");
@@ -133,16 +132,17 @@ export function registerPage(alpine) {
     activeResetLinkCount: 0,
     administrators: [],
     busy: false,
+    errorMessage: "",
     invalidateOutstandingResetLinks: false,
     loadFailed: false,
     loading: true,
-    minimumPasswordLength: 15,
+    minimumPasswordLength: null,
     recentChanges: [],
-    requireLetterAndNumber: false,
-    requireSpecialCharacter: false,
-    resetLinkLifetimeSeconds: 86_400,
+    requireLetterAndNumber: null,
+    requireSpecialCharacter: null,
+    resetLinkLifetimeSeconds: null,
     savedPolicy: null,
-    version: 1,
+    version: null,
 
     get policyChanged() {
       if (this.savedPolicy === null) {
@@ -221,6 +221,7 @@ export function registerPage(alpine) {
 
     async loadOverview() {
       this.loading = true;
+      this.errorMessage = "";
       this.loadFailed = false;
       try {
         const response = await fetch("/api/security", {
@@ -230,10 +231,9 @@ export function registerPage(alpine) {
         this.applyOverview(readSecurityOverview(value));
       } catch (error) {
         this.loadFailed = true;
-        dispatchNotice(
-          "error",
-          error instanceof Error ? error.message : "Security settings could not be loaded.",
-        );
+        this.errorMessage = error instanceof Error
+          ? error.message
+          : "Security settings could not be loaded.";
       } finally {
         this.loading = false;
       }
@@ -250,27 +250,25 @@ export function registerPage(alpine) {
         this.administrators = overview.administrators;
         this.recentChanges = overview.recentChanges;
       } catch (error) {
-        dispatchNotice(
-          "error",
-          error instanceof Error
-            ? error.message
-            : "Security status could not be refreshed.",
-        );
+        this.errorMessage = error instanceof Error
+          ? error.message
+          : "Security status could not be refreshed.";
       }
     },
 
-    async persistPolicy(revokeLinks, successMessage) {
+    async persistPolicy(revokeLinks) {
       const policy = {
         minimumPasswordLength: this.minimumPasswordLength,
         requireLetterAndNumber: this.requireLetterAndNumber,
         requireSpecialCharacter: this.requireSpecialCharacter,
         resetLinkLifetimeSeconds: this.resetLinkLifetimeSeconds,
       };
-      return this.persistPolicyValues(policy, revokeLinks, successMessage);
+      return this.persistPolicyValues(policy, revokeLinks);
     },
 
-    async persistPolicyValues(policy, revokeLinks, successMessage) {
+    async persistPolicyValues(policy, revokeLinks) {
       this.busy = true;
+      this.errorMessage = "";
       try {
         const response = await fetch("/api/security/policy", {
           body: JSON.stringify({
@@ -286,13 +284,11 @@ export function registerPage(alpine) {
         });
         const value = await readJsonResponse(response, "Save security policy");
         this.applyOverview(readSecurityOverview(value));
-        dispatchNotice("success", successMessage);
         return true;
       } catch (error) {
-        dispatchNotice(
-          "error",
-          error instanceof Error ? error.message : "The security policy could not be saved.",
-        );
+        this.errorMessage = error instanceof Error
+          ? error.message
+          : "The security policy could not be saved.";
         return false;
       } finally {
         this.busy = false;
@@ -327,7 +323,6 @@ export function registerPage(alpine) {
       const saved = await this.persistPolicyValues(
         this.savedPolicy,
         true,
-        "Outstanding password links were revoked.",
       );
       if (saved && draftPolicy !== null) {
         this.minimumPasswordLength = draftPolicy.minimumPasswordLength;
@@ -346,7 +341,8 @@ export function registerPage(alpine) {
         || this.minimumPasswordLength < 9
         || this.minimumPasswordLength > 64
       ) {
-        dispatchNotice("error", "Minimum password length must be between 9 and 64 characters.");
+        this.errorMessage =
+          "Minimum password length must be between 9 and 64 characters.";
         return;
       }
       const revokeLinks = this.invalidateOutstandingResetLinks
@@ -363,10 +359,7 @@ export function registerPage(alpine) {
           return;
         }
       }
-      const successMessage = revokeLinks
-        ? "Security policy saved and outstanding password links revoked."
-        : "Security policy saved.";
-      await this.persistPolicy(revokeLinks, successMessage);
+      await this.persistPolicy(revokeLinks);
     },
   }));
 }

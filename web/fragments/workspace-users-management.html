@@ -1,4 +1,5 @@
 <div class="workspace-user-management" @keydown.escape.window="addUserOpen &amp;&amp; closeAddUser()">
+  <p class="field-error" role="alert" x-cloak x-show="userManagementError !== ''" x-text="userManagementError"></p>
   <section class="access-setup-success" x-cloak x-show="setupUrl">
     <span class="access-success-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-check-circle"></use></svg></span>
     <div>

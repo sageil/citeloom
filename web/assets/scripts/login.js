@@ -1,4 +1,4 @@
-import { readJsonResponse } from "./citeloom-boundaries.js";
+import { readJsonResponse } from "./boundary-readers.js";
 
 export function registerPage(alpine) {
   alpine.data("citeloomLoginPage", () => ({

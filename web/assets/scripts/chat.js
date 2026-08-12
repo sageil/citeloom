@@ -1,40 +1,39 @@
 import {
   readJsonResponse,
   readString,
-} from "./citeloom-boundaries.js";
+} from "./boundary-readers.js";
 import {
   applyAnswerContentUpdate,
   createEmptyAnswerContent,
   hasFencedCodeBlock,
   renderAnswerMarkdown,
-} from "./citeloom-answer-content.js";
-import { createAnswerSpeechControls } from "./citeloom-answer-speech.js";
-import { createEvidenceSpeechControls } from "./citeloom-evidence-speech.js";
+} from "./answer-content.js";
+import { createAnswerSpeechControls } from "./answer-speech.js";
+import { createEvidenceSpeechControls } from "./evidence-speech.js";
 import {
   readChatConversation,
   readChatDashboard,
   readChatMessageStream,
   readChatSummaries,
   readCreatedChat,
-} from "./citeloom-chat-boundaries.js";
-import { readDocumentCatalog } from "./citeloom-documents.js";
+} from "./chat-schema.js";
+import { readDocumentCatalog } from "./document-catalog-schema.js";
 import {
   buildHighlightedSourceViewerUrl,
   isTextSourceFile,
-} from "./citeloom-file-links.js";
+} from "./file-links.js";
 import {
   createEvidenceWindowControls,
   findEvidenceCitationTrigger,
   readEvidenceClaimIndex,
   revealEvidenceCitationTrigger,
-} from "./citeloom-evidence-window.js";
-import { focusTextArea } from "./citeloom-focus.js";
+} from "./evidence-window.js";
+import { focusTextArea } from "./focus.js";
 import {
   createDictationController,
   formatDictationElapsedTime,
-} from "./citeloom-dictation.js";
-import { dispatchNotice } from "./citeloom-notices.js";
-import { requestConfirmation } from "./citeloom-confirmation.js";
+} from "./dictation.js";
+import { requestConfirmation } from "./confirmation.js";
 import {
   clearVerificationRefresh as clearVerificationPolling,
   isVerificationPending,
@@ -43,7 +42,7 @@ import {
   verificationLabel,
   verificationProgressValue,
   verificationStatusLabel,
-} from "./citeloom-verification.js";
+} from "./verification.js";
 const chatSwitcherRequestEvent = "citeloom:chat-switcher-request";
 const chatEvidenceSpeechOptions = {
   audioRefName: "evidenceSpeechAudio",
@@ -56,8 +55,8 @@ const chatEvidenceSpeechOptions = {
   readEvidenceText(page, citation) {
     return page.evidenceText(citation);
   },
-  reportError(message) {
-    dispatchNotice("error", message);
+  reportError(page, message) {
+    page.errorMessage = message;
   },
 };
 const chatEvidenceWindowOptions = {
@@ -339,8 +338,8 @@ const chatAnswerSpeechOptions = {
   readTargetId(target) {
     return target.messageId;
   },
-  reportError(message) {
-    dispatchNotice("error", message);
+  reportError(page, message) {
+    page.errorMessage = message;
   },
   targetIdProperty: "speechAnswerMessageId",
 };
@@ -613,7 +612,6 @@ export function registerPage(alpine) {
           ? error.message
           : "Chat configuration could not be loaded.";
         this.speechAudioError = message;
-        dispatchNotice("error", message);
       }
     },
 
@@ -631,7 +629,7 @@ export function registerPage(alpine) {
           this.dictationState = snapshot.state;
           this.dictationStatus = snapshot.status;
           if (snapshot.state === "error") {
-            dispatchNotice("error", snapshot.status);
+            this.errorMessage = snapshot.status;
           }
         },
         onTranscript: (transcript) => {
@@ -1864,7 +1862,6 @@ export function registerPage(alpine) {
     reportError(error, fallback) {
       const message = readChatErrorMessage(error, fallback);
       this.errorMessage = message;
-      dispatchNotice("error", message);
       return message;
     },
   }));

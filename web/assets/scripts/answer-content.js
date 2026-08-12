@@ -6,7 +6,7 @@ import {
   readNullablePositiveInteger,
   readPlainObject,
   readPositiveInteger,
-} from "./citeloom-boundaries.js";
+} from "./boundary-readers.js";
 
 const answerSections = Object.freeze([
   "answer",

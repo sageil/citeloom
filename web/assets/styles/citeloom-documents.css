@@ -192,10 +192,6 @@
   min-width: 0;
 }
 
-.catalog-toolbar select {
-  padding: 0 28px 0 9px;
-}
-
 .catalog-search {
   border-color: var(--border);
   border-radius: 6px;

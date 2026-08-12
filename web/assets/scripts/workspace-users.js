@@ -4,9 +4,8 @@ import {
   readJsonResponse,
   readNonEmptyString,
   readPlainObject,
-} from "./citeloom-boundaries.js";
-import { requestConfirmation } from "./citeloom-confirmation.js";
-import { dispatchNotice } from "./citeloom-notices.js";
+} from "./boundary-readers.js";
+import { requestConfirmation } from "./confirmation.js";
 
 function readMember(value) {
   const member = readPlainObject(value, "workspace member");
@@ -45,6 +44,7 @@ export function createWorkspaceUserManagement(options = {}) {
     showUserRoleGuide: showRoleGuide,
     userManagementActionsLabel: actionsLabel,
     userManagementBusy: false,
+    userManagementError: "",
     userManagementLoadFailed: false,
     userManagementLoading: true,
     userManagementTitle: title,
@@ -86,6 +86,7 @@ export function createWorkspaceUserManagement(options = {}) {
       this.setupLinkCopied = false;
       this.setupUrl = "";
       this.userManagementBusy = false;
+      this.userManagementError = "";
       this.userManagementLoadFailed = false;
       this.userManagementLoading = true;
     },
@@ -122,17 +123,15 @@ export function createWorkspaceUserManagement(options = {}) {
       try {
         await navigator.clipboard.writeText(this.setupUrl);
         this.setupLinkCopied = true;
-        dispatchNotice("success", "The password link was copied.");
       } catch {
-        dispatchNotice(
-          "error",
-          "The password link could not be copied. Select and copy it manually.",
-        );
+        this.userManagementError =
+          "The password link could not be copied. Select and copy it manually.";
       }
     },
 
     async loadUsers() {
       this.userManagementLoading = true;
+      this.userManagementError = "";
       this.userManagementLoadFailed = false;
       try {
         const response = await fetch("/api/workspace/members", {
@@ -147,10 +146,9 @@ export function createWorkspaceUserManagement(options = {}) {
         this.members = members;
       } catch (error) {
         this.userManagementLoadFailed = true;
-        dispatchNotice(
-          "error",
-          error instanceof Error ? error.message : "Users could not be loaded.",
-        );
+        this.userManagementError = error instanceof Error
+          ? error.message
+          : "Users could not be loaded.";
       } finally {
         this.userManagementLoading = false;
       }
@@ -158,6 +156,7 @@ export function createWorkspaceUserManagement(options = {}) {
 
     async addUser() {
       this.userManagementBusy = true;
+      this.userManagementError = "";
       this.setupUrl = "";
       try {
         const response = await fetch("/api/workspace/members", {
@@ -182,19 +181,12 @@ export function createWorkspaceUserManagement(options = {}) {
         this.newRole = "member";
         this.addUserOpen = false;
         this.setupLinkCopied = false;
-        dispatchNotice(
-          "success",
-          kind === "setup"
-            ? "User added. Share the setup link with them."
-            : "Existing user added to this workspace.",
-        );
         await this.loadUsers();
         await this.afterWorkspaceUserMutation();
       } catch (error) {
-        dispatchNotice(
-          "error",
-          error instanceof Error ? error.message : "The user could not be added.",
-        );
+        this.userManagementError = error instanceof Error
+          ? error.message
+          : "The user could not be added.";
       } finally {
         this.userManagementBusy = false;
       }
@@ -202,6 +194,7 @@ export function createWorkspaceUserManagement(options = {}) {
 
     async changeRole(member, role) {
       this.userManagementBusy = true;
+      this.userManagementError = "";
       try {
         const response = await fetch(
           `/api/workspace/members/${encodeURIComponent(member.userId)}/role`,
@@ -215,13 +208,12 @@ export function createWorkspaceUserManagement(options = {}) {
           await readJsonResponse(response, "Change user role");
         }
         await this.loadUsers();
-        dispatchNotice("success", `${member.displayName}'s role was updated.`);
       } catch (error) {
-        dispatchNotice(
-          "error",
-          error instanceof Error ? error.message : "The role could not be changed.",
-        );
+        const message = error instanceof Error
+          ? error.message
+          : "The role could not be changed.";
         await this.loadUsers();
+        this.userManagementError = message;
       } finally {
         this.userManagementBusy = false;
       }
@@ -229,6 +221,7 @@ export function createWorkspaceUserManagement(options = {}) {
 
     async changeAccess(member, access) {
       this.userManagementBusy = true;
+      this.userManagementError = "";
       try {
         const response = await fetch(
           `/api/workspace/members/${encodeURIComponent(member.userId)}/access`,
@@ -242,20 +235,13 @@ export function createWorkspaceUserManagement(options = {}) {
           await readJsonResponse(response, "Change workspace access");
         }
         await this.loadUsers();
-        const action = access === "enabled" ? "enabled" : "disabled";
-        dispatchNotice(
-          "success",
-          `${member.displayName}'s workspace access was ${action}.`,
-        );
         await this.afterWorkspaceUserMutation();
       } catch (error) {
-        dispatchNotice(
-          "error",
-          error instanceof Error
-            ? error.message
-            : "Workspace access could not be changed.",
-        );
+        const message = error instanceof Error
+          ? error.message
+          : "Workspace access could not be changed.";
         await this.loadUsers();
+        this.userManagementError = message;
       } finally {
         this.userManagementBusy = false;
       }
@@ -280,6 +266,7 @@ export function createWorkspaceUserManagement(options = {}) {
 
     async createPasswordReset(member) {
       this.userManagementBusy = true;
+      this.userManagementError = "";
       this.setupUrl = "";
       try {
         const response = await fetch(
@@ -292,15 +279,11 @@ export function createWorkspaceUserManagement(options = {}) {
         this.setupUrl = `${window.location.origin}/login?setup=${encodeURIComponent(token)}&mode=reset`;
         this.setupLinkPurpose = "reset";
         this.setupLinkCopied = false;
-        dispatchNotice("success", `Password-reset link created for ${member.username}.`);
         await this.afterWorkspaceUserMutation();
       } catch (error) {
-        dispatchNotice(
-          "error",
-          error instanceof Error
-            ? error.message
-            : "The password-reset link could not be created.",
-        );
+        this.userManagementError = error instanceof Error
+          ? error.message
+          : "The password-reset link could not be created.";
       } finally {
         this.userManagementBusy = false;
       }
@@ -325,6 +308,7 @@ export function createWorkspaceUserManagement(options = {}) {
 
     async removeUser(member) {
       this.userManagementBusy = true;
+      this.userManagementError = "";
       try {
         const response = await fetch(
           `/api/workspace/members/${encodeURIComponent(member.userId)}`,
@@ -334,13 +318,11 @@ export function createWorkspaceUserManagement(options = {}) {
           await readJsonResponse(response, "Remove user");
         }
         await this.loadUsers();
-        dispatchNotice("success", `${member.displayName} was removed from this workspace.`);
         await this.afterWorkspaceUserMutation();
       } catch (error) {
-        dispatchNotice(
-          "error",
-          error instanceof Error ? error.message : "The user could not be removed.",
-        );
+        this.userManagementError = error instanceof Error
+          ? error.message
+          : "The user could not be removed.";
       } finally {
         this.userManagementBusy = false;
       }

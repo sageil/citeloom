@@ -6,11 +6,11 @@ import {
   readApplicationErrorPage,
   readApplicationErrorPurgeResult,
   registerPage,
-} from "../web/assets/scripts/citeloom-errors.js";
+} from "../web/assets/scripts/errors.js";
 import {
   CONFIRMATION_REQUEST_EVENT,
   dispatchConfirmationResponse,
-} from "../web/assets/scripts/citeloom-confirmation.js";
+} from "../web/assets/scripts/confirmation.js";
 
 describe("CiteLoom error reports", () => {
   it("decodes sanitized parent errors and every structured Docling detail", () => {
@@ -143,7 +143,7 @@ describe("CiteLoom error reports", () => {
       "utf8",
     );
     const script = await readFile(
-      new URL("../web/assets/scripts/citeloom-errors.js", import.meta.url),
+      new URL("../web/assets/scripts/errors.js", import.meta.url),
       "utf8",
     );
     expect(fragment).toContain('@click="purgeErrors()"');

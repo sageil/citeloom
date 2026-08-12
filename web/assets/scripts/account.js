@@ -3,8 +3,7 @@ import {
   readJsonResponse,
   readPlainObject,
   readPositiveInteger,
-} from "./citeloom-boundaries.js";
-import { dispatchNotice } from "./citeloom-notices.js";
+} from "./boundary-readers.js";
 
 function readPasswordPolicy(value) {
   const policy = readPlainObject(value, "password policy");
@@ -33,13 +32,17 @@ export function registerPage(alpine) {
     busy: false,
     confirmation: "",
     currentPassword: "",
-    minimumPasswordLength: 15,
+    errorMessage: "",
+    minimumPasswordLength: null,
     newPassword: "",
     passwordFormOpen: false,
-    requireLetterAndNumber: false,
-    requireSpecialCharacter: false,
+    requireLetterAndNumber: null,
+    requireSpecialCharacter: null,
 
     get passwordRequirementSummary() {
+      if (this.minimumPasswordLength === null) {
+        return "Loading requirements…";
+      }
       const requirements = [`At least ${this.minimumPasswordLength} characters`];
       if (this.requireLetterAndNumber) {
         requirements.push("one letter and one number");
@@ -58,10 +61,15 @@ export function registerPage(alpine) {
       this.currentPassword = "";
       this.newPassword = "";
       this.confirmation = "";
+      this.errorMessage = "";
       this.passwordFormOpen = false;
     },
 
     openPasswordForm() {
+      if (this.minimumPasswordLength === null) {
+        return;
+      }
+      this.errorMessage = "";
       this.passwordFormOpen = true;
     },
 
@@ -76,19 +84,23 @@ export function registerPage(alpine) {
         this.requireLetterAndNumber = policy.requireLetterAndNumber;
         this.requireSpecialCharacter = policy.requireSpecialCharacter;
       } catch (error) {
-        dispatchNotice(
-          "error",
-          error instanceof Error ? error.message : "Password policy could not be loaded.",
-        );
+        this.errorMessage = error instanceof Error
+          ? error.message
+          : "Password policy could not be loaded.";
       }
     },
 
     async changePassword() {
+      if (this.minimumPasswordLength === null) {
+        this.errorMessage = "Password requirements are still loading.";
+        return;
+      }
       if (this.newPassword !== this.confirmation) {
-        dispatchNotice("error", "The new passwords do not match.");
+        this.errorMessage = "The new passwords do not match.";
         return;
       }
       this.busy = true;
+      this.errorMessage = "";
       try {
         const response = await fetch("/api/auth/password", {
           body: JSON.stringify({
@@ -105,14 +117,10 @@ export function registerPage(alpine) {
         this.newPassword = "";
         this.confirmation = "";
         this.passwordFormOpen = false;
-        dispatchNotice("success", "Your password has been changed.");
       } catch (error) {
-        dispatchNotice(
-          "error",
-          error instanceof Error
-            ? error.message
-            : "Your password could not be changed.",
-        );
+        this.errorMessage = error instanceof Error
+          ? error.message
+          : "Your password could not be changed.";
       } finally {
         this.busy = false;
       }

@@ -4,7 +4,7 @@ import {
   readChatConversation,
   readChatDashboard,
   readChatSummaries,
-} from "../web/assets/scripts/citeloom-chat-boundaries.js";
+} from "../web/assets/scripts/chat-schema.js";
 
 describe("CiteLoom chat boundaries", () => {
   it("normalizes chat summaries", () => {

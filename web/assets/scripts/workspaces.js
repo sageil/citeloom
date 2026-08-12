@@ -4,8 +4,7 @@ import {
   readJsonResponse,
   readNonEmptyString,
   readPlainObject,
-} from "./citeloom-boundaries.js";
-import { dispatchNotice } from "./citeloom-notices.js";
+} from "./boundary-readers.js";
 
 function normalizeWorkspaceName(value) {
   return value.trim().toLocaleLowerCase("en-US");
@@ -269,7 +268,6 @@ export function createWorkspaceAdministrationActions() {
         if (!response.ok) {
           await readJsonResponse(response, "Workspace rename");
         }
-        dispatchNotice("success", "The workspace name was updated.");
         window.location.reload();
       } catch (error) {
         this.workspaceEditorError = error instanceof Error

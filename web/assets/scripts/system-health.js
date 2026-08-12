@@ -8,11 +8,11 @@ import {
   readNullableNonNegativeInteger,
   readPlainObject,
   readPositiveInteger,
-} from "./citeloom-boundaries.js";
+} from "./boundary-readers.js";
 import {
 activateSystemHealthDashboard,
 deactivateSystemHealthDashboard,
-} from "./citeloom-dashboard-extensions.js";
+} from "./dashboard-extensions.js";
 
 const telemetryRequestKinds = Object.freeze([
   "answer",

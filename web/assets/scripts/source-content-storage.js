@@ -7,9 +7,8 @@ import {
   readNullableNonEmptyString,
   readPlainObject,
   readPositiveInteger,
-} from "./citeloom-boundaries.js";
-import { requestConfirmation } from "./citeloom-confirmation.js";
-import { dispatchNotice } from "./citeloom-notices.js";
+} from "./boundary-readers.js";
+import { requestConfirmation } from "./confirmation.js";
 
 const storageKinds = Object.freeze(["filesystem", "s3"]);
 const credentialSources = Object.freeze(["environment", "static"]);
@@ -226,7 +225,6 @@ export function createSourceContentStorageActions() {
         });
         await readJsonResponse(response, "Object storage connection test");
         this.sourceContentStorageProbePassed = true;
-        dispatchNotice("success", "The storage connection is ready.");
       } catch (error) {
         this.sourceContentStorageError = readErrorMessage(error);
       } finally {
@@ -291,7 +289,6 @@ export function createSourceContentStorageActions() {
         this.sourceContentStorageProbePassed = false;
         this.scheduleSourceContentStorageRefresh();
         await this.loadSourceContentStorage();
-        dispatchNotice("success", "The storage migration was queued.");
       } catch (error) {
         this.sourceContentStorageError = readErrorMessage(error);
       } finally {

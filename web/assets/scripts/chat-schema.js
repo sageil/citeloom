@@ -9,20 +9,20 @@ import {
   readPositiveInteger,
   readProbability,
   readUIMessageStream,
-} from "./citeloom-boundaries.js";
+} from "./boundary-readers.js";
 import {
   createAnswerCitationKey,
   createAnswerContentFromDocument,
   readAnswerContentUpdate,
-} from "./citeloom-answer-content.js";
+} from "./answer-content.js";
 import {
   buildCitationPresentation,
-} from "./citeloom-citation-presentation.js";
+} from "./citation-presentation.js";
 import {
   readChatAnswerDocument,
   readPublishedAnswerEvidence,
-} from "./citeloom-published-answer.js";
-import { readAnswerVerificationClaims } from "./citeloom-verification.js";
+} from "./published-answer.js";
+import { readAnswerVerificationClaims } from "./verification.js";
 
 const chatRunStates = Object.freeze([
   "accepted",

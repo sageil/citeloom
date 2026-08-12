@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createWorkspaceAdministrationActions,
-} from "../web/assets/scripts/citeloom-workspaces.js";
+} from "../web/assets/scripts/workspaces.js";
 
 describe("CiteLoom workspace navigation", () => {
   it("selects the active workspace when workspace options render", async () => {
@@ -27,12 +27,12 @@ describe("CiteLoom workspace navigation", () => {
     const [index, appScript, settings, workspaceScript] = await Promise.all([
       readFile(new URL("../web/index.html", import.meta.url), "utf8"),
       readFile(
-        new URL("../web/assets/scripts/citeloom-app.js", import.meta.url),
+        new URL("../web/assets/scripts/app.js", import.meta.url),
         "utf8",
       ),
       readFile(new URL("../web/fragments/settings.html", import.meta.url), "utf8"),
       readFile(
-        new URL("../web/assets/scripts/citeloom-workspaces.js", import.meta.url),
+        new URL("../web/assets/scripts/workspaces.js", import.meta.url),
         "utf8",
       ),
     ]);

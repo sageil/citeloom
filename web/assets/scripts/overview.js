@@ -6,13 +6,12 @@ import {
   readNonNegativeInteger,
   readNullablePositiveInteger,
   readPlainObject,
-} from "./citeloom-boundaries.js";
+} from "./boundary-readers.js";
 import {
   formatRelativeTime,
   readBasename,
-} from "./citeloom-document-presentation.js";
-import { dispatchNotice } from "./citeloom-notices.js";
-import { readSourceLibrarySummaries } from "./citeloom-source-libraries.js";
+} from "./document-presentation.js";
+import { readSourceLibrarySummaries } from "./source-libraries.js";
 
 const ingestionStatuses = Object.freeze([
   "already-exists",
@@ -112,7 +111,7 @@ function addTagDraft(currentTags, draft) {
   return tags;
 }
 
-function buildIngestionNotice(result) {
+function buildIngestionCompletion(result) {
   if (result.failures.length > 0) {
     const suffix = result.failures.length === 1 ? "" : "s";
     const messages = [
@@ -123,58 +122,25 @@ function buildIngestionNotice(result) {
     }
     return {
       destination: null,
-      kind: "error",
-      message: messages.join("\n"),
+      errorMessage: messages.join("\n"),
     };
   }
 
-  let queued = 0;
-  let indexed = 0;
-  let skipped = 0;
-  let duplicates = 0;
-  let processing = 0;
   const blockedDocuments = [];
   for (const document of result.documents) {
-    if (document.status === "queued") {
-      queued += 1;
-    } else if (document.status === "indexed") {
-      indexed += 1;
-    } else if (document.status === "skipped") {
-      skipped += 1;
-    } else if (document.status === "already-processing") {
-      processing += 1;
-    } else if (document.status === "upload-blocked") {
+    if (document.status === "upload-blocked") {
       blockedDocuments.push(document);
-    } else {
-      duplicates += 1;
     }
   }
-  const details = [];
-  if (queued > 0) {
-    const suffix = queued === 1 ? "" : "s";
-    details.push(`${queued} document${suffix} uploaded`);
-  }
-  if (indexed > 0) {
-    details.push(`${indexed} indexed`);
-  }
-  if (skipped > 0) {
-    details.push(`${skipped} already current`);
-  }
-  if (duplicates > 0) {
-    details.push(`${duplicates} already in the library`);
-  }
-  if (processing > 0) {
-    details.push(`${processing} already processing`);
-  }
+  const messages = [];
   for (const document of blockedDocuments) {
-    details.push(
+    messages.push(
       `${document.sourceFile} was not accepted because an earlier version is processing`,
     );
   }
   return {
     destination: "documents",
-    kind: blockedDocuments.length > 0 ? "error" : "success",
-    message: details.join(", ") || "Document ingestion completed.",
+    errorMessage: messages.join(", "),
   };
 }
 
@@ -404,15 +370,21 @@ export function registerPage(alpine) {
         const result = await readIngestionResponseBody(response);
         this.clearFiles();
         this.tags = [];
-        this.$dispatch("citeloom:ingestion-complete", buildIngestionNotice(result));
+        const completion = buildIngestionCompletion(result);
+        if (completion.errorMessage !== "") {
+          this.errorMessage = completion.errorMessage;
+          return;
+        }
+        this.$dispatch("citeloom:ingestion-complete", {
+          destination: completion.destination,
+        });
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
-        dispatchNotice(
-          "error",
-          error instanceof Error ? error.message : "Document ingestion failed.",
-        );
+        this.errorMessage = error instanceof Error
+          ? error.message
+          : "Document ingestion failed.";
       } finally {
         if (this.uploadController === controller) {
           this.uploadController = null;

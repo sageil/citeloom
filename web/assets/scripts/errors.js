@@ -11,9 +11,8 @@ import {
   readPlainObject,
   readPositiveInteger,
   readTimestamp,
-} from "./citeloom-boundaries.js";
-import { requestConfirmation } from "./citeloom-confirmation.js";
-import { dispatchNotice } from "./citeloom-notices.js";
+} from "./boundary-readers.js";
+import { requestConfirmation } from "./confirmation.js";
 
 const errorAreas = Object.freeze([
   "all",
@@ -410,7 +409,7 @@ export function registerPage(alpine) {
           method: "DELETE",
           signal: controller.signal,
         });
-        const result = await readJsonResponse(
+        await readJsonResponse(
           response,
           "Application error purge",
           readApplicationErrorPurgeResult,
@@ -418,8 +417,6 @@ export function registerPage(alpine) {
         this.errorPage = buildEmptyErrorPage();
         this.hasLoaded = true;
         await this.loadErrors(1);
-        const noun = result.deleted === 1 ? "error log" : "error logs";
-        dispatchNotice("success", `Purged ${result.deleted} ${noun}.`);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;

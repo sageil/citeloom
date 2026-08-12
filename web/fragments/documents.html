@@ -465,7 +465,10 @@
                 <span x-text="documentNotificationLabel(selectedDocument)"></span>
               </button>
               <div class="inspector-notification-helper">
-                <span>Keep CiteLoom open. Your browser will notify you when indexing finishes.</span>
+                <span
+                  :class="{ 'field-error': documentNotificationError(selectedDocument) !== '' }"
+                  x-text="documentNotificationError(selectedDocument) || 'Keep CiteLoom open. Your browser will notify you when indexing finishes.'"
+                ></span>
                 <button
                   class="text-button"
                   type="button"

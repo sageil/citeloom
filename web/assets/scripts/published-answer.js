@@ -8,7 +8,7 @@ import {
   readPlainObject,
   readPositiveInteger,
   readString,
-} from "./citeloom-boundaries.js";
+} from "./boundary-readers.js";
 
 const askAnswerSections = Object.freeze([
   "answer",

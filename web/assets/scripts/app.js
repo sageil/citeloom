@@ -1,21 +1,14 @@
 import {
-  readArray,
-  readBoolean,
   readEnum,
   readJsonResponse,
   readNonEmptyString,
-  readNonNegativeInteger,
   readPlainObject as readObject,
-  readPositiveInteger,
-  readString,
-  readTimestamp,
-} from "./citeloom-boundaries.js";
-import { readSystemHealthDashboard } from "./citeloom-dashboard-extensions.js";
+} from "./boundary-readers.js";
 import {
   CONFIRMATION_REQUEST_EVENT,
   dispatchConfirmationResponse,
   readConfirmationRequestEvent,
-} from "./citeloom-confirmation.js";
+} from "./confirmation.js";
 import {
   DOCUMENT_NOTIFICATION_CHANGE_EVENT,
   DOCUMENT_NOTIFICATION_REQUEST_EVENT,
@@ -33,670 +26,31 @@ import {
   requestBrowserNotificationPermission,
   showBrowserNotification,
   writeStoredDocumentNotificationSubscriptions,
-} from "./citeloom-document-notifications.js";
+} from "./document-notifications.js";
 import {
-  NOTICE_EVENT,
-  readNoticeEvent,
-  readNoticeKind,
-} from "./citeloom-notices.js";
-import { clearSettingsScopePreference } from "./citeloom-settings-scope.js";
-import { readWorkspaceSummaries } from "./citeloom-workspaces.js";
+  buildEmptyOverviewSummary,
+  buildQuestionDocument,
+  groupDiagnosticChecks,
+  readDashboardSnapshot,
+  readDiagnostics,
+  readIngestionCompleteEvent,
+} from "./dashboard-schema.js";
+import {
+  configureInitialFragment,
+  initializePageRouting,
+  readLocationAnchor,
+  readLocationView,
+  routes,
+} from "./page-routing.js";
+import { clearSettingsScopePreference } from "./settings-scope.js";
+import { readWorkspaceSummaries } from "./workspaces.js";
 
-const defaultView = "overview";
-const helpAnchorPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const documentNotificationRefreshDebounceMs = 250;
 const workflowRefreshIntervalMs = 60_000;
 const workflowRefreshDebounceMs = 200;
-
-const workflowPhaseSteps = Object.freeze({
-  discovered: 1,
-  indexed: 3,
-  normalized: 2,
-});
-
-const queuePhases = Object.freeze([
-  "discovered",
-  "normalized",
-  "indexed",
-]);
-
-const queueStates = Object.freeze(["failed", "pending", "running"]);
-const ingestionDestinations = Object.freeze(["documents"]);
-const documentDisplayStatuses = Object.freeze([
-  "failed",
-  "pending",
-  "ready",
-  "reindex-required",
-  "running",
-]);
-const diagnosticCategories = Object.freeze([
-  "claim-verification",
-  "document-processing",
-  "embedding",
-  "generation",
-  "model-response",
-  "persistence",
-  "search-ranking",
-  "speech-input",
-  "spoken-answers",
-]);
-const diagnosticModes = Object.freeze(["live", "readiness"]);
-const recentDocumentLimit = 10;
-
-const routes = Object.freeze({
-  account: {
-    fragment: "./fragments/account.html",
-    pageScript: {
-      id: "account",
-      source: "./citeloom-account.js",
-    },
-    pageStyles: ["./assets/styles/citeloom-access.css"],
-    title: "Account | CiteLoom",
-  },
-  ask: {
-    fragment: "./fragments/ask.html",
-    pageScript: {
-      id: "ask",
-      source: "./citeloom-ask.js",
-    },
-    pageStyles: [
-      "./assets/styles/citeloom-answer-content.css",
-      "./assets/styles/citeloom-evidence-table.css",
-      "./assets/styles/citeloom-evidence-ui.css",
-      "./assets/styles/citeloom-ask.css",
-    ],
-    title: "Ask | CiteLoom",
-  },
-  chat: {
-    fragment: "./fragments/chat.html",
-    pageScript: {
-      id: "chat",
-      source: "./citeloom-chat.js",
-    },
-    pageStyles: [
-      "./assets/styles/citeloom-answer-content.css",
-      "./assets/styles/citeloom-evidence-table.css",
-      "./assets/styles/citeloom-evidence-ui.css",
-      "./assets/styles/citeloom-chat.css",
-    ],
-    title: "Chat | CiteLoom",
-  },
-  documents: {
-    fragment: "./fragments/documents.html",
-    pageScript: {
-      id: "documents",
-      source: "./citeloom-documents.js",
-    },
-    pageStyles: ["./assets/styles/citeloom-documents.css"],
-    title: "Documents | CiteLoom",
-  },
-  errors: {
-    fragment: "./fragments/errors.html",
-    pageScript: {
-      id: "errors",
-      source: "./citeloom-errors.js",
-    },
-    pageStyles: ["./assets/styles/citeloom-errors.css"],
-    title: "Error reports | CiteLoom",
-  },
-  help: {
-    fragment: "./fragments/help.html",
-    pageScript: null,
-    pageStyles: ["./assets/styles/citeloom-help.css"],
-    title: "Help | CiteLoom",
-  },
-  login: {
-    fragment: "./fragments/login.html",
-    pageScript: {
-      id: "login",
-      source: "./citeloom-login.js",
-    },
-    pageStyles: ["./assets/styles/citeloom-login.css"],
-    title: "Sign in | CiteLoom",
-  },
-  overview: {
-    fragment: "./fragments/overview.html",
-    pageScript: {
-      id: "overview",
-      source: "./citeloom-overview.js",
-    },
-    pageStyles: ["./assets/styles/citeloom-overview.css"],
-    title: "CiteLoom",
-  },
-  security: {
-    fragment: "./fragments/security.html",
-    pageScript: {
-      id: "security",
-      source: "./citeloom-security.js",
-    },
-    pageStyles: ["./assets/styles/citeloom-security.css"],
-    title: "Security | CiteLoom",
-  },
-  settings: {
-    fragment: "./fragments/settings.html",
-    pageScript: {
-      id: "settings",
-      source: "./citeloom-settings.js",
-    },
-    pageStyles: [
-      "./assets/styles/citeloom-access.css",
-      "./assets/styles/citeloom-settings.css",
-      "./assets/styles/citeloom-settings-source-libraries.css",
-    ],
-    title: "Settings | CiteLoom",
-  },
-  "system-health": {
-    fragment: "./fragments/system-health.html",
-    pageScript: {
-      id: "system-health",
-      source: "./citeloom-system-health.js",
-    },
-    pageStyles: ["./assets/styles/citeloom-system-health.css"],
-    title: "System health | CiteLoom",
-  },
-});
-
-const pathViews = Object.freeze({
-  "/account": "account",
-  "/ask": "ask",
-  "/chat": "chat",
-  "/documents": "documents",
-  "/errors": "errors",
-  "/help": "help",
-  "/login": "login",
-  "/overview": "overview",
-  "/security": "security",
-  "/settings": "settings",
-  "/system-health": "system-health",
-  "/users": "security",
-});
-
-const loadedPageScripts = new Set();
-const loadedPageStyles = new Set();
-const pageScriptPromises = new Map();
-const pageStylePromises = new Map();
 const chatSwitcherRequestEvent = "citeloom:chat-switcher-request";
-let pageNavigationGeneration = 0;
-let pendingPageResourceErrorMessage = "";
 
-function readView(value) {
-  if (typeof value !== "string") {
-    return defaultView;
-  }
-  if (Object.hasOwn(routes, value)) {
-    return value;
-  }
-  return defaultView;
-}
-
-function readLocationView() {
-  const parameters = new URLSearchParams(window.location.search);
-  const queryView = parameters.get("view");
-  if (queryView !== null) {
-    return readView(queryView);
-  }
-  return readView(pathViews[window.location.pathname]);
-}
-
-function readLocationAnchor() {
-  const encodedAnchor = window.location.hash.slice(1);
-  if (encodedAnchor === "") {
-    return null;
-  }
-
-  let anchor;
-  try {
-    anchor = decodeURIComponent(encodedAnchor);
-  } catch {
-    return null;
-  }
-
-  if (!helpAnchorPattern.test(anchor)) {
-    return null;
-  }
-  return anchor;
-}
-
-function readHtmxWorkspaceRequest(event) {
-  if (!(event instanceof CustomEvent)) {
-    return null;
-  }
-  const detail = event.detail;
-  if (typeof detail !== "object" || detail === null) {
-    return null;
-  }
-  if (!(detail.target instanceof HTMLElement) || detail.target.id !== "workspace") {
-    return null;
-  }
-  if (!(detail.elt instanceof HTMLElement) || typeof detail.issueRequest !== "function") {
-    return null;
-  }
-
-  let view;
-  const requestedView = detail.elt.dataset.view;
-  if (requestedView !== undefined && Object.hasOwn(routes, requestedView)) {
-    view = requestedView;
-  } else if (detail.elt.id === "workspace") {
-    view = readLocationView();
-  } else {
-    return null;
-  }
-  return {
-    issueRequest(skipConfirmation) {
-      detail.issueRequest(skipConfirmation);
-    },
-    view,
-  };
-}
-
-function loadPageScript(pageScript) {
-  if (loadedPageScripts.has(pageScript.id)) {
-    return Promise.resolve();
-  }
-  const existingPromise = pageScriptPromises.get(pageScript.id);
-  if (existingPromise !== undefined) {
-    return existingPromise;
-  }
-
-  const promise = import(pageScript.source).then((pageModule) => {
-    if (typeof pageModule.registerPage !== "function") {
-      throw new Error(`The ${pageScript.id} page module did not export registerPage.`);
-    }
-    if (window.Alpine === undefined) {
-      throw new Error(`The ${pageScript.id} page module loaded before Alpine.`);
-    }
-    pageModule.registerPage(window.Alpine);
-    loadedPageScripts.add(pageScript.id);
-  });
-  pageScriptPromises.set(pageScript.id, promise);
-  void promise.catch(() => {
-    pageScriptPromises.delete(pageScript.id);
-  });
-  return promise;
-}
-
-function loadPageStyle(source) {
-  if (loadedPageStyles.has(source)) {
-    return Promise.resolve();
-  }
-  const existingPromise = pageStylePromises.get(source);
-  if (existingPromise !== undefined) {
-    return existingPromise;
-  }
-
-  const promise = new Promise((resolve, reject) => {
-    const link = document.createElement("link");
-    link.dataset.citeloomPageStyle = source;
-    link.href = source;
-    link.rel = "stylesheet";
-
-    const cleanup = () => {
-      link.removeEventListener("error", handleError);
-      link.removeEventListener("load", handleLoad);
-    };
-    const handleError = () => {
-      cleanup();
-      link.remove();
-      reject(new Error(`The page stylesheet ${source} could not be loaded.`));
-    };
-    const handleLoad = () => {
-      loadedPageStyles.add(source);
-      cleanup();
-      resolve();
-    };
-
-    link.addEventListener("error", handleError);
-    link.addEventListener("load", handleLoad);
-    document.head.append(link);
-  });
-  pageStylePromises.set(source, promise);
-  void promise.catch(() => {
-    pageStylePromises.delete(source);
-  });
-  return promise;
-}
-
-function routeResourcesLoaded(route) {
-  for (const source of route.pageStyles) {
-    if (!loadedPageStyles.has(source)) {
-      return false;
-    }
-  }
-  return route.pageScript === null || loadedPageScripts.has(route.pageScript.id);
-}
-
-function loadRouteResources(route) {
-  const resourcePromises = [];
-  for (const source of route.pageStyles) {
-    resourcePromises.push(loadPageStyle(source));
-  }
-  if (route.pageScript !== null) {
-    resourcePromises.push(loadPageScript(route.pageScript));
-  }
-  return Promise.all(resourcePromises);
-}
-
-function reportPageResourceError(error) {
-  pendingPageResourceErrorMessage = error instanceof Error
-    ? error.message
-    : "The requested page resources could not be loaded.";
-  window.dispatchEvent(new CustomEvent("citeloom:page-resource-error", {
-    detail: pendingPageResourceErrorMessage,
-  }));
-}
-
-document.addEventListener("htmx:confirm", (event) => {
-  const request = readHtmxWorkspaceRequest(event);
-  if (request === null) {
-    return;
-  }
-
-  pageNavigationGeneration += 1;
-  const requestGeneration = pageNavigationGeneration;
-  const route = routes[request.view];
-  if (routeResourcesLoaded(route)) {
-    return;
-  }
-
-  event.preventDefault();
-  void loadRouteResources(route).then(() => {
-    if (requestGeneration === pageNavigationGeneration) {
-      request.issueRequest(true);
-    }
-  }).catch((error) => {
-    if (requestGeneration === pageNavigationGeneration) {
-      reportPageResourceError(error);
-    }
-  });
-});
-
-window.addEventListener("popstate", () => {
-  pageNavigationGeneration += 1;
-});
-
-function readDashboardSnapshot(value) {
-  const dashboard = readObject(value, "dashboard");
-  const overview = readOverviewSummary(
-    dashboard.documentSummary,
-    dashboard.catalog,
-    dashboard.maximumDocumentBytes,
-    dashboard.maximumUploadRequestBytes,
-    dashboard.supportedExtensions,
-  );
-  const system = readObject(dashboard.system, "dashboard system");
-  const queue = readQueueStatuses(system.queue);
-  const revisions = readObject(dashboard.revisions, "application revisions");
-  const systemHealth = readSystemHealthDashboard(dashboard, system, queue);
-
-  const catalogRevision = readRevision(revisions.catalog, "catalog revision");
-  const jobsRevision = readRevision(revisions.jobs, "jobs revision");
-  return {
-    documentsRevision: `${catalogRevision}.${jobsRevision}`,
-    overview,
-    systemHealth,
-    settingsRevision: readRevision(revisions.settings, "settings revision"),
-    workflow: buildWorkflowSnapshot(queue, overview.readyDocuments),
-  };
-}
-
-function readOverviewSummary(
-  summaryValue,
-  catalogValue,
-  maximumDocumentBytesValue,
-  maximumUploadRequestBytesValue,
-  extensionValue,
-) {
-  const summary = readObject(summaryValue, "dashboard document summary");
-  const failed = readNonNegativeInteger(
-    summary.failed,
-    "failed document count",
-  );
-  const processing = readNonNegativeInteger(
-    summary.processing,
-    "processing document count",
-  );
-  const queryable = readNonNegativeInteger(
-    summary.queryable,
-    "queryable document count",
-  );
-  const reindexRequired = readNonNegativeInteger(
-    summary.reindexRequired,
-    "reindex-required document count",
-  );
-  return {
-    maximumDocumentBytes: readPositiveInteger(
-      maximumDocumentBytesValue,
-      "maximum document byte count",
-    ),
-    maximumUploadRequestBytes: readPositiveInteger(
-      maximumUploadRequestBytesValue,
-      "maximum upload request byte count",
-    ),
-    needsAttention: failed + reindexRequired,
-    processingDocuments: processing,
-    readyDocuments: queryable,
-    recentDocuments: readRecentDocuments(catalogValue),
-    supportedExtensions: readSupportedExtensions(extensionValue),
-  };
-}
-
-function readRecentDocuments(value) {
-  const catalog = readObject(value, "dashboard document catalog");
-  const values = readArray(catalog.documents, "dashboard catalog documents");
-  const documents = [];
-  const limit = Math.min(values.length, recentDocumentLimit);
-  for (let index = 0; index < limit; index += 1) {
-    const document = readObject(values[index], "dashboard catalog document");
-    documents.push({
-      displayStatus: readEnum(
-        document.displayStatus,
-        documentDisplayStatuses,
-        "dashboard document display status",
-      ),
-      sourceFile: readNonEmptyString(
-        document.sourceFile,
-        "dashboard document source file",
-      ),
-      updatedAt: readTimestamp(
-        document.updatedAt,
-        "dashboard document update time",
-      ),
-    });
-  }
-  return documents;
-}
-
-function readSupportedExtensions(value) {
-  const values = readArray(value, "supported document extensions");
-  const extensions = [];
-  const uniqueExtensions = new Set();
-  for (const value of values) {
-    const extension = readNonEmptyString(value, "supported document extension");
-    if (uniqueExtensions.has(extension)) {
-      throw new Error(`The supported extension ${extension} appears more than once.`);
-    }
-    uniqueExtensions.add(extension);
-    extensions.push(extension);
-  }
-  return extensions;
-}
-
-function readIngestionCompleteEvent(event) {
-  if (!(event instanceof CustomEvent)) {
-    return null;
-  }
-  try {
-    const detail = readObject(event.detail, "ingestion completion");
-    const destination = detail.destination === null
-      ? null
-      : readEnum(
-        detail.destination,
-        ingestionDestinations,
-        "ingestion destination",
-      );
-    return {
-      destination,
-      kind: readNoticeKind(detail.kind, "ingestion notice kind"),
-      message: readNonEmptyString(detail.message, "ingestion notice message"),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function buildQuestionDocument(document) {
-  return {
-    documentId: document.documentId,
-    sourceFile: document.sourceFile,
-  };
-}
-
-function readRevision(value, label) {
-  const revision = readString(value, label);
-  if (!/^(0|[1-9][0-9]*)$/u.test(revision)) {
-    throw new Error(`The ${label} response is invalid.`);
-  }
-  return revision;
-}
-
-function readQueueStatuses(value) {
-  const values = readArray(value, "dashboard queue");
-  const queue = [];
-  for (const value of values) {
-    const job = readObject(value, "dashboard queue job");
-    queue.push({
-      phase: readEnum(job.phase, queuePhases, "dashboard queue phase"),
-      state: readEnum(job.state, queueStates, "dashboard queue state"),
-    });
-  }
-  return queue;
-}
-
-function readDiagnostics(value) {
-  const diagnostics = readObject(value, "diagnostics");
-  const values = readArray(diagnostics.checks, "diagnostic checks");
-  const checks = [];
-  const ids = new Set();
-  for (const value of values) {
-    const check = readObject(value, "diagnostic check");
-    const id = readNonEmptyString(check.id, "diagnostic identifier");
-    if (ids.has(id)) {
-      throw new Error(`The diagnostic identifier ${id} appears more than once.`);
-    }
-    ids.add(id);
-    const items = [];
-    for (const item of readArray(check.items, "diagnostic items")) {
-      items.push(readNonEmptyString(item, "diagnostic item"));
-    }
-    checks.push({
-      category: readEnum(
-        check.category,
-        diagnosticCategories,
-        "diagnostic category",
-      ),
-      detail: readString(check.detail, "diagnostic detail"),
-      groupId: readNonEmptyString(check.groupId, "diagnostic group identifier"),
-      groupName: readNonEmptyString(check.groupName, "diagnostic group name"),
-      id,
-      items,
-      mode: readEnum(check.mode, diagnosticModes, "diagnostic mode"),
-      name: readNonEmptyString(check.name, "diagnostic name"),
-      ok: readBoolean(check.ok, "diagnostic result"),
-    });
-  }
-  return {
-    checks,
-    generatedAt: readNonEmptyString(
-      diagnostics.generatedAt,
-      "diagnostics generated time",
-    ),
-  };
-}
-
-function groupDiagnosticChecks(checks) {
-  const groups = [];
-  for (const check of checks) {
-    if (check.category === "model-response") {
-      continue;
-    }
-    let group = groups.find((candidate) => candidate.id === check.groupId);
-    if (group === undefined) {
-      group = {
-        checks: [],
-        id: check.groupId,
-        name: check.groupName,
-      };
-      groups.push(group);
-    }
-    group.checks.push(check);
-  }
-  return groups;
-}
-
-function buildWorkflowSnapshot(queue, readyDocumentCount) {
-  let activeStep = null;
-  let processingCount = 0;
-  for (const job of queue) {
-    const state = job.state;
-    const phase = job.phase;
-    if (state !== "pending" && state !== "running") {
-      continue;
-    }
-    processingCount += 1;
-    const jobStep = workflowPhaseSteps[phase];
-    if (activeStep === null || jobStep < activeStep) {
-      activeStep = jobStep;
-    }
-  }
-
-  if (activeStep === null) {
-    const completedStep = readyDocumentCount > 0 ? 4 : 0;
-    return {
-      activeStep: completedStep,
-      processingCount,
-      visible: false,
-    };
-  }
-  return {
-    activeStep,
-    processingCount,
-    visible: true,
-  };
-}
-
-function buildEmptyOverviewSummary() {
-  return {
-    maximumDocumentBytes: null,
-    maximumUploadRequestBytes: null,
-    needsAttention: 0,
-    processingDocuments: 0,
-    readyDocuments: 0,
-    recentDocuments: [],
-    supportedExtensions: [
-      ".pdf",
-      ".html",
-      ".htm",
-      ".docx",
-      ".xlsx",
-      ".pptx",
-      ".png",
-      ".jpg",
-      ".jpeg",
-      ".webp",
-    ],
-  };
-}
-
-function configureInitialFragment() {
-  const workspace = document.getElementById("workspace");
-  if (workspace === null) {
-    return;
-  }
-  const route = routes[readLocationView()];
-  workspace.setAttribute("hx-get", route.fragment);
-  document.title = route.title;
-}
-
+initializePageRouting();
 configureInitialFragment();
 
 function registerShell(alpine) {
@@ -747,10 +101,7 @@ function registerShell(alpine) {
     documentsRevision: null,
     dashboardRefreshRequestListener: null,
     ingestionCompleteListener: null,
-    noticeEventListener: null,
-    noticeQueue: [],
     overviewSummary: buildEmptyOverviewSummary(),
-    pageResourceErrorListener: null,
     pendingView: null,
     questionDocuments: [],
     questionSelectionOpen: false,
@@ -759,6 +110,7 @@ function registerShell(alpine) {
     workflowEventSource: null,
     workflowRefreshTimerId: null,
     workspaces: [],
+    workspaceErrorMessage: "",
     workspaceSwitching: false,
 
     get diagnosticsGroups() {
@@ -802,16 +154,6 @@ function registerShell(alpine) {
 
     get questionSelectionOverflow() {
       return Math.max(0, this.questionDocuments.length - 2);
-    },
-
-    get noticeKind() {
-      const notice = this.noticeQueue[0];
-      return notice === undefined ? null : notice.kind;
-    },
-
-    get noticeMessage() {
-      const notice = this.noticeQueue[0];
-      return notice === undefined ? "" : notice.message;
     },
 
     get questionSelectionPreview() {
@@ -886,43 +228,14 @@ function registerShell(alpine) {
         if (completion === null) {
           return;
         }
-        this.showNotice(completion.kind, completion.message);
         void this.completeIngestion(completion.destination);
       };
       this.$root.addEventListener(
         "citeloom:ingestion-complete",
         this.ingestionCompleteListener,
       );
-      this.noticeEventListener = (event) => {
-        const notice = readNoticeEvent(event);
-        if (notice === null) {
-          return;
-        }
-        this.showNotice(notice.kind, notice.message);
-      };
-      window.addEventListener(
-        NOTICE_EVENT,
-        this.noticeEventListener,
-      );
-      this.pageResourceErrorListener = (event) => {
-        if (!(event instanceof CustomEvent) || typeof event.detail !== "string") {
-          return;
-        }
-        this.chatSwitcherPending = false;
-        this.pendingView = null;
-        this.showNotice("error", event.detail);
-      };
-      window.addEventListener(
-        "citeloom:page-resource-error",
-        this.pageResourceErrorListener,
-      );
-      if (pendingPageResourceErrorMessage !== "") {
-        this.showNotice("error", pendingPageResourceErrorMessage);
-        pendingPageResourceErrorMessage = "";
-      }
       this.$root.addEventListener("htmx:beforeRequest", (event) => {
         this.cancelConfirmationForNavigation();
-        pendingPageResourceErrorMessage = "";
         const source = event.detail.elt;
         if (!(source instanceof HTMLElement)) {
           this.pendingView = null;
@@ -976,20 +289,17 @@ function registerShell(alpine) {
       this.$root.addEventListener("htmx:responseError", () => {
         this.chatSwitcherPending = false;
         this.pendingView = null;
-        this.showNotice("error", "The requested workspace could not be loaded.");
+        showPageLoadError("The requested page could not be loaded.");
       });
       this.$root.addEventListener("htmx:sendError", () => {
         this.chatSwitcherPending = false;
         this.pendingView = null;
-        this.showNotice(
-          "error",
-          "The browser could not reach the requested workspace.",
-        );
+        showPageLoadError("The browser could not reach the requested page.");
       });
       this.$root.addEventListener("htmx:timeout", () => {
         this.chatSwitcherPending = false;
         this.pendingView = null;
-        this.showNotice("error", "The workspace request timed out.");
+        showPageLoadError("The page request timed out.");
       });
       this.$root.addEventListener("citeloom:settings-saved", () => {
         this.scheduleDashboardRefresh();
@@ -1038,18 +348,6 @@ function registerShell(alpine) {
         window.removeEventListener(
           DOCUMENT_NOTIFICATION_REQUEST_EVENT,
           this.documentNotificationRequestListener,
-        );
-      }
-      if (this.noticeEventListener !== null) {
-        window.removeEventListener(
-          NOTICE_EVENT,
-          this.noticeEventListener,
-        );
-      }
-      if (this.pageResourceErrorListener !== null) {
-        window.removeEventListener(
-          "citeloom:page-resource-error",
-          this.pageResourceErrorListener,
         );
       }
       if (this.workflowRefreshTimerId !== null) {
@@ -1198,12 +496,9 @@ function registerShell(alpine) {
         await this.loadWorkspaces();
       } catch (error) {
         this.workspaces = [];
-        this.showNotice(
-          "error",
-          error instanceof Error
-            ? error.message
-            : "The workspace list could not be loaded.",
-        );
+        this.workspaceErrorMessage = error instanceof Error
+          ? error.message
+          : "The workspace list could not be loaded.";
       }
     },
 
@@ -1222,6 +517,7 @@ function registerShell(alpine) {
       if (workspaceId === this.currentWorkspaceId || this.workspaceSwitching) {
         return;
       }
+      this.workspaceErrorMessage = "";
       this.workspaceSwitching = true;
       try {
         const response = await fetch("/api/auth/session/workspace", {
@@ -1242,10 +538,9 @@ function registerShell(alpine) {
             this.$refs.workspaceSelect.value = this.currentWorkspaceId ?? "";
           }
         });
-        this.showNotice(
-          "error",
-          error instanceof Error ? error.message : "Workspace switch failed.",
-        );
+        this.workspaceErrorMessage = error instanceof Error
+          ? error.message
+          : "Workspace switch failed.";
       }
     },
 
@@ -1287,21 +582,20 @@ function registerShell(alpine) {
         try {
           permission = await requestBrowserNotificationPermission();
         } catch {
-          this.showNotice(
-            "error",
+          this.broadcastDocumentNotificationState(
+            change.sourceFile,
             "CiteLoom could not request browser notification permission.",
           );
           return;
         }
         if (permission !== "granted") {
-          this.broadcastDocumentNotificationState(change.sourceFile);
           let message = "Browser notification permission was not granted.";
           if (permission === "denied") {
             message = "Browser notifications are blocked for CiteLoom. Allow them in your browser settings to use this feature.";
           } else if (permission === "unsupported") {
             message = "This browser does not support system notifications.";
           }
-          this.showNotice("error", message);
+          this.broadcastDocumentNotificationState(change.sourceFile, message);
           return;
         }
       }
@@ -1320,14 +614,7 @@ function registerShell(alpine) {
         const message = change.enabled
           ? "The notification is active for this page, but could not be saved across reloads."
           : "The notification is off for this page, but could not be removed from saved session state.";
-        this.showNotice("error", message);
-        return;
-      }
-      if (change.enabled) {
-        this.showNotice(
-          "success",
-          `We'll notify you when ${change.filename} is ready.`,
-        );
+        this.broadcastDocumentNotificationState(change.sourceFile, message);
       }
     },
 
@@ -1342,13 +629,13 @@ function registerShell(alpine) {
       );
     },
 
-    broadcastDocumentNotificationState(sourceFile) {
+    broadcastDocumentNotificationState(sourceFile, errorMessage = null) {
       const enabled = documentNotificationEnabled(
         this.documentNotificationSubscriptions,
         sourceFile,
       );
       window.dispatchEvent(new CustomEvent(DOCUMENT_NOTIFICATION_STATE_EVENT, {
-        detail: { enabled, sourceFile },
+        detail: { enabled, errorMessage, sourceFile },
       }));
     },
 
@@ -1402,8 +689,8 @@ function registerShell(alpine) {
           if (controller.signal.aborted) {
             return;
           }
-          this.showNotice(
-            "error",
+          this.broadcastDocumentNotificationState(
+            subscription.sourceFile,
             `CiteLoom could not check whether ${subscription.filename} is ready. It will keep watching.`,
           );
           continue;
@@ -1488,10 +775,6 @@ function registerShell(alpine) {
           icon: "/assets/images/citeloom-apple-touch-icon.png",
         });
         if (notification === null) {
-          this.showNotice(
-            "error",
-            "Browser notification permission is no longer available.",
-          );
           return;
         }
         notification.addEventListener("click", () => {
@@ -1499,10 +782,7 @@ function registerShell(alpine) {
           notification.close();
         });
       } catch {
-        this.showNotice(
-          "error",
-          "CiteLoom could not display the browser notification.",
-        );
+        return;
       }
     },
 
@@ -1768,19 +1048,6 @@ function registerShell(alpine) {
       }
     },
 
-    dismissNotice() {
-      this.noticeQueue = this.noticeQueue.slice(1);
-    },
-
-    showNotice(kind, message) {
-      for (const notice of this.noticeQueue) {
-        if (notice.kind === kind && notice.message === message) {
-          return;
-        }
-      }
-      this.noticeQueue.push({ kind, message });
-    },
-
     navigateToView(view) {
       if (!Object.hasOwn(routes, view)) {
         return;
@@ -1800,10 +1067,6 @@ function registerShell(alpine) {
       } finally {
         window.location.assign("/login");
       }
-    },
-
-    noticeRole() {
-      return this.noticeKind === "error" ? "alert" : "status";
     },
 
     clearQuestionDocuments() {

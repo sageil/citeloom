@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   readAnswerVerificationClaims,
   readStoredAnswerVerificationClaims,
-} from "../web/assets/scripts/citeloom-verification.js";
+} from "../web/assets/scripts/verification.js";
 
 const answerDocument = {
   statements: [{ content: "Revenue increased." }],

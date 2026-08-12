@@ -137,7 +137,7 @@
   padding: 8px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: rgba(8, 13, 27, 0.98);
+  background: var(--background);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
 }
 
@@ -193,19 +193,14 @@
 
 .account-navigation-workspace-select select {
   width: 100%;
-  min-height: 40px;
-  padding: 0 30px 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--control-background);
-  color: var(--text);
-  font: inherit;
 }
 
-.account-navigation-workspace-select select:focus-visible {
-  border-color: var(--cyan);
-  outline: 2px solid rgba(103, 232, 249, 0.28);
-  outline-offset: 1px;
+.account-navigation-error {
+  margin: 0;
+  padding: 0 6px 6px;
+  color: var(--danger-soft);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .account-navigation-sign-out {

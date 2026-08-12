@@ -4,9 +4,8 @@ import {
   readJsonResponse,
   readNonEmptyString,
   readPlainObject,
-} from "./citeloom-boundaries.js";
-import { requestConfirmation } from "./citeloom-confirmation.js";
-import { dispatchNotice } from "./citeloom-notices.js";
+} from "./boundary-readers.js";
+import { requestConfirmation } from "./confirmation.js";
 
 const SOURCE_LIBRARY_DELETION_REFRESH_INTERVAL_MS = 2_000;
 
@@ -208,14 +207,13 @@ export function createSourceLibraryAdministrationActions() {
           },
           method: "POST",
         });
-        const library = await readJsonResponse(
+        await readJsonResponse(
           response,
           "Shared source library creation",
           readCreatedSharedSourceLibrary,
         );
         this.sourceLibraryNameDraft = "";
         await this.loadSourceLibraryAdministration();
-        dispatchNotice("success", `${library.name} was created.`);
       } catch (error) {
         this.sourceLibraryAdministrationError = readErrorMessage(error);
       } finally {
@@ -263,7 +261,6 @@ export function createSourceLibraryAdministrationActions() {
         );
         this.cancelRenamingSourceLibrary();
         await this.loadSourceLibraryAdministration();
-        dispatchNotice("success", `${name} was renamed.`);
       } catch (error) {
         this.sourceLibraryAdministrationError = readErrorMessage(error);
       } finally {
@@ -302,7 +299,6 @@ export function createSourceLibraryAdministrationActions() {
           "Shared source library archive",
         );
         await this.loadSourceLibraryAdministration();
-        dispatchNotice("success", `${library.name} was archived.`);
       } catch (error) {
         this.sourceLibraryAdministrationError = readErrorMessage(error);
       } finally {
@@ -364,7 +360,6 @@ export function createSourceLibraryAdministrationActions() {
           "Shared source library restore",
         );
         await this.loadSourceLibraryAdministration();
-        dispatchNotice("success", `${library.name} was restored.`);
       } catch (error) {
         this.sourceLibraryAdministrationError = readErrorMessage(error);
       } finally {
@@ -428,7 +423,6 @@ export function createSourceLibraryAdministrationActions() {
           );
         }
         await this.loadSourceLibraryAdministration();
-        dispatchNotice("success", `${workspace.name} access was updated.`);
       } catch (error) {
         this.sourceLibraryGrantDrafts[key] = previousAccess;
         this.sourceLibraryAdministrationError = readErrorMessage(error);

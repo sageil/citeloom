@@ -116,6 +116,7 @@
         <template x-if="questionDocuments.length === 0">
           <select
             aria-label="Search scope"
+            class="form-control"
             x-model="scopeKind"
             @change="changeScope($event.target.value)"
           >

@@ -5,6 +5,8 @@
     <p>Manage your sign-in password.</p>
   </header>
 
+  <p class="field-error" role="alert" x-cloak x-show="!passwordFormOpen &amp;&amp; errorMessage !== ''" x-text="errorMessage"></p>
+
   <section class="access-security-panel access-card">
     <div class="access-security-summary">
       <span class="access-feature-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg></span>
@@ -14,7 +16,7 @@
       </div>
       <div class="access-security-detail"><span>Password</span><strong><i class="access-status-dot"></i>Protected</strong></div>
       <div class="access-security-detail"><span>Requirement</span><strong x-text="passwordRequirementSummary"></strong></div>
-      <button class="button access-secondary-button" type="button" x-show="!passwordFormOpen" @click="openPasswordForm()">Change password</button>
+      <button class="button access-secondary-button" :disabled="minimumPasswordLength === null" type="button" x-show="!passwordFormOpen" @click="openPasswordForm()">Change password</button>
     </div>
   </section>
 
@@ -25,6 +27,7 @@
         <button class="button access-close-button" type="button" aria-label="Close password form" @click="closePasswordForm()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg></button>
       </header>
       <form class="access-password-form" @submit.prevent="changePassword()">
+        <p class="field-error" role="alert" x-cloak x-show="errorMessage !== ''" x-text="errorMessage"></p>
         <div class="access-password-grid">
           <label class="access-current-password"><span>Current password</span><input autocomplete="current-password" required type="password" x-model="currentPassword" /></label>
           <label><span>New password</span><input autocomplete="new-password" :minlength="minimumPasswordLength" required type="password" x-model="newPassword" /><small x-text="passwordRequirementSummary"></small></label>

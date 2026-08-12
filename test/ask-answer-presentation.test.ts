@@ -6,8 +6,8 @@ import { publishedAnswerDocumentSchema } from "../src/answers/published-schema.j
 import {
   formatDocumentLocationLabel,
   readAskEvidencePanelPlacement,
-  readAnswerPresentation,
-} from "../web/assets/scripts/citeloom-ask.js";
+} from "../web/assets/scripts/ask.js";
+import { readAnswerPresentation } from "../web/assets/scripts/ask-schema.js";
 import {
   buildSourceLocation,
   buildTableStructure,
@@ -37,7 +37,7 @@ describe("ask answer presentation", () => {
         "utf8",
       ),
       readFile(
-        new URL("../web/assets/scripts/citeloom-app.js", import.meta.url),
+        new URL("../web/assets/scripts/app.js", import.meta.url),
         "utf8",
       ),
     ]);

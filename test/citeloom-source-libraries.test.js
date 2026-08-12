@@ -3,12 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CONFIRMATION_REQUEST_EVENT,
   dispatchConfirmationResponse,
-} from "../web/assets/scripts/citeloom-confirmation.js";
-import { NOTICE_EVENT } from "../web/assets/scripts/citeloom-notices.js";
+} from "../web/assets/scripts/confirmation.js";
 import {
   createSourceLibraryAdministrationActions,
   readSourceLibraryAdministration,
-} from "../web/assets/scripts/citeloom-source-libraries.js";
+} from "../web/assets/scripts/source-libraries.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -36,7 +35,7 @@ describe("CiteLoom source library administration", () => {
   });
 
   it("creates a shared library and refreshes organization administration", async () => {
-    await withBrowser(async ({ notices }) => {
+    await withBrowser(async () => {
       const administration = buildAdministration();
       const fetchMock = vi.fn()
         .mockResolvedValueOnce(jsonResponse({
@@ -62,9 +61,6 @@ describe("CiteLoom source library administration", () => {
       );
       expect(page.sourceLibraryNameDraft).toBe("");
       expect(page.sourceLibraryAdministration).toEqual(administration);
-      expect(notices).toEqual([
-        { kind: "success", message: "Common Sources was created." },
-      ]);
     });
   });
 
@@ -102,7 +98,7 @@ describe("CiteLoom source library administration", () => {
   });
 
   it("renames a shared library and refreshes its administration state", async () => {
-    await withBrowser(async ({ notices }) => {
+    await withBrowser(async () => {
       const administration = buildAdministration();
       const renamedAdministration = structuredClone(administration);
       renamedAdministration.libraries[0].name = "Organization Handbook";
@@ -128,10 +124,6 @@ describe("CiteLoom source library administration", () => {
       );
       expect(page.sourceLibraryAdministration).toEqual(renamedAdministration);
       expect(page.sourceLibraryRenamingId).toBeNull();
-      expect(notices).toEqual([{
-        kind: "success",
-        message: "Organization Handbook was renamed.",
-      }]);
     });
   });
 
@@ -149,7 +141,7 @@ describe("CiteLoom source library administration", () => {
   });
 
   it("archives and restores a shared library while retaining its grants", async () => {
-    await withBrowser(async ({ confirmations, notices }) => {
+    await withBrowser(async ({ confirmations }) => {
       const administration = buildAdministration();
       const archivedAdministration = structuredClone(administration);
       archivedAdministration.libraries[0].state = "archived";
@@ -183,15 +175,11 @@ describe("CiteLoom source library administration", () => {
         expect.objectContaining({ method: "POST" }),
       );
       expect(page.sourceLibraryAdministration).toEqual(administration);
-      expect(notices).toEqual([
-        { kind: "success", message: "Common Sources was archived." },
-        { kind: "success", message: "Common Sources was restored." },
-      ]);
     });
   });
 
   it("starts permanent deletion directly for an active shared library", async () => {
-    await withBrowser(async ({ confirmations, notices }) => {
+    await withBrowser(async ({ confirmations }) => {
       const administration = buildAdministration();
       const deletingAdministration = structuredClone(administration);
       deletingAdministration.libraries[0].state = "deleting";
@@ -220,7 +208,6 @@ describe("CiteLoom source library administration", () => {
         expect.objectContaining({ method: "DELETE" }),
       );
       expect(page.sourceLibraryAdministration).toEqual(deletingAdministration);
-      expect(notices).toEqual([]);
       page.destroySourceLibraryAdministration();
     });
   });
@@ -300,17 +287,13 @@ async function withBrowser(operation, confirmed = true) {
   const originalWindow = globalThis.window;
   const browserWindow = new EventTarget();
   const confirmations = [];
-  const notices = [];
   globalThis.window = browserWindow;
   browserWindow.addEventListener(CONFIRMATION_REQUEST_EVENT, (event) => {
     confirmations.push(event.detail);
     dispatchConfirmationResponse(event.detail.requestId, confirmed);
   });
-  browserWindow.addEventListener(NOTICE_EVENT, (event) => {
-    notices.push(event.detail);
-  });
   try {
-    await operation({ confirmations, notices });
+    await operation({ confirmations });
   } finally {
     if (originalWindow === undefined) {
       delete globalThis.window;

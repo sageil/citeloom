@@ -46,7 +46,7 @@
       integrity="sha384-ZuC+DIACqSIZTsp+7YF57cR5Y+6qXa7YFbEKdA/EHA/R0T+41dtorqucYl71Zp+t"
       crossorigin="anonymous"
     ></script>
-    <script type="module" src="./assets/scripts/citeloom-app.js"></script>
+    <script type="module" src="./assets/scripts/app.js"></script>
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"
@@ -234,6 +234,7 @@
                   <label class="account-navigation-workspace-select">
                     <span class="visually-hidden">Current workspace</span>
                     <select
+                      class="form-control compact-header-control"
                       :disabled="workspaceSwitching || workspaces.length < 2"
                       x-ref="workspaceSelect"
                       @change="switchWorkspace($event.target.value)"
@@ -250,6 +251,7 @@
                       </template>
                     </select>
                   </label>
+                  <p class="account-navigation-error" role="alert" x-cloak x-show="workspaceErrorMessage !== ''" x-text="workspaceErrorMessage"></p>
                 </div>
 
                 <div
@@ -454,27 +456,6 @@
               <span class="status-dot" aria-hidden="true"></span>
               <span x-text="workflowStatusLabel()"></span>
             </span>
-          </div>
-
-          <div
-            class="notice citeloom-notice"
-            :class="{ error: noticeKind === 'error' }"
-            :role="noticeRole()"
-            x-cloak
-            x-show="noticeKind !== null"
-          >
-            <svg aria-hidden="true" class="citeloom-icon">
-              <use :href="noticeKind === 'error' ? './assets/images/citeloom-icons.svg#citeloom-warning-circle' : './assets/images/citeloom-icons.svg#citeloom-status-check'"></use>
-            </svg>
-            <span x-text="noticeMessage"></span>
-            <button
-              aria-label="Dismiss notification"
-              class="icon-button"
-              type="button"
-              @click="dismissNotice()"
-            >
-              <span aria-hidden="true">×</span>
-            </button>
           </div>
 
           <div

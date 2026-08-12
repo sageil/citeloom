@@ -1,4 +1,4 @@
-import { readJsonResponse } from "./citeloom-boundaries.js";
+import { readJsonResponse } from "./boundary-readers.js";
 
 const pauseIcon = "./assets/images/citeloom-icons.svg#citeloom-pause";
 const refreshIcon = "./assets/images/citeloom-icons.svg#citeloom-refresh";
@@ -98,7 +98,7 @@ function reportAnswerSpeechError(context, options, error, fallback) {
   const message = readSpeechErrorMessage(error, fallback);
   context.speechAudioError = message;
   context.speechAudioPlaying = false;
-  options.reportError(message);
+  options.reportError(context, message);
 }
 
 export function createAnswerSpeechControls(options) {

@@ -3,7 +3,7 @@ import {
   readEnum,
   readNonEmptyString,
   readPlainObject,
-} from "./citeloom-boundaries.js";
+} from "./boundary-readers.js";
 
 const CONFIRMATION_REQUEST_EVENT = "citeloom:confirmation-request";
 const CONFIRMATION_RESPONSE_EVENT = "citeloom:confirmation-response";

@@ -12,6 +12,8 @@
     </div>
   </header>
 
+  <p class="field-error" role="alert" x-cloak x-show="errorMessage !== ''" x-text="errorMessage"></p>
+
   <p class="security-loading" x-show="loading">Loading security settings…</p>
 
   <div class="security-load-failed" x-cloak x-show="!loading &amp;&amp; loadFailed">
@@ -40,7 +42,7 @@
           <label class="security-policy-field" for="security-reset-lifetime">
             <span class="security-field-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use></svg></span>
             <span class="security-field-copy"><strong>Password reset link lifetime</strong><small>New setup and reset links use this lifetime.</small></span>
-            <select id="security-reset-lifetime" x-model.number="resetLinkLifetimeSeconds">
+            <select class="form-control" id="security-reset-lifetime" x-model.number="resetLinkLifetimeSeconds">
               <option value="900">15 minutes</option>
               <option value="1800">30 minutes</option>
               <option value="3600">1 hour</option>

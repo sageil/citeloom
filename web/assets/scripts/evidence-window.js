@@ -1,4 +1,4 @@
-import { buildEvidenceScoreScale } from "./citeloom-evidence-score.js";
+import { buildEvidenceScoreScale } from "./evidence-score.js";
 
 const evidenceWindowGap = 10;
 const evidenceWindowAnchorInset = 16;

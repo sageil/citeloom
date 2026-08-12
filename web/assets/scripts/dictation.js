@@ -2,7 +2,7 @@ import {
   readJsonResponse,
   readNonEmptyString,
   readPlainObject,
-} from "./citeloom-boundaries.js";
+} from "./boundary-readers.js";
 
 const mediaRecorderOptions = Object.freeze([
   { extension: "webm", mimeType: "audio/webm;codecs=opus" },

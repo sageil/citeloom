@@ -5,7 +5,7 @@ import {
   readNonEmptyString,
   readNullableString,
   readPlainObject,
-} from "./citeloom-boundaries.js";
+} from "./boundary-readers.js";
 
 const DOCUMENT_NOTIFICATION_CHANGE_EVENT = "citeloom:document-notification-change";
 const DOCUMENT_NOTIFICATION_REQUEST_EVENT = "citeloom:document-notification-request";
@@ -152,6 +152,10 @@ function readDocumentNotificationState(value) {
   const state = readPlainObject(value, "document notification state");
   return {
     enabled: readBoolean(state.enabled, "document notification state"),
+    errorMessage: readNullableString(
+      state.errorMessage,
+      "document notification error message",
+    ),
     sourceFile: readNonEmptyString(
       state.sourceFile,
       "document notification state source file",

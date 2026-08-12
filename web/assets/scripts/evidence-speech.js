@@ -1,4 +1,4 @@
-import { requestTextSpeech } from "./citeloom-answer-speech.js";
+import { requestTextSpeech } from "./answer-speech.js";
 
 const pauseIcon = "./assets/images/citeloom-icons.svg#citeloom-pause";
 const refreshIcon = "./assets/images/citeloom-icons.svg#citeloom-refresh";
@@ -176,13 +176,13 @@ export function createEvidenceSpeechControls(options) {
           this.$refs[options.audioRefName],
           citation.id,
           options.readEvidenceText(this, citation),
-          options.reportError,
+          (message) => options.reportError(this, message),
         );
       } catch (error) {
         const message = error instanceof Error
           ? error.message
           : "The evidence audio could not be played.";
-        options.reportError(message);
+        options.reportError(this, message);
       }
     },
 
@@ -197,7 +197,7 @@ export function createEvidenceSpeechControls(options) {
       reportEvidenceSpeechError(
         this,
         this.$refs[options.audioRefName],
-        options.reportError,
+        (message) => options.reportError(this, message),
       );
     },
   };

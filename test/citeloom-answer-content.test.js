@@ -7,8 +7,8 @@ import {
   linkAnswerContentCitations,
   linkAnswerContentVerification,
   readAnswerContentUpdate,
-} from "../web/assets/scripts/citeloom-answer-content.js";
-import { registerPage } from "../web/assets/scripts/citeloom-ask.js";
+} from "../web/assets/scripts/answer-content.js";
+import { registerPage } from "../web/assets/scripts/ask.js";
 
 describe("CiteLoom answer content updates", () => {
   it("shows Ask sources while evidence verification is pending", () => {

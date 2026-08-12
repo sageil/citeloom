@@ -1,4 +1,4 @@
-import { requestConfirmation } from "./citeloom-confirmation.js";
+import { requestConfirmation } from "./confirmation.js";
 
 export function createSettingsResetActions(alpine) {
   return {

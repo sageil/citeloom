@@ -163,7 +163,6 @@
   line-height: 1.45;
 }
 
-.security-policy-field select,
 .security-number-control {
   min-width: 145px;
   margin-right: 10px;
@@ -174,8 +173,8 @@
 }
 
 .security-policy-field select {
-  height: 40px;
-  padding: 0 10px;
+  min-width: 145px;
+  margin-right: 10px;
 }
 
 .security-number-control {
