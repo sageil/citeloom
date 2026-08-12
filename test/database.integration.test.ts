@@ -3769,7 +3769,7 @@ describe("PostgreSQL document catalog", () => {
     await session.database.insert(sourceLibraries).values({
       id: secondLibraryId,
       kind: "private",
-      name: "Second catalog sources",
+      name: null,
       ownerWorkspaceId: secondWorkspaceId,
       state: "active",
     });

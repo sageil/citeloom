@@ -195,16 +195,12 @@ describe("web server boundary", () => {
     const scriptsDirectory = join(staticDirectory, "assets", "scripts");
     await mkdir(scriptsDirectory, { recursive: true });
     await writeFile(
-      join(scriptsDirectory, "citeloom-dashboard-extensions.js"),
+      join(scriptsDirectory, "dashboard-extensions.js"),
       "export const loaded = true;",
     );
     await writeFile(
-      join(scriptsDirectory, "citeloom-bootstrap.js"),
+      join(scriptsDirectory, "bootstrap.js"),
       "window.citeloomBootstrapLoaded = true;",
-    );
-    await writeFile(
-      join(scriptsDirectory, "citeloom-notices.js"),
-      "export const noticeEvent = 'citeloom:notice';",
     );
     const server = await buildProductionWebServer(buildConfig(), {
       logger: false,
@@ -219,26 +215,17 @@ describe("web server boundary", () => {
 
       const dependencyResponse = await server.inject({
         method: "GET",
-        url: "/assets/scripts/citeloom-dashboard-extensions.js",
+        url: "/assets/scripts/dashboard-extensions.js",
       });
       expect(dependencyResponse.statusCode).toBe(200);
       expect(dependencyResponse.body).toBe("export const loaded = true;");
 
       const bootstrapResponse = await server.inject({
         method: "GET",
-        url: "/assets/scripts/citeloom-bootstrap.js",
+        url: "/assets/scripts/bootstrap.js",
       });
       expect(bootstrapResponse.statusCode).toBe(200);
       expect(bootstrapResponse.body).toBe("window.citeloomBootstrapLoaded = true;");
-
-      const noticesResponse = await server.inject({
-        method: "GET",
-        url: "/assets/scripts/citeloom-notices.js",
-      });
-      expect(noticesResponse.statusCode).toBe(200);
-      expect(noticesResponse.body).toBe(
-        "export const noticeEvent = 'citeloom:notice';",
-      );
 
       for (const url of ["/", "/documents", "/settings", "/unknown"]) {
         const response = await server.inject({ method: "GET", url });
@@ -3837,6 +3824,16 @@ function buildServices(
     browseDocuments: async () => buildCatalogResult(),
     compareDocumentVersions: async () => null,
     config: buildConfig(),
+    createChatConversation: async (_principal, title, scope) => ({
+      createdAt: "2026-07-15T12:00:00.000Z",
+      id: "00000000-0000-4000-8000-000000000301",
+      ownerUserId: "00000000-0000-4000-8000-000000000000",
+      runs: [],
+      scope,
+      title,
+      updatedAt: "2026-07-15T12:00:00.000Z",
+      workspaceId: "00000000-0000-4000-8000-000000000000",
+    }),
     createResearchThread: async (_principal, title) => ({
       createdAt: "2026-07-15T12:00:00.000Z",
       id: "00000000-0000-4000-8000-000000000001",
@@ -3844,6 +3841,8 @@ function buildServices(
       turns: [],
       updatedAt: "2026-07-15T12:00:00.000Z",
     }),
+    deleteChatConversation: async () => undefined,
+    deleteIndexedDocument: async () => ({ kind: "not-found" }),
     deleteResearchThread: async () => undefined,
     exportResearchThread: async () => null,
     generateSpeech: async () => ({
@@ -3852,11 +3851,19 @@ function buildServices(
       contentType: "audio/wav",
     }),
     ingest: async () => ({ documents: [], failures: [] }),
+    listChatConversations: async () => [],
     listDocumentVersions: async () => [],
     listResearchThreads: async () => [],
+    processNextChatVerification: async () => false,
+    processNextResearchVerification: async () => false,
     readCitationEvidence: async () => null,
-    readCitationHighlightedPdf: async () => null,
+    readCitationHighlightedFile: async () => null,
     readCitationImage: async () => null,
+    readChatCitationEvidence: async () => null,
+    readChatCitationFile: async () => null,
+    readChatCitationHighlightedFile: async () => null,
+    readChatCitationImage: async () => null,
+    readChatConversation: async () => null,
     readDocumentFile: async () => null,
     readHealth: async () => [buildReadyDiagnosticCheck()],
     readResearchThread: async () => null,
@@ -3865,13 +3872,18 @@ function buildServices(
     readStatus: async () => ({ inference: [], queue: [], workers: [] }),
     readTelemetry: async () => buildTelemetryDashboard(),
     readVersionedDocumentFile: async () => null,
+    reconcileIngestionCancellations: async () => undefined,
+    reconcileSourceLibraryDeletions: async () => false,
+    reconcileUploadedDocuments: async () => 0,
     reindexDocument: async () => ({ kind: "not-found" }),
     retryFailedJob: async () => ({ kind: "not-found" }),
     requestIngestionControl: async () => ({ kind: "not-found" }),
     resumeIngestion: async () => ({ kind: "not-found" }),
     searchSources: async () => buildSourceDiscoveryResponse(),
     streamAnswer: () => createAnswerStream("Answer"),
+    streamChatMessage: () => createAnswerStream("Answer"),
     transcribeAudio: async () => ({ text: "Transcript" }),
+    updateDocumentTags: async () => null,
   };
   const effectiveRuntimeServices: RuntimeWebServices = {
     ...runtimeServices,

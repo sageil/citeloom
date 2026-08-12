@@ -4,7 +4,10 @@ import { and, asc, eq, gt, gte, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { SourceContentConfig } from "../../config/index.js";
-import type { CiteLoomDatabase } from "../../database/client.js";
+import type {
+  CiteLoomDatabase,
+  CiteLoomDatabaseExecutor,
+} from "../../database/client.js";
 import {
   applicationSettings,
   sourceDocuments,
@@ -90,7 +93,7 @@ export async function migrateSourceContentBackend(
       sql`LOCK TABLE ${sourceDocuments} IN SHARE MODE`,
     );
     const lockedSettings = await readCurrentApplicationSettings(
-      transaction as unknown as CiteLoomDatabase,
+      transaction,
       true,
     );
     if (
@@ -106,7 +109,7 @@ export async function migrateSourceContentBackend(
     }
 
     await visitSourceContentDocuments(
-      transaction as unknown as CiteLoomDatabase,
+      transaction,
       options.abortSignal,
       async (document) => {
         await copy.target.verify(document, options.abortSignal);
@@ -176,7 +179,7 @@ interface CurrentApplicationSettings {
 }
 
 async function readCurrentApplicationSettings(
-  database: CiteLoomDatabase,
+  database: CiteLoomDatabaseExecutor,
   forUpdate: boolean = false,
 ): Promise<CurrentApplicationSettings> {
   const query = database
@@ -217,7 +220,7 @@ export async function copyAndVerifySourceContentDocument(
 }
 
 export async function visitSourceContentDocuments(
-  database: CiteLoomDatabase,
+  database: CiteLoomDatabaseExecutor,
   abortSignal: AbortSignal | undefined,
   visit: (document: SourceContentMetadata) => Promise<void>,
 ): Promise<void> {
@@ -240,7 +243,7 @@ export async function visitSourceContentDocuments(
 }
 
 export async function visitSourceContentDocumentsPublishedSince(
-  database: CiteLoomDatabase,
+  database: CiteLoomDatabaseExecutor,
   publishedSince: Date,
   abortSignal: AbortSignal | undefined,
   visit: (document: SourceContentMetadata) => Promise<void>,
@@ -265,7 +268,7 @@ export async function visitSourceContentDocumentsPublishedSince(
 }
 
 export async function readSourceContentMigrationBatch(
-  database: CiteLoomDatabase,
+  database: CiteLoomDatabaseExecutor,
   afterDocumentId: string | null,
   limit: number = SOURCE_CONTENT_MIGRATION_BATCH_SIZE,
 ): Promise<SourceContentMigrationDocument[]> {
@@ -289,7 +292,7 @@ export async function readSourceContentMigrationBatch(
 }
 
 async function readSourceContentMigrationBatchPublishedSince(
-  database: CiteLoomDatabase,
+  database: CiteLoomDatabaseExecutor,
   afterDocumentId: string | null,
   publishedSince: Date,
 ): Promise<SourceContentMigrationDocument[]> {

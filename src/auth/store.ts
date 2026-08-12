@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { and, asc, count, eq, gt, ne } from "drizzle-orm";
 import { z } from "zod";
 
-import type { CiteLoomDatabase } from "../database/client.js";
+import type {
+  CiteLoomDatabase,
+  CiteLoomDatabaseExecutor,
+} from "../database/client.js";
 import {
   applicationSettings,
   userPasswordCredentials,
@@ -224,7 +227,7 @@ export class AuthenticationStore {
         throw new SetupTokenRejectedError();
       }
       const currentSecurityPolicy = new WorkspaceSecurityPolicyStore(
-        transaction as unknown as CiteLoomDatabase,
+        transaction,
         this.now,
       );
       const currentPasswordRequirements = await currentSecurityPolicy
@@ -425,7 +428,7 @@ export class AuthenticationStore {
           createdAt: now,
           id: sourceLibraryId,
           kind: "private",
-          name: `${input.name} sources`,
+          name: null,
           ownerWorkspaceId: workspaceId,
           state: "active",
           updatedAt: now,
@@ -667,7 +670,7 @@ export class AuthenticationStore {
     const now = this.now();
     await this.database.transaction(async (transaction) => {
       const currentSecurityPolicy = new WorkspaceSecurityPolicyStore(
-        transaction as unknown as CiteLoomDatabase,
+        transaction,
         this.now,
       );
       const currentPasswordRequirements = await currentSecurityPolicy
@@ -704,7 +707,7 @@ export class AuthenticationStore {
     try {
       const addition = await this.database.transaction(async (transaction) => {
         const resetLinkLifetimeSeconds = await readResetLinkLifetimeSecondsForIssue(
-          transaction as unknown as CiteLoomDatabase,
+          transaction,
           principal.workspaceId,
         );
         const expiresAt = new Date(
@@ -803,7 +806,7 @@ export class AuthenticationStore {
     const now = this.now();
     const expiresAt = await this.database.transaction(async (transaction) => {
       const resetLinkLifetimeSeconds = await readResetLinkLifetimeSecondsForIssue(
-        transaction as unknown as CiteLoomDatabase,
+        transaction,
         principal.workspaceId,
       );
       const resetExpiresAt = new Date(
@@ -1012,7 +1015,7 @@ export class AuthenticationStore {
 }
 
 async function readResetLinkLifetimeSecondsForIssue(
-  database: CiteLoomDatabase,
+  database: CiteLoomDatabaseExecutor,
   workspaceId: string,
 ): Promise<number> {
   const rows = await database

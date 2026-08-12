@@ -190,8 +190,8 @@ export async function buildWebServer(
   });
   const uploadDirectory = options.uploadDirectory ?? webConfig.uploadDirectory;
   await services.run(async (runtime) => {
-    await runtime.reconcileUploadedDocuments?.(uploadDirectory);
-    await runtime.reconcileIngestionCancellations?.();
+    await runtime.reconcileUploadedDocuments(uploadDirectory);
+    await runtime.reconcileIngestionCancellations();
   });
   let deletionReconciliation: Promise<void> | null = null;
   const deletionTimer = setInterval(() => {
@@ -199,8 +199,8 @@ export async function buildWebServer(
       return;
     }
     deletionReconciliation = services.run(async (runtime) => {
-      await runtime.reconcileIngestionCancellations?.();
-      await runtime.reconcileSourceLibraryDeletions?.();
+      await runtime.reconcileIngestionCancellations();
+      await runtime.reconcileSourceLibraryDeletions();
     }).catch(async (error: unknown) => {
       const result = await services.reportApplicationError(error, {
         category: "background-task",
@@ -239,16 +239,12 @@ export async function buildWebServer(
     verificationDispatch = services.run(async (runtime) => {
       let processed = true;
       while (processed && !verificationController.signal.aborted) {
-        const researchProcessed = runtime.processNextResearchVerification === undefined
-          ? false
-          : await runtime.processNextResearchVerification(
-            verificationController.signal,
-          );
-        const chatProcessed = runtime.processNextChatVerification === undefined
-          ? false
-          : await runtime.processNextChatVerification(
-            verificationController.signal,
-          );
+        const researchProcessed = await runtime.processNextResearchVerification(
+          verificationController.signal,
+        );
+        const chatProcessed = await runtime.processNextChatVerification(
+          verificationController.signal,
+        );
         processed = researchProcessed || chatProcessed;
       }
     }).catch(async (error: unknown) => {
@@ -390,9 +386,6 @@ export async function buildWebServer(
       request.body,
     );
     const result = await services.run(async (runtime) => {
-      if (runtime.updateDocumentTags === undefined) {
-        throw new Error("Document tag updates are not configured.");
-      }
       return runtime.updateDocumentTags(principal, updateRequest);
     });
     if (result === null) {
@@ -487,12 +480,7 @@ export async function buildWebServer(
     const principal = requireRequestPrincipal(requestPrincipals, request);
     const id = decodeResourceId(request.params);
     const document = await services.run(async (runtime) => {
-      const readHighlightedFile = runtime.readCitationHighlightedFile
-        ?? runtime.readCitationHighlightedPdf;
-      if (readHighlightedFile === undefined) {
-        throw new Error("Highlighted citation files are not configured.");
-      }
-      return readHighlightedFile(principal, id);
+      return runtime.readCitationHighlightedFile(principal, id);
     });
     if (document === null) {
       throw new WebRequestError(404, "The citation or document version was not found.");
@@ -729,9 +717,6 @@ export async function buildWebServer(
     const principal = requireRequestPrincipal(requestPrincipals, request);
     const deletionRequest = decodeReindexDocumentRequest(request.params, request.body);
     const result = await services.run(async (runtime) => {
-      if (runtime.deleteIndexedDocument === undefined) {
-        throw new Error("Indexed document deletion is not configured.");
-      }
       return runtime.deleteIndexedDocument(principal, deletionRequest);
     });
     if (result.kind === "not-found") {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 
 import { requireGlobalAdministrator } from "../auth/authorization.js";
 import type { AuthenticatedPrincipal } from "../auth/model.js";
@@ -18,6 +18,15 @@ import type {
   SourceLibraryAccess,
   SourceLibrarySummary,
 } from "./source-library-model.js";
+
+const accessibleSourceLibraryName = sql<string>`
+  case
+    when ${sourceLibraries.kind} = 'private' then ${workspaces.name}
+    else ${sourceLibraries.name}
+  end
+`;
+
+const sharedSourceLibraryName = sql<string>`${sourceLibraries.name}`;
 
 export class SourceLibraryUnavailableError extends Error {
   public constructor() {
@@ -47,11 +56,15 @@ export class SourceLibraryStore {
         .select({
           id: sourceLibraries.id,
           kind: sourceLibraries.kind,
-          name: sourceLibraries.name,
+          name: accessibleSourceLibraryName,
         })
         .from(sourceLibraries)
+        .leftJoin(
+          workspaces,
+          eq(workspaces.id, sourceLibraries.ownerWorkspaceId),
+        )
         .where(eq(sourceLibraries.state, "active"))
-        .orderBy(asc(sourceLibraries.kind), asc(sourceLibraries.name));
+        .orderBy(asc(sourceLibraries.kind), asc(accessibleSourceLibraryName));
       const libraries: SourceLibrarySummary[] = [];
       for (const row of rows) {
         libraries.push({ ...row, access: "manage" });
@@ -70,7 +83,7 @@ export class SourceLibraryStore {
         grantedAccess: workspaceLibraryGrants.access,
         id: sourceLibraries.id,
         kind: sourceLibraries.kind,
-        name: sourceLibraries.name,
+        name: accessibleSourceLibraryName,
         ownerWorkspaceId: sourceLibraries.ownerWorkspaceId,
       })
       .from(sourceLibraries)
@@ -81,6 +94,10 @@ export class SourceLibraryStore {
           eq(workspaceLibraryGrants.workspaceId, workspaceId),
         ),
       )
+      .leftJoin(
+        workspaces,
+        eq(workspaces.id, sourceLibraries.ownerWorkspaceId),
+      )
       .where(and(
         eq(sourceLibraries.state, "active"),
         or(
@@ -88,7 +105,7 @@ export class SourceLibraryStore {
           sharedLibraryCondition,
         ),
       ))
-      .orderBy(asc(sourceLibraries.kind), asc(sourceLibraries.name));
+      .orderBy(asc(sourceLibraries.kind), asc(accessibleSourceLibraryName));
     const libraries: SourceLibrarySummary[] = [];
     for (const row of rows) {
       const access = row.ownerWorkspaceId === workspaceId
@@ -335,14 +352,14 @@ async function readSourceLibraryAdministration(
   const libraryRows = await database
     .select({
       id: sourceLibraries.id,
-      name: sourceLibraries.name,
+      name: sharedSourceLibraryName,
       state: sourceLibraries.state,
     })
     .from(sourceLibraries)
     .where(eq(sourceLibraries.kind, "shared"))
     .orderBy(
       asc(sourceLibraries.state),
-      asc(sourceLibraries.name),
+      asc(sharedSourceLibraryName),
       asc(sourceLibraries.id),
     );
   const workspaceRows = await database

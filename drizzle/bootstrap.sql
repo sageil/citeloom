@@ -1449,7 +1449,7 @@ BEGIN
   VALUES (
     gen_random_uuid(),
     'private',
-    'DefaultSpace sources',
+    NULL,
     administrator_workspace_id,
     'active'
   );

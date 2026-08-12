@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { and, asc, count, desc, eq, gt } from "drizzle-orm";
 
-import type { CiteLoomDatabase } from "../database/client.js";
+import type { CiteLoomDatabaseExecutor } from "../database/client.js";
+import { DEFAULT_WORKSPACE_SECURITY_POLICY } from "../domain/security-policy-defaults.js";
 import {
   userSetupTokens,
   users,
@@ -22,13 +23,7 @@ import { requireWorkspaceAdministrator } from "./authorization.js";
 
 const recentPolicyChangeLimit = 10;
 
-export const DEFAULT_WORKSPACE_SECURITY_POLICY = {
-  minimumPasswordLength: 15,
-  requireLetterAndNumber: false,
-  requireSpecialCharacter: false,
-  resetLinkLifetimeSeconds: 24 * 60 * 60,
-  version: 1,
-} as const;
+export { DEFAULT_WORKSPACE_SECURITY_POLICY } from "../domain/security-policy-defaults.js";
 
 export class SecurityPolicyVersionConflictError extends Error {
   public constructor() {
@@ -39,7 +34,7 @@ export class SecurityPolicyVersionConflictError extends Error {
 
 export class WorkspaceSecurityPolicyStore {
   public constructor(
-    private readonly database: CiteLoomDatabase,
+    private readonly database: CiteLoomDatabaseExecutor,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
@@ -74,8 +69,10 @@ export class WorkspaceSecurityPolicyStore {
         effectivePolicy.minimumPasswordLength,
         minimumPasswordLength,
       );
-      effectivePolicy.requireLetterAndNumber ||= row.requireLetterAndNumber ?? false;
-      effectivePolicy.requireSpecialCharacter ||= row.requireSpecialCharacter ?? false;
+      effectivePolicy.requireLetterAndNumber ||= row.requireLetterAndNumber
+        ?? DEFAULT_WORKSPACE_SECURITY_POLICY.requireLetterAndNumber;
+      effectivePolicy.requireSpecialCharacter ||= row.requireSpecialCharacter
+        ?? DEFAULT_WORKSPACE_SECURITY_POLICY.requireSpecialCharacter;
     }
     if (effectivePolicy.minimumPasswordLength === 0) {
       effectivePolicy.minimumPasswordLength = DEFAULT_WORKSPACE_SECURITY_POLICY
@@ -252,7 +249,7 @@ export class WorkspaceSecurityPolicyStore {
 }
 
 async function readWorkspaceSecurityPolicy(
-  database: CiteLoomDatabase,
+  database: CiteLoomDatabaseExecutor,
   workspaceId: string,
 ): Promise<WorkspaceSecurityPolicy> {
   const rows = await database

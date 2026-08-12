@@ -142,7 +142,7 @@ describe("database administrator bootstrap", () => {
       expect.objectContaining({ name: "DefaultSpace" }),
     ]);
     await expect(session.database.select().from(sourceLibraries)).resolves.toEqual([
-      expect.objectContaining({ name: "DefaultSpace sources" }),
+      expect.objectContaining({ kind: "private", name: null }),
     ]);
   });
 
@@ -857,6 +857,7 @@ describe("workspace provisioning and switching", () => {
     if (originalLibrary === undefined) {
       throw new Error("Expected the default private source library.");
     }
+    expect(originalLibrary.name).toBeNull();
     const secondWorkspace = await store.createWorkspace(
       administrator.principal,
       {
@@ -888,6 +889,12 @@ describe("workspace provisioning and switching", () => {
       .from(sourceLibraries)
       .where(eq(sourceLibraries.id, originalLibrary.id)))
       .resolves.toEqual([originalLibrary]);
+    const renamedPrivateLibrary = (await new SourceLibraryStore(
+      session.database,
+    ).listAccessible(administrator.principal)).find((library) => {
+      return library.kind === "private";
+    });
+    expect(renamedPrivateLibrary?.name).toBe("Knowledge Operations");
     await expect(session.database
       .select({ eventType: workspaceAuditEvents.eventType })
       .from(workspaceAuditEvents)
@@ -1154,7 +1161,7 @@ describe("workspace provisioning and switching", () => {
       expect.objectContaining({
         access: "manage",
         kind: "private",
-        name: "Second Workspace sources",
+        name: "Second Workspace",
       }),
     ]);
     const secondPrivateLibrary = secondWorkspaceLibraries[0];

@@ -5,6 +5,8 @@ import {
 } from "argon2";
 import { z } from "zod";
 
+import { DEFAULT_PASSWORD_REQUIREMENTS } from "../domain/security-policy-defaults.js";
+
 const maximumPasswordBytes = 4_096;
 const passwordInputSchema = z.string().min(1).max(1_024);
 
@@ -20,12 +22,6 @@ export interface PasswordRequirements {
   requireLetterAndNumber: boolean;
   requireSpecialCharacter: boolean;
 }
-
-export const defaultPasswordRequirements: PasswordRequirements = {
-  minimumPasswordLength: 15,
-  requireLetterAndNumber: false,
-  requireSpecialCharacter: false,
-};
 
 export class PasswordValidationError extends Error {
   public constructor(message: string) {
@@ -78,7 +74,7 @@ export function validatePassword(
 }
 
 export function readPassword(value: unknown): ValidatedPassword {
-  return validatePassword(readPasswordInput(value), defaultPasswordRequirements);
+  return validatePassword(readPasswordInput(value), DEFAULT_PASSWORD_REQUIREMENTS);
 }
 
 export async function hashValidatedPassword(

@@ -23,6 +23,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type { ExtraConfigColumn } from "drizzle-orm/pg-core";
 
+import { DEFAULT_WORKSPACE_SECURITY_POLICY } from "../domain/security-policy-defaults.js";
 import type { StoredDoclingArtifact } from "../docling/protocol/index.js";
 import type {
   DoclingAttemptConfigSnapshot,
@@ -316,7 +317,7 @@ export const sourceLibraries = pgTable(
       .defaultNow(),
     id: uuid("id").primaryKey(),
     kind: sourceLibraryKind("kind").notNull(),
-    name: text("name").notNull(),
+    name: text("name"),
     ownerWorkspaceId: uuid("owner_workspace_id").references(
       () => workspaces.id,
       { onDelete: "restrict" },
@@ -338,7 +339,9 @@ export const sourceLibraries = pgTable(
     ),
     check(
       "source_libraries_name_check",
-      sql`length(trim(${table.name})) > 0`,
+      sql`(${table.kind} = 'private' AND ${table.name} IS NULL)
+        OR (${table.kind} = 'shared' AND ${table.name} IS NOT NULL
+          AND length(trim(${table.name})) > 0)`,
     ),
   ],
 );
@@ -415,16 +418,16 @@ export const workspaceSecurityPolicies = pgTable(
   {
     minimumPasswordLength: integer("minimum_password_length")
       .notNull()
-      .default(15),
+      .default(DEFAULT_WORKSPACE_SECURITY_POLICY.minimumPasswordLength),
     requireLetterAndNumber: boolean("require_letter_and_number")
       .notNull()
-      .default(false),
+      .default(DEFAULT_WORKSPACE_SECURITY_POLICY.requireLetterAndNumber),
     requireSpecialCharacter: boolean("require_special_character")
       .notNull()
-      .default(false),
+      .default(DEFAULT_WORKSPACE_SECURITY_POLICY.requireSpecialCharacter),
     resetLinkLifetimeSeconds: integer("reset_link_lifetime_seconds")
       .notNull()
-      .default(86_400),
+      .default(DEFAULT_WORKSPACE_SECURITY_POLICY.resetLinkLifetimeSeconds),
     updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
       .notNull()
       .defaultNow(),

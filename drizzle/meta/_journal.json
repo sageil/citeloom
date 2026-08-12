@@ -57,6 +57,13 @@
       "when": 1786494137210,
       "tag": "0007_regular_ego",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1786541469809,
+      "tag": "0008_classy_zaran",
+      "breakpoints": true
     }
   ]
 }

@@ -1,9 +1,6 @@
 import { basename } from "node:path";
 import { hostname } from "node:os";
 
-import type { InferUIMessageChunk } from "ai";
-
-import type { CiteLoomUIMessage } from "../answers/stream.js";
 import {
   ApplicationRuntimeManager,
   createApplicationRuntimeView,
@@ -20,14 +17,7 @@ import {
   ApplicationSettingsRepository,
   type EffectiveApplicationSettings,
 } from "../app/settings.js";
-import type {
-  BrowseDocumentCatalogRequest,
-  BrowseDocumentCatalogResult,
-} from "../documents/catalog/browser.js";
-import {
-  DocumentCatalog,
-  type IngestionControlActor,
-} from "../documents/catalog/index.js";
+import { DocumentCatalog } from "../documents/catalog/index.js";
 import {
   readApplicationErrorRetentionConfig,
   readDoclingServiceTopologyFromConfig,
@@ -40,9 +30,6 @@ import {
   readIndexedDocumentFileWithRuntime,
   updateIndexedDocumentTagsWithRuntime,
   type IndexedDocumentFile,
-  type ReadDocumentFileRequest,
-  type UpdateIndexedDocumentTagsRequest,
-  type UpdateIndexedDocumentTagsResult,
 } from "../documents/catalog/service.js";
 import { SourceContentStore } from "../documents/storage/source-content-store.js";
 import { createSourceContentBackend } from "../documents/storage/source-content-backend.js";
@@ -57,18 +44,11 @@ import {
   requestIngestionControlWithRuntime,
   resumeIngestionWithRuntime,
   retryFailedIngestionWithRuntime,
-  type BulkIngestResult,
-  type IngestOptions,
-  type ReindexDocumentRequest,
-  type ReindexDocumentResult,
-  type RetryFailedIngestionResult,
-  type StagedIngestionDocument,
 } from "../ingestion/service.js";
 import {
   deleteAbandonedUploadStaging,
   deleteIndexedDocumentWithRuntime,
   reconcileIngestionCancellations,
-  type DeleteIndexedDocumentResult,
 } from "../ingestion/deletion.js";
 import { reconcileIngestionControlExecutions } from "../ingestion/control.js";
 import {
@@ -101,50 +81,25 @@ import {
   streamIndexedDocumentAnswerWithRuntime,
 } from "../retrieval/pipeline.js";
 import type {
-  DocumentVersionDifference,
-  DocumentVersionRecord,
-  FeedbackDimension,
-  ResearchFeedbackSummary,
-  ResearchThread,
-  ResearchThreadSummary,
   StoredCitationRecord,
 } from "../research/types.js";
 import {
   ResearchInputConflictError,
   ResearchStore,
-  type ResearchExport,
-  type ResearchExportFormat,
 } from "../research/store.js";
-import type {
-  SourceDiscoveryRequest,
-  SourceDiscoveryResponse,
-} from "../retrieval/discovery/schema.js";
 import {
   transcribeAudio as transcribeSpeechAudio,
-  type TranscriptionAudio,
-  type TranscriptionResult,
 } from "../providers/speech-to-text.js";
-import {
-  generateTextToSpeech,
-  type GeneratedSpeech,
-  type SpeechRequest,
-} from "../providers/text-to-speech.js";
+import { generateTextToSpeech } from "../providers/text-to-speech.js";
 import {
   startManagedTask,
   type ManagedTask,
 } from "../shared/concurrency.js";
-import {
-  readTelemetryDashboardWithRuntime,
-  type TelemetryDashboardSummary,
-} from "../observability/store.js";
+import { readTelemetryDashboardWithRuntime } from "../observability/store.js";
 import type {
-  QuestionRequest,
   UpdateApplicationSettingsRequest,
 } from "./request-boundary.js";
-import {
-  readSystemStatusWithRuntime,
-  type SystemStatus,
-} from "../ingestion/worker.js";
+import { readSystemStatusWithRuntime } from "../ingestion/worker.js";
 import type {
   CreateWorkspaceInput,
   LoginInput,
@@ -218,11 +173,7 @@ import {
 import type {
   EmbeddingInputFormatDefinition,
 } from "../embedding/input-format-model.js";
-import type { QueryScope } from "../domain/query-scope.js";
-import {
-  streamChatMessageWithRuntime,
-  type ChatMessageRequest,
-} from "../chat/pipeline.js";
+import { streamChatMessageWithRuntime } from "../chat/pipeline.js";
 import {
   processNextChatVerificationWithRuntime,
 } from "../chat/verification-dispatcher.js";
@@ -230,194 +181,15 @@ import {
   processNextResearchVerificationWithRuntime,
 } from "../research/verification-dispatcher.js";
 import { ChatStore } from "../chat/store.js";
-import type {
-  ChatConversation,
-  ChatConversationSummary,
-  StoredChatCitation,
-} from "../chat/types.js";
+import type { RuntimeWebServices } from "./runtime-web-services.js";
 
-export interface RuntimeWebServices {
-  readonly config: AppConfig;
-  browseDocuments: (
-    principal: AuthenticatedPrincipal,
-    request: BrowseDocumentCatalogRequest,
-  ) => Promise<BrowseDocumentCatalogResult>;
-  addResearchFeedback: (principal: AuthenticatedPrincipal, input: {
-    citationId: string | null;
-    comment: string | null;
-    dimension: FeedbackDimension;
-    rating: -1 | 1;
-    turnId: string;
-  }) => Promise<ResearchFeedbackSummary>;
-  readResearchFeedback: (
-    principal: AuthenticatedPrincipal,
-    turnId: string,
-    dimension: FeedbackDimension,
-    citationId: string | null,
-  ) => Promise<ResearchFeedbackSummary>;
-  compareDocumentVersions: (
-    principal: AuthenticatedPrincipal,
-    previousVersionId: string,
-    currentVersionId: string,
-  ) => Promise<DocumentVersionDifference | null>;
-  streamChatMessage?: (
-    principal: AuthenticatedPrincipal,
-    request: ChatMessageRequest,
-    abortSignal: AbortSignal,
-  ) => ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>>;
-  createChatConversation?: (
-    principal: AuthenticatedPrincipal,
-    title: string,
-    scope: QueryScope,
-  ) => Promise<ChatConversation>;
-  createResearchThread: (
-    principal: AuthenticatedPrincipal,
-    title: string,
-  ) => Promise<ResearchThread>;
-  deleteChatConversation?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<void>;
-  deleteResearchThread: (principal: AuthenticatedPrincipal, id: string) => Promise<void>;
-  deleteIndexedDocument?: (
-    principal: AuthenticatedPrincipal,
-    request: ReindexDocumentRequest,
-  ) => Promise<DeleteIndexedDocumentResult>;
-  exportResearchThread: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-    format: ResearchExportFormat,
-  ) => Promise<ResearchExport | null>;
-  generateSpeech: (
-    request: SpeechRequest,
-    abortSignal: AbortSignal,
-  ) => Promise<GeneratedSpeech>;
-  ingest: (
-    principal: AuthenticatedPrincipal,
-    documents: readonly StagedIngestionDocument[],
-    options: IngestOptions,
-    duplicateSourceRoot: string,
-    requestedSourceLibraryId: string | null,
-  ) => Promise<BulkIngestResult>;
-  listDocumentVersions: (
-    principal: AuthenticatedPrincipal,
-    sourceFile: string,
-  ) => Promise<DocumentVersionRecord[]>;
-  processNextChatVerification?: (
-    abortSignal: AbortSignal,
-  ) => Promise<boolean>;
-  processNextResearchVerification?: (
-    abortSignal: AbortSignal,
-  ) => Promise<boolean>;
-  listChatConversations?: (
-    principal: AuthenticatedPrincipal,
-  ) => Promise<ChatConversationSummary[]>;
-  listResearchThreads: (
-    principal: AuthenticatedPrincipal,
-  ) => Promise<ResearchThreadSummary[]>;
-  readCitationEvidence: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<StoredCitationRecord | null>;
-  readCitationHighlightedFile?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<IndexedDocumentFile | null>;
-  /** @deprecated Use readCitationHighlightedFile. */
-  readCitationHighlightedPdf?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<IndexedDocumentFile | null>;
-  readCitationImage: (principal: AuthenticatedPrincipal, id: string) => Promise<{
-    content: Buffer;
-    mediaType: string;
-  } | null>;
-  readChatCitationEvidence?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<StoredChatCitation | null>;
-  readChatCitationFile?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<IndexedDocumentFile | null>;
-  readChatCitationHighlightedFile?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<IndexedDocumentFile | null>;
-  /** @deprecated Use readChatCitationHighlightedFile. */
-  readChatCitationHighlightedPdf?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<IndexedDocumentFile | null>;
-  readChatCitationImage?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<{
-    content: Buffer;
-    mediaType: string;
-  } | null>;
-  readChatConversation?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<ChatConversation | null>;
-  readDocumentFile: (
-    principal: AuthenticatedPrincipal,
-    request: ReadDocumentFileRequest,
-  ) => Promise<IndexedDocumentFile | null>;
-  readHealth: (liveChecks: DoctorLiveChecks) => Promise<DoctorCheck[]>;
-  readResearchThread: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<ResearchThread | null>;
-  readRevisions: () => Promise<ApplicationStateRevisionSnapshot>;
-  readStatus: (principal: AuthenticatedPrincipal) => Promise<SystemStatus>;
-  readTelemetry: () => Promise<TelemetryDashboardSummary>;
-  readVersionedDocumentFile: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<IndexedDocumentFile | null>;
-  reconcileUploadedDocuments?: (uploadDirectory: string) => Promise<number>;
-  reconcileIngestionCancellations?: () => Promise<void>;
-  reconcileSourceLibraryDeletions?: () => Promise<boolean>;
-  reindexDocument: (
-    principal: AuthenticatedPrincipal,
-    request: ReindexDocumentRequest,
-    actor: IngestionControlActor,
-  ) => Promise<ReindexDocumentResult>;
-  retryFailedJob: (
-    principal: AuthenticatedPrincipal,
-    sourceFile: string,
-  ) => Promise<RetryFailedIngestionResult>;
-  requestIngestionControl: (
-    principal: AuthenticatedPrincipal,
-    sourceFile: string,
-    action: "pause" | "cancel",
-    actor: IngestionControlActor,
-  ) => ReturnType<typeof requestIngestionControlWithRuntime>;
-  resumeIngestion: (
-    principal: AuthenticatedPrincipal,
-    sourceFile: string,
-    actor: IngestionControlActor,
-  ) => ReturnType<typeof resumeIngestionWithRuntime>;
-  searchSources: (
-    principal: AuthenticatedPrincipal,
-    request: SourceDiscoveryRequest,
-    abortSignal: AbortSignal,
-  ) => Promise<SourceDiscoveryResponse>;
-  streamAnswer: (
-    principal: AuthenticatedPrincipal,
-    request: QuestionRequest,
-    abortSignal: AbortSignal,
-  ) => ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>>;
-  transcribeAudio: (
-    audio: TranscriptionAudio,
-    abortSignal: AbortSignal,
-  ) => Promise<TranscriptionResult>;
-  updateDocumentTags?: (
-    principal: AuthenticatedPrincipal,
-    request: UpdateIndexedDocumentTagsRequest,
-  ) => Promise<UpdateIndexedDocumentTagsResult | null>;
-}
+export type {
+  RuntimeChatServices,
+  RuntimeDocumentServices,
+  RuntimeOperationalServices,
+  RuntimeResearchServices,
+  RuntimeWebServices,
+} from "./runtime-web-services.js";
 
 export interface WebServices {
   archiveWorkspace: (
