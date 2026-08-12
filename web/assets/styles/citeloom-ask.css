@@ -61,6 +61,12 @@
 .ask-mode .ask-control-rail { position: sticky; top: 0; grid-column: 1; grid-row: 1 / span 2; }
 .ask-mode .question-mode-switch { margin: 0; padding: 6px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; }
 .ask-mode .question-mode-switch > button { min-width: 0; padding-inline: 8px; font-size: 10px; white-space: nowrap; }
+.ask-workspace-context { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 8px; padding: 11px 14px; border-bottom: 1px solid var(--border); color: var(--muted); }
+.ask-workspace-context .citeloom-icon { color: var(--cyan); }
+.ask-workspace-context > span { display: grid; min-width: 0; gap: 2px; }
+.ask-workspace-context small { font-size: 8px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+.ask-workspace-context strong { color: var(--text-soft); font-size: 11px; font-weight: 650; }
+.discovery-mode .ask-workspace-context { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 8px 8px; }
 .research-thread-bar { display: grid; gap: 18px; padding: 18px 14px; }
 .research-context-heading, .research-history > summary, .research-thread-menu > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .research-context-heading strong { font-size: 13px; }
