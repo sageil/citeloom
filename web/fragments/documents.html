@@ -9,6 +9,13 @@
       :class="{ 'low-document-count': lowDocumentCount }"
     >
       <nav class="collections-rail" aria-label="Document collections">
+        <p>Workspace</p>
+        <div class="documents-workspace-name" aria-label="Current workspace">
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+          </svg>
+          <span class="truncate" x-text="currentWorkspaceName"></span>
+        </div>
         <p>Collections</p>
         <div class="collection-links">
           <template x-for="item in collections" :key="item.key">

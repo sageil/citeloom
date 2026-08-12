@@ -130,6 +130,10 @@
   text-transform: uppercase;
 }
 
+.documents-workspace-name {
+  margin-bottom: 16px;
+}
+
 .collections-rail > .shared-source-label,
 .collections-rail > .saved-view-label {
   margin-top: 22px;
@@ -142,7 +146,8 @@
   gap: 3px;
 }
 
-.collection-links button {
+.collection-links button,
+.documents-workspace-name {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) auto;
   align-items: center;
