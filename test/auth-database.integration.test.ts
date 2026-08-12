@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,28 +14,72 @@ import {
   AuthenticationRejectedError,
   AuthenticationStore,
   FinalWorkspaceAdministratorError,
+  GlobalAuthorizationError,
+  ProtectedGlobalAdministratorError,
+  SetupTokenRejectedError,
   WorkspaceAuthorizationError,
+  WorkspaceArchiveConflictError,
+  WorkspaceMemberAccessConflictError,
+  WorkspaceMemberAlreadyExistsError,
+  WorkspaceNameUnavailableError,
+  WorkspaceUnavailableError,
+  WorkspaceUserUnavailableError,
 } from "../src/auth/store.js";
+import {
+  OrganizationUsernameUnavailableError,
+  OrganizationUserWorkspaceRequiredError,
+  UserAccountStore,
+} from "../src/auth/user-account-store.js";
+import { hashPassword } from "../src/auth/password.js";
 import {
   type DatabaseSession,
   migrateDatabase,
   openDatabase,
 } from "../src/database/client.js";
 import { applyDatabaseBootstrap } from "../src/database/administrator-bootstrap.js";
+import { ApplicationSettingsRepository } from "../src/app/settings.js";
+import { readDoclingServiceTopologyFromConfig } from "../src/config/index.js";
 import {
   parseStoredApplicationSettings,
   type StoredApplicationSettings,
 } from "../src/providers/settings-persistence.js";
+import { readProviderFeatureConfiguration } from "../src/providers/profiles.js";
 import {
   applicationSettings,
+  ingestionJobs,
   sourceDocuments,
+  sourceLibraries,
+  sourceLibraryDeletionSources,
   userPasswordCredentials,
   userSessions,
   userSetupTokens,
   users,
   workspaceMemberships,
+  workspaceAuditEvents,
+  workspaceLibraryGrants,
+  workspaceSecurityPolicies,
+  workspaceSettings,
   workspaces,
 } from "../src/database/schema.js";
+import {
+  authorizeSourceLibraryForPrincipal,
+  canAccessSourceLibrary,
+} from "../src/workspaces/source-library-access.js";
+import {
+  SourceLibraryArchiveConflictError,
+  SourceLibraryStore,
+} from "../src/workspaces/source-library-store.js";
+import {
+  reconcileNextSharedSourceLibraryDeletion,
+  requestSharedSourceLibraryDeletion,
+} from "../src/workspaces/source-library-deletion.js";
+import { WorkspaceSettingsRepository } from "../src/workspaces/settings-store.js";
+import { ResearchStore } from "../src/research/store.js";
+import { DocumentCatalog } from "../src/documents/catalog/index.js";
+import { SourceLibraryIngestionUnavailableError } from "../src/documents/catalog/ingestion-lifecycle.js";
+import { readDocumentFormat } from "../src/documents/format.js";
+import { SourceContentStore } from "../src/documents/storage/source-content-store.js";
+import { readEqualWeightTestConfig } from "./config-fixture.js";
 
 const databaseUrl = process.env.CITELOOM_TEST_DATABASE_URL
   ?? "postgresql://citeloom:citeloom@127.0.0.1:5433/citeloom_test";
@@ -56,8 +101,12 @@ beforeEach(async () => {
   await session.database.delete(userSessions);
   await session.database.delete(userSetupTokens);
   await session.database.delete(userPasswordCredentials);
+  await session.database.delete(workspaceAuditEvents);
+  await session.database.delete(workspaceLibraryGrants);
+  await session.database.delete(sourceLibraryDeletionSources);
   await session.database.delete(workspaceMemberships);
   await session.database.delete(users);
+  await session.database.delete(sourceLibraries);
   await session.database.delete(workspaces);
 });
 
@@ -81,9 +130,10 @@ describe("database administrator bootstrap", () => {
       username: administratorUsername,
     }))).resolves.toMatchObject({
       principal: {
+        globalRole: "global_admin",
         role: "admin",
         username: administratorUsername,
-        workspaceName: "CiteLoom",
+        workspaceName: "DefaultSpace",
       },
     });
     await expect(store.authenticate(decodeLoginInput({
@@ -97,7 +147,12 @@ describe("database administrator bootstrap", () => {
     await expect(
       session.database.select().from(workspaceMemberships),
     ).resolves.toHaveLength(1);
-    await expect(session.database.select().from(workspaces)).resolves.toHaveLength(1);
+    await expect(session.database.select().from(workspaces)).resolves.toEqual([
+      expect.objectContaining({ name: "DefaultSpace" }),
+    ]);
+    await expect(session.database.select().from(sourceLibraries)).resolves.toEqual([
+      expect.objectContaining({ kind: "private", name: null }),
+    ]);
   });
 
   it("rejects missing administrator credentials without creating auth data", async () => {
@@ -462,77 +517,1281 @@ describe("authentication persistence", () => {
     }))).rejects.toBeInstanceOf(AuthenticationRejectedError);
   });
 
-  it("allows only administrators to create workspace members", async () => {
+  it("separates organization accounts, workspace membership, and password links", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(authentication);
+    const accounts = new UserAccountStore(session.database);
+    const identity = normalizeUserIdentity({
+      displayName: "Pending User",
+      username: "pending-user",
+    });
+
+    const account = await accounts.create(administrator.principal, identity);
+
+    expect(account).toMatchObject({
+      displayName: identity.displayName,
+      state: "pending",
+      username: identity.username,
+      workspaceCount: 0,
+    });
+    await expect(session.database
+      .select({ userId: workspaceMemberships.userId })
+      .from(workspaceMemberships)
+      .where(eq(workspaceMemberships.userId, account.userId)))
+      .resolves.toEqual([]);
+    await expect(accounts.createPasswordLink(
+      administrator.principal,
+      account.userId,
+    )).rejects.toBeInstanceOf(OrganizationUserWorkspaceRequiredError);
+    await expect(authentication.listWorkspaceMemberCandidates(
+      administrator.principal,
+      administrator.principal.workspaceId,
+    )).resolves.toContainEqual(expect.objectContaining({
+      state: "pending",
+      userId: account.userId,
+    }));
+
+    await authentication.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      account.userId,
+      "member",
+    );
+    await authentication.removeWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      account.userId,
+    );
+    await expect(accounts.list(administrator.principal)).resolves.toContainEqual(
+      expect.objectContaining({
+        state: "pending",
+        userId: account.userId,
+        workspaceCount: 0,
+      }),
+    );
+    await authentication.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      account.userId,
+      "member",
+    );
+    const replacedSetupLink = await accounts.createPasswordLink(
+      administrator.principal,
+      account.userId,
+    );
+    const setupLink = await accounts.createPasswordLink(
+      administrator.principal,
+      account.userId,
+    );
+    expect(setupLink.purpose).toBe("setup");
+    await expect(authentication.completePasswordSetup(
+      replacedSetupLink.setupToken,
+      "a secure password 123",
+    )).rejects.toBeInstanceOf(SetupTokenRejectedError);
+
+    const activated = await authentication.completePasswordSetup(
+      setupLink.setupToken,
+      "a secure password 123",
+    );
+    expect(activated.principal).toMatchObject({
+      role: "member",
+      userId: account.userId,
+      workspaceId: administrator.principal.workspaceId,
+    });
+    await expect(accounts.list(administrator.principal)).resolves.toContainEqual(
+      expect.objectContaining({
+        state: "active",
+        userId: account.userId,
+        workspaceCount: 1,
+      }),
+    );
+    await expect(accounts.create(activated.principal, normalizeUserIdentity({
+      displayName: "Unauthorized User",
+      username: "unauthorized-user",
+    }))).rejects.toBeInstanceOf(GlobalAuthorizationError);
+    await expect(accounts.create(administrator.principal, identity))
+      .rejects.toBeInstanceOf(OrganizationUsernameUnavailableError);
+
+    const replacedResetLink = await accounts.createPasswordLink(
+      administrator.principal,
+      account.userId,
+    );
+    const resetLink = await accounts.createPasswordLink(
+      administrator.principal,
+      account.userId,
+    );
+    expect(resetLink.purpose).toBe("reset");
+    await expect(authentication.completePasswordSetup(
+      replacedResetLink.setupToken,
+      "a newer secure password 456",
+    )).rejects.toBeInstanceOf(SetupTokenRejectedError);
+    await expect(authentication.completePasswordSetup(
+      resetLink.setupToken,
+      "a newer secure password 456",
+    )).resolves.toMatchObject({
+      principal: { userId: account.userId },
+    });
+
+    await authentication.removeWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      account.userId,
+    );
+    await expect(accounts.list(administrator.principal)).resolves.toContainEqual(
+      expect.objectContaining({
+        state: "active",
+        userId: account.userId,
+        workspaceCount: 0,
+      }),
+    );
+    await expect(accounts.createPasswordLink(
+      administrator.principal,
+      account.userId,
+    )).rejects.toBeInstanceOf(OrganizationUserWorkspaceRequiredError);
+    await expect(session.database
+      .select({ userId: userPasswordCredentials.userId })
+      .from(userPasswordCredentials)
+      .where(eq(userPasswordCredentials.userId, account.userId)))
+      .resolves.toEqual([{ userId: account.userId }]);
+  });
+
+  it("allows only administrators to add existing users to a workspace", async () => {
     await applyDatabaseBootstrap(session.database, administratorEnvironment());
     const store = new AuthenticationStore(session.database);
     const administrator = await authenticateAdministrator(store);
-    const memberSetup = await store.createWorkspaceMember(
+    const memberAccount = await createActiveUser({
+      displayName: "Member",
+      username: "member",
+    });
+    await store.addWorkspaceMember(
       administrator.principal,
-      normalizeUserIdentity({ displayName: "Member", username: "member" }),
+      administrator.principal.workspaceId,
+      memberAccount.userId,
     );
-    if (memberSetup.kind !== "setup") {
-      throw new Error("Expected a setup token for a new workspace member.");
-    }
-    const member = await store.completePasswordSetup(
-      memberSetup.setupToken,
-      "another correct horse battery staple",
-    );
+    const member = await authenticateTestUser(store, memberAccount);
+    const otherAccount = await createActiveUser({
+      displayName: "Other",
+      username: "other",
+    });
 
-    await expect(store.createWorkspaceMember(
+    await expect(store.addWorkspaceMember(
       member.principal,
-      normalizeUserIdentity({ displayName: "Other", username: "other" }),
+      member.principal.workspaceId,
+      otherAccount.userId,
     )).rejects.toBeInstanceOf(WorkspaceAuthorizationError);
   });
 
-  it("prevents removal or demotion of the final active administrator", async () => {
+  it("lists only eligible existing users and preserves accounts when membership is removed", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const store = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(store);
+    const candidate = await createActiveUser({
+      displayName: "Available User",
+      username: "available-user",
+    });
+    const suspended = await createActiveUser({
+      displayName: "Suspended User",
+      username: "suspended-user",
+    });
+    await session.database
+      .update(users)
+      .set({ state: "suspended" })
+      .where(eq(users.id, suspended.userId));
+
+    await expect(store.listWorkspaceMemberCandidates(
+      administrator.principal,
+      administrator.principal.workspaceId,
+    )).resolves.toEqual([{
+      displayName: candidate.displayName,
+      globalRole: "standard",
+      state: "active",
+      userId: candidate.userId,
+      username: candidate.username,
+    }]);
+
+    await store.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      candidate.userId,
+      "member",
+    );
+    await expect(store.listWorkspaceMemberCandidates(
+      administrator.principal,
+      administrator.principal.workspaceId,
+    )).resolves.toEqual([]);
+    await expect(store.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      candidate.userId,
+    )).rejects.toBeInstanceOf(WorkspaceMemberAlreadyExistsError);
+    await expect(store.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      suspended.userId,
+    )).rejects.toBeInstanceOf(WorkspaceUserUnavailableError);
+
+    await store.removeWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      candidate.userId,
+    );
+
+    await expect(session.database
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, candidate.userId)))
+      .resolves.toEqual([{ id: candidate.userId }]);
+    await expect(session.database
+      .select({ userId: userPasswordCredentials.userId })
+      .from(userPasswordCredentials)
+      .where(eq(userPasswordCredentials.userId, candidate.userId)))
+      .resolves.toEqual([{ userId: candidate.userId }]);
+    await expect(store.listWorkspaceMemberCandidates(
+      administrator.principal,
+      administrator.principal.workspaceId,
+    )).resolves.toEqual([expect.objectContaining({ userId: candidate.userId })]);
+  });
+
+  it("protects global administrators and the final active administrator", async () => {
     await applyDatabaseBootstrap(session.database, administratorEnvironment());
     const store = new AuthenticationStore(session.database);
     const administrator = await authenticateAdministrator(store);
 
     await expect(store.removeWorkspaceMember(
       administrator.principal,
+      administrator.principal.workspaceId,
       administrator.principal.userId,
-    )).rejects.toBeInstanceOf(FinalWorkspaceAdministratorError);
+    )).rejects.toBeInstanceOf(ProtectedGlobalAdministratorError);
     await expect(store.changeWorkspaceMemberRole(
       administrator.principal,
+      administrator.principal.workspaceId,
       administrator.principal.userId,
       "member",
-    )).rejects.toBeInstanceOf(FinalWorkspaceAdministratorError);
+    )).rejects.toBeInstanceOf(ProtectedGlobalAdministratorError);
 
-    const secondSetup = await store.createWorkspaceMember(
+    const secondAccount = await createActiveUser({
+      displayName: "Second Administrator",
+      username: "second-admin",
+    });
+    await store.addWorkspaceMember(
       administrator.principal,
-      normalizeUserIdentity({
-        displayName: "Second Administrator",
-        username: "second-admin",
-      }),
+      administrator.principal.workspaceId,
+      secondAccount.userId,
       "admin",
     );
-    if (secondSetup.kind !== "setup") {
-      throw new Error("Expected a setup token for a new workspace administrator.");
-    }
-    const secondAdministrator = await store.completePasswordSetup(
-      secondSetup.setupToken,
-      "another correct horse battery staple",
-    );
-    await expect(store.changeWorkspaceMemberRole(
-      administrator.principal,
+    const secondAdministrator = await authenticateTestUser(store, secondAccount);
+    await session.database
+      .update(users)
+      .set({ globalRole: "standard" })
+      .where(eq(users.id, administrator.principal.userId));
+    await store.changeWorkspaceMemberRole(
+      secondAdministrator.principal,
+      secondAdministrator.principal.workspaceId,
       administrator.principal.userId,
       "member",
-    )).resolves.toBeUndefined();
+    );
     await store.removeWorkspaceMember(
       secondAdministrator.principal,
+      secondAdministrator.principal.workspaceId,
       administrator.principal.userId,
     );
-    await expect(store.createWorkspaceMember(
+    await expect(store.removeWorkspaceMember(
       secondAdministrator.principal,
-      normalizeUserIdentity({
-        displayName: "Initial Administrator",
-        username: administratorUsername,
-      }),
-    )).resolves.toEqual({
-      kind: "existing",
-      userId: administrator.principal.userId,
+      secondAdministrator.principal.workspaceId,
+      secondAdministrator.principal.userId,
+    )).rejects.toBeInstanceOf(FinalWorkspaceAdministratorError);
+    await expect(store.changeWorkspaceMemberRole(
+      secondAdministrator.principal,
+      secondAdministrator.principal.workspaceId,
+      secondAdministrator.principal.userId,
+      "member",
+    )).rejects.toBeInstanceOf(FinalWorkspaceAdministratorError);
+    await expect(store.addWorkspaceMember(
+      secondAdministrator.principal,
+      secondAdministrator.principal.workspaceId,
+      administrator.principal.userId,
+    )).resolves.toBeUndefined();
+  });
+
+  it("disables and restores workspace access without losing membership", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const store = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(store);
+    const memberAccount = await createActiveUser({
+      displayName: "Workspace Member",
+      username: "workspace-member",
     });
+    await store.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      memberAccount.userId,
+      "member",
+    );
+    const member = await authenticateTestUser(store, memberAccount);
+
+    await store.changeWorkspaceMemberAccess(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      member.principal.userId,
+      "disabled",
+    );
+
+    await expect(store.readSession(member.token)).resolves.toBeNull();
+    await expect(store.listWorkspaces(member.principal)).resolves.toEqual([]);
+    await expect(store.switchWorkspace(
+      member.principal,
+      administrator.principal.workspaceId,
+    )).rejects.toBeInstanceOf(WorkspaceUnavailableError);
+    await expect(store.listWorkspaceMembers(
+      administrator.principal,
+      administrator.principal.workspaceId,
+    ))
+      .resolves.toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          access: "disabled",
+          role: "member",
+          userId: member.principal.userId,
+        }),
+      ]));
+
+    await store.changeWorkspaceMemberAccess(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      member.principal.userId,
+      "enabled",
+    );
+
+    await expect(store.listWorkspaces(member.principal)).resolves.toEqual([
+      expect.objectContaining({
+        id: administrator.principal.workspaceId,
+        role: "member",
+      }),
+    ]);
+    await expect(store.authenticate(decodeLoginInput({
+      password: "another correct horse battery staple",
+      username: "workspace-member",
+    }))).resolves.toMatchObject({
+      principal: {
+        role: "member",
+        workspaceId: administrator.principal.workspaceId,
+      },
+    });
+  });
+
+  it("prevents self-disable and disabling a global administrator", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const store = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(store);
+
+    await expect(store.changeWorkspaceMemberAccess(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      administrator.principal.userId,
+      "disabled",
+    )).rejects.toBeInstanceOf(WorkspaceMemberAccessConflictError);
+
+    const otherGlobalAdministratorId = "00000000-0000-4000-8000-000000000902";
+    await session.database.insert(users).values({
+      displayName: "Other Global Administrator",
+      globalRole: "global_admin",
+      id: otherGlobalAdministratorId,
+      state: "active",
+      username: "other-global-admin",
+      usernameNormalized: "other-global-admin",
+    });
+    await session.database.insert(workspaceMemberships).values({
+      access: "enabled",
+      role: "admin",
+      userId: otherGlobalAdministratorId,
+      workspaceId: administrator.principal.workspaceId,
+    });
+
+    await expect(store.changeWorkspaceMemberAccess(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      otherGlobalAdministratorId,
+      "disabled",
+    )).rejects.toBeInstanceOf(ProtectedGlobalAdministratorError);
+  });
+});
+
+describe("workspace provisioning and switching", () => {
+  it("provisions a complete workspace and adds the creator as administrator", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const store = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(store);
+
+    const workspace = await store.createWorkspace(administrator.principal, {
+      configuration: { kind: "organization-defaults" },
+      name: "Legal Research",
+    });
+
+    expect(workspace).toMatchObject({
+      name: "Legal Research",
+      role: "admin",
+    });
+    await expect(session.database
+      .select()
+      .from(workspaceMemberships)
+      .where(eq(workspaceMemberships.workspaceId, workspace.id)))
+      .resolves.toEqual([
+        expect.objectContaining({
+          role: "admin",
+          userId: administrator.principal.userId,
+        }),
+      ]);
+    await expect(session.database
+      .select()
+      .from(workspaceSecurityPolicies)
+      .where(eq(workspaceSecurityPolicies.workspaceId, workspace.id)))
+      .resolves.toHaveLength(1);
+    await expect(session.database
+      .select()
+      .from(workspaceSettings)
+      .where(eq(workspaceSettings.workspaceId, workspace.id)))
+      .resolves.toEqual([
+        expect.objectContaining({
+          settings: {
+            providerFeatures: [],
+            runtime: {},
+            schemaVersion: 1,
+          },
+          version: 1,
+        }),
+      ]);
+    await expect(session.database
+      .select()
+      .from(sourceLibraries)
+      .where(eq(sourceLibraries.ownerWorkspaceId, workspace.id)))
+      .resolves.toEqual([
+        expect.objectContaining({ kind: "private", state: "active" }),
+      ]);
+    await expect(session.database
+      .select()
+      .from(workspaceAuditEvents)
+      .where(eq(workspaceAuditEvents.workspaceId, workspace.id)))
+      .resolves.toEqual([
+        expect.objectContaining({
+          actorUserId: administrator.principal.userId,
+          eventType: "workspace.created",
+        }),
+      ]);
+    await expect(store.readSession(administrator.token)).resolves.toMatchObject({
+      workspaceId: administrator.principal.workspaceId,
+      workspaceName: administrator.principal.workspaceName,
+    });
+  });
+
+  it("lets global administrators copy explicit overrides without relying on membership", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const store = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(store);
+    const sourceWorkspaceId = administrator.principal.workspaceId;
+    const config = readEqualWeightTestConfig({
+      database: { poolMax: 2, url: databaseUrl },
+      sourceContent: { directory: sourceContentDirectory, kind: "filesystem" },
+    });
+    const topology = readDoclingServiceTopologyFromConfig(config);
+    const organization = await new ApplicationSettingsRepository(
+      session.database,
+    ).read(config.database, topology);
+    const answer = readProviderFeatureConfiguration(
+      organization.providerSettings,
+      "answer",
+    );
+    if (answer.capability !== "answer") {
+      throw new Error("Expected answer provider settings.");
+    }
+    const sourceSettings = {
+      providerFeatures: [{
+        ...answer,
+        modelOverride: "copied-answer-model",
+      }],
+      runtime: { retrievalCandidates: 24, topK: 12 },
+      schemaVersion: 1 as const,
+    };
+    await session.database
+      .update(workspaceSettings)
+      .set({ settings: sourceSettings })
+      .where(eq(workspaceSettings.workspaceId, sourceWorkspaceId));
+    await session.database
+      .delete(workspaceMemberships)
+      .where(eq(workspaceMemberships.workspaceId, sourceWorkspaceId));
+
+    await expect(store.listWorkspaces(administrator.principal)).resolves.toContainEqual({
+      id: sourceWorkspaceId,
+      name: administrator.principal.workspaceName,
+      role: "admin",
+    });
+
+    const workspace = await store.createWorkspace(administrator.principal, {
+      configuration: {
+        kind: "workspace-copy",
+        workspaceId: sourceWorkspaceId,
+      },
+      name: "Copied Settings",
+    });
+
+    await expect(session.database
+      .select({ settings: workspaceSettings.settings })
+      .from(workspaceSettings)
+      .where(eq(workspaceSettings.workspaceId, workspace.id)))
+      .resolves.toEqual([{ settings: sourceSettings }]);
+  });
+
+  it("adds every active global administrator to a new workspace", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const store = new AuthenticationStore(session.database);
+    const creator = await authenticateAdministrator(store);
+    const additionalAdministratorId = "00000000-0000-4000-8000-000000000901";
+    await session.database.insert(users).values({
+      displayName: "Second Global Administrator",
+      globalRole: "global_admin",
+      id: additionalAdministratorId,
+      state: "active",
+      username: "second-global-admin",
+      usernameNormalized: "second-global-admin",
+    });
+
+    const workspace = await store.createWorkspace(creator.principal, {
+      configuration: { kind: "organization-defaults" },
+      name: "Shared Administration",
+    });
+    const memberships = await session.database
+      .select({ role: workspaceMemberships.role, userId: workspaceMemberships.userId })
+      .from(workspaceMemberships)
+      .where(eq(workspaceMemberships.workspaceId, workspace.id));
+
+    expect(memberships).toEqual(expect.arrayContaining([
+      { role: "admin", userId: creator.principal.userId },
+      { role: "admin", userId: additionalAdministratorId },
+    ]));
+    expect(memberships).toHaveLength(2);
+  });
+
+  it("renames workspace metadata without changing its private sources", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const store = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(store);
+    const originalLibraryRows = await session.database
+      .select({
+        id: sourceLibraries.id,
+        name: sourceLibraries.name,
+        ownerWorkspaceId: sourceLibraries.ownerWorkspaceId,
+      })
+      .from(sourceLibraries)
+      .where(eq(
+        sourceLibraries.ownerWorkspaceId,
+        administrator.principal.workspaceId,
+      ));
+    const originalLibrary = originalLibraryRows[0];
+    if (originalLibrary === undefined) {
+      throw new Error("Expected the default private source library.");
+    }
+    expect(originalLibrary.name).toBeNull();
+    const secondWorkspace = await store.createWorkspace(
+      administrator.principal,
+      {
+        configuration: { kind: "organization-defaults" },
+        name: "Legal Research",
+      },
+    );
+    await store.switchWorkspace(
+      administrator.principal,
+      administrator.principal.workspaceId,
+    );
+
+    await store.renameWorkspace(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      { name: "Knowledge Operations" },
+    );
+
+    await expect(store.readSession(administrator.token)).resolves.toMatchObject({
+      workspaceId: administrator.principal.workspaceId,
+      workspaceName: "Knowledge Operations",
+    });
+    await expect(session.database
+      .select({
+        id: sourceLibraries.id,
+        name: sourceLibraries.name,
+        ownerWorkspaceId: sourceLibraries.ownerWorkspaceId,
+      })
+      .from(sourceLibraries)
+      .where(eq(sourceLibraries.id, originalLibrary.id)))
+      .resolves.toEqual([originalLibrary]);
+    const renamedPrivateLibrary = (await new SourceLibraryStore(
+      session.database,
+    ).listAccessible(administrator.principal)).find((library) => {
+      return library.kind === "private";
+    });
+    expect(renamedPrivateLibrary?.name).toBe("Knowledge Operations");
+    await expect(session.database
+      .select({ eventType: workspaceAuditEvents.eventType })
+      .from(workspaceAuditEvents)
+      .where(eq(
+        workspaceAuditEvents.workspaceId,
+        administrator.principal.workspaceId,
+      )))
+      .resolves.toContainEqual({ eventType: "workspace.renamed" });
+    await expect(store.renameWorkspace(
+      administrator.principal,
+      secondWorkspace.id,
+      { name: "knowledge operations" },
+    )).rejects.toBeInstanceOf(WorkspaceNameUnavailableError);
+  });
+
+  it("rejects duplicate workspace names during creation", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const store = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(store);
+
+    await expect(store.createWorkspace(administrator.principal, {
+      configuration: { kind: "organization-defaults" },
+      name: "defaultspace",
+    })).rejects.toBeInstanceOf(WorkspaceNameUnavailableError);
+  });
+
+  it("resolves and updates workspace overrides without changing organization settings", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(authentication);
+    const config = readEqualWeightTestConfig({
+      database: { poolMax: 2, url: databaseUrl },
+      sourceContent: { directory: sourceContentDirectory, kind: "filesystem" },
+    });
+    const topology = readDoclingServiceTopologyFromConfig(config);
+    const repository = new WorkspaceSettingsRepository(session.database);
+    const inherited = await repository.read(
+      administrator.principal.workspaceId,
+      config.database,
+      topology,
+    );
+    const answer = readProviderFeatureConfiguration(
+      inherited.providerSettings,
+      "answer",
+    );
+    if (answer.capability !== "answer") {
+      throw new Error("Expected answer provider settings.");
+    }
+    const updated = await repository.update(
+      administrator.principal.workspaceId,
+      administrator.principal.userId,
+      config.database,
+      topology,
+      inherited.version,
+      [
+        { key: "retrievalCandidates", value: 24 },
+        { key: "topK", value: 12 },
+      ],
+      [{
+        action: "feature",
+        configuration: {
+          ...answer,
+          modelOverride: "workspace-answer-model",
+        },
+      }],
+    );
+    const organization = await new ApplicationSettingsRepository(
+      session.database,
+    ).read(config.database, topology);
+
+    expect(updated.runtimeSettings).toMatchObject({
+      retrievalCandidates: 24,
+      topK: 12,
+    });
+    expect(updated.providerSettings.featureOverrides.answer.modelOverride)
+      .toBe("workspace-answer-model");
+    expect(updated.providerOverrideCapabilities).toEqual(["answer"]);
+    expect(organization.runtimeSettings.topK)
+      .toBe(inherited.runtimeSettings.topK);
+    expect(organization.providerSettings.featureOverrides.answer.modelOverride)
+      .toBe(inherited.providerSettings.featureOverrides.answer.modelOverride);
+
+    const reset = await repository.update(
+      administrator.principal.workspaceId,
+      administrator.principal.userId,
+      config.database,
+      topology,
+      updated.version,
+      [
+        { key: "retrievalCandidates", reset: true },
+        { key: "topK", reset: true },
+      ],
+      [{ action: "reset-feature", capability: "answer" }],
+    );
+    expect(reset.overrides).toEqual({});
+    expect(reset.providerOverrideCapabilities).toEqual([]);
+    expect(reset.runtimeSettings.topK).toBe(organization.runtimeSettings.topK);
+    expect(reset.providerSettings.featureOverrides.answer.modelOverride)
+      .toBe(organization.providerSettings.featureOverrides.answer.modelOverride);
+  });
+
+  it("does not grant workspace creation to a workspace-only administrator", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const store = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(store);
+    const workspaceAdministratorAccount = await createActiveUser({
+      displayName: "Workspace Administrator",
+      username: "workspace-admin",
+    });
+    await store.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      workspaceAdministratorAccount.userId,
+      "admin",
+    );
+    const workspaceAdministrator = await authenticateTestUser(
+      store,
+      workspaceAdministratorAccount,
+    );
+
+    expect(workspaceAdministrator.principal.globalRole).toBe("standard");
+    await expect(store.createWorkspace(workspaceAdministrator.principal, {
+      configuration: { kind: "organization-defaults" },
+      name: "Forbidden Workspace",
+    })).rejects.toBeInstanceOf(GlobalAuthorizationError);
+    await expect(store.renameWorkspace(
+      workspaceAdministrator.principal,
+      workspaceAdministrator.principal.workspaceId,
+      { name: "Forbidden Rename" },
+    )).rejects.toBeInstanceOf(GlobalAuthorizationError);
+  });
+
+  it("switches only to active workspaces where the user is a member", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const store = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(store);
+    const memberAccount = await createActiveUser({
+      displayName: "Member",
+      username: "member",
+    });
+    await store.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      memberAccount.userId,
+    );
+    const member = await authenticateTestUser(store, memberAccount);
+    const secondWorkspace = await store.createWorkspace(administrator.principal, {
+      configuration: { kind: "organization-defaults" },
+      name: "Second Workspace",
+    });
+
+    await expect(store.switchWorkspace(
+      administrator.principal,
+      secondWorkspace.id,
+    )).resolves.toMatchObject({
+      role: "admin",
+      workspaceId: secondWorkspace.id,
+      workspaceName: "Second Workspace",
+    });
+    await expect(store.switchWorkspace(
+      member.principal,
+      secondWorkspace.id,
+    )).rejects.toBeInstanceOf(WorkspaceUnavailableError);
+  });
+
+  it("keeps research threads inside their owning workspace", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(authentication);
+    const secondWorkspace = await authentication.createWorkspace(
+      administrator.principal,
+      {
+        configuration: { kind: "organization-defaults" },
+        name: "Second Workspace",
+      },
+    );
+    const config = readEqualWeightTestConfig({
+      database: { poolMax: 2, url: databaseUrl },
+      sourceContent: { directory: sourceContentDirectory, kind: "filesystem" },
+    });
+    const originalResearch = new ResearchStore(
+      session.database,
+      config,
+      administrator.principal.workspaceId,
+    );
+    const secondResearch = new ResearchStore(
+      session.database,
+      config,
+      secondWorkspace.id,
+    );
+
+    const originalThread = await originalResearch.createThread("Quarterly review");
+    const secondThread = await secondResearch.createThread("Quarterly review");
+
+    expect(originalThread.id).not.toBe(secondThread.id);
+    await expect(originalResearch.listThreads()).resolves.toEqual([
+      expect.objectContaining({ id: originalThread.id }),
+    ]);
+    await expect(secondResearch.listThreads()).resolves.toEqual([
+      expect.objectContaining({ id: secondThread.id }),
+    ]);
+    await expect(originalResearch.readThread(secondThread.id)).resolves.toBe(null);
+    await expect(secondResearch.readThread(originalThread.id)).resolves.toBe(null);
+  });
+
+  it("shares sources only with explicitly granted workspaces", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(authentication);
+    const secondWorkspace = await authentication.createWorkspace(
+      administrator.principal,
+      {
+        configuration: { kind: "organization-defaults" },
+        name: "Second Workspace",
+      },
+    );
+    const libraries = new SourceLibraryStore(session.database);
+    const shared = await libraries.createShared(administrator.principal, {
+      name: "Common Sources",
+    });
+    const secondWorkspacePrincipal = {
+      ...administrator.principal,
+      globalRole: "standard" as const,
+      workspaceId: secondWorkspace.id,
+      workspaceName: secondWorkspace.name,
+    };
+    await expect(libraries.readAdministration(administrator.principal))
+      .resolves.toEqual({
+        libraries: [{
+          grants: [{
+            access: "manage",
+            workspaceId: administrator.principal.workspaceId,
+          }],
+          id: shared.id,
+          name: "Common Sources",
+          state: "active",
+        }],
+        workspaces: expect.arrayContaining([
+          {
+            id: administrator.principal.workspaceId,
+            name: administrator.principal.workspaceName,
+          },
+          { id: secondWorkspace.id, name: secondWorkspace.name },
+        ]),
+      });
+    const originalPrivateLibrary = (await libraries.listAccessible(
+      administrator.principal,
+    )).find((library) => library.kind === "private");
+    if (originalPrivateLibrary === undefined) {
+      throw new Error("Expected the original workspace private library.");
+    }
+    await session.database.insert(workspaceLibraryGrants).values({
+      access: "manage",
+      libraryId: originalPrivateLibrary.id,
+      workspaceId: secondWorkspace.id,
+    });
+
+    const secondWorkspaceLibraries = await libraries.listAccessible(
+      secondWorkspacePrincipal,
+    );
+    expect(secondWorkspaceLibraries).toEqual([
+      expect.objectContaining({
+        access: "manage",
+        kind: "private",
+        name: "Second Workspace",
+      }),
+    ]);
+    const secondPrivateLibrary = secondWorkspaceLibraries[0];
+    if (secondPrivateLibrary === undefined) {
+      throw new Error("Expected the second workspace private library.");
+    }
+    await expect(canAccessSourceLibrary(
+      session.database,
+      secondWorkspace.id,
+      originalPrivateLibrary.id,
+      "use",
+    )).resolves.toBe(false);
+    await expect(canAccessSourceLibrary(
+      session.database,
+      secondWorkspace.id,
+      shared.id,
+      "use",
+    )).resolves.toBe(false);
+    await expect(authorizeSourceLibraryForPrincipal(
+      session.database,
+      administrator.principal,
+      shared.id,
+      "manage",
+    )).resolves.toEqual({ kind: "global" });
+    await expect(authorizeSourceLibraryForPrincipal(
+      session.database,
+      secondWorkspacePrincipal,
+      shared.id,
+      "use",
+    )).resolves.toEqual({ kind: "unavailable" });
+    await expect(authorizeSourceLibraryForPrincipal(
+      session.database,
+      administrator.principal,
+      secondPrivateLibrary.id,
+      "manage",
+    )).resolves.toEqual({ kind: "unavailable" });
+
+    await libraries.setGrant(
+      administrator.principal,
+      shared.id,
+      secondWorkspace.id,
+      "use",
+    );
+
+    await expect(libraries.readAdministration(administrator.principal))
+      .resolves.toMatchObject({
+        libraries: [{
+          grants: expect.arrayContaining([
+            {
+              access: "manage",
+              workspaceId: administrator.principal.workspaceId,
+            },
+            { access: "use", workspaceId: secondWorkspace.id },
+          ]),
+          id: shared.id,
+        }],
+      });
+
+    await expect(libraries.listAccessible(secondWorkspacePrincipal)).resolves.toEqual([
+      expect.objectContaining({ kind: "private" }),
+      expect.objectContaining({
+        access: "use",
+        id: shared.id,
+        kind: "shared",
+      }),
+    ]);
+    await expect(canAccessSourceLibrary(
+      session.database,
+      secondWorkspace.id,
+      shared.id,
+      "use",
+    )).resolves.toBe(true);
+    await expect(canAccessSourceLibrary(
+      session.database,
+      secondWorkspace.id,
+      shared.id,
+      "manage",
+    )).resolves.toBe(false);
+
+    await libraries.setGrant(
+      administrator.principal,
+      shared.id,
+      secondWorkspace.id,
+      "manage",
+    );
+    await expect(canAccessSourceLibrary(
+      session.database,
+      secondWorkspace.id,
+      shared.id,
+      "manage",
+    )).resolves.toBe(true);
+
+    await libraries.revokeGrant(
+      administrator.principal,
+      shared.id,
+      secondWorkspace.id,
+    );
+    await expect(libraries.readAdministration(administrator.principal))
+      .resolves.toMatchObject({
+        libraries: [{
+          grants: [{
+            access: "manage",
+            workspaceId: administrator.principal.workspaceId,
+          }],
+          id: shared.id,
+        }],
+      });
+    await expect(canAccessSourceLibrary(
+      session.database,
+      secondWorkspace.id,
+      shared.id,
+      "use",
+    )).resolves.toBe(false);
+  });
+
+  it("renames, archives, and restores shared libraries without losing grants or failed jobs", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(authentication);
+    const libraries = new SourceLibraryStore(session.database);
+    const shared = await libraries.createShared(administrator.principal, {
+      name: "Common Sources",
+    });
+    const documentId = "a".repeat(64);
+    const archivedUploadDocumentId = "b".repeat(64);
+    const archivedUploadSourceFile = "/uploads/common/blocked.txt";
+    const sourceFile = "/uploads/common/retained.txt";
+    await session.database.insert(sourceDocuments).values({
+      byteLength: 8,
+      documentId,
+    });
+    await session.database.insert(ingestionJobs).values({
+      documentId,
+      embeddingSpaceId: "test-space",
+      fileExtension: ".txt",
+      generationId: "00000000-0000-4000-8000-000000000711",
+      mediaType: "text/plain",
+      sourceFile,
+      sourceLibraryId: shared.id,
+      state: "pending",
+    });
+
+    try {
+      await libraries.renameShared(
+        administrator.principal,
+        shared.id,
+        { name: "Organization Handbook" },
+      );
+      await expect(libraries.archiveShared(
+        administrator.principal,
+        shared.id,
+      )).rejects.toBeInstanceOf(SourceLibraryArchiveConflictError);
+
+      await session.database
+        .update(ingestionJobs)
+        .set({ state: "failed" })
+        .where(eq(ingestionJobs.sourceFile, sourceFile));
+      await libraries.archiveShared(administrator.principal, shared.id);
+
+      await session.database.insert(sourceDocuments).values({
+        byteLength: 7,
+        documentId: archivedUploadDocumentId,
+      });
+      const catalog = new DocumentCatalog(session.database);
+      await expect(catalog.prepareIngestion({
+        documentId: archivedUploadDocumentId,
+        duplicateSourceRoot: "/uploads/common",
+        embeddingSpaceId: "test-space",
+        force: false,
+        format: readDocumentFormat(archivedUploadSourceFile),
+        maxAttempts: 3,
+        requestedTags: [],
+        sourceFile: archivedUploadSourceFile,
+        sourceLibraryId: shared.id,
+        uploadedByUserId: null,
+      })).rejects.toBeInstanceOf(SourceLibraryIngestionUnavailableError);
+
+      await expect(libraries.listAccessible(administrator.principal))
+        .resolves.not.toEqual(expect.arrayContaining([
+          expect.objectContaining({ id: shared.id }),
+        ]));
+      await expect(libraries.readAdministration(administrator.principal))
+        .resolves.toMatchObject({
+          libraries: [expect.objectContaining({
+            grants: [expect.objectContaining({
+              workspaceId: administrator.principal.workspaceId,
+            })],
+            id: shared.id,
+            name: "Organization Handbook",
+            state: "archived",
+          })],
+        });
+      await expect(session.database
+        .select({ sourceFile: ingestionJobs.sourceFile })
+        .from(ingestionJobs)
+        .where(eq(ingestionJobs.sourceLibraryId, shared.id)))
+        .resolves.toEqual([{ sourceFile }]);
+
+      await libraries.restoreShared(administrator.principal, shared.id);
+      await expect(libraries.listAccessible(administrator.principal))
+        .resolves.toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            access: "manage",
+            id: shared.id,
+            name: "Organization Handbook",
+          }),
+        ]));
+    } finally {
+      await session.database
+        .delete(ingestionJobs)
+        .where(eq(ingestionJobs.sourceFile, sourceFile));
+      await session.database
+        .delete(sourceDocuments)
+        .where(eq(sourceDocuments.documentId, documentId));
+      await session.database
+        .delete(sourceDocuments)
+        .where(eq(sourceDocuments.documentId, archivedUploadDocumentId));
+    }
+  });
+
+  it("permanently deletes an active shared library and its documents through retryable cleanup", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(authentication);
+    const libraries = new SourceLibraryStore(session.database);
+    const shared = await libraries.createShared(administrator.principal, {
+      name: "Delete Me",
+    });
+    const content = Buffer.from("permanent shared library deletion");
+    const documentId = createHash("sha256").update(content).digest("hex");
+    const sourceFile = "/uploads/shared/delete-me.txt";
+    const config = readEqualWeightTestConfig({
+      database: { poolMax: 2, url: databaseUrl },
+      sourceContent: { directory: sourceContentDirectory, kind: "filesystem" },
+    });
+    const sourceContent = new SourceContentStore(
+      session.database,
+      config.sourceContent,
+    );
+    await sourceContent.writeDocument({ content, documentId });
+    await session.database
+      .update(sourceDocuments)
+      .set({ lastPublishedAt: new Date(0) })
+      .where(eq(sourceDocuments.documentId, documentId));
+    await session.database.insert(ingestionJobs).values({
+      documentId,
+      embeddingSpaceId: "test-space",
+      fileExtension: ".txt",
+      generationId: "00000000-0000-4000-8000-000000000712",
+      mediaType: "text/plain",
+      sourceFile,
+      sourceLibraryId: shared.id,
+      state: "pending",
+    });
+
+    try {
+      await expect(requestSharedSourceLibraryDeletion(
+        session.database,
+        administrator.principal,
+        shared.id,
+      )).rejects.toThrow(
+        "The shared library cannot be deleted while documents are processing.",
+      );
+
+      await session.database
+        .update(ingestionJobs)
+        .set({ state: "failed" })
+        .where(eq(ingestionJobs.sourceFile, sourceFile));
+      await requestSharedSourceLibraryDeletion(
+        session.database,
+        administrator.principal,
+        shared.id,
+      );
+      await requestSharedSourceLibraryDeletion(
+        session.database,
+        administrator.principal,
+        shared.id,
+      );
+      await expect(libraries.readAdministration(administrator.principal))
+        .resolves.toMatchObject({
+          libraries: [expect.objectContaining({
+            id: shared.id,
+            state: "deleting",
+          })],
+        });
+      await expect(session.database
+        .select()
+        .from(sourceLibraryDeletionSources)
+        .where(eq(sourceLibraryDeletionSources.libraryId, shared.id)))
+        .resolves.toEqual([expect.objectContaining({
+          documentId,
+          sourceFile,
+        })]);
+
+      await expect(reconcileNextSharedSourceLibraryDeletion({
+        config,
+        database: session.database,
+      })).resolves.toBe(true);
+      await expect(reconcileNextSharedSourceLibraryDeletion({
+        config,
+        database: session.database,
+      })).resolves.toBe(true);
+      await expect(reconcileNextSharedSourceLibraryDeletion({
+        config,
+        database: session.database,
+      })).resolves.toBe(false);
+
+      await expect(session.database
+        .select()
+        .from(sourceLibraries)
+        .where(eq(sourceLibraries.id, shared.id)))
+        .resolves.toEqual([]);
+      await expect(session.database
+        .select()
+        .from(ingestionJobs)
+        .where(eq(ingestionJobs.sourceFile, sourceFile)))
+        .resolves.toEqual([]);
+      await expect(session.database
+        .select()
+        .from(workspaceLibraryGrants)
+        .where(eq(workspaceLibraryGrants.libraryId, shared.id)))
+        .resolves.toEqual([]);
+      await expect(session.database
+        .select()
+        .from(sourceDocuments)
+        .where(eq(sourceDocuments.documentId, documentId)))
+        .resolves.toEqual([]);
+    } finally {
+      await session.database
+        .delete(ingestionJobs)
+        .where(eq(ingestionJobs.sourceFile, sourceFile));
+      await session.database
+        .delete(sourceLibraryDeletionSources)
+        .where(eq(sourceLibraryDeletionSources.libraryId, shared.id));
+      await session.database
+        .delete(workspaceLibraryGrants)
+        .where(eq(workspaceLibraryGrants.libraryId, shared.id));
+      await session.database
+        .delete(sourceLibraries)
+        .where(eq(sourceLibraries.id, shared.id));
+      await session.database
+        .delete(sourceDocuments)
+        .where(eq(sourceDocuments.documentId, documentId));
+    }
+  });
+
+  it("archives a workspace without deleting its records and revokes active sessions", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const store = new AuthenticationStore(session.database);
+    const creator = await authenticateAdministrator(store);
+    const workspace = await store.createWorkspace(
+      creator.principal,
+      {
+        configuration: { kind: "organization-defaults" },
+        name: "Archive Me",
+      },
+    );
+    await store.switchWorkspace(creator.principal, workspace.id);
+    const creatorInWorkspace = await store.readSession(creator.token);
+    if (creatorInWorkspace === null) {
+      throw new Error("Expected the creator session to remain active.");
+    }
+
+    await expect(store.archiveWorkspace(creatorInWorkspace, workspace.id))
+      .rejects.toBeInstanceOf(WorkspaceArchiveConflictError);
+    const archivingAdministrator = await authenticateAdministrator(store);
+    await store.archiveWorkspace(archivingAdministrator.principal, workspace.id);
+
+    await expect(session.database
+      .select({ state: workspaces.state })
+      .from(workspaces)
+      .where(eq(workspaces.id, workspace.id)))
+      .resolves.toEqual([{ state: "archived" }]);
+    await expect(session.database
+      .select({ state: sourceLibraries.state })
+      .from(sourceLibraries)
+      .where(eq(sourceLibraries.ownerWorkspaceId, workspace.id)))
+      .resolves.toEqual([{ state: "archived" }]);
+    await expect(session.database
+      .select()
+      .from(workspaceMemberships)
+      .where(eq(workspaceMemberships.workspaceId, workspace.id)))
+      .resolves.toHaveLength(1);
+    await expect(session.database
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.activeWorkspaceId, workspace.id)))
+      .resolves.toHaveLength(0);
+    await expect(session.database
+      .select()
+      .from(workspaceAuditEvents)
+      .where(eq(workspaceAuditEvents.workspaceId, workspace.id)))
+      .resolves.toEqual(expect.arrayContaining([
+        expect.objectContaining({ eventType: "workspace.created" }),
+        expect.objectContaining({ eventType: "workspace.archived" }),
+      ]));
+    await expect(store.switchWorkspace(
+      archivingAdministrator.principal,
+      workspace.id,
+    )).rejects.toBeInstanceOf(WorkspaceUnavailableError);
   });
 });
 
@@ -548,5 +1807,49 @@ async function authenticateAdministrator(store: AuthenticationStore) {
   return store.authenticate(decodeLoginInput({
     password: administratorPassword,
     username: administratorUsername,
+  }));
+}
+
+interface TestActiveUser {
+  displayName: string;
+  password: string;
+  userId: string;
+  username: string;
+}
+
+async function createActiveUser(identity: {
+  displayName: string;
+  username: string;
+}): Promise<TestActiveUser> {
+  const normalized = normalizeUserIdentity(identity);
+  const password = "another correct horse battery staple";
+  const userId = randomUUID();
+  await session.database.insert(users).values({
+    displayName: normalized.displayName,
+    globalRole: "standard",
+    id: userId,
+    state: "active",
+    username: normalized.username,
+    usernameNormalized: normalized.usernameNormalized,
+  });
+  await session.database.insert(userPasswordCredentials).values({
+    passwordHash: await hashPassword(password),
+    userId,
+  });
+  return {
+    displayName: normalized.displayName,
+    password,
+    userId,
+    username: normalized.username,
+  };
+}
+
+async function authenticateTestUser(
+  store: AuthenticationStore,
+  user: TestActiveUser,
+) {
+  return store.authenticate(decodeLoginInput({
+    password: user.password,
+    username: user.username,
   }));
 }

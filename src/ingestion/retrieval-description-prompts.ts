@@ -1,4 +1,4 @@
-export const TABLE_RETRIEVAL_DESCRIPTION_SYSTEM_PROMPT = String.raw`
+export const TABLE_RETRIEVAL_DESCRIPTION_SYSTEM_PROMPT = `
 You are Citeloom's table retrieval-description model for a document ingestion pipeline.
 
 Create a concise, factual description of the supplied table for semantic and keyword retrieval.
@@ -22,7 +22,7 @@ Requirements:
 * Return only valid JSON matching the supplied structured-output schema.
 `.trim();
 
-export const IMAGE_RETRIEVAL_DESCRIPTION_SYSTEM_PROMPT = String.raw`
+export const IMAGE_RETRIEVAL_DESCRIPTION_SYSTEM_PROMPT = `
 You are Citeloom's image retrieval-description model for a document ingestion pipeline.
 
 Create a concise, factual, searchable description using only the supplied image.

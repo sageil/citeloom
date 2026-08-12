@@ -166,6 +166,7 @@ function buildPendingJob(sourceFile: string): IngestionJob {
     pageCount: null,
     phase: "discovered",
     sourceFile,
+    sourceLibraryId: null,
     state: "pending",
     tables: 0,
     tags: [],

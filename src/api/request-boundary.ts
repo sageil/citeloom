@@ -43,11 +43,10 @@ import type {
 } from "../providers/profiles.js";
 import {
   providerCapabilitySchema,
-  providerConfigurationTextSchema,
   providerConnectionConfigurationSchema,
   providerCredentialSchema,
+  providerFeatureConfigurationSchema,
   providerIdSchema,
-  languageThinkingModeSchema,
 } from "../providers/profiles.js";
 import type {
   TranscriptionAudio,
@@ -68,6 +67,7 @@ import {
   ChatConflictError,
   ChatNotFoundError,
 } from "../chat/store.js";
+import { WorkspaceSourceLibraryUnavailableError } from "../workspaces/source-library-access.js";
 import { contentIdSchema, tagSchema } from "../domain/validation.js";
 import {
   readEmbeddingInputFormatDefinition,
@@ -207,6 +207,7 @@ const documentCatalogQuerySchema = z.object({
   page: z.coerce.number().int().positive().max(1_000_000).default(1),
   pageSize: z.enum(["25", "50", "100"]).default("25"),
   search: z.string().max(500).default(""),
+  sourceLibraryId: z.union([z.uuid(), z.literal("")]).default(""),
   sort: z.enum([
     "name-asc",
     "name-desc",
@@ -261,40 +262,7 @@ const providerSettingsChangeSchema = z.discriminatedUnion("action", [
   }).strict(),
   z.object({
     action: z.literal("feature"),
-    configuration: z.discriminatedUnion("capability", [
-      z.object({
-        capability: z.enum([
-          "answer",
-          "chat",
-          "queryExpansion",
-          "indexing",
-        ]),
-        contextCapacityTokensOverride: z.number().int().positive().nullable(),
-        modelOverride: providerConfigurationTextSchema,
-        providerId: providerIdSchema.nullable(),
-        thinkingModeOverride: languageThinkingModeSchema.nullable(),
-      }).strict(),
-      z.object({
-        capability: z.literal("embedding"),
-        contextCapacityTokensOverride: z.number().int().positive().nullable(),
-        modelOverride: providerConfigurationTextSchema,
-        providerId: providerIdSchema.nullable(),
-      }).strict(),
-      z.object({
-        capability: z.enum([
-          "reranking",
-          "speechToText",
-        ]),
-        modelOverride: providerConfigurationTextSchema,
-        providerId: providerIdSchema.nullable(),
-      }).strict(),
-      z.object({
-        capability: z.literal("textToSpeech"),
-        modelOverride: providerConfigurationTextSchema,
-        providerId: providerIdSchema.nullable(),
-        voiceOverride: providerConfigurationTextSchema,
-      }).strict(),
-    ]),
+    configuration: providerFeatureConfigurationSchema,
   }).strict(),
   z.object({
     action: z.literal("reset"),
@@ -344,6 +312,7 @@ export interface UploadedDocuments {
   documents: StagedIngestionDocument[];
   groupDirectory: string;
   options: IngestOptions;
+  sourceLibraryId: string | null;
 }
 
 const multipartBoundaryErrorSchema = z.object({
@@ -353,6 +322,7 @@ const multipartBoundaryErrorSchema = z.object({
 
 interface MultipartFields {
   force: string | null;
+  sourceLibraryId: string | null;
   tags: string | null;
 }
 
@@ -378,7 +348,11 @@ export async function readUploadedDocuments(
 
   const groupDirectory = join(uploadRoot, randomUUID());
   await mkdir(groupDirectory, { recursive: true });
-  const fields: MultipartFields = { force: null, tags: null };
+  const fields: MultipartFields = {
+    force: null,
+    sourceLibraryId: null,
+    tags: null,
+  };
   const documents: StagedIngestionDocument[] = [];
   const filenames = new Set<string>();
   let aggregateByteLength = 0;
@@ -386,7 +360,7 @@ export async function readUploadedDocuments(
 
   try {
     for await (const part of request.parts({
-      limits: { fileSize: maximumDocumentBytes },
+      limits: { fields: 3, fileSize: maximumDocumentBytes },
     })) {
       if (part.type === "field") {
         writeMultipartField(fields, part.fieldname, part.value);
@@ -455,6 +429,7 @@ export async function readUploadedDocuments(
       documents,
       groupDirectory,
       options: decodeIngestOptions(fields),
+      sourceLibraryId: decodeSourceLibraryId(fields.sourceLibraryId),
     };
   } finally {
     if (!uploadComplete) {
@@ -848,6 +823,9 @@ export function decodeDocumentCatalogQuery(
     page: result.data.page,
     pageSize: readDocumentPageSize(result.data.pageSize),
     search: result.data.search.trim().toLowerCase(),
+    sourceLibraryId: result.data.sourceLibraryId === ""
+      ? null
+      : result.data.sourceLibraryId,
     sort: result.data.sort,
     status: result.data.status,
     tag: decodeOptionalTag(result.data.tag),
@@ -887,6 +865,9 @@ export function readErrorStatus(error: unknown): number {
   if (error instanceof ChatConflictError) {
     return 409;
   }
+  if (error instanceof WorkspaceSourceLibraryUnavailableError) {
+    return 404;
+  }
   const result = z.object({ statusCode: z.number().int().min(400).max(599) })
     .safeParse(error);
   return result.success ? result.data.statusCode : 500;
@@ -905,7 +886,11 @@ function writeMultipartField(
   if (!result.success) {
     throw new WebRequestError(400, `Invalid multipart field: ${fieldName}`);
   }
-  if (fieldName === "force" || fieldName === "tags") {
+  if (
+    fieldName === "force"
+    || fieldName === "sourceLibraryId"
+    || fieldName === "tags"
+  ) {
     if (fields[fieldName] !== null) {
       throw new WebRequestError(400, `Duplicate multipart field: ${fieldName}`);
     }
@@ -913,6 +898,17 @@ function writeMultipartField(
     return;
   }
   throw new WebRequestError(400, `Unknown multipart field: ${fieldName}`);
+}
+
+function decodeSourceLibraryId(value: string | null): string | null {
+  if (value === null || value.trim() === "") {
+    return null;
+  }
+  const result = z.uuid().safeParse(value);
+  if (!result.success) {
+    throw new WebRequestError(400, "Source library ID is invalid.");
+  }
+  return result.data;
 }
 
 function decodeIngestOptions(fields: MultipartFields): IngestOptions {

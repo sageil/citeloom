@@ -1,0 +1,2 @@
+CREATE TYPE "public"."workspace_membership_access" AS ENUM('enabled', 'disabled');--> statement-breakpoint
+ALTER TABLE "workspace_memberships" ADD COLUMN "access" "workspace_membership_access" DEFAULT 'enabled' NOT NULL;

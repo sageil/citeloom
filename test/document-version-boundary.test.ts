@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   readDocumentVersions,
   readIngestionControlResponse,
-} from "../web/assets/scripts/citeloom-documents.js";
+} from "../web/assets/scripts/documents.js";
 
 function createDocumentVersionResponse() {
   return {

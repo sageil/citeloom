@@ -17,14 +17,12 @@ const BRACKETED_LEGAL_YEAR_PATTERN = /^\[(?:1[5-9]\d{2}|20\d{2}|21\d{2})\]$/;
 const LEGAL_COURT_CITATION_CONTINUATION_PATTERN = new RegExp(
   String.raw`^[\t ]+(?:`
     + String.raw`UKSC|UKPC|EWCA[\t ]+(?:Civ|Crim)|EWHC[\t ]+(?:Admin|Ch|Fam|KB|QB)|UKUT|UKFTT|`
-    + String.raw`SCC|BCCA|BCSC|ABCA|ABKB|ABQB|SKCA|SKKB|MBCA|MBKB|ONCA|ONSC|QCCA|QCCS|NBCA|NBKB|NSCA|NSSC|PECA|PESC|NLCA|NLSC|YKCA|YKSC|NWTCA|NWTSC|NUCA|NUCJ|FCA|FC|TCC|`
-    + String.raw`HCA|FCAFC|NSWCA|NSWSC|VSCA|VSC|QCA|QSC|SASCA|SASC|WASCA|WASC|TASFC|TASSC|NTCA|NTSC|ACTCA|ACTSC|`
-    + String.raw`NZSC|NZCA|NZHC`
+    + `SCC|BCCA|BCSC|ABCA|ABKB|ABQB|SKCA|SKKB|MBCA|MBKB|ONCA|ONSC|QCCA|QCCS|NBCA|NBKB|NSCA|NSSC|PECA|PESC|NLCA|NLSC|YKCA|YKSC|NWTCA|NWTSC|NUCA|NUCJ|FCA|FC|TCC|`
+    + `HCA|FCAFC|NSWCA|NSWSC|VSCA|VSC|QCA|QSC|SASCA|SASC|WASCA|WASC|TASFC|TASSC|NTCA|NTSC|ACTCA|ACTSC|`
+    + `NZSC|NZCA|NZHC`
     + String.raw`)[\t ]+\d+\b`,
 );
-const LEGAL_REPORTER_CITATION_CONTINUATION_PATTERN = new RegExp(
-  String.raw`^[\t ]+\d+[\t ]+(?:S\.C\.R\.|D\.L\.R\.|F\.C\.R\.|W\.L\.R\.|All[\t ]+E\.R\.|A\.C\.|Q\.B\.|K\.B\.|Ch\.|Fam\.)[\t ]+\d+\b`,
-);
+const LEGAL_REPORTER_CITATION_CONTINUATION_PATTERN = /^[\t ]+\d+[\t ]+(?:S\.C\.R\.|D\.L\.R\.|F\.C\.R\.|W\.L\.R\.|All[\t ]+E\.R\.|A\.C\.|Q\.B\.|K\.B\.|Ch\.|Fam\.)[\t ]+\d+\b/;
 const CITATION_RANGE_PATTERN = new RegExp(
   String.raw`\[[^\]\r\n]*\d[^\]\r\n]*(?:-|\u2013|\u2014)[^\]\r\n]*\d[^\]\r\n]*\]`
     + String.raw`|\[[1-9]\d*(?:[\t ]*,[\t ]*[1-9]\d*)*\][\t ]*(?:-|\u2013|\u2014)[\t ]*(?:\[[1-9]\d*(?:[\t ]*,[\t ]*[1-9]\d*)*\]|[1-9]\d*)`,

@@ -4,7 +4,12 @@ import {
   readPasswordInput,
   type PasswordInput,
 } from "./password.js";
-import { workspaceRoleSchema, type WorkspaceRole } from "./model.js";
+import {
+  workspaceMembershipAccessSchema,
+  workspaceRoleSchema,
+  type WorkspaceMembershipAccess,
+  type WorkspaceRole,
+} from "./model.js";
 
 const usernameSchema = z.string()
   .trim()
@@ -16,12 +21,6 @@ const usernameSchema = z.string()
   );
 const displayNameSchema = z.string().trim().min(1).max(200);
 const workspaceNameSchema = z.string().trim().min(1).max(200);
-const workspaceSlugSchema = z.string()
-  .trim()
-  .min(1)
-  .max(100)
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
-
 export interface NormalizedUserIdentity {
   displayName: string;
   username: string;
@@ -30,7 +29,6 @@ export interface NormalizedUserIdentity {
 
 export interface BootstrapAdministratorInput extends NormalizedUserIdentity {
   workspaceName: string;
-  workspaceSlug: string;
 }
 
 export interface LoginInput {
@@ -44,10 +42,25 @@ export interface ChangePasswordInput {
   newPassword: PasswordInput;
 }
 
-export interface CreateWorkspaceMemberInput {
-  identity: NormalizedUserIdentity;
+export interface AddWorkspaceMemberInput {
   role: WorkspaceRole;
+  userId: string;
 }
+
+export type CreateOrganizationUserInput = NormalizedUserIdentity;
+
+export interface CreateWorkspaceInput {
+  configuration: WorkspaceConfigurationSource;
+  name: string;
+}
+
+export interface RenameWorkspaceInput {
+  name: string;
+}
+
+export type WorkspaceConfigurationSource =
+  | { kind: "organization-defaults" }
+  | { kind: "workspace-copy"; workspaceId: string };
 
 export interface UpdateWorkspaceSecurityPolicyInput {
   expectedVersion: number;
@@ -77,12 +90,10 @@ export function decodeBootstrapAdministratorInput(
     displayName: z.unknown(),
     username: z.unknown(),
     workspaceName: z.unknown(),
-    workspaceSlug: z.unknown(),
   }).strict().parse(input);
   return {
     ...normalizeUserIdentity(candidate),
     workspaceName: workspaceNameSchema.parse(candidate.workspaceName),
-    workspaceSlug: workspaceSlugSchema.parse(candidate.workspaceSlug),
   };
 }
 
@@ -138,24 +149,74 @@ export function decodeWorkspaceSecurityPolicyUpdate(
   }).strict().parse(input);
 }
 
-export function decodeCreateWorkspaceMemberInput(
+export function decodeAddWorkspaceMemberInput(
   input: unknown,
-): CreateWorkspaceMemberInput {
+): AddWorkspaceMemberInput {
+  return z.object({
+    role: workspaceRoleSchema.default("member"),
+    userId: z.uuid(),
+  }).strict().parse(input);
+}
+
+export function decodeCreateOrganizationUserInput(
+  input: unknown,
+): CreateOrganizationUserInput {
   const candidate = z.object({
     displayName: z.unknown(),
-    role: workspaceRoleSchema.default("member"),
     username: z.unknown(),
   }).strict().parse(input);
+  return normalizeUserIdentity(candidate);
+}
+
+export function decodeOrganizationUserId(input: unknown): string {
+  return z.object({ userId: z.uuid() }).strict().parse(input).userId;
+}
+
+export function decodeCreateWorkspaceInput(input: unknown): CreateWorkspaceInput {
+  const candidate = z.object({
+    configuration: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("organization-defaults") }).strict(),
+      z.object({
+        kind: z.literal("workspace-copy"),
+        workspaceId: z.uuid(),
+      }).strict(),
+    ]).default({ kind: "organization-defaults" }),
+    name: z.unknown(),
+  }).strict().parse(input);
   return {
-    identity: normalizeUserIdentity(candidate),
-    role: candidate.role,
+    configuration: candidate.configuration,
+    name: workspaceNameSchema.parse(candidate.name),
   };
+}
+
+export function decodeRenameWorkspaceInput(input: unknown): RenameWorkspaceInput {
+  const candidate = z.object({ name: z.unknown() }).strict().parse(input);
+  return { name: workspaceNameSchema.parse(candidate.name) };
+}
+
+export function decodeWorkspaceId(input: unknown): string {
+  return z.object({ workspaceId: z.uuid() }).strict().parse(input).workspaceId;
 }
 
 export function decodeWorkspaceMemberRoleInput(input: unknown): WorkspaceRole {
   return z.object({ role: workspaceRoleSchema }).strict().parse(input).role;
 }
 
-export function decodeWorkspaceMemberId(input: unknown): string {
-  return z.object({ userId: z.uuid() }).strict().parse(input).userId;
+export function decodeWorkspaceMemberAccessInput(
+  input: unknown,
+): WorkspaceMembershipAccess {
+  return z.object({ access: workspaceMembershipAccessSchema })
+    .strict()
+    .parse(input)
+    .access;
+}
+
+export function decodeWorkspaceMemberTarget(input: unknown): {
+  userId: string;
+  workspaceId: string;
+} {
+  return z.object({
+    userId: z.uuid(),
+    workspaceId: z.uuid(),
+  }).strict().parse(input);
 }

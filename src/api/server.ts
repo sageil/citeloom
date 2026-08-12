@@ -15,8 +15,9 @@ import { pipeUIMessageStreamToResponse } from "ai";
 import { APP_SECTION_ROUTES } from "./app-routes.js";
 import {
   registerAuthenticationRoutes,
-  requireAdministratorPrincipal,
+  requireGlobalAdministratorPrincipal,
   requireRequestPrincipal,
+  requireWorkspaceAdministratorPrincipal,
 } from "./authentication-routes.js";
 import {
   isExpectedRequestCancellation,
@@ -107,6 +108,8 @@ import {
 } from "./services.js";
 import { readWebConfig, type WebConfig } from "./config.js";
 import type { AuthenticatedPrincipal } from "../auth/model.js";
+import { canAdministerWorkspace } from "../auth/authorization.js";
+import { WorkspaceSourceLibraryUnavailableError } from "../workspaces/source-library-access.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
 import { registerSourceContentStorageRoutes } from "./source-content-storage-routes.js";
 import {
@@ -163,6 +166,8 @@ export interface BuildWebServerOptions {
   uploadDirectory?: string;
 }
 
+const BACKGROUND_DELETION_RECONCILIATION_INTERVAL_MS = 2_000;
+
 export async function buildWebServer(
   config: AppConfig,
   options: BuildWebServerOptions = {},
@@ -186,22 +191,23 @@ export async function buildWebServer(
   });
   const uploadDirectory = options.uploadDirectory ?? webConfig.uploadDirectory;
   await services.run(async (runtime) => {
-    await runtime.reconcileUploadedDocuments?.(uploadDirectory);
-    await runtime.reconcileIngestionCancellations?.();
+    await runtime.reconcileUploadedDocuments(uploadDirectory);
+    await runtime.reconcileIngestionCancellations();
   });
-  let cancellationReconciliation: Promise<void> | null = null;
-  const cancellationTimer = setInterval(() => {
-    if (cancellationReconciliation !== null) {
+  let deletionReconciliation: Promise<void> | null = null;
+  const deletionTimer = setInterval(() => {
+    if (deletionReconciliation !== null) {
       return;
     }
-    cancellationReconciliation = services.run(async (runtime) => {
-      await runtime.reconcileIngestionCancellations?.();
+    deletionReconciliation = services.run(async (runtime) => {
+      await runtime.reconcileIngestionCancellations();
+      await runtime.reconcileSourceLibraryDeletions();
     }).catch(async (error: unknown) => {
       const result = await services.reportApplicationError(error, {
         category: "background-task",
-        code: "ingestion_cancellation_reconciliation_failed",
+        code: "background_deletion_reconciliation_failed",
         instance: hostname(),
-        operation: "reconcile-ingestion-cancellations",
+        operation: "reconcile-background-deletions",
         origin: "background-task",
         retryable: true,
         service: "web",
@@ -209,17 +215,17 @@ export async function buildWebServer(
       });
       server.log.error(
         { errorId: result.id },
-        "Could not reconcile ingestion cancellations.",
+        "Could not reconcile background deletions.",
       );
     }).finally(() => {
-      cancellationReconciliation = null;
+      deletionReconciliation = null;
     });
-  }, 2_000);
-  cancellationTimer.unref();
+  }, BACKGROUND_DELETION_RECONCILIATION_INTERVAL_MS);
+  deletionTimer.unref();
   server.addHook("onClose", async () => {
-    clearInterval(cancellationTimer);
-    if (cancellationReconciliation !== null) {
-      await cancellationReconciliation;
+    clearInterval(deletionTimer);
+    if (deletionReconciliation !== null) {
+      await deletionReconciliation;
     }
   });
   const verificationController = new AbortController();
@@ -234,16 +240,12 @@ export async function buildWebServer(
     verificationDispatch = services.run(async (runtime) => {
       let processed = true;
       while (processed && !verificationController.signal.aborted) {
-        const researchProcessed = runtime.processNextResearchVerification === undefined
-          ? false
-          : await runtime.processNextResearchVerification(
-            verificationController.signal,
-          );
-        const chatProcessed = runtime.processNextChatVerification === undefined
-          ? false
-          : await runtime.processNextChatVerification(
-            verificationController.signal,
-          );
+        const researchProcessed = await runtime.processNextResearchVerification(
+          verificationController.signal,
+        );
+        const chatProcessed = await runtime.processNextChatVerification(
+          verificationController.signal,
+        );
         processed = researchProcessed || chatProcessed;
       }
     }).catch(async (error: unknown) => {
@@ -313,20 +315,31 @@ export async function buildWebServer(
     webConfig,
   });
 
-  server.get("/api/dashboard", async (): Promise<DashboardResponse> => {
+  server.get("/api/dashboard", async (request): Promise<DashboardResponse> => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     return services.run(async (runtime) => {
-      return buildDashboardResponse(runtime, maximumUploadRequestBytes);
+      return buildDashboardResponse(runtime, principal, maximumUploadRequestBytes);
     });
   });
 
   server.get("/api/errors", async (request) => {
-    const principal = requireAdministratorPrincipal(requestPrincipals, request);
+    const principal = requireRequestPrincipal(requestPrincipals, request);
+    requireWorkspaceAdministratorPrincipal(
+      requestPrincipals,
+      request,
+      principal.workspaceId,
+    );
     const errorRequest = decodeApplicationErrorQuery(request.query);
     return services.readApplicationErrors(principal, errorRequest);
   });
 
   server.delete("/api/errors", async (request) => {
-    const principal = requireAdministratorPrincipal(requestPrincipals, request);
+    const principal = requireRequestPrincipal(requestPrincipals, request);
+    requireWorkspaceAdministratorPrincipal(
+      requestPrincipals,
+      request,
+      principal.workspaceId,
+    );
     return services.purgeApplicationErrors(principal);
   });
 
@@ -356,16 +369,18 @@ export async function buildWebServer(
   }
 
   server.get("/api/documents", async (request): Promise<BrowseDocumentCatalogResult> => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const catalogRequest = decodeDocumentCatalogQuery(request.query);
     return services.run(async (runtime) => {
-      return runtime.browseDocuments(catalogRequest);
+      return runtime.browseDocuments(principal, catalogRequest);
     });
   });
 
   server.get("/api/documents/:documentId/file", async (request, reply) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const documentRequest = decodeDocumentFileRequest(request.params, request.query);
     const document = await services.run(async (runtime) => {
-      return runtime.readDocumentFile(documentRequest);
+      return runtime.readDocumentFile(principal, documentRequest);
     });
     if (document === null) {
       throw new WebRequestError(404, "The requested document is no longer indexed.");
@@ -376,15 +391,13 @@ export async function buildWebServer(
   });
 
   server.put("/api/documents/:documentId/tags", async (request) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const updateRequest = decodeUpdateDocumentTagsRequest(
       request.params,
       request.body,
     );
     const result = await services.run(async (runtime) => {
-      if (runtime.updateDocumentTags === undefined) {
-        throw new Error("Document tag updates are not configured.");
-      }
-      return runtime.updateDocumentTags(updateRequest);
+      return runtime.updateDocumentTags(principal, updateRequest);
     });
     if (result === null) {
       throw new WebRequestError(404, "The selected document is no longer indexed.");
@@ -394,22 +407,25 @@ export async function buildWebServer(
 
   registerChatRoutes(server, { requestPrincipals, services });
 
-  server.get("/api/research/threads", async () => {
-    return services.run(async (runtime) => runtime.listResearchThreads());
+  server.get("/api/research/threads", async (request) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
+    return services.run(async (runtime) => runtime.listResearchThreads(principal));
   });
 
   server.post("/api/research/threads", async (request, reply) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const title = decodeCreateResearchThreadRequest(request.body);
     const thread = await services.run(async (runtime) => {
-      return runtime.createResearchThread(title);
+      return runtime.createResearchThread(principal, title);
     });
     return reply.status(201).send(thread);
   });
 
   server.get("/api/research/threads/:threadId", async (request) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const threadId = decodeResearchThreadId(request.params);
     const thread = await services.run(async (runtime) => {
-      return runtime.readResearchThread(threadId);
+      return runtime.readResearchThread(principal, threadId);
     });
     if (thread === null) {
       throw new WebRequestError(404, "The research thread was not found.");
@@ -418,16 +434,20 @@ export async function buildWebServer(
   });
 
   server.delete("/api/research/threads/:threadId", async (request, reply) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const threadId = decodeResearchThreadId(request.params);
-    await services.run(async (runtime) => runtime.deleteResearchThread(threadId));
+    await services.run(async (runtime) => {
+      return runtime.deleteResearchThread(principal, threadId);
+    });
     return reply.status(204).send();
   });
 
   server.get("/api/research/threads/:threadId/export", async (request, reply) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const threadId = decodeResearchThreadId(request.params);
     const format = decodeResearchExportFormat(request.query);
     const exported = await services.run(async (runtime) => {
-      return runtime.exportResearchThread(threadId, format);
+      return runtime.exportResearchThread(principal, threadId, format);
     });
     if (exported === null) {
       throw new WebRequestError(404, "The research thread was not found.");
@@ -442,9 +462,10 @@ export async function buildWebServer(
   });
 
   server.get("/api/citations/:id", async (request) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const id = decodeResourceId(request.params);
     const citation = await services.run(async (runtime) => {
-      return runtime.readCitationEvidence(id);
+      return runtime.readCitationEvidence(principal, id);
     });
     if (citation === null) {
       throw new WebRequestError(404, "The citation was not found.");
@@ -453,9 +474,10 @@ export async function buildWebServer(
   });
 
   server.get("/api/citations/:id/image", async (request, reply) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const id = decodeResourceId(request.params);
     const image = await services.run(async (runtime) => {
-      return runtime.readCitationImage(id);
+      return runtime.readCitationImage(principal, id);
     });
     if (image === null) {
       throw new WebRequestError(404, "The citation was not found.");
@@ -466,14 +488,10 @@ export async function buildWebServer(
   });
 
   server.get("/api/citations/:id/highlighted-file", async (request, reply) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const id = decodeResourceId(request.params);
     const document = await services.run(async (runtime) => {
-      const readHighlightedFile = runtime.readCitationHighlightedFile
-        ?? runtime.readCitationHighlightedPdf;
-      if (readHighlightedFile === undefined) {
-        throw new Error("Highlighted citation files are not configured.");
-      }
-      return readHighlightedFile(id);
+      return runtime.readCitationHighlightedFile(principal, id);
     });
     if (document === null) {
       throw new WebRequestError(404, "The citation or document version was not found.");
@@ -484,14 +502,22 @@ export async function buildWebServer(
   });
 
   server.get("/api/document-versions", async (request) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const sourceFile = decodeDocumentVersionList(request.query);
-    return services.run(async (runtime) => runtime.listDocumentVersions(sourceFile));
+    return services.run(async (runtime) => {
+      return runtime.listDocumentVersions(principal, sourceFile);
+    });
   });
 
   server.get("/api/document-versions/compare", async (request) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const comparison = decodeDocumentVersionComparison(request.query);
     const result = await services.run(async (runtime) => {
-      return runtime.compareDocumentVersions(comparison.previous, comparison.current);
+      return runtime.compareDocumentVersions(
+        principal,
+        comparison.previous,
+        comparison.current,
+      );
     });
     if (result === null) {
       throw new WebRequestError(404, "One or both document versions were not found.");
@@ -500,9 +526,10 @@ export async function buildWebServer(
   });
 
   server.get("/api/document-versions/:id/file", async (request, reply) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const id = decodeResourceId(request.params);
     const document = await services.run(async (runtime) => {
-      return runtime.readVersionedDocumentFile(id);
+      return runtime.readVersionedDocumentFile(principal, id);
     });
     if (document === null) {
       throw new WebRequestError(404, "The document version was not found.");
@@ -516,7 +543,7 @@ export async function buildWebServer(
     const principal = requireRequestPrincipal(requestPrincipals, request);
     const feedback = decodeResearchFeedback(request.body);
     const summary = await services.run(async (runtime) => {
-      return runtime.addResearchFeedback(feedback, principal.userId);
+      return runtime.addResearchFeedback(principal, feedback);
     });
     return reply.status(200).send(summary);
   });
@@ -526,16 +553,16 @@ export async function buildWebServer(
     const feedback = decodeResearchFeedbackSummary(request.body);
     return services.run(async (runtime) => {
       return runtime.readResearchFeedback(
+        principal,
         feedback.turnId,
         feedback.dimension,
         feedback.citationId,
-        principal.userId,
       );
     });
   });
 
   server.post("/api/diagnostics", async (request): Promise<HealthResponse> => {
-    requireAdministratorPrincipal(requestPrincipals, request);
+    requireGlobalAdministratorPrincipal(requestPrincipals, request);
     const diagnostics = decodeDiagnosticRequest(request.body);
     const checks = await services.run((runtime) => {
       return runDiagnostics(runtime, diagnostics.liveChecks);
@@ -557,11 +584,17 @@ export async function buildWebServer(
       );
       try {
         return await runtime.ingest(
+          principal,
           upload.documents,
           upload.options,
           uploadDirectory,
-          principal.userId,
+          upload.sourceLibraryId,
         );
+      } catch (error: unknown) {
+        if (error instanceof WorkspaceSourceLibraryUnavailableError) {
+          throw new WebRequestError(404, error.message);
+        }
+        throw error;
       } finally {
         await removeUploadedDocumentStaging(upload);
       }
@@ -569,9 +602,10 @@ export async function buildWebServer(
   });
 
   server.post("/api/ingestion-jobs/retry", async (request, reply) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const retryRequest = decodeRetryIngestionRequest(request.body);
     const result = await services.run(async (runtime) => {
-      return runtime.retryFailedJob(retryRequest.sourceFile);
+      return runtime.retryFailedJob(principal, retryRequest.sourceFile);
     });
     if (result.kind === "not-found") {
       throw new WebRequestError(
@@ -602,6 +636,7 @@ export async function buildWebServer(
     const controlRequest = decodeIngestionControlRequest(request.body);
     const result = await services.run(async (runtime) => {
       return runtime.requestIngestionControl(
+        principal,
         controlRequest.sourceFile,
         "pause",
         buildIngestionControlActor(principal),
@@ -631,6 +666,7 @@ export async function buildWebServer(
     const controlRequest = decodeIngestionControlRequest(request.body);
     const result = await services.run(async (runtime) => {
       return runtime.resumeIngestion(
+        principal,
         controlRequest.sourceFile,
         buildIngestionControlActor(principal),
       );
@@ -656,6 +692,7 @@ export async function buildWebServer(
     const controlRequest = decodeIngestionControlRequest(request.body);
     const result = await services.run(async (runtime) => {
       return runtime.requestIngestionControl(
+        principal,
         controlRequest.sourceFile,
         "cancel",
         buildIngestionControlActor(principal),
@@ -688,13 +725,10 @@ export async function buildWebServer(
   });
 
   server.delete("/api/documents/:documentId", async (request, reply) => {
-    requireAdministratorPrincipal(requestPrincipals, request);
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const deletionRequest = decodeReindexDocumentRequest(request.params, request.body);
     const result = await services.run(async (runtime) => {
-      if (runtime.deleteIndexedDocument === undefined) {
-        throw new Error("Indexed document deletion is not configured.");
-      }
-      return runtime.deleteIndexedDocument(deletionRequest);
+      return runtime.deleteIndexedDocument(principal, deletionRequest);
     });
     if (result.kind === "not-found") {
       throw new WebRequestError(404, "The indexed document was not found.");
@@ -716,6 +750,7 @@ export async function buildWebServer(
     );
     const result = await services.run(async (runtime) => {
       return runtime.reindexDocument(
+        principal,
         reindexRequest,
         buildIngestionControlActor(principal),
       );
@@ -735,14 +770,19 @@ export async function buildWebServer(
   });
 
   server.post("/api/search", async (request, reply): Promise<SourceDiscoveryResponse> => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const searchRequest = readSourceDiscoveryRequest(request.body);
     const abortController = new AbortController();
     const abort = (): void => abortController.abort();
     request.raw.once("aborted", abort);
     reply.raw.once("close", abort);
     try {
-      return await services.run(async (runtime) => {
-        return runtime.searchSources(searchRequest, abortController.signal);
+      return await services.runInWorkspace(principal, async (runtime) => {
+        return runtime.searchSources(
+          principal,
+          searchRequest,
+          abortController.signal,
+        );
       });
     } catch (error: unknown) {
       if (error instanceof SourceDiscoveryUnavailableError) {
@@ -759,13 +799,14 @@ export async function buildWebServer(
   });
 
   server.post("/api/questions", async (request, reply) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const question = decodeQuestionRequest(request.body);
     const abortController = new AbortController();
     const abort = (): void => abortController.abort();
     request.raw.once("aborted", abort);
     reply.raw.once("close", abort);
-    const stream = services.stream((runtime) => {
-      return runtime.streamAnswer(question, abortController.signal);
+    const stream = services.streamInWorkspace(principal, (runtime) => {
+      return runtime.streamAnswer(principal, question, abortController.signal);
     });
     reply.hijack();
     pipeUIMessageStreamToResponse({ response: reply.raw, stream });
@@ -773,6 +814,7 @@ export async function buildWebServer(
   });
 
   server.post("/api/speech", async (request, reply) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     const speechRequest = decodeSpeechRequest(request.body);
     const abortController = new AbortController();
     const abort = (): void => abortController.abort();
@@ -785,16 +827,19 @@ export async function buildWebServer(
     let speech: GeneratedSpeech | null = null;
     let streaming = false;
     try {
-      speech = await services.runManaged(async (runtime) => {
-        const generated = await runtime.generateSpeech(
-          speechRequest,
-          abortController.signal,
-        );
-        return {
-          completion: generated.completion,
-          value: generated,
-        };
-      });
+      speech = await services.runManagedInWorkspace(
+        principal,
+        async (runtime) => {
+          const generated = await runtime.generateSpeech(
+            speechRequest,
+            abortController.signal,
+          );
+          return {
+            completion: generated.completion,
+            value: generated,
+          };
+        },
+      );
       speech.audio.once("close", cleanup);
       speech.audio.once("end", cleanup);
       reply.header("Cache-Control", "private, no-store");
@@ -826,11 +871,12 @@ export async function buildWebServer(
   });
 
   server.post("/api/transcriptions", async (request, reply) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
     reply.header("Cache-Control", "private, no-store");
     reply.header("Cross-Origin-Resource-Policy", "same-origin");
     reply.header("X-Content-Type-Options", "nosniff");
     try {
-      return await services.run(async (runtime) => {
+      return await services.runInWorkspace(principal, async (runtime) => {
         const config = runtime.config.speechToText;
         if (config === null) {
           throw new WebRequestError(503, "Speech-to-text is disabled.");
@@ -939,7 +985,7 @@ function buildIngestionControlActor(
   principal: AuthenticatedPrincipal,
 ): IngestionControlActor {
   return {
-    isAdministrator: principal.role === "admin",
+    isAdministrator: canAdministerWorkspace(principal, principal.workspaceId),
     userId: principal.userId,
   };
 }

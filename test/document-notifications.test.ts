@@ -10,10 +10,10 @@ import {
   readDocumentNotificationOutcome,
   readStoredDocumentNotificationSubscriptions,
   writeStoredDocumentNotificationSubscriptions,
-} from "../web/assets/scripts/citeloom-document-notifications.js";
+} from "../web/assets/scripts/document-notifications.js";
 import {
   registerPage as registerDocumentsPage,
-} from "../web/assets/scripts/citeloom-documents.js";
+} from "../web/assets/scripts/documents.js";
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();

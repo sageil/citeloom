@@ -83,6 +83,7 @@ function buildIndexedDocument(sourceFile: string): PublishedDocument {
     indexedAt: "2026-07-17T14:00:00.000Z",
     pageCount: 1,
     sourceFile,
+    sourceLibraryId: null,
     tables: 0,
     tags: ["legal"],
     textChunks: 1,

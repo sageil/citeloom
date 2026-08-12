@@ -8,9 +8,23 @@
   <header class="settings-search-header">
     <div class="settings-search-heading">
       <h1 id="settings-title">Settings</h1>
-      <p>Choose the services and settings CiteLoom uses for search, answers, document processing, and audio.</p>
+      <p x-text="settings?.scope.kind === 'workspace' ? `Configure how ${settings.scope.label} uses search, answers, and audio.` : 'Choose the services and settings CiteLoom uses for search, answers, document processing, and audio.'">Choose the services and settings CiteLoom uses for search, answers, document processing, and audio.</p>
     </div>
     <div class="settings-header-actions compact-header-actions">
+      <label class="settings-header-scope" x-cloak x-show="settings?.scope.available.length > 1">
+        <span class="visually-hidden">Settings scope</span>
+        <select
+          class="form-control compact-header-control"
+          aria-label="Settings scope"
+          :disabled="loading || saving"
+          :value="settings?.scope.id ?? ''"
+          @change="changeSettingsTargetFromControl($event.target)"
+        >
+          <template x-for="scope in settings?.scope.available ?? []" :key="scope.id">
+            <option :selected="scope.id === settings.scope.id" :value="scope.id" x-text="scope.label"></option>
+          </template>
+        </select>
+      </label>
       <label class="search-control settings-search-input settings-header-search">
         <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
           <use href="./assets/images/citeloom-icons.svg#citeloom-search"></use>
@@ -34,8 +48,8 @@
           @change="changeSourceFilter($event.target.value)"
         >
           <option value="all">All values</option>
-          <option value="database">Changed values</option>
-          <option value="database-default">Default values</option>
+          <option value="database" x-text="settings?.scope.kind === 'workspace' ? 'Workspace overrides' : 'Changed values'">Changed values</option>
+          <option value="database-default" x-text="settings?.scope.kind === 'workspace' ? 'Organization defaults' : 'Default values'">Default values</option>
           <option value="modified">Unsaved changes</option>
         </select>
       </label>
@@ -93,7 +107,7 @@
     <svg aria-hidden="true" class="citeloom-icon status-icon">
       <use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use>
     </svg>
-    <span>Settings saved. New requests use them immediately.</span>
+    <span x-text="settings?.scope.kind === 'workspace' ? 'Workspace settings saved. New workspace requests use them immediately.' : 'Settings saved. New requests use them immediately.'">Settings saved. New requests use them immediately.</span>
   </div>
 
   <template x-if="settings !== null &amp;&amp; settings.warnings.length > 0">
@@ -140,7 +154,31 @@
             <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
           </svg>
         </button>
-        <button type="button" @click="selectArea('Providers')">
+        <button type="button" x-show="organizationSettingsVisible" @click="selectArea('Workspaces')">
+          <svg aria-hidden="true" class="citeloom-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+          </svg>
+          <span>
+            <strong>Workspaces</strong>
+            <small x-text="`${managedWorkspaces().length} active workspaces`"></small>
+          </span>
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+          </svg>
+        </button>
+        <button type="button" x-show="workspaceManagementVisible" @click="selectArea('Workspace')">
+          <svg aria-hidden="true" class="citeloom-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-user-plus"></use>
+          </svg>
+          <span>
+            <strong>Workspace</strong>
+            <small x-text="userManagementLoading ? `Manage ${settings.scope.label} details and access` : `${enabledWorkspaceUserCount()} of ${members.length} users enabled`"></small>
+          </span>
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+          </svg>
+        </button>
+        <button type="button" x-show="organizationSettingsVisible" @click="selectArea('Providers')">
           <svg aria-hidden="true" class="citeloom-icon">
             <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
           </svg>
@@ -152,13 +190,25 @@
             <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
           </svg>
         </button>
-        <button type="button" @click="selectArea('Object storage')">
+        <button type="button" x-show="organizationSettingsVisible" @click="selectArea('Object storage')">
           <svg aria-hidden="true" class="citeloom-icon">
             <use href="./assets/images/citeloom-icons.svg#citeloom-database"></use>
           </svg>
           <span>
             <strong>Object storage</strong>
             <small x-text="sourceContentStorage?.active.kind === 's3' ? 'S3-compatible storage active' : 'Local filesystem active'"></small>
+          </span>
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
+          </svg>
+        </button>
+        <button type="button" x-show="organizationSettingsVisible" @click="selectArea('Source libraries')">
+          <svg aria-hidden="true" class="citeloom-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+          </svg>
+          <span>
+            <strong>Source libraries</strong>
+            <small x-text="sourceLibraryAdministration === null ? 'Shared workspace sources' : `${sourceLibraryAdministration.libraries.length} shared libraries`"></small>
           </span>
           <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
             <use href="./assets/images/citeloom-icons.svg#citeloom-caret-right"></use>
@@ -178,7 +228,7 @@
             </svg>
           </button>
         </template>
-        <button type="button" @click="selectArea('Startup and deployment')">
+        <button type="button" x-show="organizationSettingsVisible" @click="selectArea('Startup and deployment')">
           <svg aria-hidden="true" class="citeloom-icon">
             <use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use>
           </svg>
@@ -205,7 +255,7 @@
           <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-database"></use></svg>
           <span><strong x-text="`${settings.providers.catalog.length} providers available`"></strong><small>Available connections</small></span>
         </div>
-        <div :class="{ warning: featureWithoutCredentialCount() > 0 }">
+        <div x-show="organizationSettingsVisible" :class="{ warning: featureWithoutCredentialCount() > 0 }">
           <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use></svg>
           <span><strong x-text="`${featureWithoutCredentialCount()} features without tokens`"></strong><small>Local providers may not require one</small></span>
         </div>
@@ -243,7 +293,7 @@
               <span><h2 x-text="capabilityLabel(selectedFeatureCapability)"></h2><small x-text="featureStateLabel(selectedFeatureCapability)"></small></span>
               <p x-text="selectedFeatureDescription()"></p>
             </div>
-            <span class="setting-source" x-text="`Authentication: ${featureCredentialConfigured(selectedFeatureCapability) ? 'Configured' : 'Not configured'}`"></span>
+            <span class="setting-source" :class="featureSourceClass(selectedFeatureCapability)" x-text="featureSourceLabel(selectedFeatureCapability)"></span>
           </header>
 
           <section class="settings-feature-step">
@@ -275,11 +325,12 @@
                 <small>Inherited from the selected provider connection.</small>
               </div>
             </div>
-            <div class="settings-credential-warning" x-show="featureProviderId(selectedFeatureCapability) !== null &amp;&amp; !featureCredentialConfigured(selectedFeatureCapability)">
+            <div class="settings-credential-warning" x-show="organizationSettingsVisible &amp;&amp; featureProviderId(selectedFeatureCapability) !== null &amp;&amp; !featureCredentialConfigured(selectedFeatureCapability)">
               <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use></svg>
               <span>No credential is configured for this feature. Local providers may not require one.</span>
               <button class="button secondary" type="button" @click="selectArea('Providers')">Configure credentials</button>
             </div>
+            <p class="settings-boundary-note settings-feature-managed-note" x-show="!organizationSettingsVisible"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><span>Provider connections and credentials are managed in organization settings. Workspace settings select among those connections without copying their secrets.</span></p>
           </section>
 
           <section class="settings-feature-step" x-show="featureConnection(selectedFeatureCapability) !== null">
@@ -766,6 +817,234 @@
     </section>
     </template>
 
+    <template x-if="selectedArea === 'Workspace'">
+    <section class="settings-search-results settings-workspace-management-workbench">
+      <div class="settings-administration-content">
+        <section class="settings-administration-list" aria-labelledby="settings-workspace-details-title">
+          <header>
+            <div><h2 id="settings-workspace-details-title">Workspace details</h2><p>Manage the workspace name, membership, roles, and access in one place.</p></div>
+            <span class="setting-source" x-text="canRenameSelectedWorkspace() ? 'Global administrator' : 'Workspace administrator'"></span>
+          </header>
+          <form class="settings-workspace-details-form" @submit.prevent="saveWorkspaceName()">
+            <div class="form-field">
+              <label for="workspace-name">Name</label>
+              <div class="settings-workspace-name-control">
+                <input id="workspace-name" class="form-control" maxlength="200" required type="text" x-model.trim="workspaceNameDraft" :disabled="!canRenameSelectedWorkspace() || workspaceActionBusy" :aria-invalid="(workspaceNameValidationMessage(workspaceNameDraft, settings.scope.id) !== '').toString()" @input="workspaceNameError = ''" />
+                <button class="button primary" type="submit" x-show="canRenameSelectedWorkspace()" :disabled="!workspaceNameCanSave()" x-text="workspaceActionBusy ? 'Saving…' : 'Save name'">Save name</button>
+              </div>
+              <small x-show="canRenameSelectedWorkspace()">Changing the name does not move or rename sources, settings, or memberships.</small>
+              <small x-show="!canRenameSelectedWorkspace()">Only a global administrator can rename a workspace.</small>
+              <small class="creation-modal-field-error" role="alert" x-show="workspaceNameValidationMessage(workspaceNameDraft, settings.scope.id) !== ''" x-text="workspaceNameValidationMessage(workspaceNameDraft, settings.scope.id)"></small>
+            </div>
+          </form>
+          <p class="field-error" role="alert" x-cloak x-show="workspaceNameError !== ''" x-text="workspaceNameError"></p>
+        </section>
+
+        <div class="workspace-user-management" @keydown.escape.window="addMemberOpen &amp;&amp; closeAddMember()">
+          <p class="field-error" role="alert" x-cloak x-show="userManagementError !== ''" x-text="userManagementError"></p>
+          <section class="access-users-panel access-card">
+            <header class="access-users-heading">
+              <div><h2 x-text="userManagementTitle"></h2><p x-text="`Manage membership, roles, and access for ${settings.scope.label}.`"></p></div>
+              <div class="compact-header-actions">
+                <button class="button secondary compact-header-control" :disabled="userManagementLoading" type="button" @click="loadUsers()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use></svg><span>Refresh</span></button>
+                <button class="button primary compact-header-control compact-header-primary" :disabled="userManagementBusy || userManagementLoading" type="button" @click="openAddMember()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-user-plus"></use></svg><span>Add user</span></button>
+              </div>
+            </header>
+
+            <div class="access-role-guide" x-show="showUserRoleGuide" aria-label="Workspace role guidance">
+              <div><strong>Admin</strong><span>Can manage users, roles, and workspace settings.</span></div>
+              <div><strong>Member</strong><span>Can use workspace features and manage content.</span></div>
+            </div>
+
+            <div class="access-user-table" :aria-busy="userManagementLoading">
+              <div class="access-user-table-heading" aria-hidden="true"><span>User</span><span>Account</span><span>Role</span><span>Access</span><span x-text="userManagementActionsLabel"></span></div>
+              <p class="access-user-loading" x-show="userManagementLoading">Loading users…</p>
+              <div class="access-user-load-failed" x-cloak x-show="!userManagementLoading &amp;&amp; userManagementLoadFailed"><span>Workspace users are unavailable.</span><button class="button secondary" type="button" @click="loadUsers()">Try again</button></div>
+              <p class="access-user-loading" x-show="!userManagementLoading &amp;&amp; !userManagementLoadFailed &amp;&amp; members.length === 0">No users are in this workspace yet.</p>
+              <template x-for="member in members" :key="member.userId">
+                <article class="access-user-row" :class="{ disabled: member.access === 'disabled' }">
+                  <div class="access-user-identity">
+                    <span class="access-user-avatar" x-text="workspaceUserInitials(member.displayName)"></span>
+                    <span><strong class="truncate" x-text="member.displayName"></strong><small class="truncate" x-text="member.globalRole === 'global_admin' ? `@${member.username} · Global administrator` : `@${member.username}`"></small></span>
+                  </div>
+                  <span class="access-user-state"><i :class="`state-${member.state}`"></i><span x-text="member.state"></span></span>
+                  <select class="form-control compact-header-control access-user-row-control" :value="member.role" :disabled="userManagementBusy || member.globalRole === 'global_admin'" @change="changeRole(member, $event.target.value)" :aria-label="`Role for ${member.username}`"><option value="member">Member</option><option value="admin">Admin</option></select>
+                  <select class="form-control compact-header-control access-user-row-control" :value="member.access" :disabled="userManagementBusy || member.globalRole === 'global_admin' || member.userId === currentUserId" @change="changeAccess(member, $event.target.value)" :aria-label="`Workspace access for ${member.username}`"><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select>
+                  <details class="access-user-actions" x-show="member.globalRole !== 'global_admin'" @click.outside="$el.open = false">
+                    <summary class="access-user-row-control" :aria-label="`Workspace actions for ${member.username}`"><span>Actions</span><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-settings"></use></svg></summary>
+                    <div>
+                      <button class="danger" :disabled="userManagementBusy" type="button" @click="$el.closest('details').removeAttribute('open'); requestRemoveUser(member)"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-trash"></use></svg><span>Remove from workspace</span></button>
+                    </div>
+                  </details>
+                  <span class="access-user-row-control access-user-required" x-show="member.globalRole === 'global_admin'">Required</span>
+                </article>
+              </template>
+            </div>
+            <footer class="access-users-footer"><span x-text="userManagementLoading ? 'Loading users…' : `${enabledWorkspaceUserCount()} of ${members.length} users enabled`"></span><span class="access-administrator-invariant"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-shield"></use></svg>At least one enabled administrator is required.</span></footer>
+          </section>
+
+          <div class="access-drawer-backdrop" x-cloak x-show="addMemberOpen" @click.self="closeAddMember()">
+            <aside class="access-add-drawer" role="dialog" aria-modal="true" aria-labelledby="add-member-title">
+              <header><div><h2 id="add-member-title">Add user</h2><p>Give an existing CiteLoom account access to this workspace.</p></div><button class="button access-close-button" type="button" aria-label="Close add user form" @click="closeAddMember()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg></button></header>
+              <form @submit.prevent="addWorkspaceMember()">
+                <label><span>User</span><select required :value="selectedMemberCandidateId" :disabled="userManagementBusy || memberCandidates.length === 0" @change="selectMemberCandidate($event.target.value)"><option disabled value="">Select an existing user</option><template x-for="candidate in memberCandidates" :key="candidate.userId"><option :value="candidate.userId" x-text="`${candidate.displayName} (@${candidate.username})${candidate.state === 'pending' ? ' · Setup pending' : ''}${candidate.globalRole === 'global_admin' ? ' · Global administrator' : ''}`"></option></template></select><small x-show="memberCandidates.length > 0">Active and setup-pending accounts that are not already members are shown.</small><small x-show="memberCandidates.length === 0">Every available user is already a member of this workspace.</small></label>
+                <label><span>Role</span><select x-model="memberRoleDraft" :disabled="userManagementBusy || selectedMemberCandidateIsGlobalAdministrator()"><option value="member">Member</option><option value="admin">Admin</option></select><small x-show="selectedMemberCandidateIsGlobalAdministrator()">Global administrators always have the Admin role.</small></label>
+                <div class="access-drawer-guidance"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-info"></use></svg><p><strong>Role guidance</strong><span>Admins can manage users and roles. Members can use the workspace but cannot manage users.</span></p></div>
+                <footer><button class="button access-secondary-button" :disabled="userManagementBusy" type="button" @click="closeAddMember()">Cancel</button><button class="button access-primary-button" :disabled="userManagementBusy || selectedMemberCandidateId === ''" type="submit" x-text="userManagementBusy ? 'Adding…' : 'Add to workspace'"></button></footer>
+              </form>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </section>
+    </template>
+
+    <template x-if="selectedArea === 'Workspaces'">
+    <section class="settings-search-results settings-workspace-administration-workbench">
+      <div class="settings-administration-content">
+        <div class="settings-feature-health" aria-label="Workspace summary">
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg><span><strong x-text="`${managedWorkspaces().length} active workspaces`"></strong><small>Available to organization administrators</small></span></div>
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><span><strong x-text="currentWorkspaceName"></strong><small>Current application workspace</small></span></div>
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><span><strong>Global administrator</strong><small>Can create and edit every workspace</small></span></div>
+        </div>
+
+        <div class="settings-administration-grid">
+          <section class="settings-administration-create" aria-labelledby="settings-workspace-create-title">
+            <header>
+              <span class="settings-feature-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg></span>
+              <div><h2 id="settings-workspace-create-title">Create workspace</h2><p>Start with organization defaults or copy another workspace's overrides.</p></div>
+            </header>
+            <button class="button primary" type="button" :disabled="workspaceActionBusy" @click="openWorkspaceCreate()">Create workspace</button>
+            <div class="settings-boundary-note">
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-info"></use></svg>
+              <span>Every active global administrator is added to the new workspace as an administrator.</span>
+            </div>
+          </section>
+
+          <section class="settings-administration-list" aria-labelledby="settings-workspace-list-title">
+            <header><div><h2 id="settings-workspace-list-title">Active workspaces</h2><p>Edit each workspace's settings, details, membership, roles, and access.</p></div><span class="setting-source">Global administrator</span></header>
+            <div class="settings-administration-empty" x-show="managedWorkspaces().length === 0">
+              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg>
+              <div><strong>No workspaces available</strong><span>Create the first workspace to configure isolated settings and sources.</span></div>
+            </div>
+            <div class="settings-administration-records" x-show="managedWorkspaces().length > 0">
+              <template x-for="workspace in managedWorkspaces()" :key="workspace.id">
+                <article class="settings-administration-record">
+                  <header>
+                    <div class="settings-administration-identity">
+                      <h3 x-text="workspace.name"></h3>
+                    </div>
+                    <div class="settings-administration-actions">
+                      <span class="setting-source" x-show="workspace.id === currentWorkspaceId">Current</span>
+                      <button class="button secondary" type="button" :disabled="workspaceActionBusy" @click="openWorkspaceManagement(workspace)">Edit</button>
+                    </div>
+                  </header>
+                </article>
+              </template>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+    </template>
+
+    <template x-if="selectedArea === 'Source libraries'">
+    <section class="settings-search-results settings-source-library-workbench">
+      <div class="status-message settings-message error" role="alert" x-cloak x-show="sourceLibraryAdministrationError !== ''">
+        <svg aria-hidden="true" class="citeloom-icon status-icon error"><use href="./assets/images/citeloom-icons.svg#citeloom-warning-circle"></use></svg>
+        <span x-text="sourceLibraryAdministrationError"></span>
+        <button class="text-button citeloom-settings-retry" type="button" x-show="sourceLibraryAdministration === null &amp;&amp; !sourceLibraryAdministrationBusy" @click="loadSourceLibraryAdministration()">Retry</button>
+      </div>
+
+      <p class="settings-loading" x-show="sourceLibraryAdministration === null &amp;&amp; sourceLibraryAdministrationBusy">Loading source libraries.</p>
+
+      <template x-if="sourceLibraryAdministration !== null">
+      <div class="settings-administration-content">
+        <div class="settings-feature-health" aria-label="Source library summary">
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg><span><strong x-text="sourceLibraryCountLabel(sourceLibraryActiveCount(), 'active shared library')"></strong><small>Organization-managed source collections</small></span></div>
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg><span><strong x-text="sourceLibraryCountLabel(sourceLibraryAdministration.workspaces.length, 'workspace')"></strong><small>Available grant targets</small></span></div>
+          <div><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-status-check"></use></svg><span><strong x-text="sourceLibraryCountLabel(sourceLibraryGrantCount(), 'active grant')"></strong><small>Use and manage assignments</small></span></div>
+        </div>
+
+        <div class="settings-administration-grid">
+          <section class="settings-administration-create" aria-labelledby="settings-source-library-create-title">
+            <header>
+              <span class="settings-feature-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg></span>
+              <div><h2 id="settings-source-library-create-title">Create shared library</h2><p>Make one source collection available to selected workspaces.</p></div>
+            </header>
+            <form @submit.prevent="createSharedSourceLibrary()">
+              <label class="form-field">
+                <span>Library name</span>
+                <input autocomplete="off" maxlength="200" placeholder="Common sources" required type="text" x-model="sourceLibraryNameDraft" />
+                <small>Use a name that explains which content belongs here.</small>
+              </label>
+              <button class="button primary" type="submit" :aria-busy="sourceLibraryAdministrationBusy" :disabled="sourceLibraryAdministrationBusy || sourceLibraryNameDraft.trim() === ''">Create library</button>
+            </form>
+            <div class="settings-boundary-note">
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg>
+              <span>The current workspace receives Manage access when the library is created. Other workspaces receive no access until you grant it.</span>
+            </div>
+          </section>
+
+          <section class="settings-administration-list" aria-labelledby="settings-source-library-list-title">
+            <header><div><h2 id="settings-source-library-list-title">Workspace access</h2><p>Choose whether each workspace can use shared sources or also upload and manage them.</p></div><span class="setting-source">Global administrator</span></header>
+            <div class="settings-administration-empty" x-show="sourceLibraryAdministration.libraries.length === 0">
+              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use></svg>
+              <div><strong>No shared libraries yet</strong><span>Create one to share common sources without copying documents between workspaces.</span></div>
+            </div>
+            <div class="settings-administration-records" x-show="sourceLibraryAdministration.libraries.length > 0">
+              <template x-for="library in sourceLibraryAdministration.libraries" :key="library.id">
+                <article class="settings-administration-record" :class="{ archived: library.state !== 'active' }">
+                  <header>
+                    <div class="settings-administration-identity">
+                      <div x-show="sourceLibraryRenamingId !== library.id">
+                        <h3 x-text="library.name"></h3>
+                        <p x-text="library.state === 'deleting' ? 'Permanent deletion is in progress' : library.state === 'archived' ? 'Hidden from all workspaces' : `${sourceLibraryGrantedWorkspaceCount(library)} of ${sourceLibraryAdministration.workspaces.length} workspaces have access`"></p>
+                      </div>
+                      <form class="settings-administration-rename" x-show="sourceLibraryRenamingId === library.id" @submit.prevent="renameSharedSourceLibrary(library)">
+                        <label class="visually-hidden" :for="`source-library-name-${library.id}`">Library name</label>
+                        <input :id="`source-library-name-${library.id}`" maxlength="200" required type="text" x-model="sourceLibraryRenameDraft" x-ref="sourceLibraryRenameInput" />
+                        <button class="button primary" type="submit" :disabled="sourceLibraryAdministrationBusy || sourceLibraryRenameDraft.trim() === ''">Save</button>
+                        <button class="button secondary" type="button" :disabled="sourceLibraryAdministrationBusy" @click="cancelRenamingSourceLibrary()">Cancel</button>
+                      </form>
+                    </div>
+                    <div class="settings-administration-actions" x-show="sourceLibraryRenamingId !== library.id">
+                      <span class="setting-source" x-text="library.state === 'deleting' ? 'Deleting' : library.state === 'archived' ? 'Archived' : 'Shared'"></span>
+                      <button class="button secondary" type="button" x-show="library.state !== 'deleting'" :disabled="sourceLibraryAdministrationBusy" @click="startRenamingSourceLibrary(library)">Rename</button>
+                      <button class="button secondary" type="button" x-show="library.state === 'active'" :disabled="sourceLibraryAdministrationBusy" @click="manageSourceLibraryDocuments(library)">Manage documents</button>
+                      <button class="button danger" type="button" x-show="library.state === 'active'" :disabled="sourceLibraryAdministrationBusy" @click="archiveSharedSourceLibrary(library)">Archive</button>
+                      <button class="button primary" type="button" x-show="library.state === 'archived'" :disabled="sourceLibraryAdministrationBusy" @click="restoreSharedSourceLibrary(library)">Restore</button>
+                      <button class="button danger" type="button" x-show="library.state === 'active' || library.state === 'archived'" :disabled="sourceLibraryAdministrationBusy" @click="deleteSharedSourceLibrary(library)">Delete permanently</button>
+                    </div>
+                  </header>
+                  <div class="settings-administration-archived-note" x-show="library.state === 'archived'">
+                    Documents and workspace access assignments are retained. Restore the library to make it available again.
+                  </div>
+                  <div class="settings-administration-archived-note" role="status" x-show="library.state === 'deleting'">
+                    CiteLoom is permanently deleting this library, its documents, and its workspace access assignments. Cleanup resumes automatically after a restart.
+                  </div>
+                  <div class="settings-source-library-grants" x-show="library.state === 'active'">
+                    <template x-for="workspace in sourceLibraryAdministration.workspaces" :key="workspace.id">
+                      <label>
+                        <span><strong x-text="workspace.name"></strong><small x-text="sourceLibraryWorkspaceAccess(library, workspace.id) === 'manage' ? 'Can find, upload, and manage sources' : sourceLibraryWorkspaceAccess(library, workspace.id) === 'use' ? 'Can find and use sources' : 'Cannot access this library'"></small></span>
+                        <select class="form-control compact-header-control" :aria-label="`${workspace.name} access to ${library.name}`" :disabled="sourceLibraryAdministrationBusy" x-model="sourceLibraryGrantDrafts[sourceLibraryGrantDraftKey(library.id, workspace.id)]" @change="changeSourceLibraryGrant(library, workspace)">
+                          <option value="none">No access</option>
+                          <option value="use">Use</option>
+                          <option value="manage">Manage</option>
+                        </select>
+                      </label>
+                    </template>
+                  </div>
+                </article>
+              </template>
+            </div>
+          </section>
+        </div>
+      </div>
+      </template>
+    </section>
+    </template>
+
     <template x-if="selectedArea === 'Object storage'">
     <section class="settings-search-results settings-storage-workbench">
       <div class="status-message settings-message error" role="alert" x-cloak x-show="sourceContentStorageError !== ''">
@@ -793,7 +1072,7 @@
               <template x-if="sourceContentStorage.active.kind === 's3'"><div><dt>Bucket and prefix</dt><dd><code x-text="`${sourceContentStorage.active.bucket}/${sourceContentStorage.active.prefix}`"></code></dd></div></template>
               <template x-if="sourceContentStorage.active.kind === 's3'"><div><dt>Credentials</dt><dd x-text="sourceContentStorage.active.credentialSource === 'environment' ? 'Deployment environment' : 'Stored static credentials'"></dd></div></template>
             </dl>
-            <p class="settings-storage-boundary-note"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><span>This page configures CiteLoom's connection. SeaweedFS server credentials, ports, and data directories remain deployment-controlled.</span></p>
+            <p class="settings-boundary-note"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><span>This page configures CiteLoom's connection. SeaweedFS server credentials, ports, and data directories remain deployment-controlled.</span></p>
           </section>
 
           <section class="settings-storage-editor" aria-labelledby="settings-storage-editor-title">
@@ -898,7 +1177,7 @@
     </section>
     </template>
 
-    <template x-if="!browsingAreas &amp;&amp; selectedArea !== 'Application Features' &amp;&amp; selectedArea !== 'Providers' &amp;&amp; selectedArea !== 'Object storage' &amp;&amp; selectedArea !== 'Startup and deployment'">
+    <template x-if="!browsingAreas &amp;&amp; selectedArea !== 'Application Features' &amp;&amp; selectedArea !== 'Providers' &amp;&amp; selectedArea !== 'Object storage' &amp;&amp; selectedArea !== 'Source libraries' &amp;&amp; selectedArea !== 'Workspace' &amp;&amp; selectedArea !== 'Workspaces' &amp;&amp; selectedArea !== 'Startup and deployment'">
     <section class="settings-search-results settings-feature-workbench settings-runtime-workbench" aria-live="polite">
       <div class="empty-state settings-empty-results" x-show="filteredFields.length === 0">
         <svg aria-hidden="true" class="citeloom-icon">
@@ -978,4 +1257,66 @@
     </template>
   </div>
   </template>
+
+  <div
+    class="dialog-backdrop creation-modal-backdrop"
+    x-cloak
+    x-show="workspaceCreateOpen"
+    @click.self="closeWorkspaceCreate()"
+    @keydown.escape.window="workspaceCreateOpen &amp;&amp; closeWorkspaceCreate()"
+  >
+    <form
+      aria-describedby="workspace-create-description"
+      aria-labelledby="workspace-create-title"
+      aria-modal="true"
+      class="dialog creation-modal"
+      role="dialog"
+      x-ref="workspaceCreateDialog"
+      :aria-busy="workspaceActionBusy"
+      @keydown.tab="cycleWorkspaceCreateFocus($event)"
+      @submit.prevent="createWorkspace()"
+    >
+      <header class="creation-modal-header">
+        <div>
+          <h2 class="section-kicker" id="workspace-create-title">Create workspace</h2>
+          <p class="creation-modal-description" id="workspace-create-description">Every global administrator will be added as a workspace administrator.</p>
+        </div>
+        <button aria-label="Close workspace form" class="icon-button creation-modal-close" :disabled="workspaceActionBusy" type="button" @click="closeWorkspaceCreate()">
+          <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg>
+        </button>
+      </header>
+      <label class="form-field">
+        <span>Name</span>
+        <input class="form-control" x-ref="workspaceCreateName" aria-describedby="workspace-create-name-help workspace-create-name-error" :aria-invalid="(workspaceNameValidationMessage(workspaceCreateName) !== '').toString()" maxlength="200" required type="text" x-model.trim="workspaceCreateName" @input="workspaceCreateError = ''" />
+        <small id="workspace-create-name-help">The name shown to workspace members.</small>
+        <small class="creation-modal-field-error" id="workspace-create-name-error" role="alert" x-show="workspaceNameValidationMessage(workspaceCreateName) !== ''" x-text="workspaceNameValidationMessage(workspaceCreateName)"></small>
+      </label>
+      <fieldset class="workspace-create-configuration">
+        <legend>Initial settings</legend>
+        <label class="workspace-create-configuration-option" :class="{ selected: workspaceCreateConfigurationKind === 'organization-defaults' }">
+          <input name="workspace-configuration" type="radio" value="organization-defaults" x-model="workspaceCreateConfigurationKind" @change="workspaceCreateError = ''" />
+          <span><strong>Use organization defaults</strong><small>Inherit current defaults and future organization changes.</small></span>
+        </label>
+        <label class="workspace-create-configuration-option" :class="{ selected: workspaceCreateConfigurationKind === 'workspace-copy' }">
+          <input name="workspace-configuration" type="radio" value="workspace-copy" x-model="workspaceCreateConfigurationKind" @change="workspaceCreateError = ''" />
+          <span><strong>Copy workspace settings</strong><small>Start with another workspace's explicit overrides.</small></span>
+        </label>
+        <label class="form-field workspace-create-source" x-show="workspaceCreateConfigurationKind === 'workspace-copy'">
+          <span>Copy from</span>
+          <select class="form-control" aria-describedby="workspace-create-source-help workspace-create-source-error" :aria-invalid="(workspaceCreateSourceValidationMessage() !== '').toString()" :disabled="managedWorkspaces().length === 0" :required="workspaceCreateConfigurationKind === 'workspace-copy'" x-model="workspaceCreateSourceWorkspaceId" @change="workspaceCreateError = ''">
+            <template x-for="workspace in managedWorkspaces()" :key="workspace.id">
+              <option :value="workspace.id" x-text="workspace.name"></option>
+            </template>
+          </select>
+          <small id="workspace-create-source-help">Provider credentials and infrastructure remain organization-managed.</small>
+          <small class="creation-modal-field-error" id="workspace-create-source-error" role="alert" x-show="workspaceCreateSourceValidationMessage() !== ''" x-text="workspaceCreateSourceValidationMessage()"></small>
+        </label>
+      </fieldset>
+      <p class="creation-modal-error" role="alert" x-show="workspaceCreateError" x-text="workspaceCreateError"></p>
+      <footer class="dialog-actions creation-modal-actions">
+        <button class="button secondary" :disabled="workspaceActionBusy" type="button" @click="closeWorkspaceCreate()">Cancel</button>
+        <button class="button primary" :disabled="!workspaceCreateCanSubmit()" type="submit" x-text="workspaceActionBusy ? 'Creating…' : 'Create workspace'"></button>
+      </footer>
+    </form>
+  </div>
 </section>

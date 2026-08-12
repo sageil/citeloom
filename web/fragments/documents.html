@@ -9,6 +9,13 @@
       :class="{ 'low-document-count': lowDocumentCount }"
     >
       <nav class="collections-rail" aria-label="Document collections">
+        <p>Workspace</p>
+        <div class="documents-workspace-name" aria-label="Current workspace">
+          <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+            <use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use>
+          </svg>
+          <span class="truncate" x-text="currentWorkspaceName"></span>
+        </div>
         <p>Collections</p>
         <div class="collection-links">
           <template x-for="item in collections" :key="item.key">
@@ -22,6 +29,24 @@
               </svg>
               <span class="truncate" x-text="item.label"></span>
               <small x-text="displayCount(item.count)"></small>
+            </button>
+          </template>
+        </div>
+
+        <p class="shared-source-label" x-cloak x-show="sharedSourceLibraries.length > 0">Shared sources</p>
+        <div class="collection-links" x-cloak x-show="sharedSourceLibraries.length > 0">
+          <template x-for="library in sharedSourceLibraries" :key="library.id">
+            <button
+              type="button"
+              :aria-pressed="sourceLibraryId === library.id"
+              :class="{ active: sourceLibraryId === library.id }"
+              @click="selectSharedSource(library.id)"
+            >
+              <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon">
+                <use href="./assets/images/citeloom-icons.svg#citeloom-documents"></use>
+              </svg>
+              <span class="truncate" x-text="library.name"></span>
+              <small>Shared</small>
             </button>
           </template>
         </div>
@@ -157,7 +182,7 @@
           </label>
           <label>
             <span class="visually-hidden">Filter by status</span>
-            <select class="form-control" :value="status" @change="chooseStatus($event.target.value)">
+            <select class="form-control compact-header-control" :value="status" @change="chooseStatus($event.target.value)">
               <option value="all">Status: All</option>
               <option value="ready">Ready</option>
               <option value="processing">Processing</option>
@@ -167,7 +192,7 @@
           </label>
           <label>
             <span class="visually-hidden">Filter by tag</span>
-            <select class="form-control" :value="tagFilter" @change="chooseTag($event.target.value)">
+            <select class="form-control compact-header-control" :value="tagFilter" @change="chooseTag($event.target.value)">
               <option value="">Tags: All</option>
               <template x-for="facet in facets.tags" :key="facet.tag">
                 <option
@@ -179,7 +204,7 @@
           </label>
           <label>
             <span class="visually-hidden">Sort documents</span>
-            <select class="form-control" :value="sort" @change="chooseSort($event.target.value)">
+            <select class="form-control compact-header-control" :value="sort" @change="chooseSort($event.target.value)">
               <option value="updated-desc">Updated: newest</option>
               <option value="updated-asc">Updated: oldest</option>
               <option value="name-asc">Name: A-Z</option>
@@ -447,7 +472,10 @@
                 <span x-text="documentNotificationLabel(selectedDocument)"></span>
               </button>
               <div class="inspector-notification-helper">
-                <span>Keep CiteLoom open. Your browser will notify you when indexing finishes.</span>
+                <span
+                  :class="{ 'field-error': documentNotificationError(selectedDocument) !== '' }"
+                  x-text="documentNotificationError(selectedDocument) || 'Keep CiteLoom open. Your browser will notify you when indexing finishes.'"
+                ></span>
                 <button
                   class="text-button"
                   type="button"
@@ -511,14 +539,14 @@
                     <button
                       type="button"
                       :aria-label="`Remove ${tag} tag`"
-                      x-show="selectedDocument.activeDocumentId !== null"
+                      x-show="selectedDocument.activeDocumentId !== null &amp;&amp; canManageDocument(selectedDocument)"
                       :disabled="actionKind !== null"
                       @click="removeTagDraft(tag)"
                     >×</button>
                   </span>
                 </template>
               </div>
-              <div class="inspector-tag-entry" x-show="selectedDocument.activeDocumentId !== null">
+              <div class="inspector-tag-entry" x-show="selectedDocument.activeDocumentId !== null &amp;&amp; canManageDocument(selectedDocument)">
                 <input
                   aria-label="Add a document tag"
                   autocomplete="off"
@@ -544,7 +572,8 @@
                 x-show="tagErrorMessage !== ''"
                 x-text="tagErrorMessage"
               ></p>
-              <small x-show="selectedDocument.activeDocumentId !== null">Press Enter to add each tag, then save your changes.</small>
+              <small x-show="selectedDocument.activeDocumentId !== null &amp;&amp; canManageDocument(selectedDocument)">Press Enter to add each tag, then save your changes.</small>
+              <small x-show="selectedDocument.activeDocumentId !== null &amp;&amp; !canManageDocument(selectedDocument)">Manage access is required to change tags.</small>
               <small x-show="selectedDocument.activeDocumentId === null">Tags can be changed after this document is indexed.</small>
             </div>
           </details>
@@ -659,7 +688,7 @@
           <section
             class="inspector-document-controls inspector-ingestion-controls"
             x-cloak
-            x-show="(currentRole === 'admin' || (currentUserId !== null &amp;&amp; selectedDocument.uploadedByUserId === currentUserId)) &amp;&amp; (selectedDocument.status === 'pending' || selectedDocument.status === 'running' || selectedDocument.status === 'failed')"
+            x-show="(canManageDocument(selectedDocument) || (currentUserId !== null &amp;&amp; selectedDocument.uploadedByUserId === currentUserId)) &amp;&amp; (selectedDocument.status === 'pending' || selectedDocument.status === 'running' || selectedDocument.status === 'failed')"
           >
             <div class="inspector-management-actions inspector-control-actions">
               <button
@@ -713,7 +742,7 @@
 
           <section
             class="inspector-document-controls"
-            x-show="selectedDocument.status === 'ready' || (currentRole === 'admin' &amp;&amp; selectedDocument.status !== 'pending' &amp;&amp; selectedDocument.status !== 'running')"
+            x-show="canManageDocument(selectedDocument) &amp;&amp; selectedDocument.status !== 'pending' &amp;&amp; selectedDocument.status !== 'running'"
           >
             <div
               class="inspector-management-actions inspector-control-actions"
@@ -722,7 +751,7 @@
               <button
                 class="button secondary"
                 type="button"
-                x-show="selectedDocument.status === 'ready'"
+                x-show="canManageDocument(selectedDocument) &amp;&amp; selectedDocument.status === 'ready'"
                 :disabled="actionKind !== null"
                 @click="actionConfirmation = 'reindex'"
               >
@@ -734,7 +763,7 @@
               <button
                 class="button danger"
                 type="button"
-                x-show="currentRole === 'admin' &amp;&amp; selectedDocument.status !== 'pending' &amp;&amp; selectedDocument.status !== 'running'"
+                x-show="canManageDocument(selectedDocument) &amp;&amp; selectedDocument.status !== 'pending' &amp;&amp; selectedDocument.status !== 'running'"
                 :disabled="actionKind !== null"
                 @click="actionConfirmation = 'delete'"
               >

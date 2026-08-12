@@ -5,7 +5,7 @@ import {
   readDocumentStatusCopy,
   readIndexingActivityDetail,
   readIndexingActivityLabel,
-} from "../web/assets/scripts/citeloom-document-presentation.js";
+} from "../web/assets/scripts/document-presentation.js";
 
 function buildIndexingDocument(indexingActivity) {
   return {

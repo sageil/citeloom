@@ -1,11 +1,20 @@
 import { readFile } from "node:fs/promises";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  readDocumentCatalog,
   registerPage,
-} from "../web/assets/scripts/citeloom-documents.js";
+} from "../web/assets/scripts/documents.js";
+import { readDocumentCatalog } from "../web/assets/scripts/document-catalog-schema.js";
+import {
+  findHtmlElementByAttribute,
+  htmlElementHasClass,
+  readHtmlElements,
+} from "./html-test-helpers.js";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("CiteLoom document ingestion controls", () => {
   it("uses the stage-aware indexing presenter in the document inspector", () => {
@@ -59,14 +68,14 @@ describe("CiteLoom document ingestion controls", () => {
     );
   });
 
-  it("shows controls to administrators and to the uploader", async () => {
+  it("shows ingestion controls to library managers and to the uploader", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/documents.html", import.meta.url),
       "utf8",
     );
 
     expect(fragment).toContain(
-      "(currentRole === 'admin' || (currentUserId !== null &amp;&amp; selectedDocument.uploadedByUserId === currentUserId))",
+      "(canManageDocument(selectedDocument) || (currentUserId !== null &amp;&amp; selectedDocument.uploadedByUserId === currentUserId))",
     );
   });
 
@@ -86,22 +95,127 @@ describe("CiteLoom document ingestion controls", () => {
       new URL("../web/fragments/documents.html", import.meta.url),
       "utf8",
     );
-    const actionLayoutMatches = fragment.match(
-      /class="inspector-management-actions inspector-control-actions"/g,
+    const elements = readHtmlElements(fragment);
+    const actionLayouts = elements.filter((element) => {
+      return htmlElementHasClass(element, "inspector-control-actions");
+    });
+    const pauseButton = findHtmlElementByAttribute(
+      elements,
+      "@click",
+      "controlIngestion(selectedDocument, 'pause')",
+    );
+    const cancelButton = findHtmlElementByAttribute(
+      elements,
+      "@click",
+      "actionConfirmation = 'cancel-ingestion'",
     );
 
-    expect(actionLayoutMatches).toHaveLength(2);
-    expect(fragment).toMatch(
-      /class="button secondary"[\s\S]*?Pause ingestion/,
-    );
-    expect(fragment).toMatch(
-      /class="button danger"[\s\S]*?Cancel ingestion/,
-    );
+    expect(actionLayouts).toHaveLength(2);
+    expect(pauseButton.tagName).toBe("button");
+    expect(htmlElementHasClass(pauseButton, "secondary")).toBe(true);
+    expect(cancelButton.tagName).toBe("button");
+    expect(htmlElementHasClass(cancelButton, "danger")).toBe(true);
     expect(fragment).toContain(
       "This stops the reindex and keeps the current version available.",
     );
   });
+
+  it("loads and highlights the shared source selected by administration", async () => {
+    const libraryId = "00000000-0000-4000-8000-000000000501";
+    vi.stubGlobal("window", {
+      location: { search: `?view=documents&source-library=${libraryId}` },
+    });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([
+        {
+          access: "manage",
+          id: "00000000-0000-4000-8000-000000000500",
+          kind: "private",
+          name: "DefaultSpace",
+        },
+        {
+          access: "manage",
+          id: libraryId,
+          kind: "shared",
+          name: "Common Sources",
+        },
+      ]), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(buildEmptyCatalog()), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const page = createDocumentsPage();
+
+    await expect(page.loadSourceLibraryContext()).resolves.toBe(true);
+    await page.loadCatalog();
+
+    expect(page.sourceLibraryId).toBe(libraryId);
+    expect(page.sharedSourceLibraries).toEqual([{
+      access: "manage",
+      id: libraryId,
+      kind: "shared",
+      name: "Common Sources",
+    }]);
+    expect(page.canManageDocument({ sourceLibraryId: libraryId })).toBe(true);
+    expect(page.canManageDocument({
+      sourceLibraryId: "00000000-0000-4000-8000-000000000599",
+    })).toBe(false);
+    const catalogUrl = new URL(fetchMock.mock.calls[1][0], "https://localhost");
+    expect(catalogUrl.searchParams.get("sourceLibraryId")).toBe(libraryId);
+  });
+
+  it("keeps shared sources separate from document collections", async () => {
+    const fragment = await readFile(
+      new URL("../web/fragments/documents.html", import.meta.url),
+      "utf8",
+    );
+
+    expect(fragment).toContain(">Shared sources</p>");
+    expect(fragment).toContain("sharedSourceLibraries");
+    expect(fragment).toContain("selectSharedSource(library.id)");
+    expect(fragment).not.toContain("Add documents");
+    expect(fragment).not.toContain("Workspace access");
+    expect(fragment).not.toContain("Private collections");
+  });
 });
+
+function createDocumentsPage() {
+  let pageFactory = null;
+  registerPage({
+    data(_name, factory) {
+      pageFactory = factory;
+    },
+  });
+  return pageFactory();
+}
+
+function buildEmptyCatalog() {
+  return {
+    attention: { documents: [], total: 0 },
+    documents: [],
+    facets: {
+      failed: 0,
+      pending: 0,
+      processing: 0,
+      queryable: 0,
+      queryableTags: [],
+      ready: 0,
+      reindexRequired: 0,
+      running: 0,
+      tags: [],
+      total: 0,
+      untagged: 0,
+      uploads: 0,
+    },
+    page: 1,
+    pageSize: 25,
+    total: 0,
+  };
+}
 
 function buildIndexingCatalog(indexingActivity) {
   const document = {
@@ -132,6 +246,7 @@ function buildIndexingCatalog(indexingActivity) {
     phase: "normalized",
     queryStatus: "running",
     sourceFile: "/documents/report.pdf",
+    sourceLibraryId: "00000000-0000-4000-8000-000000000501",
     status: "running",
     tables: 1,
     tags: [],

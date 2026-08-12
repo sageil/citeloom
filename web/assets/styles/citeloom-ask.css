@@ -7,7 +7,7 @@
 .question-input-actions { justify-content: space-between; margin-top: 8px; }
 .tag-scope-field, .tag-scope-options { display: grid; gap: 7px; }
 .tag-scope-picker { position: relative; }
-.tag-scope-control { display: flex; min-height: 42px; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); }
+.tag-scope-control { display: flex; min-height: 42px; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--control-background); }
 .tag-scope-chips { display: flex; flex: 1; flex-wrap: wrap; gap: 6px; padding: 6px; }
 .tag-scope-label, .tag-scope-help { color: var(--muted); font-size: 10px; }
 .tag-scope-placeholder { align-self: center; color: var(--muted); font-size: 11px; font-weight: 500; }
@@ -61,6 +61,12 @@
 .ask-mode .ask-control-rail { position: sticky; top: 0; grid-column: 1; grid-row: 1 / span 2; }
 .ask-mode .question-mode-switch { margin: 0; padding: 6px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; }
 .ask-mode .question-mode-switch > button { min-width: 0; padding-inline: 8px; font-size: 10px; white-space: nowrap; }
+.ask-workspace-context { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 8px; padding: 11px 14px; border-bottom: 1px solid var(--border); color: var(--muted); }
+.ask-workspace-context .citeloom-icon { color: var(--cyan); }
+.ask-workspace-context > span { display: grid; min-width: 0; gap: 2px; }
+.ask-workspace-context small { font-size: 8px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+.ask-workspace-context strong { color: var(--text-soft); font-size: 11px; font-weight: 650; }
+.discovery-mode .ask-workspace-context { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 8px 8px; }
 .research-thread-bar { display: grid; gap: 18px; padding: 18px 14px; }
 .research-context-heading, .research-history > summary, .research-thread-menu > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .research-context-heading strong { font-size: 13px; }
@@ -76,7 +82,7 @@
 .research-thread-menu > div { margin-top: 8px; padding-left: 22px; }
 .research-thread-menu > div > .text-action { justify-self: start; font-size: 10px; }
 .research-thread-bar label, .ask-rail-field-label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 600; }
-.research-thread-bar select, .ask-rail-scope select { width: 100%; min-height: 38px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 11px; }
+.research-thread-bar select, .ask-rail-scope select { width: 100%; }
 .ask-rail-tag-picker { overflow: hidden; border: 1px solid var(--border); border-radius: 7px; }
 .ask-rail-tag-picker > summary { display: flex; min-height: 34px; align-items: center; justify-content: space-between; gap: 8px; padding: 0 9px; color: var(--text-soft); cursor: pointer; font-size: 10px; list-style: none; }
 .ask-rail-tag-picker > summary::-webkit-details-marker { display: none; }

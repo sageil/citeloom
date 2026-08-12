@@ -6,8 +6,8 @@ import { publishedAnswerDocumentSchema } from "../src/answers/published-schema.j
 import {
   formatDocumentLocationLabel,
   readAskEvidencePanelPlacement,
-  readAnswerPresentation,
-} from "../web/assets/scripts/citeloom-ask.js";
+} from "../web/assets/scripts/ask.js";
+import { readAnswerPresentation } from "../web/assets/scripts/ask-schema.js";
 import {
   buildSourceLocation,
   buildTableStructure,
@@ -29,15 +29,11 @@ describe("ask answer presentation", () => {
   });
 
   it("uses the research notebook workspace for Ask", async () => {
-    const [fragment, index, stylesheet, shellScript] = await Promise.all([
+    const [fragment, index, stylesheet] = await Promise.all([
       readFile(new URL("../web/fragments/ask.html", import.meta.url), "utf8"),
       readFile(new URL("../web/index.html", import.meta.url), "utf8"),
       readFile(
         new URL("../web/assets/styles/citeloom-ask.css", import.meta.url),
-        "utf8",
-      ),
-      readFile(
-        new URL("../web/assets/scripts/citeloom-app.js", import.meta.url),
         "utf8",
       ),
     ]);
@@ -65,7 +61,6 @@ describe("ask answer presentation", () => {
     expect(stylesheet).toContain(
       "grid-template-columns: 220px minmax(0, 1fr) 290px;",
     );
-    expect(shellScript).toContain("this.activeView !== \"ask\"");
   });
 
   it("places exact evidence above its citation without covering it", () => {

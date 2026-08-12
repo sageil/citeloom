@@ -95,64 +95,6 @@
   transform: translate(-50%, 0);
 }
 
-.citeloom-notice {
-  position: fixed;
-  z-index: 90;
-  top: 24px;
-  right: auto;
-  left: 50%;
-  align-items: start;
-  width: min(420px, calc(100vw - 36px));
-  max-height: calc(100vh - 36px);
-  margin: 0;
-  overflow: hidden;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
-  transform: translateX(-50%);
-}
-
-.citeloom-notice > span {
-  min-width: 0;
-  max-height: calc(100vh - 60px);
-  overflow: auto;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.citeloom-notice.error {
-  width: min(480px, calc(100vw - 32px));
-  min-height: 72px;
-  max-height: calc(100vh - 48px);
-  gap: 18px;
-  padding: 20px;
-  overflow: auto;
-  border-color: rgba(248, 113, 113, 0.82);
-  border-radius: 10px;
-  background: rgba(30, 17, 26, 0.98);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.46);
-  color: #fff1f2;
-  font-family: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 1.45;
-}
-
-.citeloom-notice.error > .citeloom-icon {
-  width: 28px;
-  height: 28px;
-  margin-top: 1px;
-  color: var(--danger);
-}
-
-.citeloom-notice.error > span {
-  max-height: none;
-  overflow: visible;
-}
-
-.citeloom-notice.error .icon-button {
-  margin: -7px -7px 0 0;
-  color: #fff1f2;
-}
-
 .citeloom-system-health-unavailable {
   grid-template-columns: auto minmax(0, 1fr) auto;
   margin-top: 0;

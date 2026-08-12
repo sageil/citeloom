@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { readSystemHealthDashboard } from "../web/assets/scripts/citeloom-dashboard-extensions.js";
-import { registerPage } from "../web/assets/scripts/citeloom-system-health.js";
+import { readSystemHealthDashboard } from "../web/assets/scripts/dashboard-extensions.js";
+import { registerPage } from "../web/assets/scripts/system-health.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();

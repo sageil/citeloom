@@ -8,7 +8,7 @@ import {
   SourceContentMigrationConflictError,
   SourceContentMigrationNotFoundError,
 } from "../documents/storage/source-content-migration-store.js";
-import { requireAdministratorPrincipal } from "./authentication-routes.js";
+import { requireGlobalAdministratorPrincipal } from "./authentication-routes.js";
 import {
   decodeSourceContentMigrationId,
   decodeSourceContentMigrationRequest,
@@ -33,13 +33,13 @@ export function registerSourceContentStorageRoutes(
   const { requestPrincipals, services } = options;
 
   server.get("/api/source-content-storage", async (request) => {
-    requireAdministratorPrincipal(requestPrincipals, request);
+    requireGlobalAdministratorPrincipal(requestPrincipals, request);
     const overview = await services.readSourceContentStorage();
     return buildSourceContentStorageResponse(overview);
   });
 
   server.post("/api/source-content-storage/probes", async (request) => {
-    requireAdministratorPrincipal(requestPrincipals, request);
+    requireGlobalAdministratorPrincipal(requestPrincipals, request);
     const target = decodeSourceContentStorageProbe(request.body);
     try {
       await services.testSourceContentStorage(target);
@@ -55,7 +55,7 @@ export function registerSourceContentStorageRoutes(
   server.post(
     "/api/source-content-storage/migrations",
     async (request, reply) => {
-      const principal = requireAdministratorPrincipal(
+      const principal = requireGlobalAdministratorPrincipal(
         requestPrincipals,
         request,
       );
@@ -77,7 +77,7 @@ export function registerSourceContentStorageRoutes(
   server.post(
     "/api/source-content-storage/migrations/:id/cancellation",
     async (request) => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       const id = decodeSourceContentMigrationId(request.params);
       try {
         const migration = await services.cancelSourceContentMigration(id);

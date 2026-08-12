@@ -72,6 +72,7 @@ export interface DocumentCatalogOptions {
   clock?: Clock;
   leaseDurationMs?: number;
   newLeaseOwnerId?: () => string;
+  workspaceId?: string | null;
 }
 
 export class DocumentCatalog {
@@ -85,7 +86,10 @@ export class DocumentCatalog {
     options: DocumentCatalogOptions = {},
   ) {
     this.clock = options.clock ?? systemClock;
-    this.documents = new CatalogDocumentStore(database);
+    this.documents = new CatalogDocumentStore(
+      database,
+      options.workspaceId ?? null,
+    );
     this.jobs = new CatalogJobStore(
       database,
       this.clock,

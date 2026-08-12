@@ -31,6 +31,7 @@ import {
   SourceContentStore,
   type StoredSourceDocumentReference,
 } from "../documents/storage/source-content-store.js";
+import { readDefaultSourceLibraryId } from "../workspaces/source-library-access.js";
 
 export interface IngestOptions {
   enqueue: boolean;
@@ -139,6 +140,7 @@ interface DocumentSourceProcessingInput {
   processor: IngestionProcessor;
   reportProgress: (message: string) => void;
   sourceFiles: string[];
+  sourceLibraryId: string | null;
   sources: IngestionDocument[];
 }
 
@@ -195,12 +197,19 @@ export async function ingestDocuments(
   const sourceFiles = await discoverDocumentFiles(inputPaths, options.recursive);
   const databaseSession = await openDatabase(config.database);
   try {
+    const sourceLibraryId = await readDefaultSourceLibraryId(
+      databaseSession.database,
+    );
     return await ingestDiscoveredDocuments(
       config,
       sourceFiles,
       options,
       reportProgress,
       databaseSession.database,
+      undefined,
+      null,
+      null,
+      sourceLibraryId,
     );
   } finally {
     await databaseSession.close();
@@ -214,6 +223,7 @@ export async function ingestDocumentsWithRuntime(
   reportProgress: (message: string) => void,
   duplicateSourceRoot: string | null = null,
   uploadedByUserId: string | null = null,
+  sourceLibraryId: string | null = null,
 ): Promise<BulkIngestResult> {
   const sourceFiles = await discoverDocumentFiles(inputPaths, options.recursive);
   return ingestDiscoveredDocuments(
@@ -225,6 +235,7 @@ export async function ingestDocumentsWithRuntime(
     runtime,
     duplicateSourceRoot,
     uploadedByUserId,
+    sourceLibraryId,
   );
 }
 
@@ -237,6 +248,7 @@ async function ingestDiscoveredDocuments(
   runtime?: ApplicationRuntime,
   duplicateSourceRoot: string | null = null,
   uploadedByUserId: string | null = null,
+  sourceLibraryId: string | null = null,
 ): Promise<BulkIngestResult> {
   const processor = createIngestionProcessor(
     config,
@@ -267,6 +279,7 @@ async function ingestDiscoveredDocuments(
       processor,
       reportProgress,
       sourceFiles: [sourceFile],
+      sourceLibraryId,
       sources: [source],
     });
     result.documents.push(...sourceResult.documents);
@@ -282,6 +295,7 @@ export async function ingestStagedDocumentsWithRuntime(
   reportProgress: (message: string) => void,
   duplicateSourceRoot: string,
   uploadedByUserId: string,
+  sourceLibraryId: string | null,
 ): Promise<BulkIngestResult> {
   if (!options.enqueue) {
     throw new Error("Web uploads must be queued for worker ingestion.");
@@ -313,6 +327,7 @@ export async function ingestStagedDocumentsWithRuntime(
       processor,
       reportProgress,
       sourceFiles: [document.sourceFile],
+      sourceLibraryId,
       sources: [document],
     });
     result.documents.push(...sourceResult.documents);
@@ -342,6 +357,7 @@ async function processDocumentSources(
         maxAttempts: input.config.retry.maxAttempts,
         requestedTags: input.options.tags,
         sourceFile: source.sourceFile,
+        sourceLibraryId: input.sourceLibraryId,
         uploadedByUserId: input.uploadedByUserId,
       });
     } catch (error: unknown) {
@@ -611,6 +627,7 @@ async function queueStoredDocumentReindex(
     processor,
     reportProgress,
     sourceFiles: [indexedDocument.sourceFile],
+    sourceLibraryId: indexedDocument.sourceLibraryId,
     sources: [source],
   });
   return buildReindexResult(indexedDocument, result);

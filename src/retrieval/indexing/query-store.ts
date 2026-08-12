@@ -8,7 +8,11 @@ import type {
   RetrievalConfig,
   RetrievalMode,
 } from "../../config/index.js";
-import type { CiteLoomDatabase, SqlQueryExecutor } from "../../database/client.js";
+import type {
+  CiteLoomDatabase,
+  CiteLoomDatabaseExecutor,
+  SqlQueryExecutor,
+} from "../../database/client.js";
 import {
   indexedDocumentSpaces,
 } from "../../database/schema.js";
@@ -1466,7 +1470,7 @@ function runRetrievalTransaction<Result>(
   database: CiteLoomDatabase,
   abortSignal: AbortSignal,
   operation: (
-    operationDatabase: CiteLoomDatabase,
+    operationDatabase: CiteLoomDatabaseExecutor,
     operationQuery: SqlQueryExecutor,
   ) => Promise<Result>,
 ): Promise<Result> {

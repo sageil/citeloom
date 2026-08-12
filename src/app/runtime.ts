@@ -152,6 +152,42 @@ export async function buildApplicationRuntime(
   }
 }
 
+export function createApplicationRuntimeView(
+  runtime: ApplicationRuntime,
+  config: AppConfig,
+): ApplicationRuntime {
+  const runtimeConfig = freezeApplicationConfig(config);
+  const models = createInferenceModelRegistry(runtimeConfig, runtime.database);
+  const schedulers = new Map<string, TaskScheduler>();
+  const scheduler = (
+    capability: ScheduledProviderCapability,
+    workload: WorkloadClass,
+  ): TaskScheduler => {
+    const key = `${capability}:${workload}`;
+    const existing = schedulers.get(key);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const created = createRuntimeTaskScheduler(
+      runtimeConfig,
+      runtime.inferenceCoordinator,
+      capability,
+      workload,
+    );
+    schedulers.set(key, created);
+    return created;
+  };
+  return Object.freeze({
+    close: async () => undefined,
+    config: runtimeConfig,
+    database: runtime.database,
+    inferenceCoordinator: runtime.inferenceCoordinator,
+    models,
+    query: runtime.query,
+    scheduler,
+  });
+}
+
 export class ApplicationRuntimeManager {
   private readonly closeErrors: unknown[] = [];
   private closing = false;
@@ -209,6 +245,20 @@ export class ApplicationRuntimeManager {
 
   public streamWithRuntime<T>(
     operation: (runtime: ApplicationRuntime) => ReadableStream<T>,
+  ): ReadableStream<T> {
+    const lease = this.acquire();
+    const bridge = new RuntimeStreamBridge(lease, operation);
+    return new ReadableStream<T>({
+      cancel: (reason) => bridge.cancel(reason),
+      pull: (controller) => bridge.pull(controller),
+      start: (controller) => bridge.start(controller),
+    });
+  }
+
+  public streamWithRuntimeAsync<T>(
+    operation: (
+      runtime: ApplicationRuntime,
+    ) => Promise<ReadableStream<T>>,
   ): ReadableStream<T> {
     const lease = this.acquire();
     const bridge = new RuntimeStreamBridge(lease, operation);
@@ -331,7 +381,7 @@ class RuntimeStreamBridge<T> {
     private readonly lease: RuntimeLease,
     private readonly operation: (
       runtime: ApplicationRuntime,
-    ) => ReadableStream<T>,
+    ) => ReadableStream<T> | Promise<ReadableStream<T>>,
   ) {}
 
   public async cancel(reason: unknown): Promise<void> {
@@ -342,9 +392,11 @@ class RuntimeStreamBridge<T> {
     }
   }
 
-  public start(controller: ReadableStreamDefaultController<T>): void {
+  public async start(
+    controller: ReadableStreamDefaultController<T>,
+  ): Promise<void> {
     try {
-      const stream = this.operation(this.lease.runtime);
+      const stream = await this.operation(this.lease.runtime);
       this.reader = stream.getReader();
     } catch (error: unknown) {
       controller.error(error);

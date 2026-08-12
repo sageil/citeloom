@@ -1,0 +1,353 @@
+.settings-administration-content {
+  display: grid;
+  gap: 18px;
+}
+
+.settings-administration-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.72fr) minmax(420px, 1.28fr);
+  gap: 16px;
+}
+
+.settings-administration-create,
+.settings-administration-list,
+.settings-administration-record {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+}
+
+.settings-administration-create,
+.settings-administration-list {
+  padding: 20px;
+}
+
+.settings-administration-create {
+  align-content: start;
+  display: grid;
+  gap: 18px;
+}
+
+.settings-administration-create > header,
+.settings-administration-list > header,
+.settings-administration-record > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-administration-create > header {
+  justify-content: flex-start;
+}
+
+.settings-administration-create h2,
+.settings-administration-create p,
+.settings-administration-list h2,
+.settings-administration-list p,
+.settings-administration-record h3,
+.settings-administration-record p {
+  margin: 0;
+}
+
+.settings-administration-create header p,
+.settings-administration-list header p,
+.settings-administration-record header p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-administration-create form {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-administration-create input {
+  height: 42px;
+  min-height: 42px;
+}
+
+.settings-administration-create form .button {
+  justify-self: end;
+}
+
+.settings-administration-create > .button {
+  justify-self: end;
+}
+
+.settings-administration-list {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+
+.settings-administration-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 150px;
+  padding: 22px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.settings-administration-empty > svg {
+  width: 28px;
+  height: 28px;
+  color: var(--cyan);
+}
+
+.settings-administration-empty > div {
+  display: grid;
+  gap: 5px;
+}
+
+.settings-administration-empty strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.settings-administration-empty span {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.settings-administration-records {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-administration-record {
+  overflow: hidden;
+}
+
+.settings-administration-record > header {
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-administration-identity {
+  min-width: 180px;
+  flex: 1;
+}
+
+.settings-administration-actions,
+.settings-administration-rename {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-administration-actions .button,
+.settings-administration-rename .button {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+.settings-administration-rename {
+  justify-content: flex-start;
+}
+
+.settings-administration-rename input {
+  min-width: 180px;
+  height: 36px;
+  flex: 1;
+}
+
+.settings-administration-record h3 {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.settings-source-library-grants {
+  display: grid;
+}
+
+.settings-administration-archived-note {
+  padding: 14px 16px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.settings-administration-record.archived > header {
+  border-bottom-color: var(--border);
+}
+
+.settings-workspace-administration-workbench .settings-administration-record > header {
+  border-bottom: 0;
+}
+
+.workspace-create-configuration {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.workspace-create-configuration legend {
+  margin-bottom: 2px;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.workspace-create-configuration-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 10px;
+  padding: 11px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--control-background);
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.workspace-create-configuration-option.selected {
+  border-color: var(--cyan);
+  background: var(--control-background);
+  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.12);
+}
+
+.workspace-create-configuration-option input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--cyan-bright);
+}
+
+.workspace-create-configuration-option > span {
+  display: grid;
+  gap: 3px;
+}
+
+.workspace-create-configuration-option strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.workspace-create-configuration-option small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.5;
+}
+
+.workspace-create-source {
+  margin-top: 2px;
+  padding-left: 36px;
+}
+
+@media (max-width: 680px) {
+  .workspace-create-source {
+    padding-left: 0;
+  }
+}
+
+.settings-workspace-management-workbench .workspace-user-management {
+  display: grid;
+  gap: 18px;
+}
+
+.settings-workspace-management-workbench .access-users-panel {
+  border-radius: 8px;
+  background: transparent;
+}
+
+.settings-workspace-details-form {
+  width: 100%;
+}
+
+.settings-workspace-name-control {
+  display: grid;
+  grid-template-columns: minmax(240px, 48rem) auto;
+  align-items: stretch;
+  justify-content: start;
+  gap: 16px;
+}
+
+.settings-workspace-name-control .button {
+  background: transparent;
+}
+
+.settings-source-library-grants > label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-source-library-grants > label:last-child {
+  border-bottom: 0;
+}
+
+.settings-source-library-grants > label > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.settings-source-library-grants strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.settings-source-library-grants small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1100px) {
+  .settings-administration-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .settings-administration-create,
+  .settings-administration-list {
+    padding: 16px;
+  }
+
+  .settings-administration-create form .button {
+    width: 100%;
+  }
+
+  .settings-administration-list > header,
+  .settings-administration-record > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .settings-administration-actions,
+  .settings-administration-rename {
+    justify-content: flex-start;
+  }
+
+  .settings-workspace-name-control {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-workspace-name-control .button {
+    width: 100%;
+  }
+
+  .settings-source-library-grants > label {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+}

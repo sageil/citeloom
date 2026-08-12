@@ -128,6 +128,7 @@ function buildDocument(
     indexedAt: "2026-08-04T00:00:00.000Z",
     pageCount: 1,
     sourceFile,
+    sourceLibraryId: null,
     tables: 0,
     tags,
     textChunks: 1,

@@ -9,6 +9,10 @@ import * as schema from "./schema.js";
 import { readSqlQuery, type SqlQueryName } from "./sql-queries.js";
 
 export type CiteLoomDatabase = NodePgDatabase<typeof schema>;
+export type CiteLoomTransaction = Parameters<
+  Parameters<CiteLoomDatabase["transaction"]>[0]
+>[0];
+export type CiteLoomDatabaseExecutor = CiteLoomDatabase | CiteLoomTransaction;
 
 export interface DatabaseSession {
   close: () => Promise<void>;
@@ -30,7 +34,7 @@ export interface SqlQueryExecutor {
   ) => Promise<Result>;
   withTransaction?: <Result>(
     operation: (
-      database: CiteLoomDatabase,
+      database: CiteLoomTransaction,
       query: SqlQueryExecutor,
     ) => Promise<Result>,
     options?: SqlQueryExecutionOptions,
@@ -106,7 +110,7 @@ export async function openDatabase(
       },
       withTransaction: async <Result>(
         operation: (
-          operationDatabase: CiteLoomDatabase,
+          operationDatabase: CiteLoomTransaction,
           operationQuery: SqlQueryExecutor,
         ) => Promise<Result>,
         options: SqlQueryExecutionOptions = {},
@@ -119,10 +123,7 @@ export async function openDatabase(
             const operationDatabase = drizzle(client, { schema });
             const operationQuery = createClientQueryExecutor(client, options);
             return operationDatabase.transaction(async (transaction) => {
-              return operation(
-                transaction as unknown as CiteLoomDatabase,
-                operationQuery,
-              );
+              return operation(transaction, operationQuery);
             }, {
               accessMode: "read only",
               isolationLevel: "repeatable read",

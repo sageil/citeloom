@@ -2,18 +2,21 @@ import { randomUUID } from "node:crypto";
 
 import { and, asc, count, desc, eq, gt } from "drizzle-orm";
 
-import type { CiteLoomDatabase } from "../database/client.js";
+import type { CiteLoomDatabaseExecutor } from "../database/client.js";
+import { DEFAULT_WORKSPACE_SECURITY_POLICY } from "../domain/security-policy-defaults.js";
 import {
   userSetupTokens,
   users,
   workspaceMemberships,
   workspaceSecurityPolicies,
   workspaceSecurityPolicyChanges,
+  workspaces,
 } from "../database/schema.js";
 import type { UpdateWorkspaceSecurityPolicyInput } from "./boundary.js";
 import type {
   AuthenticatedPrincipal,
   WorkspacePasswordPolicy,
+  WorkspaceSecurityAdministrator,
   WorkspaceSecurityOverview,
   WorkspaceSecurityPolicy,
 } from "./model.js";
@@ -21,13 +24,7 @@ import { requireWorkspaceAdministrator } from "./authorization.js";
 
 const recentPolicyChangeLimit = 10;
 
-export const DEFAULT_WORKSPACE_SECURITY_POLICY = {
-  minimumPasswordLength: 15,
-  requireLetterAndNumber: false,
-  requireSpecialCharacter: false,
-  resetLinkLifetimeSeconds: 24 * 60 * 60,
-  version: 1,
-} as const;
+export { DEFAULT_WORKSPACE_SECURITY_POLICY } from "../domain/security-policy-defaults.js";
 
 export class SecurityPolicyVersionConflictError extends Error {
   public constructor() {
@@ -38,7 +35,7 @@ export class SecurityPolicyVersionConflictError extends Error {
 
 export class WorkspaceSecurityPolicyStore {
   public constructor(
-    private readonly database: CiteLoomDatabase,
+    private readonly database: CiteLoomDatabaseExecutor,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
@@ -52,11 +49,16 @@ export class WorkspaceSecurityPolicyStore {
         requireSpecialCharacter: workspaceSecurityPolicies.requireSpecialCharacter,
       })
       .from(workspaceMemberships)
+      .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
       .leftJoin(
         workspaceSecurityPolicies,
         eq(workspaceSecurityPolicies.workspaceId, workspaceMemberships.workspaceId),
       )
-      .where(eq(workspaceMemberships.userId, userId));
+      .where(and(
+        eq(workspaceMemberships.access, "enabled"),
+        eq(workspaceMemberships.userId, userId),
+        eq(workspaces.state, "active"),
+      ));
 
     const effectivePolicy: WorkspacePasswordPolicy = {
       minimumPasswordLength: 0,
@@ -70,8 +72,10 @@ export class WorkspaceSecurityPolicyStore {
         effectivePolicy.minimumPasswordLength,
         minimumPasswordLength,
       );
-      effectivePolicy.requireLetterAndNumber ||= row.requireLetterAndNumber ?? false;
-      effectivePolicy.requireSpecialCharacter ||= row.requireSpecialCharacter ?? false;
+      effectivePolicy.requireLetterAndNumber ||= row.requireLetterAndNumber
+        ?? DEFAULT_WORKSPACE_SECURITY_POLICY.requireLetterAndNumber;
+      effectivePolicy.requireSpecialCharacter ||= row.requireSpecialCharacter
+        ?? DEFAULT_WORKSPACE_SECURITY_POLICY.requireSpecialCharacter;
     }
     if (effectivePolicy.minimumPasswordLength === 0) {
       effectivePolicy.minimumPasswordLength = DEFAULT_WORKSPACE_SECURITY_POLICY
@@ -83,7 +87,7 @@ export class WorkspaceSecurityPolicyStore {
   public async readOverview(
     principal: AuthenticatedPrincipal,
   ): Promise<WorkspaceSecurityOverview> {
-    requireWorkspaceAdministrator(principal);
+    requireWorkspaceAdministrator(principal, principal.workspaceId);
     return this.readOverviewForWorkspace(principal.workspaceId);
   }
 
@@ -97,7 +101,7 @@ export class WorkspaceSecurityPolicyStore {
     principal: AuthenticatedPrincipal,
     input: UpdateWorkspaceSecurityPolicyInput,
   ): Promise<WorkspaceSecurityOverview> {
-    requireWorkspaceAdministrator(principal);
+    requireWorkspaceAdministrator(principal, principal.workspaceId);
     const now = this.now();
     await this.database.transaction(async (transaction) => {
       await transaction.insert(workspaceSecurityPolicies).values({
@@ -193,6 +197,7 @@ export class WorkspaceSecurityPolicyStore {
         .from(workspaceMemberships)
         .innerJoin(users, eq(users.id, workspaceMemberships.userId))
         .where(and(
+          eq(workspaceMemberships.access, "enabled"),
           eq(workspaceMemberships.workspaceId, workspaceId),
           eq(workspaceMemberships.role, "admin"),
         ))
@@ -223,9 +228,20 @@ export class WorkspaceSecurityPolicyStore {
         .limit(recentPolicyChangeLimit),
     ]);
 
+    const normalizedAdministrators: WorkspaceSecurityAdministrator[] = [];
+    for (const administrator of administrators) {
+      normalizedAdministrators.push({
+        displayName: administrator.displayName,
+        role: "admin",
+        state: administrator.state,
+        userId: administrator.userId,
+        username: administrator.username,
+      });
+    }
+
     return {
       activeResetLinkCount: resetLinkCounts[0]?.value ?? 0,
-      administrators,
+      administrators: normalizedAdministrators,
       policy,
       recentChanges: recentChanges.map((change) => ({
         ...change,
@@ -236,7 +252,7 @@ export class WorkspaceSecurityPolicyStore {
 }
 
 async function readWorkspaceSecurityPolicy(
-  database: CiteLoomDatabase,
+  database: CiteLoomDatabaseExecutor,
   workspaceId: string,
 ): Promise<WorkspaceSecurityPolicy> {
   const rows = await database

@@ -65,6 +65,75 @@
   color: var(--muted);
 }
 
+.security-user-accounts.access-card {
+  overflow: visible;
+  background: transparent;
+}
+
+.security-account-status {
+  margin: 16px 0 0;
+  color: var(--cyan-bright);
+  font-size: 12px;
+}
+
+.security-password-link {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.7fr) minmax(240px, 1.3fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.security-password-link > span {
+  display: grid;
+  gap: 4px;
+}
+
+.security-password-link strong {
+  font-size: 12px;
+}
+
+.security-password-link small,
+.security-user-workspaces,
+.access-user-actions > div > small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.security-password-link output {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+}
+
+.security-user-table .access-user-table-heading,
+.security-user-table .access-user-row {
+  grid-template-columns: minmax(240px, 1fr) 110px minmax(120px, 0.45fr) 126px;
+}
+
+.security-user-workspaces {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+}
+
+.access-user-actions > div > small {
+  display: block;
+  padding: 0 14px 12px;
+  line-height: 1.45;
+}
+
+.access-user-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .security-load-failed {
   display: flex;
   align-items: center;
@@ -79,48 +148,28 @@
 
 .security-content {
   display: grid;
-  grid-template-columns: minmax(650px, 1.35fr) minmax(470px, 0.85fr);
+  grid-template-columns: minmax(0, 1fr);
   overflow: visible;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(8, 14, 28, 0.46);
+  background: transparent;
 }
 
-.security-users-column,
 .security-policy-column {
   min-width: 0;
   padding: 32px;
 }
 
-.security-users-column {
-  border-right: 1px solid var(--border);
-}
-
-.security-users-column .workspace-user-management,
 .security-policy-column {
   display: grid;
   align-content: start;
   gap: 30px;
 }
-
-.security-users-column .access-users-panel {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.security-users-column .access-users-heading {
-  align-items: start;
-}
-
-.security-users-column .access-users-heading h2,
 .security-section-heading h2 {
   font-size: 20px;
   letter-spacing: -0.025em;
 }
 
-.security-users-column .access-users-heading p,
 .security-section-heading p,
 .security-history-empty {
   color: var(--muted);
@@ -128,53 +177,10 @@
   line-height: 1.55;
 }
 
-.security-users-column .access-user-table {
-  margin-top: 28px;
-}
-
-.security-users-column .access-user-table-heading,
-.security-users-column .access-user-row {
-  grid-template-columns: minmax(190px, 1.45fr) minmax(90px, 0.58fr) 120px 122px;
-  gap: 18px;
-}
-
-.security-users-column .access-user-row {
-  min-height: 86px;
-}
-
-.security-users-column .access-user-actions > div {
-  right: 0;
-}
-
-.security-users-column .access-users-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.access-administrator-invariant {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-}
-
-.access-administrator-invariant .citeloom-icon {
-  color: var(--cyan-bright);
-}
-
-.security-users-column .access-setup-success {
-  grid-template-columns: auto minmax(150px, 0.7fr) minmax(180px, 1fr) auto;
-  margin-bottom: 0;
-}
-
-.security-users-column .access-user-load-failed {
-  grid-column: 1 / -1;
-  margin: 16px 0;
-}
-
 .security-policy-panel {
+  --security-policy-control-inset: 16px;
+  --security-policy-control-width: 126px;
+
   display: grid;
   align-content: start;
   gap: 26px;
@@ -191,13 +197,15 @@
 
 .security-policy-field {
   display: grid;
-  grid-template-columns: 54px minmax(0, 1fr) minmax(150px, auto);
+  grid-template-columns:
+    54px minmax(0, 1fr) var(--security-policy-control-width)
+    var(--security-policy-control-inset);
   align-items: center;
   min-height: 72px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(5, 10, 22, 0.56);
+  background: transparent;
 }
 
 .security-field-icon {
@@ -229,19 +237,21 @@
   line-height: 1.45;
 }
 
-.security-policy-field select,
 .security-number-control {
-  min-width: 145px;
-  margin-right: 10px;
+  grid-column: 3;
+  width: 100%;
+  height: 38px;
+  min-width: 0;
   border: 1px solid rgba(100, 116, 139, 0.46);
   border-radius: 8px;
-  background: rgba(5, 10, 22, 0.72);
+  background: var(--control-background);
   color: var(--text);
 }
 
 .security-policy-field select {
-  height: 40px;
-  padding: 0 10px;
+  grid-column: 3;
+  width: 100%;
+  min-width: 0;
 }
 
 .security-number-control {
@@ -253,7 +263,7 @@
 
 .security-number-control input {
   width: 52px;
-  height: 38px;
+  height: 100%;
   padding: 0 6px;
   border: 0;
   border-right: 1px solid var(--border);
@@ -318,7 +328,7 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding-top: 2px;
+  padding: 2px var(--security-policy-control-inset) 0 0;
 }
 
 .security-policy-actions .button,
@@ -374,7 +384,7 @@
   padding: 30px 32px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(8, 14, 28, 0.34);
+  background: transparent;
 }
 
 .security-history ol {
@@ -415,17 +425,6 @@
   font-size: 11px;
 }
 
-@media (max-width: 1260px) {
-  .security-content {
-    grid-template-columns: 1fr;
-  }
-
-  .security-users-column {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-}
-
 @media (max-width: 760px) {
   .security-page {
     gap: 28px;
@@ -441,14 +440,14 @@
     justify-self: start;
   }
 
-  .security-users-column,
   .security-policy-column,
   .security-history {
     padding: 22px 18px;
   }
 
   .security-policy-field {
-    grid-template-columns: 48px 1fr;
+    grid-template-columns:
+      48px minmax(0, 1fr) var(--security-policy-control-inset);
     padding-bottom: 12px;
   }
 
@@ -463,8 +462,8 @@
   .security-policy-field select,
   .security-number-control {
     grid-column: 2;
-    width: calc(100% - 14px);
-    margin: 0 14px 0 0;
+    width: 100%;
+    margin: 0;
   }
 
   .security-reset-summary,
@@ -485,8 +484,20 @@
     flex: 1;
   }
 
-  .security-users-column .access-users-footer {
-    align-items: flex-start;
-    flex-direction: column;
+  .security-password-link {
+    grid-template-columns: 1fr;
+  }
+
+  .security-password-link .button {
+    width: 100%;
+  }
+
+  .security-user-table .access-user-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .security-user-table .security-user-workspaces,
+  .security-user-table .access-user-actions {
+    grid-column: 1 / -1;
   }
 }

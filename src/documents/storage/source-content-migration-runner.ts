@@ -332,7 +332,7 @@ async function completeMigrationCutover(
     }
 
     await visitSourceContentDocumentsPublishedSince(
-      transaction as unknown as CiteLoomDatabase,
+      transaction,
       migration.createdAt,
       abortSignal,
       async (document) => {

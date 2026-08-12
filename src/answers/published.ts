@@ -495,7 +495,7 @@ export function renderPublishedAnswerSpeech(
 }
 
 export function escapeMarkdownText(value: string): string {
-  return value.replace(/[\\`*_{}\[\]()<>#+\-.!|]/g, "\\$&");
+  return value.replace(/[\\`*_{}[\]()<>#+\-.!|]/g, "\\$&");
 }
 
 function requireRetrievedEvidence(

@@ -49,6 +49,7 @@ export interface RuntimeSettingDefinition {
   sensitive?: boolean;
   step?: number;
   unit?: string;
+  workspaceConfigurable?: boolean;
 }
 
 export function setting(
@@ -73,6 +74,12 @@ export function panelSetting(
   panel: RuntimeSettingPanel,
 ): RuntimeSettingDefinition {
   return { ...definition, panel };
+}
+
+export function workspaceSetting(
+  definition: RuntimeSettingDefinition,
+): RuntimeSettingDefinition {
+  return { ...definition, workspaceConfigurable: true };
 }
 
 export function sensitiveSetting(

@@ -1,11 +1,13 @@
 import {
   runtimeSettingChangeExamples,
   runtimeSettingDefinitions,
+  isWorkspaceRuntimeSetting,
   type EffectiveApplicationSettings,
   type RuntimeSettingPanel,
 } from "../app/settings.js";
 import {
   providerSupportsAdaptiveContext,
+  PROVIDER_CAPABILITY_DEFINITIONS,
   readProviderConnectionConfiguration,
   type ProviderAuthenticationMethod,
   type ProviderCapability,
@@ -26,6 +28,8 @@ import {
   presentRuntimeSettingField,
   presentRuntimeSettingValue,
 } from "./runtime-settings-boundary.js";
+import type { EffectiveWorkspaceSettings } from "../workspaces/settings-store.js";
+import type { WorkspaceSummary } from "../auth/model.js";
 
 export interface RuntimeSettingFieldResponse {
   changeExample: string;
@@ -74,15 +78,36 @@ export interface EmbeddingInputFormatResponse {
 }
 
 export interface ApplicationSettingsResponse {
-  embeddingSpace: EmbeddingSpaceStatusResponse;
+  embeddingSpace: EmbeddingSpaceStatusResponse | null;
   embeddingInputFormats: EmbeddingInputFormatResponse[];
+  features: ProviderFeatureResponse[];
   fields: RuntimeSettingFieldResponse[];
   providers: ProviderSettingsResponse;
+  scope: SettingsScopeResponse;
   startupSettings: StartupSettingResponse[];
   updatedAt: string | null;
   version: number;
   warnings: string[];
 }
+
+export interface ProviderFeatureResponse {
+  capability: ProviderCapability;
+  description: string;
+  label: string;
+  source: "database" | "database-default";
+}
+
+export interface SettingsScopeResponse {
+  available: SettingsScopeOptionResponse[];
+  editableProviderConnections: boolean;
+  id: string;
+  kind: "organization" | "workspace";
+  label: string;
+}
+
+export type SettingsScopeOptionResponse =
+  | { id: "organization"; kind: "organization"; label: string }
+  | { id: string; kind: "workspace"; label: string };
 
 export interface EmbeddingSpaceStatusResponse {
   activeDocumentCount: number;
@@ -127,10 +152,17 @@ export function buildApplicationSettingsResponse(
   settings: EffectiveApplicationSettings,
   startupConfig: AppConfig,
   webConfig: WebConfig,
+  scope: SettingsScopeResponse = buildOrganizationSettingsScope(),
 ): ApplicationSettingsResponse {
+  const workspaceSettings = isEffectiveWorkspaceSettings(settings)
+    ? settings
+    : null;
   const fields: RuntimeSettingFieldResponse[] = [];
   for (const definition of runtimeSettingDefinitions) {
     if (definition.providerManagedSetting === true) {
+      continue;
+    }
+    if (scope.kind === "workspace" && !isWorkspaceRuntimeSetting(definition.key)) {
       continue;
     }
     const effectiveValue = presentRuntimeSettingValue(
@@ -190,20 +222,112 @@ export function buildApplicationSettingsResponse(
     });
   }
   return {
-    embeddingSpace: {
-      activeDocumentCount: settings.selectedEmbeddingSpaceDocumentCount,
-      dimensions: settings.config.embeddingSpace.dimensions,
-      id: settings.config.embeddingSpace.id,
-      totalDocumentCount: settings.indexedDocumentCount,
-    },
-    embeddingInputFormats: buildEmbeddingInputFormatResponses(settings),
+    embeddingSpace: scope.kind === "organization"
+      ? {
+        activeDocumentCount: settings.selectedEmbeddingSpaceDocumentCount,
+        dimensions: settings.config.embeddingSpace.dimensions,
+        id: settings.config.embeddingSpace.id,
+        totalDocumentCount: settings.indexedDocumentCount,
+      }
+      : null,
+    embeddingInputFormats: scope.kind === "organization"
+      ? buildEmbeddingInputFormatResponses(settings)
+      : [],
+    features: buildProviderFeatureResponses(scope, workspaceSettings),
     fields,
     providers: buildProviderSettingsResponse(settings),
-    startupSettings: buildStartupSettings(startupConfig, webConfig),
+    scope,
+    startupSettings: scope.kind === "organization"
+      ? buildStartupSettings(startupConfig, webConfig)
+      : [],
     updatedAt: settings.updatedAt,
     version: settings.version,
-    warnings: buildApplicationSettingsWarnings(settings),
+    warnings: scope.kind === "organization"
+      ? buildApplicationSettingsWarnings(settings)
+      : [],
   };
+}
+
+export function buildOrganizationSettingsScope(
+  workspaces: WorkspaceSummary[] = [],
+): SettingsScopeResponse {
+  return {
+    available: buildAvailableSettingsScopes(workspaces, true),
+    editableProviderConnections: true,
+    id: "organization",
+    kind: "organization",
+    label: "Organization",
+  };
+}
+
+export function buildWorkspaceSettingsScope(
+  workspace: WorkspaceSummary,
+  workspaces: WorkspaceSummary[],
+  includeOrganization: boolean,
+): SettingsScopeResponse {
+  return {
+    available: buildAvailableSettingsScopes(workspaces, includeOrganization),
+    editableProviderConnections: false,
+    id: workspace.id,
+    kind: "workspace",
+    label: workspace.name,
+  };
+}
+
+function buildAvailableSettingsScopes(
+  workspaces: WorkspaceSummary[],
+  includeOrganization: boolean,
+): SettingsScopeOptionResponse[] {
+  const available: SettingsScopeOptionResponse[] = [];
+  if (includeOrganization) {
+    available.push({
+      id: "organization",
+      kind: "organization",
+      label: "Organization",
+    });
+  }
+  for (const workspace of workspaces) {
+    if (workspace.role !== "admin") {
+      continue;
+    }
+    available.push({
+      id: workspace.id,
+      kind: "workspace",
+      label: workspace.name,
+    });
+  }
+  return available;
+}
+
+function buildProviderFeatureResponses(
+  scope: SettingsScopeResponse,
+  workspaceSettings: EffectiveWorkspaceSettings | null,
+): ProviderFeatureResponse[] {
+  const overridden = new Set(
+    workspaceSettings?.providerOverrideCapabilities ?? [],
+  );
+  const features: ProviderFeatureResponse[] = [];
+  for (const definition of PROVIDER_CAPABILITY_DEFINITIONS) {
+    if (scope.kind === "workspace" && !definition.workspaceConfigurable) {
+      continue;
+    }
+    features.push({
+      capability: definition.capability,
+      description: definition.description,
+      label: definition.label,
+      source: scope.kind === "workspace"
+        && !overridden.has(definition.capability)
+        ? "database-default"
+        : "database",
+    });
+  }
+  return features;
+}
+
+function isEffectiveWorkspaceSettings(
+  settings: EffectiveApplicationSettings,
+): settings is EffectiveWorkspaceSettings {
+  return "providerOverrideCapabilities" in settings;
 }
 
 function buildApplicationSettingsWarnings(

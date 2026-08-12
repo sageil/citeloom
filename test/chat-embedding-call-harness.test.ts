@@ -20,7 +20,9 @@ import { FakeHhemClient } from "./hhem-fixture.js";
 import { buildTestModelCapabilities } from "./model-capabilities-fixture.js";
 
 const principal: AuthenticatedPrincipal = {
+  dataScope: "workspace",
   displayName: "Harness User",
+  globalRole: "global_admin",
   role: "admin",
   sessionTokenDigest: "session-digest",
   userId: "00000000-0000-4000-8000-000000000001",

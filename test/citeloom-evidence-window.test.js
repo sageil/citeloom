@@ -8,7 +8,7 @@ import {
   prepareEvidenceWindow,
   revealEvidenceCitationTrigger,
   waitForEvidenceWindowLayout,
-} from "../web/assets/scripts/citeloom-evidence-window.js";
+} from "../web/assets/scripts/evidence-window.js";
 
 class FakeHtmlElement {
   constructor(bounds) {

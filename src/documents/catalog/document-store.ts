@@ -26,9 +26,13 @@ import type {
   ResolvedQueryScopeTarget,
 } from "../../domain/query-scope.js";
 import { contentIdSchema } from "../../domain/validation.js";
+import { buildAccessibleSourceLibraryCondition } from "../../workspaces/source-library-access.js";
 
 export class CatalogDocumentStore {
-  public constructor(private readonly database: CiteLoomDatabase) {}
+  public constructor(
+    private readonly database: CiteLoomDatabase,
+    private readonly workspaceId: string | null = null,
+  ) {}
 
   public async countDocumentReferences(documentId: string): Promise<number> {
     const indexedRows = await this.database
@@ -86,7 +90,10 @@ export class CatalogDocumentStore {
           eq(indexedDocumentSpaces.documentId, indexedDocuments.documentId),
         ),
       )
-      .where(eq(indexedDocumentSpaces.embeddingSpaceId, embeddingSpaceId));
+      .where(and(
+        eq(indexedDocumentSpaces.embeddingSpaceId, embeddingSpaceId),
+        this.indexedDocumentAccessCondition(),
+      ));
     const documents: IndexedDocument[] = [];
     for (const row of rows) {
       const document = decodeIndexedDocument(row.document);
@@ -116,6 +123,7 @@ export class CatalogDocumentStore {
         and(
           eq(indexedDocuments.documentId, documentId),
           eq(indexedDocuments.sourceFile, sourceFile),
+          this.indexedDocumentAccessCondition(),
         ),
       )
       .limit(1);
@@ -131,7 +139,8 @@ export class CatalogDocumentStore {
     if (availableDocuments.length === 0) {
       const rows = await this.database
         .select({ value: count() })
-        .from(indexedDocuments);
+        .from(indexedDocuments)
+        .where(this.indexedDocumentAccessCondition());
       const indexedDocumentCount = readCount(rows);
       if (indexedDocumentCount > 0) {
         throw new QueryScopeNotResolvedError(
@@ -196,6 +205,16 @@ export class CatalogDocumentStore {
       return null;
     }
     return contentIdSchema.parse(row.documentId);
+  }
+
+  private indexedDocumentAccessCondition() {
+    if (this.workspaceId === null) {
+      return undefined;
+    }
+    return buildAccessibleSourceLibraryCondition(
+      indexedDocuments.sourceLibraryId,
+      this.workspaceId,
+    );
   }
 }
 

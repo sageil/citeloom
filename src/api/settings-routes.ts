@@ -1,12 +1,13 @@
 import type { FastifyInstance } from "fastify";
 
+import { decodeWorkspaceId } from "../auth/boundary.js";
 import type { AuthenticatedPrincipal } from "../auth/model.js";
-import type { AppConfig } from "../config/index.js";
 import {
-  type EffectiveApplicationSettings,
-  SettingsValidationError,
-  SettingsVersionConflictError,
-} from "../app/settings.js";
+  WorkspaceAuthorizationError,
+  WorkspaceUnavailableError,
+} from "../auth/store.js";
+import type { AppConfig } from "../config/index.js";
+import { SettingsValidationError, SettingsVersionConflictError } from "../app/settings.js";
 import {
   EmbeddingInputFormatInUseError,
   EmbeddingInputFormatNotFoundError,
@@ -19,7 +20,11 @@ import {
   OpenAICodexDeviceAuthController,
 } from "../providers/openai-codex-device-auth.js";
 import { OpenAICodexOAuthError } from "../providers/openai-codex-oauth.js";
-import { requireAdministratorPrincipal } from "./authentication-routes.js";
+import {
+  requireGlobalAdministratorPrincipal,
+  requireRequestPrincipal,
+  requireWorkspaceAdministratorPrincipal,
+} from "./authentication-routes.js";
 import type { WebConfig } from "./config.js";
 import {
   decodeApplicationSettingsUpdate,
@@ -31,6 +36,8 @@ import {
 import type { WebServices } from "./services.js";
 import {
   buildApplicationSettingsResponse,
+  buildOrganizationSettingsScope,
+  buildWorkspaceSettingsScope,
   type ApplicationSettingsResponse,
 } from "./settings-response.js";
 
@@ -56,14 +63,68 @@ export function registerSettingsRoutes(
   server.get(
     "/api/settings",
     async (request): Promise<ApplicationSettingsResponse> => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      const principal = requireRequestPrincipal(requestPrincipals, request);
+      const workspaces = await services.listWorkspaces(principal);
+      if (principal.globalRole !== "global_admin") {
+        requireWorkspaceAdministratorPrincipal(
+          requestPrincipals,
+          request,
+          principal.workspaceId,
+        );
+        const workspace = requireSettingsWorkspace(
+          workspaces,
+          principal.workspaceId,
+        );
+        const settings = await readSettingsWorkspace(
+          services,
+          principal,
+          workspace.id,
+        );
+        return buildApplicationSettingsResponse(
+          settings,
+          config,
+          webConfig,
+          buildWorkspaceSettingsScope(workspace, [workspace], false),
+        );
+      }
       const settings = await services.readSettings();
-      return buildApplicationSettingsResponse(settings, config, webConfig);
+      return buildApplicationSettingsResponse(
+        settings,
+        config,
+        webConfig,
+        buildOrganizationSettingsScope(workspaces),
+      );
+    },
+  );
+
+  server.get(
+    "/api/workspaces/:workspaceId/settings",
+    async (request): Promise<ApplicationSettingsResponse> => {
+      const principal = requireRequestPrincipal(requestPrincipals, request);
+      const workspaceId = decodeWorkspaceId(request.params);
+      requireWorkspaceAdministratorPrincipal(
+        requestPrincipals,
+        request,
+        workspaceId,
+      );
+      const workspaces = await services.listWorkspaces(principal);
+      const workspace = requireSettingsWorkspace(workspaces, workspaceId);
+      const settings = await readSettingsWorkspace(
+        services,
+        principal,
+        workspaceId,
+      );
+      return buildApplicationSettingsResponse(
+        settings,
+        config,
+        webConfig,
+        buildSettingsWorkspaceScope(principal, workspace, workspaces),
+      );
     },
   );
 
   server.post("/api/embedding-input-formats", async (request, reply) => {
-    requireAdministratorPrincipal(requestPrincipals, request);
+    requireGlobalAdministratorPrincipal(requestPrincipals, request);
     const definition = decodeEmbeddingInputFormatDefinition(request.body);
     const format = await services.createEmbeddingInputFormat(definition);
     return reply.status(201).send({ id: format.id });
@@ -72,7 +133,7 @@ export function registerSettingsRoutes(
   server.post(
     "/api/embedding-input-formats/:id/copies",
     async (request, reply) => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       const id = decodeResourceId(request.params);
       const copy = decodeCopyEmbeddingInputFormatRequest(request.body);
       try {
@@ -87,7 +148,7 @@ export function registerSettingsRoutes(
   server.post(
     "/api/embedding-input-formats/:id/revisions",
     async (request, reply) => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       const id = decodeResourceId(request.params);
       const definition = decodeEmbeddingInputFormatDefinition(request.body);
       try {
@@ -103,7 +164,7 @@ export function registerSettingsRoutes(
   );
 
   server.delete("/api/embedding-input-formats/:id", async (request) => {
-    requireAdministratorPrincipal(requestPrincipals, request);
+    requireGlobalAdministratorPrincipal(requestPrincipals, request);
     const id = decodeResourceId(request.params);
     try {
       const format = await services.retireEmbeddingInputFormat(id);
@@ -116,26 +177,57 @@ export function registerSettingsRoutes(
   server.put(
     "/api/settings",
     async (request): Promise<ApplicationSettingsResponse> => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      const principal = requireRequestPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       const settingsRequest = decodeApplicationSettingsUpdate(request.body);
-      let settings: EffectiveApplicationSettings;
       try {
-        settings = await services.updateSettings(settingsRequest);
+        const settings = await services.updateSettings(settingsRequest);
+        const workspaces = await services.listWorkspaces(principal);
+        return buildApplicationSettingsResponse(
+          settings,
+          config,
+          webConfig,
+          buildOrganizationSettingsScope(workspaces),
+        );
       } catch (error: unknown) {
-        if (error instanceof SettingsVersionConflictError) {
-          throw new WebRequestError(409, error.message);
-        }
-        if (error instanceof SettingsValidationError) {
-          throw new WebRequestError(400, error.message);
-        }
-        throw error;
+        throw mapSettingsUpdateError(error);
       }
-      return buildApplicationSettingsResponse(settings, config, webConfig);
+    },
+  );
+
+  server.put(
+    "/api/workspaces/:workspaceId/settings",
+    async (request): Promise<ApplicationSettingsResponse> => {
+      const principal = requireRequestPrincipal(requestPrincipals, request);
+      const workspaceId = decodeWorkspaceId(request.params);
+      requireWorkspaceAdministratorPrincipal(
+        requestPrincipals,
+        request,
+        workspaceId,
+      );
+      const settingsRequest = decodeApplicationSettingsUpdate(request.body);
+      try {
+        const settings = await services.updateWorkspaceSettings(
+          principal,
+          workspaceId,
+          settingsRequest,
+        );
+        const workspaces = await services.listWorkspaces(principal);
+        const workspace = requireSettingsWorkspace(workspaces, workspaceId);
+        return buildApplicationSettingsResponse(
+          settings,
+          config,
+          webConfig,
+          buildSettingsWorkspaceScope(principal, workspace, workspaces),
+        );
+      } catch (error: unknown) {
+        throw mapSettingsUpdateError(error);
+      }
     },
   );
 
   server.get("/api/providers/openai-codex/auth", async (request, reply) => {
-    requireAdministratorPrincipal(requestPrincipals, request);
+    requireGlobalAdministratorPrincipal(requestPrincipals, request);
     reply.header("Cache-Control", "private, no-store");
     const connection = await services.openAICodex.readConnectionState();
     return {
@@ -147,7 +239,7 @@ export function registerSettingsRoutes(
   server.post(
     "/api/providers/openai-codex/device-authorization",
     async (request, reply) => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       reply.header("Cache-Control", "private, no-store");
       try {
         const flow = await openAICodexDeviceAuth.start();
@@ -161,7 +253,7 @@ export function registerSettingsRoutes(
   server.delete(
     "/api/providers/openai-codex/device-authorization",
     async (request, reply) => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       reply.header("Cache-Control", "private, no-store");
       const flow = await openAICodexDeviceAuth.cancel();
       return { flow };
@@ -171,7 +263,7 @@ export function registerSettingsRoutes(
   server.delete(
     "/api/providers/openai-codex/auth",
     async (request, reply) => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       reply.header("Cache-Control", "private, no-store");
       await openAICodexDeviceAuth.cancel();
       try {
@@ -186,7 +278,7 @@ export function registerSettingsRoutes(
   server.get(
     "/api/providers/openai-codex/models",
     async (request, reply) => {
-      requireAdministratorPrincipal(requestPrincipals, request);
+      requireGlobalAdministratorPrincipal(requestPrincipals, request);
       reply.header("Cache-Control", "private, no-store");
       try {
         const models = await services.openAICodex.readModels(
@@ -198,6 +290,61 @@ export function registerSettingsRoutes(
       }
     },
   );
+}
+
+function requireSettingsWorkspace(
+  workspaces: Awaited<ReturnType<WebServices["listWorkspaces"]>>,
+  workspaceId: string,
+) {
+  for (const workspace of workspaces) {
+    if (workspace.id === workspaceId && workspace.role === "admin") {
+      return workspace;
+    }
+  }
+  throw new WebRequestError(404, "The workspace is unavailable.");
+}
+
+function buildSettingsWorkspaceScope(
+  principal: AuthenticatedPrincipal,
+  workspace: Awaited<ReturnType<WebServices["listWorkspaces"]>>[number],
+  workspaces: Awaited<ReturnType<WebServices["listWorkspaces"]>>,
+) {
+  if (principal.globalRole === "global_admin") {
+    return buildWorkspaceSettingsScope(workspace, workspaces, true);
+  }
+  return buildWorkspaceSettingsScope(workspace, [workspace], false);
+}
+
+async function readSettingsWorkspace(
+  services: WebServices,
+  principal: AuthenticatedPrincipal,
+  workspaceId: string,
+) {
+  try {
+    return await services.readWorkspaceSettings(principal, workspaceId);
+  } catch (error: unknown) {
+    throw mapWorkspaceSettingsError(error);
+  }
+}
+
+function mapSettingsUpdateError(error: unknown): unknown {
+  if (error instanceof SettingsVersionConflictError) {
+    return new WebRequestError(409, error.message);
+  }
+  if (error instanceof SettingsValidationError) {
+    return new WebRequestError(400, error.message);
+  }
+  return mapWorkspaceSettingsError(error);
+}
+
+function mapWorkspaceSettingsError(error: unknown): unknown {
+  if (error instanceof WorkspaceAuthorizationError) {
+    return new WebRequestError(403, error.message);
+  }
+  if (error instanceof WorkspaceUnavailableError) {
+    return new WebRequestError(404, error.message);
+  }
+  return error;
 }
 
 function mapEmbeddingInputFormatError(error: unknown): unknown {

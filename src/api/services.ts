@@ -1,11 +1,9 @@
 import { basename } from "node:path";
 import { hostname } from "node:os";
 
-import type { InferUIMessageChunk } from "ai";
-
-import type { CiteLoomUIMessage } from "../answers/stream.js";
 import {
   ApplicationRuntimeManager,
+  createApplicationRuntimeView,
   type ApplicationRuntime,
 } from "../app/runtime.js";
 import {
@@ -19,14 +17,7 @@ import {
   ApplicationSettingsRepository,
   type EffectiveApplicationSettings,
 } from "../app/settings.js";
-import type {
-  BrowseDocumentCatalogRequest,
-  BrowseDocumentCatalogResult,
-} from "../documents/catalog/browser.js";
-import {
-  DocumentCatalog,
-  type IngestionControlActor,
-} from "../documents/catalog/index.js";
+import { DocumentCatalog } from "../documents/catalog/index.js";
 import {
   readApplicationErrorRetentionConfig,
   readDoclingServiceTopologyFromConfig,
@@ -39,9 +30,6 @@ import {
   readIndexedDocumentFileWithRuntime,
   updateIndexedDocumentTagsWithRuntime,
   type IndexedDocumentFile,
-  type ReadDocumentFileRequest,
-  type UpdateIndexedDocumentTagsRequest,
-  type UpdateIndexedDocumentTagsResult,
 } from "../documents/catalog/service.js";
 import { SourceContentStore } from "../documents/storage/source-content-store.js";
 import { createSourceContentBackend } from "../documents/storage/source-content-backend.js";
@@ -56,18 +44,11 @@ import {
   requestIngestionControlWithRuntime,
   resumeIngestionWithRuntime,
   retryFailedIngestionWithRuntime,
-  type BulkIngestResult,
-  type IngestOptions,
-  type ReindexDocumentRequest,
-  type ReindexDocumentResult,
-  type RetryFailedIngestionResult,
-  type StagedIngestionDocument,
 } from "../ingestion/service.js";
 import {
   deleteAbandonedUploadStaging,
   deleteIndexedDocumentWithRuntime,
   reconcileIngestionCancellations,
-  type DeleteIndexedDocumentResult,
 } from "../ingestion/deletion.js";
 import { reconcileIngestionControlExecutions } from "../ingestion/control.js";
 import {
@@ -100,68 +81,76 @@ import {
   streamIndexedDocumentAnswerWithRuntime,
 } from "../retrieval/pipeline.js";
 import type {
-  DocumentVersionDifference,
-  DocumentVersionRecord,
-  FeedbackDimension,
-  ResearchFeedbackSummary,
-  ResearchThread,
-  ResearchThreadSummary,
   StoredCitationRecord,
 } from "../research/types.js";
 import {
   ResearchInputConflictError,
   ResearchStore,
-  type ResearchExport,
-  type ResearchExportFormat,
 } from "../research/store.js";
-import type {
-  SourceDiscoveryRequest,
-  SourceDiscoveryResponse,
-} from "../retrieval/discovery/schema.js";
 import {
   transcribeAudio as transcribeSpeechAudio,
-  type TranscriptionAudio,
-  type TranscriptionResult,
 } from "../providers/speech-to-text.js";
-import {
-  generateTextToSpeech,
-  type GeneratedSpeech,
-  type SpeechRequest,
-} from "../providers/text-to-speech.js";
+import { generateTextToSpeech } from "../providers/text-to-speech.js";
 import {
   startManagedTask,
   type ManagedTask,
 } from "../shared/concurrency.js";
-import {
-  readTelemetryDashboardWithRuntime,
-  type TelemetryDashboardSummary,
-} from "../observability/store.js";
+import { readTelemetryDashboardWithRuntime } from "../observability/store.js";
 import type {
-  QuestionRequest,
   UpdateApplicationSettingsRequest,
 } from "./request-boundary.js";
-import {
-  readSystemStatusWithRuntime,
-  type SystemStatus,
-} from "../ingestion/worker.js";
+import { readSystemStatusWithRuntime } from "../ingestion/worker.js";
 import type {
+  CreateOrganizationUserInput,
+  CreateWorkspaceInput,
   LoginInput,
-  NormalizedUserIdentity,
+  RenameWorkspaceInput,
   UpdateWorkspaceSecurityPolicyInput,
 } from "../auth/boundary.js";
 import type { PasswordInput } from "../auth/password.js";
 import type {
   AuthenticatedPrincipal,
   AuthenticationSession,
-  PendingUserSetup,
-  WorkspaceMemberAddition,
+  OrganizationUserAccount,
+  UserPasswordLink,
+  WorkspaceMemberCandidate,
   WorkspaceMember,
+  WorkspaceMembershipAccess,
   WorkspaceRole,
   WorkspacePasswordPolicy,
   WorkspaceSecurityOverview,
+  WorkspaceSummary,
 } from "../auth/model.js";
 import { AuthenticationStore } from "../auth/store.js";
 import { WorkspaceSecurityPolicyStore } from "../auth/security-policy-store.js";
+import { UserAccountStore } from "../auth/user-account-store.js";
+import {
+  authorizeCatalogSourceForPrincipal,
+  authorizeDocumentVersionForPrincipal,
+  type CatalogSourceAuthorization,
+  authorizeSourceLibraryForPrincipal,
+  readDefaultSourceLibraryId,
+  readPrivateSourceLibraryId,
+  WorkspaceSourceLibraryUnavailableError,
+} from "../workspaces/source-library-access.js";
+import {
+  SourceLibraryStore,
+} from "../workspaces/source-library-store.js";
+import {
+  reconcileNextSharedSourceLibraryDeletion,
+  requestSharedSourceLibraryDeletion,
+} from "../workspaces/source-library-deletion.js";
+import {
+  WorkspaceSettingsRepository,
+  type EffectiveWorkspaceSettings,
+} from "../workspaces/settings-store.js";
+import type {
+  CreateSharedSourceLibraryInput,
+  RenameSharedSourceLibraryInput,
+  SourceLibraryAdministration,
+  SourceLibraryAccess,
+  SourceLibrarySummary,
+} from "../workspaces/source-library-model.js";
 import {
   OpenAICodexCredentialStore,
   type OpenAICodexConnectionState,
@@ -186,11 +175,7 @@ import {
 import type {
   EmbeddingInputFormatDefinition,
 } from "../embedding/input-format-model.js";
-import type { QueryScope } from "../domain/query-scope.js";
-import {
-  streamChatMessageWithRuntime,
-  type ChatMessageRequest,
-} from "../chat/pipeline.js";
+import { streamChatMessageWithRuntime } from "../chat/pipeline.js";
 import {
   processNextChatVerificationWithRuntime,
 } from "../chat/verification-dispatcher.js";
@@ -198,159 +183,21 @@ import {
   processNextResearchVerificationWithRuntime,
 } from "../research/verification-dispatcher.js";
 import { ChatStore } from "../chat/store.js";
-import type {
-  ChatConversation,
-  ChatConversationSummary,
-  StoredChatCitation,
-} from "../chat/types.js";
+import type { RuntimeWebServices } from "./runtime-web-services.js";
 
-export interface RuntimeWebServices {
-  readonly config: AppConfig;
-  browseDocuments: (
-    request: BrowseDocumentCatalogRequest,
-  ) => Promise<BrowseDocumentCatalogResult>;
-  addResearchFeedback: (input: {
-    citationId: string | null;
-    comment: string | null;
-    dimension: FeedbackDimension;
-    rating: -1 | 1;
-    turnId: string;
-  }, userId: string) => Promise<ResearchFeedbackSummary>;
-  readResearchFeedback: (
-    turnId: string,
-    dimension: FeedbackDimension,
-    citationId: string | null,
-    userId: string,
-  ) => Promise<ResearchFeedbackSummary>;
-  compareDocumentVersions: (
-    previousVersionId: string,
-    currentVersionId: string,
-  ) => Promise<DocumentVersionDifference | null>;
-  streamChatMessage?: (
-    principal: AuthenticatedPrincipal,
-    request: ChatMessageRequest,
-    abortSignal: AbortSignal,
-  ) => ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>>;
-  createChatConversation?: (
-    principal: AuthenticatedPrincipal,
-    title: string,
-    scope: QueryScope,
-  ) => Promise<ChatConversation>;
-  createResearchThread: (title: string) => Promise<ResearchThread>;
-  deleteChatConversation?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<void>;
-  deleteResearchThread: (id: string) => Promise<void>;
-  deleteIndexedDocument?: (
-    request: ReindexDocumentRequest,
-  ) => Promise<DeleteIndexedDocumentResult>;
-  exportResearchThread: (
-    id: string,
-    format: ResearchExportFormat,
-  ) => Promise<ResearchExport | null>;
-  generateSpeech: (
-    request: SpeechRequest,
-    abortSignal: AbortSignal,
-  ) => Promise<GeneratedSpeech>;
-  ingest: (
-    documents: readonly StagedIngestionDocument[],
-    options: IngestOptions,
-    duplicateSourceRoot: string,
-    uploadedByUserId: string,
-  ) => Promise<BulkIngestResult>;
-  listDocumentVersions: (sourceFile: string) => Promise<DocumentVersionRecord[]>;
-  processNextChatVerification?: (
-    abortSignal: AbortSignal,
-  ) => Promise<boolean>;
-  processNextResearchVerification?: (
-    abortSignal: AbortSignal,
-  ) => Promise<boolean>;
-  listChatConversations?: (
-    principal: AuthenticatedPrincipal,
-  ) => Promise<ChatConversationSummary[]>;
-  listResearchThreads: () => Promise<ResearchThreadSummary[]>;
-  readCitationEvidence: (id: string) => Promise<StoredCitationRecord | null>;
-  readCitationHighlightedFile?: (id: string) => Promise<IndexedDocumentFile | null>;
-  /** @deprecated Use readCitationHighlightedFile. */
-  readCitationHighlightedPdf?: (id: string) => Promise<IndexedDocumentFile | null>;
-  readCitationImage: (id: string) => Promise<{
-    content: Buffer;
-    mediaType: string;
-  } | null>;
-  readChatCitationEvidence?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<StoredChatCitation | null>;
-  readChatCitationFile?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<IndexedDocumentFile | null>;
-  readChatCitationHighlightedFile?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<IndexedDocumentFile | null>;
-  /** @deprecated Use readChatCitationHighlightedFile. */
-  readChatCitationHighlightedPdf?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<IndexedDocumentFile | null>;
-  readChatCitationImage?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<{
-    content: Buffer;
-    mediaType: string;
-  } | null>;
-  readChatConversation?: (
-    principal: AuthenticatedPrincipal,
-    id: string,
-  ) => Promise<ChatConversation | null>;
-  readDocumentFile: (
-    request: ReadDocumentFileRequest,
-  ) => Promise<IndexedDocumentFile | null>;
-  readHealth: (liveChecks: DoctorLiveChecks) => Promise<DoctorCheck[]>;
-  readResearchThread: (id: string) => Promise<ResearchThread | null>;
-  readRevisions: () => Promise<ApplicationStateRevisionSnapshot>;
-  readStatus: () => Promise<SystemStatus>;
-  readTelemetry: () => Promise<TelemetryDashboardSummary>;
-  readVersionedDocumentFile: (id: string) => Promise<IndexedDocumentFile | null>;
-  reconcileUploadedDocuments?: (uploadDirectory: string) => Promise<number>;
-  reconcileIngestionCancellations?: () => Promise<void>;
-  reindexDocument: (
-    request: ReindexDocumentRequest,
-    actor: IngestionControlActor,
-  ) => Promise<ReindexDocumentResult>;
-  retryFailedJob: (
-    sourceFile: string,
-  ) => Promise<RetryFailedIngestionResult>;
-  requestIngestionControl: (
-    sourceFile: string,
-    action: "pause" | "cancel",
-    actor: IngestionControlActor,
-  ) => ReturnType<typeof requestIngestionControlWithRuntime>;
-  resumeIngestion: (
-    sourceFile: string,
-    actor: IngestionControlActor,
-  ) => ReturnType<typeof resumeIngestionWithRuntime>;
-  searchSources: (
-    request: SourceDiscoveryRequest,
-    abortSignal: AbortSignal,
-  ) => Promise<SourceDiscoveryResponse>;
-  streamAnswer: (
-    request: QuestionRequest,
-    abortSignal: AbortSignal,
-  ) => ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>>;
-  transcribeAudio: (
-    audio: TranscriptionAudio,
-    abortSignal: AbortSignal,
-  ) => Promise<TranscriptionResult>;
-  updateDocumentTags?: (
-    request: UpdateIndexedDocumentTagsRequest,
-  ) => Promise<UpdateIndexedDocumentTagsResult | null>;
-}
+export type {
+  RuntimeChatServices,
+  RuntimeDocumentServices,
+  RuntimeOperationalServices,
+  RuntimeResearchServices,
+  RuntimeWebServices,
+} from "./runtime-web-services.js";
 
 export interface WebServices {
+  archiveWorkspace: (
+    principal: AuthenticatedPrincipal,
+    workspaceId: string,
+  ) => Promise<void>;
   authenticate: (input: LoginInput) => Promise<AuthenticationSession>;
   completePasswordSetup: (
     setupToken: string,
@@ -363,19 +210,39 @@ export interface WebServices {
   createEmbeddingInputFormat: (
     definition: EmbeddingInputFormatDefinition,
   ) => Promise<EmbeddingInputFormatRecord>;
-  createWorkspaceMember: (
+  addWorkspaceMember: (
     principal: AuthenticatedPrincipal,
-    identity: NormalizedUserIdentity,
-    role: WorkspaceRole,
-  ) => Promise<WorkspaceMemberAddition>;
-  createPasswordReset: (
-    principal: AuthenticatedPrincipal,
+    workspaceId: string,
     userId: string,
-  ) => Promise<PendingUserSetup>;
+    role: WorkspaceRole,
+  ) => Promise<void>;
+  createWorkspace: (
+    principal: AuthenticatedPrincipal,
+    input: CreateWorkspaceInput,
+  ) => Promise<WorkspaceSummary>;
+  createSharedSourceLibrary: (
+    principal: AuthenticatedPrincipal,
+    input: CreateSharedSourceLibraryInput,
+  ) => Promise<SourceLibrarySummary>;
+  archiveSharedSourceLibrary: (
+    principal: AuthenticatedPrincipal,
+    libraryId: string,
+  ) => Promise<void>;
+  deleteSharedSourceLibrary: (
+    principal: AuthenticatedPrincipal,
+    libraryId: string,
+  ) => Promise<void>;
   changeWorkspaceMemberRole: (
     principal: AuthenticatedPrincipal,
+    workspaceId: string,
     userId: string,
     role: WorkspaceRole,
+  ) => Promise<void>;
+  changeWorkspaceMemberAccess: (
+    principal: AuthenticatedPrincipal,
+    workspaceId: string,
+    userId: string,
+    access: WorkspaceMembershipAccess,
   ) => Promise<void>;
   changePassword: (
     principal: AuthenticatedPrincipal,
@@ -387,7 +254,35 @@ export interface WebServices {
   ) => Promise<SourceContentMigrationRecord>;
   listWorkspaceMembers: (
     principal: AuthenticatedPrincipal,
+    workspaceId: string,
   ) => Promise<WorkspaceMember[]>;
+  listWorkspaceMemberCandidates: (
+    principal: AuthenticatedPrincipal,
+    workspaceId: string,
+  ) => Promise<WorkspaceMemberCandidate[]>;
+  listWorkspaces: (
+    principal: AuthenticatedPrincipal,
+  ) => Promise<WorkspaceSummary[]>;
+  listSourceLibraries: (
+    principal: AuthenticatedPrincipal,
+  ) => Promise<SourceLibrarySummary[]>;
+  readSourceLibraryAdministration: (
+    principal: AuthenticatedPrincipal,
+  ) => Promise<SourceLibraryAdministration>;
+  renameWorkspace: (
+    principal: AuthenticatedPrincipal,
+    workspaceId: string,
+    input: RenameWorkspaceInput,
+  ) => Promise<WorkspaceSummary>;
+  renameSharedSourceLibrary: (
+    principal: AuthenticatedPrincipal,
+    libraryId: string,
+    input: RenameSharedSourceLibraryInput,
+  ) => Promise<void>;
+  restoreSharedSourceLibrary: (
+    principal: AuthenticatedPrincipal,
+    libraryId: string,
+  ) => Promise<void>;
   openAICodex: {
     disconnect(): Promise<void>;
     readConnectionState(): Promise<OpenAICodexConnectionState>;
@@ -404,6 +299,10 @@ export interface WebServices {
   readRevisions: () => Promise<ApplicationStateRevisionSnapshot>;
   readSession: (sessionToken: string) => Promise<AuthenticatedPrincipal | null>;
   readSettings: () => Promise<EffectiveApplicationSettings>;
+  readWorkspaceSettings: (
+    principal: AuthenticatedPrincipal,
+    workspaceId: string,
+  ) => Promise<EffectiveWorkspaceSettings>;
   readSourceContentStorage: () => Promise<SourceContentStorageOverview>;
   reportApplicationError: (
     error: unknown,
@@ -412,18 +311,46 @@ export interface WebServices {
   run: <T>(
     operation: (runtime: RuntimeWebServices) => Promise<T>,
   ) => Promise<T>;
+  runInWorkspace: <T>(
+    principal: AuthenticatedPrincipal,
+    operation: (runtime: RuntimeWebServices) => Promise<T>,
+  ) => Promise<T>;
   runManaged: <T>(
     operation: (runtime: RuntimeWebServices) => Promise<ManagedTask<T>>,
   ) => Promise<T>;
+  runManagedInWorkspace: <T>(
+    principal: AuthenticatedPrincipal,
+    operation: (runtime: RuntimeWebServices) => Promise<ManagedTask<T>>,
+  ) => Promise<T>;
   stream: <T>(
+    operation: (runtime: RuntimeWebServices) => ReadableStream<T>,
+  ) => ReadableStream<T>;
+  streamInWorkspace: <T>(
+    principal: AuthenticatedPrincipal,
     operation: (runtime: RuntimeWebServices) => ReadableStream<T>,
   ) => ReadableStream<T>;
   subscribeRevisions: (
     subscriber: ApplicationStateRevisionSubscriber,
   ) => () => void;
   revokeSession: (sessionToken: string) => Promise<void>;
+  switchWorkspace: (
+    principal: AuthenticatedPrincipal,
+    workspaceId: string,
+  ) => Promise<AuthenticatedPrincipal>;
+  revokeSourceLibraryGrant: (
+    principal: AuthenticatedPrincipal,
+    libraryId: string,
+    workspaceId: string,
+  ) => Promise<void>;
+  setSourceLibraryGrant: (
+    principal: AuthenticatedPrincipal,
+    libraryId: string,
+    workspaceId: string,
+    access: SourceLibraryAccess,
+  ) => Promise<void>;
   removeWorkspaceMember: (
     principal: AuthenticatedPrincipal,
+    workspaceId: string,
     userId: string,
   ) => Promise<void>;
   retireEmbeddingInputFormat: (
@@ -443,9 +370,25 @@ export interface WebServices {
   updateSettings: (
     request: UpdateApplicationSettingsRequest,
   ) => Promise<EffectiveApplicationSettings>;
+  updateWorkspaceSettings: (
+    principal: AuthenticatedPrincipal,
+    workspaceId: string,
+    request: UpdateApplicationSettingsRequest,
+  ) => Promise<EffectiveWorkspaceSettings>;
 }
 
 export interface SecurityWebServices {
+  createOrganizationUser: (
+    principal: AuthenticatedPrincipal,
+    input: CreateOrganizationUserInput,
+  ) => Promise<OrganizationUserAccount>;
+  createOrganizationUserPasswordLink: (
+    principal: AuthenticatedPrincipal,
+    userId: string,
+  ) => Promise<UserPasswordLink>;
+  listOrganizationUsers: (
+    principal: AuthenticatedPrincipal,
+  ) => Promise<OrganizationUserAccount[]>;
   readPasswordPolicy: (
     principal: AuthenticatedPrincipal,
   ) => Promise<WorkspacePasswordPolicy>;
@@ -718,7 +661,32 @@ export function createWebServices(
   revisions: ApplicationStateRevisionSource,
 ): ApplicationWebServices {
   const doclingTopology = readDoclingServiceTopologyFromConfig(config);
+  const createWorkspaceRuntimeServices = async (
+    runtime: ApplicationRuntime,
+    principal: AuthenticatedPrincipal,
+  ): Promise<RuntimeWebServices> => {
+    const repository = new WorkspaceSettingsRepository(runtime.database);
+    const workspaceConfig = await repository.readConfig(
+      principal.workspaceId,
+      config.database,
+      doclingTopology,
+    );
+    const view = createApplicationRuntimeView(runtime, workspaceConfig);
+    return createRuntimeWebServices(view);
+  };
   const services: ApplicationWebServices = {
+    archiveSharedSourceLibrary: async (principal, libraryId) => {
+      return manager.withRuntime(async (runtime) => {
+        const libraries = new SourceLibraryStore(runtime.database);
+        await libraries.archiveShared(principal, libraryId);
+      });
+    },
+    archiveWorkspace: async (principal, workspaceId) => {
+      return manager.withRuntime(async (runtime) => {
+        const authentication = new AuthenticationStore(runtime.database);
+        await authentication.archiveWorkspace(principal, workspaceId);
+      });
+    },
     authenticate: async (input) => manager.withRuntime(async (runtime) => {
       const authentication = new AuthenticationStore(runtime.database);
       return authentication.authenticate(input);
@@ -740,10 +708,38 @@ export function createWebServices(
         return store.create(definition);
       });
     },
-    changeWorkspaceMemberRole: async (principal, userId, role) => {
+    createOrganizationUser: async (principal, input) => {
+      return manager.withRuntime(async (runtime) => {
+        const accounts = new UserAccountStore(runtime.database);
+        return accounts.create(principal, input);
+      });
+    },
+    createOrganizationUserPasswordLink: async (principal, userId) => {
+      return manager.withRuntime(async (runtime) => {
+        const accounts = new UserAccountStore(runtime.database);
+        return accounts.createPasswordLink(principal, userId);
+      });
+    },
+    changeWorkspaceMemberRole: async (principal, workspaceId, userId, role) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
-        await authentication.changeWorkspaceMemberRole(principal, userId, role);
+        await authentication.changeWorkspaceMemberRole(
+          principal,
+          workspaceId,
+          userId,
+          role,
+        );
+      });
+    },
+    changeWorkspaceMemberAccess: async (principal, workspaceId, userId, access) => {
+      return manager.withRuntime(async (runtime) => {
+        const authentication = new AuthenticationStore(runtime.database);
+        await authentication.changeWorkspaceMemberAccess(
+          principal,
+          workspaceId,
+          userId,
+          access,
+        );
       });
     },
     changePassword: async (principal, currentPassword, newPassword) => {
@@ -760,22 +756,93 @@ export function createWebServices(
         return repository.requestCancellation(id);
       });
     },
-    createWorkspaceMember: async (principal, identity, role) => {
+    addWorkspaceMember: async (principal, workspaceId, userId, role) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
-        return authentication.createWorkspaceMember(principal, identity, role);
+        await authentication.addWorkspaceMember(
+          principal,
+          workspaceId,
+          userId,
+          role,
+        );
       });
     },
-    createPasswordReset: async (principal, userId) => {
+    createWorkspace: async (principal, input) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
-        return authentication.createPasswordReset(principal, userId);
+        return authentication.createWorkspace(principal, input);
       });
     },
-    listWorkspaceMembers: async (principal) => {
+    createSharedSourceLibrary: async (principal, input) => {
+      return manager.withRuntime(async (runtime) => {
+        const libraries = new SourceLibraryStore(runtime.database);
+        return libraries.createShared(principal, input);
+      });
+    },
+    deleteSharedSourceLibrary: async (principal, libraryId) => {
+      return manager.withRuntime(async (runtime) => {
+        await requestSharedSourceLibraryDeletion(
+          runtime.database,
+          principal,
+          libraryId,
+        );
+      });
+    },
+    listWorkspaceMembers: async (principal, workspaceId) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
-        return authentication.listWorkspaceMembers(principal);
+        return authentication.listWorkspaceMembers(principal, workspaceId);
+      });
+    },
+    listOrganizationUsers: async (principal) => {
+      return manager.withRuntime(async (runtime) => {
+        const accounts = new UserAccountStore(runtime.database);
+        return accounts.list(principal);
+      });
+    },
+    listWorkspaceMemberCandidates: async (principal, workspaceId) => {
+      return manager.withRuntime(async (runtime) => {
+        const authentication = new AuthenticationStore(runtime.database);
+        return authentication.listWorkspaceMemberCandidates(
+          principal,
+          workspaceId,
+        );
+      });
+    },
+    listWorkspaces: async (principal) => {
+      return manager.withRuntime(async (runtime) => {
+        const authentication = new AuthenticationStore(runtime.database);
+        return authentication.listWorkspaces(principal);
+      });
+    },
+    listSourceLibraries: async (principal) => {
+      return manager.withRuntime(async (runtime) => {
+        const libraries = new SourceLibraryStore(runtime.database);
+        return libraries.listAccessible(principal);
+      });
+    },
+    renameWorkspace: async (principal, workspaceId, input) => {
+      return manager.withRuntime(async (runtime) => {
+        const authentication = new AuthenticationStore(runtime.database);
+        return authentication.renameWorkspace(principal, workspaceId, input);
+      });
+    },
+    readSourceLibraryAdministration: async (principal) => {
+      return manager.withRuntime(async (runtime) => {
+        const libraries = new SourceLibraryStore(runtime.database);
+        return libraries.readAdministration(principal);
+      });
+    },
+    renameSharedSourceLibrary: async (principal, libraryId, input) => {
+      return manager.withRuntime(async (runtime) => {
+        const libraries = new SourceLibraryStore(runtime.database);
+        await libraries.renameShared(principal, libraryId, input);
+      });
+    },
+    restoreSharedSourceLibrary: async (principal, libraryId) => {
+      return manager.withRuntime(async (runtime) => {
+        const libraries = new SourceLibraryStore(runtime.database);
+        await libraries.restoreShared(principal, libraryId);
       });
     },
     openAICodex: {
@@ -834,6 +901,21 @@ export function createWebServices(
         doclingTopology,
       );
     }),
+    readWorkspaceSettings: async (principal, workspaceId) => {
+      return manager.withRuntime(async (runtime) => {
+        const authentication = new AuthenticationStore(runtime.database);
+        await authentication.readWorkspaceForAdministration(
+          principal,
+          workspaceId,
+        );
+        const repository = new WorkspaceSettingsRepository(runtime.database);
+        return repository.read(
+          workspaceId,
+          config.database,
+          doclingTopology,
+        );
+      });
+    },
     readSourceContentStorage: async () => {
       return manager.withRuntime(async (runtime) => {
         const repository = new SourceContentMigrationRepository(
@@ -862,21 +944,71 @@ export function createWebServices(
     run: async (operation) => manager.withRuntime(async (runtime) => {
       return operation(createRuntimeWebServices(runtime));
     }),
+    runInWorkspace: async (principal, operation) => {
+      return manager.withRuntime(async (runtime) => {
+        const workspaceServices = await createWorkspaceRuntimeServices(
+          runtime,
+          principal,
+        );
+        return operation(workspaceServices);
+      });
+    },
     runManaged: async (operation) => manager.withManagedRuntime(async (runtime) => {
       return operation(createRuntimeWebServices(runtime));
     }),
+    runManagedInWorkspace: async (principal, operation) => {
+      return manager.withManagedRuntime(async (runtime) => {
+        const workspaceServices = await createWorkspaceRuntimeServices(
+          runtime,
+          principal,
+        );
+        return operation(workspaceServices);
+      });
+    },
     stream: (operation) => manager.streamWithRuntime((runtime) => {
       return operation(createRuntimeWebServices(runtime));
     }),
+    streamInWorkspace: (principal, operation) => {
+      return manager.streamWithRuntimeAsync(async (runtime) => {
+        const workspaceServices = await createWorkspaceRuntimeServices(
+          runtime,
+          principal,
+        );
+        return operation(workspaceServices);
+      });
+    },
     subscribeRevisions: (subscriber) => revisions.subscribe(subscriber),
     revokeSession: async (sessionToken) => manager.withRuntime(async (runtime) => {
       const authentication = new AuthenticationStore(runtime.database);
       await authentication.revokeSession(sessionToken);
     }),
-    removeWorkspaceMember: async (principal, userId) => {
+    switchWorkspace: async (principal, workspaceId) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
-        await authentication.removeWorkspaceMember(principal, userId);
+        return authentication.switchWorkspace(principal, workspaceId);
+      });
+    },
+    revokeSourceLibraryGrant: async (principal, libraryId, workspaceId) => {
+      return manager.withRuntime(async (runtime) => {
+        const libraries = new SourceLibraryStore(runtime.database);
+        await libraries.revokeGrant(principal, libraryId, workspaceId);
+      });
+    },
+    setSourceLibraryGrant: async (
+      principal,
+      libraryId,
+      workspaceId,
+      access,
+    ) => {
+      return manager.withRuntime(async (runtime) => {
+        const libraries = new SourceLibraryStore(runtime.database);
+        await libraries.setGrant(principal, libraryId, workspaceId, access);
+      });
+    },
+    removeWorkspaceMember: async (principal, workspaceId, userId) => {
+      return manager.withRuntime(async (runtime) => {
+        const authentication = new AuthenticationStore(runtime.database);
+        await authentication.removeWorkspaceMember(principal, workspaceId, userId);
       });
     },
     retireEmbeddingInputFormat: async (id) => {
@@ -927,6 +1059,25 @@ export function createWebServices(
       }
       return settings;
     },
+    updateWorkspaceSettings: async (principal, workspaceId, request) => {
+      return manager.withRuntime(async (runtime) => {
+        const authentication = new AuthenticationStore(runtime.database);
+        await authentication.readWorkspaceForAdministration(
+          principal,
+          workspaceId,
+        );
+        const repository = new WorkspaceSettingsRepository(runtime.database);
+        return repository.update(
+          workspaceId,
+          principal.userId,
+          config.database,
+          doclingTopology,
+          request.expectedVersion,
+          request.changes,
+          request.providerChanges,
+        );
+      });
+    },
     updateWorkspaceSecurityPolicy: async (principal, input) => {
       return manager.withRuntime(async (runtime) => {
         const securityPolicy = new WorkspaceSecurityPolicyStore(runtime.database);
@@ -940,15 +1091,69 @@ export function createWebServices(
 function createRuntimeWebServices(
   runtime: ApplicationRuntime,
 ): RuntimeWebServices {
-  const research = new ResearchStore(runtime.database, runtime.config);
+  const researchFor = (principal: AuthenticatedPrincipal): ResearchStore => {
+    return new ResearchStore(
+      runtime.database,
+      runtime.config,
+      readWorkspaceScope(principal),
+    );
+  };
   const chat = new ChatStore(runtime.database, runtime.config);
   const services: RuntimeWebServices = {
-    addResearchFeedback: async (input, userId) => research.addFeedback(input, userId),
-    browseDocuments: async (request) => {
-      return browseCatalogEntriesWithRuntime(runtime, request);
+    addResearchFeedback: async (principal, input) => {
+      return researchFor(principal).addFeedback(input, principal.userId);
     },
-    compareDocumentVersions: async (previousVersionId, currentVersionId) => {
-      return research.compareDocumentVersions(previousVersionId, currentVersionId);
+    browseDocuments: async (principal, request) => {
+      if (request.sourceLibraryId !== null) {
+        const authorization = await authorizeSourceLibraryForPrincipal(
+          runtime.database,
+          principal,
+          request.sourceLibraryId,
+          "use",
+        );
+        if (authorization.kind === "unavailable") {
+          throw new WorkspaceSourceLibraryUnavailableError();
+        }
+        const workspaceId = authorization.kind === "workspace"
+          ? authorization.workspaceId
+          : null;
+        return browseCatalogEntriesWithRuntime(runtime, request, workspaceId);
+      }
+      return browseCatalogEntriesWithRuntime(
+        runtime,
+        request,
+        readWorkspaceScope(principal),
+      );
+    },
+    compareDocumentVersions: async (principal, previousVersionId, currentVersionId) => {
+      const [previousAuthorization, currentAuthorization] = await Promise.all([
+        authorizeDocumentVersionForPrincipal(
+          runtime.database,
+          principal,
+          previousVersionId,
+        ),
+        authorizeDocumentVersionForPrincipal(
+          runtime.database,
+          principal,
+          currentVersionId,
+        ),
+      ]);
+      const workspaceId = readMatchingCatalogAuthorizationWorkspaceId(
+        previousAuthorization,
+        currentAuthorization,
+      );
+      if (workspaceId === undefined) {
+        return null;
+      }
+      const research = new ResearchStore(
+        runtime.database,
+        runtime.config,
+        workspaceId,
+      );
+      return research.compareDocumentVersions(
+        previousVersionId,
+        currentVersionId,
+      );
     },
     streamChatMessage: (principal, request, abortSignal) => {
       return streamChatMessageWithRuntime(
@@ -963,15 +1168,24 @@ function createRuntimeWebServices(
     createChatConversation: async (principal, title, scope) => {
       return chat.createConversation(principal, title, scope);
     },
-    createResearchThread: async (title) => research.createThread(title),
+    createResearchThread: async (principal, title) => {
+      return researchFor(principal).createThread(title);
+    },
     deleteChatConversation: async (principal, id) => {
       return chat.deleteConversation(principal, id);
     },
-    deleteResearchThread: async (id) => research.deleteThread(id),
-    deleteIndexedDocument: async (request) => {
+    deleteResearchThread: async (principal, id) => {
+      return researchFor(principal).deleteThread(id);
+    },
+    deleteIndexedDocument: async (principal, request) => {
+      if (!await principalCanManageCatalogSource(runtime, principal, request.sourceFile)) {
+        return { kind: "not-found" };
+      }
       return deleteIndexedDocumentWithRuntime(runtime, request);
     },
-    exportResearchThread: async (id, format) => research.exportThread(id, format),
+    exportResearchThread: async (principal, id, format) => {
+      return researchFor(principal).exportThread(id, format);
+    },
     generateSpeech: async (request, abortSignal) => {
       const scheduler = runtime.scheduler(
         "textToSpeech",
@@ -1004,33 +1218,80 @@ function createRuntimeWebServices(
     processNextResearchVerification: async (abortSignal) => {
       return processNextResearchVerificationWithRuntime(runtime, abortSignal);
     },
-    ingest: async (documents, options, duplicateSourceRoot, uploadedByUserId) => {
+    ingest: async (
+      principal,
+      documents,
+      options,
+      duplicateSourceRoot,
+      requestedSourceLibraryId,
+    ) => {
+      let sourceLibraryId = requestedSourceLibraryId;
+      if (sourceLibraryId !== null) {
+        const authorization = await authorizeSourceLibraryForPrincipal(
+          runtime.database,
+          principal,
+          sourceLibraryId,
+          "manage",
+        );
+        if (authorization.kind === "unavailable") {
+          throw new WorkspaceSourceLibraryUnavailableError();
+        }
+      } else if (principal.dataScope === "all") {
+        sourceLibraryId = await readDefaultSourceLibraryId(runtime.database);
+      } else if (
+        principal.dataScope === "workspace"
+        && sourceLibraryId === null
+      ) {
+        sourceLibraryId = await readPrivateSourceLibraryId(
+          runtime.database,
+          principal.workspaceId,
+        );
+      }
       return ingestStagedDocumentsWithRuntime(
         runtime,
         documents,
         options,
         reportWebProgress,
         duplicateSourceRoot,
-        uploadedByUserId,
+        principal.userId,
+        sourceLibraryId,
       );
     },
-    listDocumentVersions: async (sourceFile) => {
+    listDocumentVersions: async (principal, sourceFile) => {
+      const authorization = await authorizeCatalogSourceForPrincipal(
+        runtime.database,
+        principal,
+        sourceFile,
+        "use",
+      );
+      if (authorization.kind === "unavailable") {
+        return [];
+      }
+      const workspaceId = authorization.kind === "workspace"
+        ? authorization.workspaceId
+        : null;
+      const research = new ResearchStore(
+        runtime.database,
+        runtime.config,
+        workspaceId,
+      );
       return research.listDocumentVersions(sourceFile);
     },
     listChatConversations: async (principal) => {
       return chat.listConversations(principal);
     },
-    listResearchThreads: async () => research.listThreads(),
-    readCitationEvidence: async (id) => {
-      const record = await research.readCitation(id);
+    listResearchThreads: async (principal) => researchFor(principal).listThreads(),
+    readCitationEvidence: async (principal, id) => {
+      const record = await researchFor(principal).readCitation(id);
       return record?.citation ?? null;
     },
-    readCitationHighlightedFile: async (id) => {
-      const record = await research.readCitation(id);
+    readCitationHighlightedFile: async (principal, id) => {
+      const principalResearch = researchFor(principal);
+      const record = await principalResearch.readCitation(id);
       if (record === null) {
         return null;
       }
-      const document = await research.readDocumentVersionFile(
+      const document = await principalResearch.readDocumentVersionFile(
         record.citation.documentVersionId,
       );
       if (document === null) {
@@ -1042,8 +1303,8 @@ function createRuntimeWebServices(
         `/api/document-versions/${encodeURIComponent(record.citation.documentVersionId)}/file`,
       );
     },
-    readCitationImage: async (id) => {
-      const record = await research.readCitation(id);
+    readCitationImage: async (principal, id) => {
+      const record = await researchFor(principal).readCitation(id);
       if (record === null) {
         return null;
       }
@@ -1112,21 +1373,61 @@ function createRuntimeWebServices(
     readChatConversation: async (principal, id) => {
       return chat.readConversation(principal, id);
     },
-    readDocumentFile: async (request) => {
-      return readIndexedDocumentFileWithRuntime(runtime, request);
+    readDocumentFile: async (principal, request) => {
+      const authorization = await authorizeCatalogSourceForPrincipal(
+        runtime.database,
+        principal,
+        request.sourceFile,
+        "use",
+      );
+      if (authorization.kind === "unavailable") {
+        return null;
+      }
+      const workspaceId = authorization.kind === "workspace"
+        ? authorization.workspaceId
+        : null;
+      return readIndexedDocumentFileWithRuntime(
+        runtime,
+        request,
+        workspaceId,
+      );
     },
     readHealth: async (liveChecks) => runDoctorWithRuntime(runtime, liveChecks),
-    readResearchThread: async (id) => research.readThread(id),
-    readResearchFeedback: async (turnId, dimension, citationId, userId) => {
-      return research.readFeedbackSummary(turnId, dimension, citationId, userId);
+    readResearchThread: async (principal, id) => researchFor(principal).readThread(id),
+    readResearchFeedback: async (principal, turnId, dimension, citationId) => {
+      return researchFor(principal).readFeedbackSummary(
+        turnId,
+        dimension,
+        citationId,
+        principal.userId,
+      );
     },
     readRevisions: async () => readApplicationStateRevisions(runtime.database),
-    readStatus: async () => readSystemStatusWithRuntime(runtime),
+    readStatus: async (principal) => {
+      return readSystemStatusWithRuntime(runtime, readWorkspaceScope(principal));
+    },
     readTelemetry: async () => readTelemetryDashboardWithRuntime(runtime),
-    readVersionedDocumentFile: async (id) => {
+    readVersionedDocumentFile: async (principal, id) => {
+      const authorization = await authorizeDocumentVersionForPrincipal(
+        runtime.database,
+        principal,
+        id,
+        "use",
+      );
+      if (authorization.kind === "unavailable") {
+        return null;
+      }
+      const workspaceId = authorization.kind === "workspace"
+        ? authorization.workspaceId
+        : null;
+      const principalResearch = new ResearchStore(
+        runtime.database,
+        runtime.config,
+        workspaceId,
+      );
       const [document, version] = await Promise.all([
-        research.readDocumentVersionFile(id),
-        research.readDocumentVersion(id),
+        principalResearch.readDocumentVersionFile(id),
+        principalResearch.readDocumentVersion(id),
       ]);
       if (document === null || version === null) {
         return null;
@@ -1157,7 +1458,13 @@ function createRuntimeWebServices(
         runtime.config.sourceContent,
       );
     },
-    reindexDocument: async (request, actor) => {
+    reconcileSourceLibraryDeletions: async () => {
+      return reconcileNextSharedSourceLibraryDeletion(runtime);
+    },
+    reindexDocument: async (principal, request, actor) => {
+      if (!await principalCanManageCatalogSource(runtime, principal, request.sourceFile)) {
+        return { kind: "not-found" };
+      }
       return queueDocumentReindexWithRuntime(
         runtime,
         request,
@@ -1165,10 +1472,16 @@ function createRuntimeWebServices(
         reportWebProgress,
       );
     },
-    retryFailedJob: async (sourceFile) => {
+    retryFailedJob: async (principal, sourceFile) => {
+      if (!await principalCanManageCatalogSource(runtime, principal, sourceFile)) {
+        return { kind: "not-found" };
+      }
       return retryFailedIngestionWithRuntime(runtime, sourceFile);
     },
-    requestIngestionControl: async (sourceFile, action, actor) => {
+    requestIngestionControl: async (principal, sourceFile, action, actor) => {
+      if (!await principalCanManageCatalogSource(runtime, principal, sourceFile)) {
+        return { kind: "not-found" };
+      }
       return requestIngestionControlWithRuntime(
         runtime,
         sourceFile,
@@ -1176,18 +1489,22 @@ function createRuntimeWebServices(
         actor,
       );
     },
-    resumeIngestion: async (sourceFile, actor) => {
+    resumeIngestion: async (principal, sourceFile, actor) => {
+      if (!await principalCanManageCatalogSource(runtime, principal, sourceFile)) {
+        return { kind: "not-found" };
+      }
       return resumeIngestionWithRuntime(runtime, sourceFile, actor);
     },
-    searchSources: async (request, abortSignal) => {
+    searchSources: async (principal, request, abortSignal) => {
       return searchIndexedSourcesWithRuntime(
         runtime,
         request,
         reportWebProgress,
         abortSignal,
+        readWorkspaceScope(principal),
       );
     },
-    streamAnswer: (request, abortSignal) => {
+    streamAnswer: (principal, request, abortSignal) => {
       return streamIndexedDocumentAnswerWithRuntime(
         runtime,
         request.question,
@@ -1195,6 +1512,7 @@ function createRuntimeWebServices(
         request.scope,
         request.threadId,
         abortSignal,
+        readWorkspaceScope(principal),
       );
     },
     transcribeAudio: async (audio, abortSignal) => {
@@ -1211,11 +1529,67 @@ function createRuntimeWebServices(
         abortSignal,
       );
     },
-    updateDocumentTags: async (request) => {
-      return updateIndexedDocumentTagsWithRuntime(runtime, request);
+    updateDocumentTags: async (principal, request) => {
+      const authorization = await authorizeCatalogSourceForPrincipal(
+        runtime.database,
+        principal,
+        request.sourceFile,
+        "manage",
+      );
+      if (authorization.kind === "unavailable") {
+        return null;
+      }
+      const workspaceId = authorization.kind === "workspace"
+        ? authorization.workspaceId
+        : null;
+      return updateIndexedDocumentTagsWithRuntime(
+        runtime,
+        request,
+        workspaceId,
+      );
     },
   };
   return services;
+}
+
+function readWorkspaceScope(principal: AuthenticatedPrincipal): string | null {
+  return principal.dataScope === "all"
+    ? null
+    : principal.workspaceId;
+}
+
+function readMatchingCatalogAuthorizationWorkspaceId(
+  first: CatalogSourceAuthorization,
+  second: CatalogSourceAuthorization,
+): string | null | undefined {
+  if (first.kind === "unavailable" || second.kind === "unavailable") {
+    return undefined;
+  }
+  if (first.kind === "global" && second.kind === "global") {
+    return null;
+  }
+  if (
+    first.kind === "workspace"
+    && second.kind === "workspace"
+    && first.workspaceId === second.workspaceId
+  ) {
+    return first.workspaceId;
+  }
+  return undefined;
+}
+
+async function principalCanManageCatalogSource(
+  runtime: ApplicationRuntime,
+  principal: AuthenticatedPrincipal,
+  sourceFile: string,
+): Promise<boolean> {
+  const authorization = await authorizeCatalogSourceForPrincipal(
+    runtime.database,
+    principal,
+    sourceFile,
+    "manage",
+  );
+  return authorization.kind !== "unavailable";
 }
 
 async function buildHighlightedCitationFile(

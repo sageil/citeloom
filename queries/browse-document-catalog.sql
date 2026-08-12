@@ -1,4 +1,16 @@
-WITH active_spaces AS (
+WITH accessible_libraries AS (
+  SELECT libraries.id
+  FROM source_libraries AS libraries
+  LEFT JOIN workspace_library_grants AS grants
+    ON grants.library_id = libraries.id
+    AND grants.workspace_id = NULLIF($9, '')::uuid
+  WHERE libraries.state = 'active'
+    AND (
+      $9 = ''
+      OR libraries.owner_workspace_id = NULLIF($9, '')::uuid
+      OR (libraries.kind = 'shared' AND grants.workspace_id IS NOT NULL)
+    )
+), active_spaces AS (
   SELECT
     spaces.source_file,
     array_agg(spaces.embedding_space_id ORDER BY spaces.embedding_space_id) AS embedding_space_ids
@@ -23,6 +35,7 @@ WITH active_spaces AS (
 ), catalog AS (
   SELECT
     jobs.source_file,
+    jobs.source_library_id,
     jobs.document_id,
     indexed.document_id AS active_document_id,
     indexed.version_id AS active_version_id,
@@ -60,11 +73,17 @@ WITH active_spaces AS (
     ON media_progress.generation_id = jobs.generation_id
   LEFT JOIN source_documents AS source
     ON source.document_id = jobs.document_id
+  WHERE (
+    jobs.source_library_id IN (SELECT id FROM accessible_libraries)
+    OR ($9 = '' AND $10 = '' AND jobs.source_library_id IS NULL)
+  )
+    AND ($10 = '' OR jobs.source_library_id = NULLIF($10, '')::uuid)
 
   UNION ALL
 
   SELECT
     indexed.source_file,
+    indexed.source_library_id,
     indexed.document_id,
     indexed.document_id AS active_document_id,
     indexed.version_id AS active_version_id,
@@ -96,7 +115,12 @@ WITH active_spaces AS (
     ON active_spaces.source_file = indexed.source_file
   LEFT JOIN source_documents AS source
     ON source.document_id = indexed.document_id
-  WHERE NOT EXISTS (
+  WHERE (
+    indexed.source_library_id IN (SELECT id FROM accessible_libraries)
+    OR ($9 = '' AND $10 = '' AND indexed.source_library_id IS NULL)
+  )
+  AND ($10 = '' OR indexed.source_library_id = NULLIF($10, '')::uuid)
+  AND NOT EXISTS (
     SELECT 1
     FROM ingestion_jobs AS jobs
     WHERE jobs.source_file = indexed.source_file
@@ -154,6 +178,7 @@ WITH active_spaces AS (
         'completedTables', classified.completed_tables
       ),
       'sourceFile', classified.source_file,
+      'sourceLibraryId', classified.source_library_id,
       'status', classified.status,
       'tables', classified.tables,
       'tags', classified.tags,

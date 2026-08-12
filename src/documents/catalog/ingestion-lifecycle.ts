@@ -46,6 +46,7 @@ import {
   ingestionJobs,
   retrievalDescriptionArtifacts,
   sourceElements,
+  sourceLibraries,
 } from "../../database/schema.js";
 import {
   deleteRetrievalGenerationRows,
@@ -66,7 +67,15 @@ export interface PrepareIngestionRequest {
   maxAttempts: number;
   requestedTags: string[];
   sourceFile: string;
+  sourceLibraryId: string | null;
   uploadedByUserId: string | null;
+}
+
+export class SourceLibraryIngestionUnavailableError extends Error {
+  public constructor() {
+    super("The selected source library is no longer available for uploads.");
+    this.name = "SourceLibraryIngestionUnavailableError";
+  }
 }
 
 export class CatalogIngestionLifecycle {
@@ -142,6 +151,7 @@ export class CatalogIngestionLifecycle {
   ): Promise<PrepareIngestionResult> {
     return this.database.transaction(async (transaction) => {
       await lockUploadedDocumentIdentity(transaction, request);
+      await lockActiveSourceLibrary(transaction, request.sourceLibraryId);
       let candidates = await readUploadedDocumentCandidates(
         transaction,
         request,
@@ -259,19 +269,24 @@ export class CatalogIngestionLifecycle {
       const candidatesByDocument = new Map<string, UploadedDocumentCandidate[]>();
       for (const row of indexedRows) {
         const indexed = decodePublishedDocument(row);
-        const candidates = candidatesByDocument.get(indexed.documentId) ?? [];
+        const identity = `${indexed.sourceLibraryId ?? "unassigned"}:${indexed.documentId}`;
+        const candidates = candidatesByDocument.get(identity) ?? [];
         candidates.push({
           currentEmbeddingDocumentId: null,
           indexed,
           job: jobsBySource.get(indexed.sourceFile) ?? null,
           sourceFile: indexed.sourceFile,
         });
-        candidatesByDocument.set(indexed.documentId, candidates);
+        candidatesByDocument.set(identity, candidates);
       }
 
       const reconciledSourceFiles: string[] = [];
-      for (const [documentId, candidates] of candidatesByDocument) {
+      for (const candidates of candidatesByDocument.values()) {
         if (candidates.length < 2) {
+          continue;
+        }
+        const documentId = candidates[0]?.indexed?.documentId;
+        if (documentId === undefined) {
           continue;
         }
         await lockUploadedContentIdentity(transaction, documentId);
@@ -343,37 +358,40 @@ export class CatalogIngestionLifecycle {
     tags: string[],
     currentTime: Date,
   ): Promise<PrepareIngestionResult> {
-    const resumedRows = await this.database
-      .update(ingestionJobs)
-      .set({
-        attemptCount: 0,
-        errorMessage: null,
-        leaseExpiresAt: null,
-        maxAttempts: request.maxAttempts,
-        nextAttemptAt: currentTime,
-        ownerId: null,
-        controlError: null,
-        controlState: "active",
-        state: "pending",
-        tags,
-        updatedAt: currentTime,
-      })
-      .where(
-        and(
-          eq(ingestionJobs.sourceFile, request.sourceFile),
-          buildAvailableJobCondition(),
-        ),
-      )
-      .returning();
-    const resumedRow = resumedRows[0];
-    if (resumedRow === undefined) {
-      throw new Error(`Another ingestion worker claimed ${request.sourceFile}.`);
-    }
-    return {
-      abandonedJob: null,
-      job: decodeIngestionJob(resumedRow),
-      kind: "process",
-    };
+    return this.database.transaction(async (transaction) => {
+      await lockActiveSourceLibrary(transaction, request.sourceLibraryId);
+      const resumedRows = await transaction
+        .update(ingestionJobs)
+        .set({
+          attemptCount: 0,
+          errorMessage: null,
+          leaseExpiresAt: null,
+          maxAttempts: request.maxAttempts,
+          nextAttemptAt: currentTime,
+          ownerId: null,
+          controlError: null,
+          controlState: "active",
+          state: "pending",
+          tags,
+          updatedAt: currentTime,
+        })
+        .where(
+          and(
+            eq(ingestionJobs.sourceFile, request.sourceFile),
+            buildAvailableJobCondition(),
+          ),
+        )
+        .returning();
+      const resumedRow = resumedRows[0];
+      if (resumedRow === undefined) {
+        throw new Error(`Another ingestion worker claimed ${request.sourceFile}.`);
+      }
+      return {
+        abandonedJob: null,
+        job: decodeIngestionJob(resumedRow),
+        kind: "process",
+      };
+    });
   }
 
   private async resetIngestion(
@@ -384,6 +402,7 @@ export class CatalogIngestionLifecycle {
   ): Promise<PrepareIngestionResult> {
     const resetJob = buildResetJob(request, tags, currentTime);
     return this.database.transaction(async (transaction) => {
+      await lockActiveSourceLibrary(transaction, request.sourceLibraryId);
       const currentJob = await readResettableJob(
         transaction,
         request.sourceFile,
@@ -433,6 +452,27 @@ function buildSourceRootPattern(sourceRoot: string): string {
 type CatalogIngestionTransaction = Parameters<
   Parameters<CiteLoomDatabase["transaction"]>[0]
 >[0];
+
+async function lockActiveSourceLibrary(
+  transaction: CatalogIngestionTransaction,
+  sourceLibraryId: string | null,
+): Promise<void> {
+  if (sourceLibraryId === null) {
+    return;
+  }
+  const rows = await transaction
+    .select({ id: sourceLibraries.id })
+    .from(sourceLibraries)
+    .where(and(
+      eq(sourceLibraries.id, sourceLibraryId),
+      eq(sourceLibraries.state, "active"),
+    ))
+    .for("update")
+    .limit(1);
+  if (rows[0] === undefined) {
+    throw new SourceLibraryIngestionUnavailableError();
+  }
+}
 
 async function readResettableJob(
   transaction: CatalogIngestionTransaction,
@@ -517,12 +557,22 @@ async function readUploadedDocumentCandidates(
       documentVersions,
       eq(indexedDocuments.versionId, documentVersions.id),
     )
-    .where(like(indexedDocuments.sourceFile, sourcePattern))
+    .where(and(
+      like(indexedDocuments.sourceFile, sourcePattern),
+      request.sourceLibraryId === null
+        ? undefined
+        : eq(indexedDocuments.sourceLibraryId, request.sourceLibraryId),
+    ))
     .orderBy(asc(indexedDocuments.indexedAt));
   const jobRows = await transaction
     .select()
     .from(ingestionJobs)
-    .where(like(ingestionJobs.sourceFile, sourcePattern))
+    .where(and(
+      like(ingestionJobs.sourceFile, sourcePattern),
+      request.sourceLibraryId === null
+        ? undefined
+        : eq(ingestionJobs.sourceLibraryId, request.sourceLibraryId),
+    ))
     .orderBy(asc(ingestionJobs.updatedAt));
   const spaceRows = await transaction
     .select()
@@ -1059,6 +1109,7 @@ function buildResetJob(
     controlState: "active",
     uploadedByUserId: request.uploadedByUserId,
     sourceFile: request.sourceFile,
+    sourceLibraryId: request.sourceLibraryId,
     state: "pending",
     tables: 0,
     tags,
@@ -1082,6 +1133,7 @@ function isSameIngestionRequest(
 ): boolean {
   return job.documentId === request.documentId
     && job.embeddingSpaceId === request.embeddingSpaceId
+    && job.sourceLibraryId === request.sourceLibraryId
     && haveSameDocumentFormat(job.format, request.format);
 }
 
@@ -1110,6 +1162,7 @@ function buildIndexedValues(
     indexedAt,
     pageCount: job.pageCount,
     sourceFile: job.sourceFile,
+    sourceLibraryId: job.sourceLibraryId,
     tables: job.tables,
     tags: job.tags,
     textChunks: job.textChunks,

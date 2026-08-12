@@ -12,6 +12,8 @@
     </div>
   </header>
 
+  <p class="field-error" role="alert" x-cloak x-show="errorMessage !== ''" x-text="errorMessage"></p>
+
   <p class="security-loading" x-show="loading">Loading security settings…</p>
 
   <div class="security-load-failed" x-cloak x-show="!loading &amp;&amp; loadFailed">
@@ -19,19 +21,61 @@
     <button class="button secondary" type="button" @click="loadOverview()">Try again</button>
   </div>
 
-  <div class="security-content" x-cloak x-show="!loading &amp;&amp; !loadFailed">
-    <section class="security-users-column" aria-label="Users and access">
-      <div
-        class="workspace-user-management-host"
-        hx-get="./fragments/workspace-users-management.html"
-        hx-target="this"
-        hx-trigger="load"
-        hx-swap="innerHTML"
-      >
-        <p class="access-user-loading">Loading workspace users…</p>
+  <section class="security-user-accounts access-users-panel access-card" x-cloak x-show="currentGlobalRole === 'global_admin'" @keydown.escape.window="accountCreationOpen &amp;&amp; closeAccountCreation()">
+    <header class="access-users-heading">
+      <div><h2>User accounts</h2><p>Create organization accounts and manage password setup or reset links.</p></div>
+      <div class="compact-header-actions">
+        <button class="button secondary" :disabled="accountLoading || userAccountBusy" type="button" @click="loadOrganizationUsers()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use></svg><span>Refresh</span></button>
+        <button class="button primary" :disabled="accountLoading || userAccountBusy" type="button" @click="openAccountCreation()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-user-plus"></use></svg><span>Create user</span></button>
       </div>
-    </section>
+    </header>
 
+    <p class="field-error" role="alert" x-cloak x-show="accountError !== ''" x-text="accountError"></p>
+    <p class="security-account-status" role="status" x-cloak x-show="accountStatusMessage !== ''" x-text="accountStatusMessage"></p>
+
+    <div class="security-password-link" x-cloak x-show="passwordLinkUrl !== ''">
+      <span><strong x-text="passwordLinkPurpose === 'setup' ? 'Password setup link' : 'Password reset link'"></strong><small x-text="`Single use. Expires ${formatPasswordLinkExpiry()}.`"></small></span>
+      <output :title="passwordLinkUrl" x-text="passwordLinkUrl"></output>
+      <button class="button secondary" type="button" @click="copyPasswordLink()" x-text="passwordLinkCopied ? 'Copied' : 'Copy link'"></button>
+    </div>
+
+    <div class="access-user-table security-user-table" :aria-busy="accountLoading">
+      <div class="access-user-table-heading" aria-hidden="true"><span>User</span><span>Account</span><span>Workspace access</span><span>Actions</span></div>
+      <p class="access-user-loading" x-show="accountLoading">Loading organization users…</p>
+      <p class="access-user-loading" x-show="!accountLoading &amp;&amp; organizationUsers.length === 0">No organization users exist yet.</p>
+      <template x-for="user in organizationUsers" :key="user.userId">
+        <article class="access-user-row">
+          <div class="access-user-identity">
+            <span class="access-user-avatar" x-text="organizationUserInitials(user.displayName)"></span>
+            <span><strong class="truncate" x-text="user.displayName"></strong><small class="truncate" x-text="user.globalRole === 'global_admin' ? `@${user.username} · Global administrator` : `@${user.username}`"></small></span>
+          </div>
+          <span class="access-user-state"><i :class="`state-${user.state}`"></i><span x-text="user.state"></span></span>
+          <span class="security-user-workspaces" x-text="accountWorkspaceLabel(user)"></span>
+          <details class="access-user-actions" @click.outside="$el.open = false">
+            <summary class="access-user-row-control" :aria-label="`Account actions for ${user.username}`"><span>Actions</span><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-settings"></use></svg></summary>
+            <div>
+              <button :disabled="userAccountBusy || !accountCanCreatePasswordLink(user)" type="button" @click="$el.closest('details').removeAttribute('open'); requestPasswordLink(user)"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-link"></use></svg><span x-text="accountPasswordActionLabel(user)"></span></button>
+              <small x-show="user.workspaceCount === 0">Assign this account to a workspace first.</small>
+            </div>
+          </details>
+        </article>
+      </template>
+    </div>
+
+    <div class="access-drawer-backdrop" x-cloak x-show="accountCreationOpen" @click.self="closeAccountCreation()">
+      <aside class="access-add-drawer" role="dialog" aria-modal="true" aria-labelledby="create-account-title">
+        <header><div><h2 id="create-account-title">Create user</h2><p>Create an organization account without assigning workspace access.</p></div><button class="button access-close-button" type="button" aria-label="Close create user form" @click="closeAccountCreation()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg></button></header>
+        <form @submit.prevent="createOrganizationUser()">
+          <label><span>Username</span><input autocomplete="off" maxlength="100" minlength="3" pattern="[A-Za-z0-9][A-Za-z0-9._-]*" placeholder="e.g. jdoe" required type="text" x-model.trim="accountUsername" /><small>Unique handle used to sign in.</small></label>
+          <label><span>Display name</span><input autocomplete="off" maxlength="200" placeholder="e.g. Jane Doe" required type="text" x-model.trim="accountDisplayName" /><small>Name shown throughout CiteLoom.</small></label>
+          <div class="access-drawer-guidance"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-info"></use></svg><p><strong>Next steps</strong><span>Add this account to a workspace, then return to Security to create its password setup link.</span></p></div>
+          <footer><button class="button access-secondary-button" :disabled="userAccountBusy" type="button" @click="closeAccountCreation()">Cancel</button><button class="button access-primary-button" :disabled="userAccountBusy || accountUsername === '' || accountDisplayName === ''" type="submit" x-text="userAccountBusy ? 'Creating…' : 'Create user'"></button></footer>
+        </form>
+      </aside>
+    </div>
+  </section>
+
+  <div class="security-content" x-cloak x-show="!loading &amp;&amp; !loadFailed">
     <div class="security-policy-column">
       <form class="security-policy-panel" @submit.prevent="savePolicy()">
         <header class="security-section-heading">
@@ -52,7 +96,7 @@
           <label class="security-policy-field" for="security-reset-lifetime">
             <span class="security-field-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use></svg></span>
             <span class="security-field-copy"><strong>Password reset link lifetime</strong><small>New setup and reset links use this lifetime.</small></span>
-            <select id="security-reset-lifetime" x-model.number="resetLinkLifetimeSeconds">
+            <select class="form-control compact-header-control access-user-row-control" id="security-reset-lifetime" x-model.number="resetLinkLifetimeSeconds">
               <option value="900">15 minutes</option>
               <option value="1800">30 minutes</option>
               <option value="3600">1 hour</option>

@@ -62,8 +62,7 @@ export function readAdministratorBootstrapConfig(
   const administrator = decodeBootstrapAdministratorInput({
     displayName: result.data.CITELOOM_ADMIN_USERNAME,
     username: result.data.CITELOOM_ADMIN_USERNAME,
-    workspaceName: "CiteLoom",
-    workspaceSlug: "citeloom",
+    workspaceName: "DefaultSpace",
   });
   return {
     administrator,

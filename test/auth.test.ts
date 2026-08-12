@@ -29,17 +29,21 @@ describe("authentication boundaries", () => {
     });
   });
 
-  it("rejects unsafe usernames and workspace slugs", () => {
+  it("rejects unsafe usernames", () => {
     expect(() => normalizeUserIdentity({
       displayName: "Sage",
       username: "sage user",
     })).toThrow();
-    expect(() => decodeBootstrapAdministratorInput({
+    expect(decodeBootstrapAdministratorInput({
       displayName: "Sage",
       username: "sage",
       workspaceName: "CiteLoom",
-      workspaceSlug: "Cite Loom",
-    })).toThrow();
+    })).toEqual({
+      displayName: "Sage",
+      username: "sage",
+      usernameNormalized: "sage",
+      workspaceName: "CiteLoom",
+    });
   });
 
   it("decodes login input without applying password setup policy", () => {

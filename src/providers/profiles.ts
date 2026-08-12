@@ -9,19 +9,78 @@ import type {
   TextToSpeechAdapter,
 } from "../config/types.js";
 
-export const PROVIDER_CAPABILITIES = [
-  "answer",
-  "chat",
-  "queryExpansion",
-  "indexing",
-  "embedding",
-  "reranking",
-  "speechToText",
-  "textToSpeech",
+export type ProviderId = string;
+
+export const PROVIDER_CAPABILITY_DEFINITIONS = [
+  {
+    capability: "answer",
+    description: "Choose how CiteLoom answers questions in Ask.",
+    label: "Ask",
+    workspaceConfigurable: true,
+  },
+  {
+    capability: "chat",
+    description: "Choose how CiteLoom responds in document chats.",
+    label: "Chat",
+    workspaceConfigurable: true,
+  },
+  {
+    capability: "queryExpansion",
+    description: "Choose whether CiteLoom creates alternative searches and how their results influence ordering.",
+    label: "Query Expansion",
+    workspaceConfigurable: true,
+  },
+  {
+    capability: "indexing",
+    description: "Choose the model CiteLoom uses to prepare Docling output for search, including images, tables, and document structure.",
+    label: "Indexing model",
+    workspaceConfigurable: false,
+  },
+  {
+    capability: "embedding",
+    description: "Configure the application-wide vector space used to index and search documents.",
+    label: "Embedding space",
+    workspaceConfigurable: false,
+  },
+  {
+    capability: "reranking",
+    description: "Choose how CiteLoom orders semantic search results.",
+    label: "Search ranking",
+    workspaceConfigurable: true,
+  },
+  {
+    capability: "speechToText",
+    description: "Choose how CiteLoom turns recorded questions into text.",
+    label: "Speech input",
+    workspaceConfigurable: true,
+  },
+  {
+    capability: "textToSpeech",
+    description: "Choose how CiteLoom creates spoken answers.",
+    label: "Spoken answers",
+    workspaceConfigurable: true,
+  },
 ] as const;
 
-export type ProviderId = string;
-export type ProviderCapability = typeof PROVIDER_CAPABILITIES[number];
+export type ProviderCapabilityDefinition =
+  typeof PROVIDER_CAPABILITY_DEFINITIONS[number];
+export type ProviderCapability = ProviderCapabilityDefinition["capability"];
+
+export const PROVIDER_CAPABILITIES = PROVIDER_CAPABILITY_DEFINITIONS.map(
+  (definition) => definition.capability,
+) as [ProviderCapability, ...ProviderCapability[]];
+
+export const WORKSPACE_PROVIDER_CAPABILITIES =
+  PROVIDER_CAPABILITY_DEFINITIONS
+    .filter((definition) => definition.workspaceConfigurable)
+    .map((definition) => definition.capability);
+
+export function isWorkspaceProviderCapability(
+  capability: ProviderCapability,
+): boolean {
+  return (WORKSPACE_PROVIDER_CAPABILITIES as readonly ProviderCapability[])
+    .includes(capability);
+}
 export type CustomLanguageModelAdapter = Exclude<
   LanguageModelAdapter,
   "openai-codex-language"
@@ -141,6 +200,49 @@ export interface ProviderSettings {
   connections: Record<ProviderId, ProviderConnection>;
   featureOverrides: ProviderFeatureOverrides;
   routing: ProviderRouting;
+}
+
+export function readProviderFeatureConfiguration(
+  settings: ProviderSettings,
+  capability: ProviderCapability,
+): ProviderFeatureConfiguration {
+  const providerId = settings.routing[capability] ?? null;
+  if (capability === "textToSpeech") {
+    return {
+      capability,
+      modelOverride: settings.featureOverrides.textToSpeech.modelOverride,
+      providerId,
+      voiceOverride: settings.featureOverrides.textToSpeech.voiceOverride,
+    };
+  }
+  if (capability === "reranking" || capability === "speechToText") {
+    const overrides = settings.featureOverrides[capability];
+    return {
+      capability,
+      modelOverride: overrides.modelOverride,
+      providerId,
+    };
+  }
+  if (capability === "embedding") {
+    return {
+      capability,
+      contextCapacityTokensOverride:
+        settings.featureOverrides.embedding.contextCapacityTokensOverride,
+      modelOverride: settings.featureOverrides.embedding.modelOverride,
+      providerId,
+    };
+  }
+  const languageOverrides = capability === "chat"
+    ? settings.featureOverrides.chat ?? settings.featureOverrides.answer
+    : settings.featureOverrides[capability];
+  return {
+    capability,
+    contextCapacityTokensOverride:
+      languageOverrides.contextCapacityTokensOverride,
+    modelOverride: languageOverrides.modelOverride,
+    providerId,
+    thinkingModeOverride: languageOverrides.thinkingModeOverride,
+  };
 }
 
 export interface ProviderCapabilityConfiguration {
@@ -504,6 +606,41 @@ export const providerConnectionConfigurationSchema =
   providerConnectionConfigurationInputSchema.transform(
     materializeProviderConnectionConfiguration,
   );
+
+export const providerFeatureConfigurationSchema = z.discriminatedUnion(
+  "capability",
+  [
+    z.object({
+      capability: z.enum([
+        "answer",
+        "chat",
+        "queryExpansion",
+        "indexing",
+      ]),
+      contextCapacityTokensOverride: z.number().int().positive().nullable(),
+      modelOverride: providerConfigurationTextSchema,
+      providerId: providerIdSchema.nullable(),
+      thinkingModeOverride: languageThinkingModeSchema.nullable(),
+    }).strict(),
+    z.object({
+      capability: z.literal("embedding"),
+      contextCapacityTokensOverride: z.number().int().positive().nullable(),
+      modelOverride: providerConfigurationTextSchema,
+      providerId: providerIdSchema.nullable(),
+    }).strict(),
+    z.object({
+      capability: z.enum(["reranking", "speechToText"]),
+      modelOverride: providerConfigurationTextSchema,
+      providerId: providerIdSchema.nullable(),
+    }).strict(),
+    z.object({
+      capability: z.literal("textToSpeech"),
+      modelOverride: providerConfigurationTextSchema,
+      providerId: providerIdSchema.nullable(),
+      voiceOverride: providerConfigurationTextSchema,
+    }).strict(),
+  ],
+);
 
 const providerSettingsInputSchema = z.object({
   catalog: z.array(providerProfileSchema).min(1),

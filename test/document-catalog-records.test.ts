@@ -25,6 +25,7 @@ function buildIngestionJobRow() {
     pageCount: 2,
     phase: "normalized",
     sourceFile: "/documents/report.pdf",
+    sourceLibraryId: null,
     state: "pending",
     tables: 1,
     tags: [],

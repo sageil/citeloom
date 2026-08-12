@@ -310,6 +310,7 @@ export function streamIndexedDocumentAnswerWithRuntime(
   scope: QueryScope,
   threadId: string,
   abortSignal: AbortSignal,
+  workspaceId: string | null = null,
 ): ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>> {
   const questionInput = createQuestionInput(question);
   return createUIMessageStream<CiteLoomUIMessage>({
@@ -326,7 +327,10 @@ export function streamIndexedDocumentAnswerWithRuntime(
             runTelemetry,
             runtime.config,
             "interactive-answer",
+            defaultPrepareRetrievalOptions,
+            workspaceId,
           ),
+          workspaceId,
         );
       } catch (error: unknown) {
         await reportUntrackedAnswerStreamFailure(
@@ -449,6 +453,7 @@ export async function prepareRetrievalWithRuntime(
   config: AppConfig = runtime.config,
   workload: WorkloadClass = "interactive-search",
   options: PrepareRetrievalOptions = defaultPrepareRetrievalOptions,
+  workspaceId: string | null = null,
 ): Promise<PreparedRetrieval> {
   const questionInput = readQuestionInput(question);
   return prepareRetrievalWithResources(
@@ -470,6 +475,7 @@ export async function prepareRetrievalWithRuntime(
     runTelemetry,
     workload === "interactive-answer",
     options,
+    workspaceId,
   );
 }
 
@@ -488,8 +494,9 @@ async function prepareRetrievalWithResources(
   runTelemetry: RunTelemetry,
   useDocumentToc: boolean,
   options: PrepareRetrievalOptions,
+  workspaceId: string | null = null,
 ): Promise<PreparedRetrieval> {
-  const catalog = new DocumentCatalog(databaseSession.database);
+  const catalog = new DocumentCatalog(databaseSession.database, { workspaceId });
   const scopeStage = runTelemetry.startStage({
     model: null,
     name: "scope-resolution",
@@ -819,6 +826,7 @@ export async function writeStreamedAnswer(
   abortSignal: AbortSignal,
   writer: UIMessageStreamWriter<CiteLoomUIMessage>,
   prepare: (runTelemetry: RunTelemetry) => Promise<PreparedRetrieval>,
+  workspaceId: string | null = null,
 ): Promise<void> {
   const questionInput = readQuestionInput(question);
   const runTelemetry = await createDatabaseRunTelemetry(
@@ -831,7 +839,11 @@ export async function writeStreamedAnswer(
   if (researchRunId === null) {
     throw new Error("Answer telemetry did not create a run ID.");
   }
-  const researchStore = new ResearchStore(databaseSession.database, config);
+  const researchStore = new ResearchStore(
+    databaseSession.database,
+    config,
+    workspaceId,
+  );
   const receiveAnswerContent = createAnswerContentWriter(
     writer,
     () => runTelemetry.markFirstToken(),

@@ -31,9 +31,6 @@ export function registerChatRoutes(
   server.get("/api/chat/conversations", async (request, reply) => {
     const principal = requireRequestPrincipal(requestPrincipals, request);
     const conversations = await services.run(async (runtime) => {
-      if (runtime.listChatConversations === undefined) {
-        throw new Error("Chat conversations are not configured.");
-      }
       return runtime.listChatConversations(principal);
     });
     reply.header("Cache-Control", "private, no-store");
@@ -44,9 +41,6 @@ export function registerChatRoutes(
     const principal = requireRequestPrincipal(requestPrincipals, request);
     const input = decodeCreateChatConversationRequest(request.body);
     const conversation = await services.run(async (runtime) => {
-      if (runtime.createChatConversation === undefined) {
-        throw new Error("Chat conversations are not configured.");
-      }
       return runtime.createChatConversation(
         principal,
         input.title,
@@ -63,9 +57,6 @@ export function registerChatRoutes(
       const principal = requireRequestPrincipal(requestPrincipals, request);
       const conversationId = decodeChatConversationId(request.params);
       const conversation = await services.run(async (runtime) => {
-        if (runtime.readChatConversation === undefined) {
-          throw new Error("Chat conversations are not configured.");
-        }
         return runtime.readChatConversation(principal, conversationId);
       });
       if (conversation === null) {
@@ -82,9 +73,6 @@ export function registerChatRoutes(
       const principal = requireRequestPrincipal(requestPrincipals, request);
       const conversationId = decodeChatConversationId(request.params);
       await services.run(async (runtime) => {
-        if (runtime.deleteChatConversation === undefined) {
-          throw new Error("Chat conversations are not configured.");
-        }
         await runtime.deleteChatConversation(principal, conversationId);
       });
       return reply.status(204).send();
@@ -101,10 +89,7 @@ export function registerChatRoutes(
       const abort = (): void => abortController.abort();
       request.raw.once("aborted", abort);
       reply.raw.once("close", abort);
-      const stream = services.stream((runtime) => {
-        if (runtime.streamChatMessage === undefined) {
-          throw new Error("Chat generation is not configured.");
-        }
+      const stream = services.streamInWorkspace(principal, (runtime) => {
         return runtime.streamChatMessage(
           principal,
           {
@@ -125,9 +110,6 @@ export function registerChatRoutes(
     const principal = requireRequestPrincipal(requestPrincipals, request);
     const id = decodeResourceId(request.params);
     const citation = await services.run(async (runtime) => {
-      if (runtime.readChatCitationEvidence === undefined) {
-        throw new Error("Chat citations are not configured.");
-      }
       return runtime.readChatCitationEvidence(principal, id);
     });
     if (citation === null) {
@@ -141,9 +123,6 @@ export function registerChatRoutes(
     const principal = requireRequestPrincipal(requestPrincipals, request);
     const id = decodeResourceId(request.params);
     const image = await services.run(async (runtime) => {
-      if (runtime.readChatCitationImage === undefined) {
-        throw new Error("Chat citation images are not configured.");
-      }
       return runtime.readChatCitationImage(principal, id);
     });
     if (image === null) {
@@ -158,9 +137,6 @@ export function registerChatRoutes(
     const principal = requireRequestPrincipal(requestPrincipals, request);
     const id = decodeResourceId(request.params);
     const document = await services.run(async (runtime) => {
-      if (runtime.readChatCitationFile === undefined) {
-        throw new Error("Chat citation files are not configured.");
-      }
       return runtime.readChatCitationFile(principal, id);
     });
     if (document === null) {
@@ -180,12 +156,7 @@ export function registerChatRoutes(
       const principal = requireRequestPrincipal(requestPrincipals, request);
       const id = decodeResourceId(request.params);
       const document = await services.run(async (runtime) => {
-        const readHighlightedFile = runtime.readChatCitationHighlightedFile
-          ?? runtime.readChatCitationHighlightedPdf;
-        if (readHighlightedFile === undefined) {
-          throw new Error("Chat highlighted citations are not configured.");
-        }
-        return readHighlightedFile(principal, id);
+        return runtime.readChatCitationHighlightedFile(principal, id);
       });
       if (document === null) {
         throw new WebRequestError(404, "The chat citation was not found.");
