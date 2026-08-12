@@ -8,6 +8,7 @@ import {
   readNullableNonNegativeInteger,
   readPlainObject as readObject,
   readPositiveInteger,
+  readProbability,
   readUIMessageStream,
 } from "./boundary-readers.js";
 import {
