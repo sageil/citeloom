@@ -31,7 +31,7 @@
           <template x-for="library in sharedSourceLibraries" :key="library.id">
             <button
               type="button"
-              :aria-current="sourceLibraryId === library.id ? 'page' : null"
+              :aria-pressed="sourceLibraryId === library.id"
               :class="{ active: sourceLibraryId === library.id }"
               @click="selectSharedSource(library.id)"
             >
@@ -175,7 +175,7 @@
           </label>
           <label>
             <span class="visually-hidden">Filter by status</span>
-            <select class="form-control" :value="status" @change="chooseStatus($event.target.value)">
+            <select class="form-control compact-header-control" :value="status" @change="chooseStatus($event.target.value)">
               <option value="all">Status: All</option>
               <option value="ready">Ready</option>
               <option value="processing">Processing</option>
@@ -185,7 +185,7 @@
           </label>
           <label>
             <span class="visually-hidden">Filter by tag</span>
-            <select class="form-control" :value="tagFilter" @change="chooseTag($event.target.value)">
+            <select class="form-control compact-header-control" :value="tagFilter" @change="chooseTag($event.target.value)">
               <option value="">Tags: All</option>
               <template x-for="facet in facets.tags" :key="facet.tag">
                 <option
@@ -197,7 +197,7 @@
           </label>
           <label>
             <span class="visually-hidden">Sort documents</span>
-            <select class="form-control" :value="sort" @change="chooseSort($event.target.value)">
+            <select class="form-control compact-header-control" :value="sort" @change="chooseSort($event.target.value)">
               <option value="updated-desc">Updated: newest</option>
               <option value="updated-asc">Updated: oldest</option>
               <option value="name-asc">Name: A-Z</option>

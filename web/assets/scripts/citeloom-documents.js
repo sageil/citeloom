@@ -997,6 +997,12 @@ export function registerPage(alpine) {
     },
 
     selectSharedSource(libraryId) {
+      if (this.sourceLibraryId === libraryId) {
+        const location = new URL(window.location.href);
+        location.searchParams.delete("source-library");
+        window.location.assign(location);
+        return;
+      }
       window.location.assign(
         buildSourceLibraryViewUrl("documents", libraryId),
       );
