@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { requireGlobalAdministrator } from "../auth/authorization.js";
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 import type { SourceContentConfig } from "../config/index.js";
 import type { CiteLoomDatabase } from "../database/client.js";
 import {
@@ -30,7 +30,7 @@ export interface SourceLibraryDeletionRuntime {
 
 export async function requestSharedSourceLibraryDeletion(
   database: CiteLoomDatabase,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   libraryId: string,
 ): Promise<void> {
   requireGlobalAdministrator(principal);

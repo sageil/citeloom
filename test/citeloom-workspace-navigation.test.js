@@ -20,6 +20,29 @@ afterEach(() => {
 });
 
 describe("CiteLoom workspace navigation", () => {
+  it("loads root application assets when the shell is served from the OAuth callback", async () => {
+    const index = await readFile(
+      new URL("../web/index.html", import.meta.url),
+      "utf8",
+    );
+    const elements = readHtmlElements(index);
+    const base = findHtmlElementByAttribute(elements, "href", "/");
+    const appScript = findHtmlElementByAttribute(
+      elements,
+      "src",
+      "./assets/scripts/app.js",
+    );
+    const callbackUrl = new URL("https://citeloom.example/oauth/callback");
+    const documentBaseUrl = new URL(readHtmlAttribute(base, "href"), callbackUrl);
+    const appScriptUrl = new URL(
+      readHtmlAttribute(appScript, "src"),
+      documentBaseUrl,
+    );
+
+    expect(base.tagName).toBe("base");
+    expect(appScriptUrl.pathname).toBe("/assets/scripts/app.js");
+  });
+
   it("gives global administrators every current-workspace administrator capability", () => {
     expect(canAdministerWorkspace("member", "global_admin")).toBe(true);
     expect(canAdministerWorkspace("admin", "standard")).toBe(true);

@@ -1,4 +1,5 @@
 import { buildEvidenceScoreScale } from "./evidence-score.js";
+import { browserAuthentication } from "./browser-authentication.js";
 
 const evidenceWindowGap = 10;
 const evidenceWindowAnchorInset = 16;
@@ -363,6 +364,8 @@ export function revealEvidenceCitationTrigger(
 export function createEvidenceWindowControls(options) {
   return {
     citationWindow: createEvidenceWindowState(),
+    evidenceWindowImageResource: null,
+    evidenceWindowImageSource: null,
     selectedEvidenceClaimIndex: null,
 
     evidenceWindowCitation() {
@@ -394,11 +397,7 @@ export function createEvidenceWindowControls(options) {
     },
 
     evidenceWindowImageUrl() {
-      const citation = this.evidenceWindowCitation();
-      if (citation === null) {
-        return "";
-      }
-      return options.readImageUrl(this, citation);
+      return this.evidenceWindowImageResource?.href ?? "";
     },
 
     evidenceWindowFileUrl() {
@@ -442,6 +441,7 @@ export function createEvidenceWindowControls(options) {
     },
 
     async completeEvidencePanelOpen(citationId) {
+      await this.loadEvidenceWindowImage(citationId);
       await this.$nextTick();
       const panelReady = await waitForEvidenceWindowLayout(
         this.$refs.evidencePanel,
@@ -456,8 +456,40 @@ export function createEvidenceWindowControls(options) {
     },
 
     resetEvidencePanelState() {
+      this.releaseEvidenceWindowImage();
       resetEvidenceWindow(this.citationWindow);
       this.selectedEvidenceClaimIndex = null;
+    },
+
+    async loadEvidenceWindowImage(citationId) {
+      const citation = this.evidenceWindowCitation();
+      if (citation === null || citation.evidence.kind !== "image") {
+        this.releaseEvidenceWindowImage();
+        return;
+      }
+      const source = options.readImageUrl(this, citation);
+      if (source === this.evidenceWindowImageSource) {
+        return;
+      }
+      this.releaseEvidenceWindowImage();
+      let resource;
+      try {
+        resource = await browserAuthentication.readAuthorizedResource(source);
+      } catch {
+        return;
+      }
+      if (this.evidenceWindowCitation()?.id !== citationId) {
+        resource.revoke();
+        return;
+      }
+      this.evidenceWindowImageResource = resource;
+      this.evidenceWindowImageSource = source;
+    },
+
+    releaseEvidenceWindowImage() {
+      this.evidenceWindowImageResource?.revoke();
+      this.evidenceWindowImageResource = null;
+      this.evidenceWindowImageSource = null;
     },
 
     evidencePanelStyle() {

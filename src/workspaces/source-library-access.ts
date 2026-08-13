@@ -1,7 +1,7 @@
 import { and, asc, eq, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 
 import type { CiteLoomDatabase } from "../database/client.js";
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 import {
   indexedDocuments,
   documentVersions,
@@ -25,7 +25,7 @@ export type CatalogSourceAuthorization =
 
 export async function authorizeSourceLibraryForPrincipal(
   database: CiteLoomDatabase,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   libraryId: string,
   requiredAccess: "manage" | "use" = "use",
 ): Promise<CatalogSourceAuthorization> {
@@ -53,7 +53,7 @@ export async function authorizeSourceLibraryForPrincipal(
 
 export async function authorizeCatalogSourceForPrincipal(
   database: CiteLoomDatabase,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   sourceFile: string,
   requiredAccess: "manage" | "use" = "use",
 ): Promise<CatalogSourceAuthorization> {
@@ -74,7 +74,7 @@ export async function authorizeCatalogSourceForPrincipal(
 
 export async function authorizeDocumentVersionForPrincipal(
   database: CiteLoomDatabase,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   versionId: string,
   requiredAccess: "manage" | "use" = "use",
 ): Promise<CatalogSourceAuthorization> {

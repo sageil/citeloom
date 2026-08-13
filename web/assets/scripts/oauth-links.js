@@ -10,74 +10,95 @@ import {
   readPositiveInteger,
   readTimestamp,
 } from "./boundary-readers.js";
+import { browserAuthentication } from "./browser-authentication.js";
 import { requestConfirmation } from "./confirmation.js";
 
 const userStates = ["active", "pending", "suspended"];
-const workspaceStates = ["active", "archived"];
-const oauthConfigurationStates = [
-  "disabled",
-  "enabled",
-  "invalid_origin",
-  "unconfigured",
-];
+
+function readScopes(value, label) {
+  const scopes = [];
+  for (const scope of readArray(value, label)) {
+    scopes.push(readNonEmptyString(scope, "OAuth scope"));
+  }
+  if (scopes.length === 0) {
+    throw new Error(`The ${label} response is invalid.`);
+  }
+  return scopes;
+}
 
 function readOAuthConfiguration(value) {
   const configuration = readPlainObject(value, "OAuth configuration");
-  const issuer = readNullableNonEmptyString(
-    configuration.issuer,
-    "OAuth issuer",
+  return {
+    apiResource: readNonEmptyString(
+      configuration.apiResource,
+      "OAuth API resource",
+    ),
+    apiScopes: readScopes(configuration.apiScopes, "OAuth API scopes"),
+    browserCallbackUri: readNonEmptyString(
+      configuration.browserCallbackUri,
+      "OAuth browser callback URI",
+    ),
+    browserClientId: readNonEmptyString(
+      configuration.browserClientId,
+      "OAuth browser client ID",
+    ),
+    browserPostLogoutRedirectUri: readNonEmptyString(
+      configuration.browserPostLogoutRedirectUri,
+      "OAuth browser post-logout URI",
+    ),
+    browserScopes: readScopes(
+      configuration.browserScopes,
+      "OAuth browser scopes",
+    ),
+    issuer: readNonEmptyString(configuration.issuer, "OAuth issuer"),
+    mcpResource: readNonEmptyString(
+      configuration.mcpResource,
+      "OAuth MCP resource",
+    ),
+    mcpScopes: readScopes(configuration.mcpScopes, "OAuth MCP scopes"),
+  };
+}
+
+function readNullableOAuthConfiguration(value) {
+  return value === null ? null : readOAuthConfiguration(value);
+}
+
+function readAuthenticationSettings(value) {
+  const settings = readPlainObject(value, "authentication settings");
+  const mode = readEnum(
+    settings.mode,
+    ["local", "oauth"],
+    "authentication mode",
   );
-  const resource = readNullableNonEmptyString(
-    configuration.resource,
-    "OAuth resource",
+  const activeOAuthConfiguration = readNullableOAuthConfiguration(
+    settings.activeOAuthConfiguration,
   );
-  const workspaceClaim = readNullableNonEmptyString(
-    configuration.workspaceClaim,
-    "OAuth workspace claim",
+  const stagedOAuthConfiguration = readNullableOAuthConfiguration(
+    settings.stagedOAuthConfiguration,
   );
-  const scopes = [];
-  for (const scope of readArray(configuration.scopes, "OAuth scopes")) {
-    scopes.push(readNonEmptyString(scope, "OAuth scope"));
-  }
-  const enabled = readBoolean(configuration.enabled, "OAuth enabled state");
-  const status = readEnum(
-    configuration.status,
-    oauthConfigurationStates,
-    "OAuth configuration status",
-  );
-  const unconfigured = issuer === null
-    && resource === null
-    && workspaceClaim === null
-    && scopes.length === 0;
-  const configured = issuer !== null
-    && resource !== null
-    && workspaceClaim !== null
-    && scopes.length > 0;
-  if (
-    (!unconfigured && !configured)
-    || (enabled && !configured)
-    || (unconfigured && status !== "unconfigured")
-    || (configured && status === "unconfigured")
-    || (configured && !enabled && status !== "disabled")
-    || (configured && enabled && status === "disabled")
-  ) {
-    throw new Error("The OAuth configuration response is invalid.");
+  if (mode === "oauth" && activeOAuthConfiguration === null) {
+    throw new Error("The OAuth authentication settings response is invalid.");
   }
   return {
-    enabled,
-    issuer,
-    resource,
-    scopes,
-    status,
+    activeOAuthConfiguration,
+    activatedAt: readNullableTimestamp(
+      settings.activatedAt,
+      "OAuth activation time",
+    ),
+    hostRecoveryEnabled: readBoolean(
+      settings.hostRecoveryEnabled,
+      "host authentication recovery setting",
+    ),
+    mode,
+    stagedOAuthConfiguration,
     updatedAt: readNullableTimestamp(
-      configuration.updatedAt,
-      "OAuth configuration update time",
+      settings.updatedAt,
+      "authentication update time",
     ),
     version: readPositiveInteger(
-      configuration.version,
-      "OAuth configuration version",
+      settings.version,
+      "authentication settings version",
     ),
-    workspaceClaim,
   };
 }
 
@@ -93,46 +114,19 @@ function readOAuthUserIdentityLink(value) {
   };
 }
 
-function readOAuthWorkspaceLink(value) {
-  const link = readPlainObject(value, "OAuth workspace link");
-  return {
-    createdAt: readTimestamp(link.createdAt, "OAuth workspace link creation time"),
-    externalWorkspaceId: readNonEmptyString(
-      link.externalWorkspaceId,
-      "OAuth external workspace identifier",
-    ),
-    workspaceId: readNonEmptyString(link.workspaceId, "OAuth workspace identifier"),
-    workspaceName: readNonEmptyString(link.workspaceName, "OAuth workspace name"),
-    workspaceState: readEnum(
-      link.workspaceState,
-      workspaceStates,
-      "OAuth workspace state",
-    ),
-  };
-}
-
-function readOAuthOverview(value) {
-  const overview = readPlainObject(value, "OAuth security overview");
+function readAuthenticationOverview(value) {
+  const overview = readPlainObject(value, "authentication security overview");
   const userIdentityLinks = [];
   for (const link of readArray(overview.userIdentityLinks, "OAuth user links")) {
     userIdentityLinks.push(readOAuthUserIdentityLink(link));
   }
-  const workspaceLinks = [];
-  for (const link of readArray(overview.workspaceLinks, "OAuth workspace links")) {
-    workspaceLinks.push(readOAuthWorkspaceLink(link));
-  }
   return {
-    configuration: readOAuthConfiguration(overview.configuration),
+    managedIssuer: readNullableNonEmptyString(
+      overview.managedIssuer,
+      "managed OAuth issuer",
+    ),
+    settings: readAuthenticationSettings(overview.settings),
     userIdentityLinks,
-    workspaceLinks,
-  };
-}
-
-function readWorkspace(value) {
-  const workspace = readPlainObject(value, "workspace");
-  return {
-    id: readNonEmptyString(workspace.id, "workspace identifier"),
-    name: readNonEmptyString(workspace.name, "workspace name"),
   };
 }
 
@@ -141,65 +135,55 @@ function normalizeSearch(value) {
 }
 
 function parseScopeDraft(value) {
-  const scopes = value.split(/[\s,]+/u).filter(Boolean);
-  return [...new Set(scopes)].sort();
+  return [...new Set(value.split(/[\s,]+/u).filter(Boolean))].sort();
 }
 
-function buildConfigurationDraftKey(configuration) {
-  return JSON.stringify({
-    issuer: configuration.issuer,
-    resource: configuration.resource,
-    scopes: configuration.scopes,
-    workspaceClaim: configuration.workspaceClaim,
-  });
+async function requireSuccessfulResponse(response, operation) {
+  if (response.ok) {
+    return;
+  }
+  await readJsonResponse(response, operation);
 }
 
 export function createOAuthLinkManagement() {
   return {
+    oauthApiScopes: "",
+    oauthBrowserClientId: "",
+    oauthBrowserScopes: "",
     oauthBusy: false,
-    oauthConfiguration: null,
     oauthConfigurationDrawerOpen: false,
-    oauthConfigurationVerifiedKey: null,
-    oauthDraftIssuer: "",
-    oauthDraftResource: "",
-    oauthDraftScopes: "",
-    oauthDraftWorkspaceClaim: "",
     oauthError: "",
-    oauthExternalWorkspaceId: "",
     oauthLoading: false,
     oauthMappingDrawer: null,
+    oauthMcpScopes: "",
+    oauthSettings: null,
+    oauthIssuer: "",
     oauthSubject: "",
     oauthUserId: "",
     oauthUserIdentityLinks: [],
     oauthUserSearch: "",
-    oauthVerificationBusy: false,
-    oauthWorkspaceId: "",
-    oauthWorkspaceLinks: [],
-    oauthWorkspaceSearch: "",
-    oauthWorkspaces: [],
+
+    get oauthActive() {
+      return this.oauthSettings?.mode === "oauth";
+    },
 
     get oauthConfigured() {
-      return this.oauthConfiguration?.issuer !== null
-        && this.oauthConfiguration?.issuer !== undefined;
+      return this.oauthManagedConfiguration !== null;
     },
 
-    get oauthEnabled() {
-      return this.oauthConfiguration?.status === "enabled";
+    get oauthHostRecoveryEnabled() {
+      return this.oauthSettings?.hostRecoveryEnabled === true;
     },
 
-    get oauthStoredEnabled() {
-      return this.oauthConfiguration?.enabled === true;
+    get oauthManagedConfiguration() {
+      return this.oauthSettings?.stagedOAuthConfiguration
+        ?? this.oauthSettings?.activeOAuthConfiguration
+        ?? null;
     },
 
-    get oauthDraftScopesList() {
-      return parseScopeDraft(this.oauthDraftScopes);
-    },
-
-    get oauthDraftVerified() {
-      if (this.oauthConfigurationVerifiedKey === null) {
-        return false;
-      }
-      return this.oauthConfigurationVerifiedKey === this.oauthDraftKey();
+    get oauthStaged() {
+      return this.oauthSettings?.stagedOAuthConfiguration !== null
+        && this.oauthSettings?.stagedOAuthConfiguration !== undefined;
     },
 
     oauthAvailableUsers() {
@@ -209,11 +193,12 @@ export function createOAuthLinkManagement() {
       });
     },
 
-    oauthAvailableWorkspaces() {
-      const linked = new Set(
-        this.oauthWorkspaceLinks.map((link) => link.workspaceId),
-      );
-      return this.oauthWorkspaces.filter((workspace) => !linked.has(workspace.id));
+    oauthConfigurationComplete() {
+      return this.oauthIssuer.trim() !== ""
+        && this.oauthBrowserClientId.trim() !== ""
+        && parseScopeDraft(this.oauthBrowserScopes).length > 0
+        && parseScopeDraft(this.oauthApiScopes).length > 0
+        && parseScopeDraft(this.oauthMcpScopes).length > 0;
     },
 
     oauthFilteredUserLinks() {
@@ -228,19 +213,8 @@ export function createOAuthLinkManagement() {
       });
     },
 
-    oauthFilteredWorkspaceLinks() {
-      const query = normalizeSearch(this.oauthWorkspaceSearch);
-      if (query === "") {
-        return this.oauthWorkspaceLinks;
-      }
-      return this.oauthWorkspaceLinks.filter((link) => {
-        return link.externalWorkspaceId.toLocaleLowerCase().includes(query)
-          || link.workspaceName.toLocaleLowerCase().includes(query);
-      });
-    },
-
     oauthIssuerHost() {
-      const issuer = this.oauthConfiguration?.issuer;
+      const issuer = this.oauthManagedConfiguration?.issuer;
       if (issuer === null || issuer === undefined) {
         return "Not configured";
       }
@@ -251,85 +225,48 @@ export function createOAuthLinkManagement() {
       }
     },
 
-    oauthDraftKey() {
-      const configuration = {
-        issuer: this.oauthDraftIssuer.trim(),
-        resource: this.oauthDraftResource.trim(),
-        scopes: this.oauthDraftScopesList,
-        workspaceClaim: this.oauthDraftWorkspaceClaim.trim(),
-      };
-      return buildConfigurationDraftKey(configuration);
-    },
-
-    oauthConfigurationInput() {
-      return {
-        issuer: this.oauthDraftIssuer.trim(),
-        resource: this.oauthDraftResource.trim(),
-        scopes: this.oauthDraftScopesList,
-        workspaceClaim: this.oauthDraftWorkspaceClaim.trim(),
-      };
-    },
-
-    oauthConfigurationComplete() {
-      const input = this.oauthConfigurationInput();
-      return input.issuer !== ""
-        && input.resource !== ""
-        && input.scopes.length > 0
-        && input.workspaceClaim !== "";
-    },
-
     initializeOAuthLinkManagement() {
-      if (this.currentGlobalRole !== "global_admin") {
-        return;
+      if (this.currentGlobalRole === "global_admin") {
+        void this.loadOAuthLinks();
       }
-      void Promise.all([
-        this.loadOAuthLinks(),
-        this.loadOAuthWorkspaces(),
-      ]);
     },
 
     applyOAuthOverview(overview) {
-      this.oauthConfiguration = overview.configuration;
+      this.oauthSettings = overview.settings;
       this.oauthUserIdentityLinks = overview.userIdentityLinks;
-      this.oauthWorkspaceLinks = overview.workspaceLinks;
     },
 
     openOAuthConfiguration() {
-      const configuration = this.oauthConfiguration;
-      this.oauthDraftIssuer = configuration?.issuer ?? "";
-      this.oauthDraftResource = configuration?.resource ?? "";
-      this.oauthDraftScopes = configuration?.scopes.join(" ") ?? "";
-      this.oauthDraftWorkspaceClaim = configuration?.workspaceClaim ?? "";
-      this.oauthConfigurationVerifiedKey = null;
+      const configuration = this.oauthManagedConfiguration;
+      this.oauthIssuer = configuration?.issuer ?? "";
+      this.oauthBrowserClientId = configuration?.browserClientId ?? "";
+      this.oauthBrowserScopes = configuration?.browserScopes.join(" ") ?? "";
+      this.oauthApiScopes = configuration?.apiScopes.join(" ") ?? "";
+      this.oauthMcpScopes = configuration?.mcpScopes.join(" ") ?? "";
       this.oauthError = "";
       this.oauthConfigurationDrawerOpen = true;
     },
 
     closeOAuthConfiguration() {
-      if (this.oauthBusy || this.oauthVerificationBusy) {
-        return;
+      if (!this.oauthBusy) {
+        this.oauthConfigurationDrawerOpen = false;
       }
-      this.oauthConfigurationDrawerOpen = false;
-      this.oauthConfigurationVerifiedKey = null;
     },
 
-    openOAuthMappingDrawer(kind) {
-      if (!this.oauthEnabled || this.oauthBusy) {
+    openOAuthMappingDrawer() {
+      if (!this.oauthConfigured || this.oauthBusy) {
         return;
       }
       this.oauthError = "";
       this.oauthSubject = "";
       this.oauthUserId = "";
-      this.oauthExternalWorkspaceId = "";
-      this.oauthWorkspaceId = "";
-      this.oauthMappingDrawer = kind;
+      this.oauthMappingDrawer = "user";
     },
 
     closeOAuthMappingDrawer() {
-      if (this.oauthBusy) {
-        return;
+      if (!this.oauthBusy) {
+        this.oauthMappingDrawer = null;
       }
-      this.oauthMappingDrawer = null;
     },
 
     closeOAuthDrawers() {
@@ -340,83 +277,131 @@ export function createOAuthLinkManagement() {
       this.closeOAuthMappingDrawer();
     },
 
-    async verifyOAuthConfiguration() {
-      if (this.oauthVerificationBusy || !this.oauthConfigurationComplete()) {
-        return;
-      }
-      this.oauthVerificationBusy = true;
-      this.oauthError = "";
-      this.oauthConfigurationVerifiedKey = null;
-      try {
-        const response = await fetch(
-          "/api/security/oauth/configuration/verify",
-          {
-            body: JSON.stringify(this.oauthConfigurationInput()),
-            headers: { "Content-Type": "application/json" },
-            method: "POST",
-          },
-        );
-        await requireSuccessfulResponse(response, "Verify OAuth configuration");
-        this.oauthConfigurationVerifiedKey = this.oauthDraftKey();
-      } catch (error) {
-        this.oauthError = error instanceof Error
-          ? error.message
-          : "The OAuth configuration could not be verified.";
-      } finally {
-        this.oauthVerificationBusy = false;
-      }
-    },
-
     async saveOAuthConfiguration() {
       if (
         this.oauthBusy
-        || !this.oauthDraftVerified
-        || this.oauthConfiguration === null
+        || !this.oauthConfigurationComplete()
+        || this.oauthSettings === null
       ) {
         return;
       }
       this.oauthBusy = true;
       this.oauthError = "";
       try {
-        const body = {
-          ...this.oauthConfigurationInput(),
-          expectedVersion: this.oauthConfiguration.version,
-        };
-        const response = await fetch("/api/security/oauth/configuration", {
-          body: JSON.stringify(body),
-          headers: { "Content-Type": "application/json" },
-          method: "PUT",
-        });
-        await readJsonResponse(
-          response,
-          "Save OAuth configuration",
-          readOAuthConfiguration,
+        const response = await fetch(
+          "/api/security/authentication/oauth/staged",
+          {
+            body: JSON.stringify({
+              apiScopes: parseScopeDraft(this.oauthApiScopes),
+              browserClientId: this.oauthBrowserClientId.trim(),
+              browserScopes: parseScopeDraft(this.oauthBrowserScopes),
+              expectedVersion: this.oauthSettings.version,
+              issuer: this.oauthIssuer.trim(),
+              mcpScopes: parseScopeDraft(this.oauthMcpScopes),
+            }),
+            headers: { "content-type": "application/json" },
+            method: "PUT",
+          },
         );
+        await readJsonResponse(response, "Stage OAuth authentication");
         this.oauthConfigurationDrawerOpen = false;
-        this.oauthConfigurationVerifiedKey = null;
         await this.loadOAuthLinks();
       } catch (error) {
         this.oauthError = error instanceof Error
           ? error.message
-          : "The OAuth configuration could not be saved.";
+          : "OAuth authentication could not be staged.";
+      } finally {
+        this.oauthBusy = false;
+      }
+    },
+
+    async activateOAuthConfiguration() {
+      if (
+        !this.oauthStaged
+        || !this.oauthHostRecoveryEnabled
+        || this.oauthSettings === null
+        || this.oauthBusy
+      ) {
+        return;
+      }
+      const confirmed = await requestConfirmation({
+        cancelLabel: "Keep cookie sign-in",
+        confirmLabel: "Verify and activate OAuth",
+        description: "You will verify the staged external identity. Successful activation revokes every CiteLoom cookie session and makes OAuth the only application sign-in method.",
+        title: "Replace cookie authentication?",
+        tone: "danger",
+      });
+      if (!confirmed) {
+        return;
+      }
+      this.oauthBusy = true;
+      this.oauthError = "";
+      try {
+        await browserAuthentication.beginActivation(
+          this.oauthSettings.stagedOAuthConfiguration,
+          this.oauthSettings.version,
+        );
+      } catch (error) {
+        this.oauthBusy = false;
+        this.oauthError = error instanceof Error
+          ? error.message
+          : "OAuth activation could not be started.";
+      }
+    },
+
+    async toggleHostAuthenticationRecovery() {
+      if (this.oauthSettings === null || this.oauthBusy || this.oauthActive) {
+        return;
+      }
+      const enabled = !this.oauthHostRecoveryEnabled;
+      const confirmed = await requestConfirmation({
+        cancelLabel: "Keep current setting",
+        confirmLabel: enabled ? "Enable host recovery" : "Disable host recovery",
+        description: enabled
+          ? "This allows a host operator with database access to switch OAuth back to cookie sign-in if the identity provider is unavailable. It does not sign in any user or change passwords."
+          : "The host recovery command will no longer be able to switch authentication modes. OAuth cannot be activated until host recovery is enabled again.",
+        title: enabled
+          ? "Enable host authentication recovery?"
+          : "Disable host authentication recovery?",
+        tone: enabled ? "default" : "danger",
+      });
+      if (!confirmed) {
+        return;
+      }
+      this.oauthBusy = true;
+      this.oauthError = "";
+      try {
+        const response = await fetch(
+          "/api/security/authentication/host-recovery",
+          {
+            body: JSON.stringify({
+              enabled,
+              expectedVersion: this.oauthSettings.version,
+            }),
+            headers: { "content-type": "application/json" },
+            method: "PUT",
+          },
+        );
+        await readJsonResponse(response, "Configure host authentication recovery");
+        await this.loadOAuthLinks();
+      } catch (error) {
+        this.oauthError = error instanceof Error
+          ? error.message
+          : "Host authentication recovery could not be configured.";
       } finally {
         this.oauthBusy = false;
       }
     },
 
     async disableOAuthConfiguration() {
-      if (
-        this.oauthBusy
-        || !this.oauthStoredEnabled
-        || this.oauthConfiguration === null
-      ) {
+      if (!this.oauthActive || this.oauthSettings === null || this.oauthBusy) {
         return;
       }
       const confirmed = await requestConfirmation({
-        cancelLabel: "Keep enabled",
-        confirmLabel: "Disable OAuth",
-        description: "OAuth access tokens will stop working immediately. Existing mappings and configuration will be preserved.",
-        title: "Disable OAuth resource access?",
+        cancelLabel: "Keep OAuth active",
+        confirmLabel: "Use cookie sign-in",
+        description: "OAuth bearer tokens will stop authenticating CiteLoom. Users must sign in with their CiteLoom username and password.",
+        title: "Switch back to cookie authentication?",
         tone: "danger",
       });
       if (!confirmed) {
@@ -426,27 +411,20 @@ export function createOAuthLinkManagement() {
       this.oauthError = "";
       try {
         const response = await fetch(
-          "/api/security/oauth/configuration/disable",
+          "/api/security/authentication/oauth/disable",
           {
-            body: JSON.stringify({
-              expectedVersion: this.oauthConfiguration.version,
-            }),
-            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ expectedVersion: this.oauthSettings.version }),
+            headers: { "content-type": "application/json" },
             method: "POST",
           },
         );
-        await readJsonResponse(
-          response,
-          "Disable OAuth resource access",
-          readOAuthConfiguration,
-        );
-        await this.loadOAuthLinks();
+        await readJsonResponse(response, "Disable OAuth authentication");
+        await browserAuthentication.signOut();
       } catch (error) {
+        this.oauthBusy = false;
         this.oauthError = error instanceof Error
           ? error.message
-          : "OAuth resource access could not be disabled.";
-      } finally {
-        this.oauthBusy = false;
+          : "OAuth authentication could not be disabled.";
       }
     },
 
@@ -462,10 +440,10 @@ export function createOAuthLinkManagement() {
       this.oauthError = "";
       try {
         const response = await fetch(
-          `/api/security/oauth/users/${encodeURIComponent(this.oauthUserId)}`,
+          `/api/security/authentication/oauth/users/${encodeURIComponent(this.oauthUserId)}`,
           {
             body: JSON.stringify({ subject: this.oauthSubject.trim() }),
-            headers: { "Content-Type": "application/json" },
+            headers: { "content-type": "application/json" },
             method: "PUT",
           },
         );
@@ -484,77 +462,38 @@ export function createOAuthLinkManagement() {
       }
     },
 
-    async linkOAuthWorkspace() {
-      if (
-        this.oauthBusy
-        || this.oauthWorkspaceId === ""
-        || this.oauthExternalWorkspaceId.trim() === ""
-      ) {
-        return;
-      }
-      this.oauthBusy = true;
-      this.oauthError = "";
-      try {
-        const response = await fetch(
-          `/api/security/oauth/workspaces/${encodeURIComponent(this.oauthWorkspaceId)}`,
-          {
-            body: JSON.stringify({
-              externalWorkspaceId: this.oauthExternalWorkspaceId.trim(),
-            }),
-            headers: { "Content-Type": "application/json" },
-            method: "PUT",
-          },
-        );
-        await requireSuccessfulResponse(response, "Link OAuth workspace");
-        this.oauthMappingDrawer = null;
-        await this.loadOAuthLinks();
-      } catch (error) {
-        this.oauthError = error instanceof Error
-          ? error.message
-          : "The OAuth workspace could not be linked.";
-      } finally {
-        this.oauthBusy = false;
-      }
-    },
-
     async loadOAuthLinks() {
       this.oauthLoading = true;
       this.oauthError = "";
       try {
-        const response = await fetch("/api/security/oauth", {
+        const response = await fetch("/api/security/authentication", {
           headers: { accept: "application/json" },
         });
-        const value = await readJsonResponse(response, "OAuth security settings");
-        this.applyOAuthOverview(readOAuthOverview(value));
+        const value = await readJsonResponse(
+          response,
+          "Authentication security settings",
+        );
+        this.applyOAuthOverview(readAuthenticationOverview(value));
       } catch (error) {
         this.oauthError = error instanceof Error
           ? error.message
-          : "OAuth security settings could not be loaded.";
+          : "Authentication security settings could not be loaded.";
       } finally {
         this.oauthLoading = false;
       }
     },
 
-    async loadOAuthWorkspaces() {
-      try {
-        const response = await fetch("/api/workspaces", {
-          headers: { accept: "application/json" },
-        });
-        const value = await readJsonResponse(response, "OAuth workspaces");
-        const workspaces = [];
-        for (const row of readArray(value, "OAuth workspaces")) {
-          workspaces.push(readWorkspace(row));
-        }
-        this.oauthWorkspaces = workspaces;
-      } catch (error) {
-        this.oauthError = error instanceof Error
-          ? error.message
-          : "Workspaces for OAuth linking could not be loaded.";
-      }
+    oauthLinkRemovalDisabled(link) {
+      return this.oauthBusy
+        || (
+          this.oauthActive
+          && this.currentUserId !== null
+          && link.userId === this.currentUserId
+        );
     },
 
     async unlinkOAuthUser(link) {
-      if (this.oauthBusy) {
+      if (this.oauthLinkRemovalDisabled(link)) {
         return;
       }
       const confirmed = await requestConfirmation({
@@ -567,38 +506,14 @@ export function createOAuthLinkManagement() {
       if (!confirmed) {
         return;
       }
-      await this.removeOAuthLink(
-        `/api/security/oauth/users/${encodeURIComponent(link.userId)}`,
-        "OAuth user mapping",
-      );
-    },
-
-    async unlinkOAuthWorkspace(link) {
-      if (this.oauthBusy) {
-        return;
-      }
-      const confirmed = await requestConfirmation({
-        cancelLabel: "Keep mapping",
-        confirmLabel: "Remove mapping",
-        description: `${link.workspaceName} will no longer accept OAuth requests for external workspace ${link.externalWorkspaceId}.`,
-        title: `Remove the OAuth mapping for ${link.workspaceName}?`,
-        tone: "danger",
-      });
-      if (!confirmed) {
-        return;
-      }
-      await this.removeOAuthLink(
-        `/api/security/oauth/workspaces/${encodeURIComponent(link.workspaceId)}`,
-        "OAuth workspace mapping",
-      );
-    },
-
-    async removeOAuthLink(endpoint, operation) {
       this.oauthBusy = true;
       this.oauthError = "";
       try {
-        const response = await fetch(endpoint, { method: "DELETE" });
-        await requireSuccessfulResponse(response, operation);
+        const response = await fetch(
+          `/api/security/authentication/oauth/users/${encodeURIComponent(link.userId)}`,
+          { method: "DELETE" },
+        );
+        await requireSuccessfulResponse(response, "Remove OAuth user mapping");
         await this.loadOAuthLinks();
       } catch (error) {
         this.oauthError = error instanceof Error
@@ -609,11 +524,4 @@ export function createOAuthLinkManagement() {
       }
     },
   };
-}
-
-async function requireSuccessfulResponse(response, operation) {
-  if (response.ok) {
-    return;
-  }
-  await readJsonResponse(response, operation);
 }

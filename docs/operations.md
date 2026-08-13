@@ -94,6 +94,40 @@ docker compose logs migrate web worker
 After correcting the configuration or dependency failure, rerun the normal `docker compose up` command.
 Do not change persistent database or source-content paths when resuming an existing deployment.
 
+## Recover local authentication
+
+Before activating OAuth, a global administrator must enable Host recovery under Security > Authentication.
+The setting is stored in PostgreSQL, must remain enabled while OAuth is active, and is not controlled by a new environment variable.
+
+If the authorization server is unavailable, inspect the current authentication mode from a source checkout without changing it:
+
+```bash
+pnpm dev auth recover-local
+```
+
+For the supplied container deployment, run the report from the application host with the existing worker service database configuration:
+
+```bash
+docker compose run --rm --no-deps worker node dist/cli/index.js auth recover-local
+```
+
+When recovery is available and OAuth is active, the report ends with `Recovery would switch authentication to local mode. Run with --apply to continue.`
+If it reports `Host recovery: disabled`, do not apply the command because the required recovery control was not enabled before the outage.
+Restore authorization-server access so a global administrator can enable the control before any later OAuth activation.
+
+Apply the switch to local authentication only after reviewing the report:
+
+```bash
+docker compose run --rm --no-deps worker node dist/cli/index.js auth recover-local --apply
+```
+
+The apply operation contacts only PostgreSQL and completes the mode change, OAuth configuration staging, settings-version increment, local-session deletion, and recovery audit event in one transaction.
+It does not change usernames, passwords, memberships, or identity links, and it does not restore or create a session.
+After recovery, every user signs in normally with a CiteLoom username and password.
+Successful recovery ends with `Authentication recovered to local mode. Users can now sign in with their CiteLoom username and password.`
+Rerun the report command and verify that it shows `Authentication mode: local` and `No recovery is required.`
+If the apply command fails, use its error ID to inspect the application logs, resolve the recorded cause, and rerun the report because the transactional operation does not leave a partially committed mode change.
+
 ## Update document heading routes
 
 The `Use document headings in search` setting does not require reindexing existing documents.

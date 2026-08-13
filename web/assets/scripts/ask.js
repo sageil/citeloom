@@ -46,6 +46,7 @@ import {
 import { focusTextArea } from "./focus.js";
 import { createDictationController } from "./dictation.js";
 import { requestConfirmation } from "./confirmation.js";
+import { browserAuthentication } from "./browser-authentication.js";
 import {
   clearVerificationRefresh as clearVerificationPolling,
   isVerificationPending,
@@ -213,7 +214,9 @@ export function registerPage(alpine) {
     citationInspectorSize: null,
     citationInspectorViewportResizeListener: null,
     citationImageDimensions: null,
+    citationEvidenceImageResource: null,
     citationLoading: false,
+    citationSourceImageResource: null,
     claimVerifierSupportThreshold: null,
     creatingThread: false,
     dashboardError: "",
@@ -1111,6 +1114,7 @@ export function registerPage(alpine) {
       this.citationAbortController?.abort();
       const controller = new AbortController();
       this.citationAbortController = controller;
+      this.releaseCitationInspectorImages();
       this.prepareEvidencePanel(trigger, claimIndex);
       this.selectedCitation = source;
       this.inspectedCitation = buildStoredCitationPreview(source);
@@ -1154,6 +1158,7 @@ export function registerPage(alpine) {
         );
         if (!controller.signal.aborted) {
           this.inspectedCitation = citation;
+          await this.loadCitationInspectorImages(citation, controller.signal);
           await this.loadFeedbackSummary("citation-correctness", citation.id);
         }
       } catch (error) {
@@ -1347,6 +1352,7 @@ export function registerPage(alpine) {
       this.citationAbortController = null;
       this.resetEvidenceSpeechPlayback();
       this.resetEvidencePanelState();
+      this.releaseCitationInspectorImages();
       this.inspectedCitation = null;
       this.citationError = "";
       this.citationImageDimensions = null;
@@ -2339,10 +2345,7 @@ export function registerPage(alpine) {
     },
 
     citationImageUrl() {
-      if (this.inspectedCitation === null) {
-        return "";
-      }
-      return `/api/citations/${encodeURIComponent(this.inspectedCitation.id)}/image`;
+      return this.citationEvidenceImageResource?.href ?? "";
     },
 
     citationSourceIsImage() {
@@ -2364,6 +2367,49 @@ export function registerPage(alpine) {
         this.inspectedCitation.documentVersionId,
       );
       return `/api/document-versions/${versionId}/file`;
+    },
+
+    citationOriginalImageUrl() {
+      return this.citationSourceImageResource?.href ?? "";
+    },
+
+    async loadCitationInspectorImages(citation, signal) {
+      if (this.mode === "ask") {
+        return;
+      }
+      const requests = [];
+      if (citation.evidence.kind === "image") {
+        const evidenceUrl = `/api/citations/${encodeURIComponent(citation.id)}/image`;
+        requests.push(
+          browserAuthentication.readAuthorizedResource(evidenceUrl).then((resource) => {
+            if (signal.aborted || this.inspectedCitation?.id !== citation.id) {
+              resource.revoke();
+              return;
+            }
+            this.citationEvidenceImageResource = resource;
+          }),
+        );
+      }
+      if (this.citationSourceIsImage() && citation.regions.length > 0) {
+        const sourceUrl = this.citationOriginalFileUrl();
+        requests.push(
+          browserAuthentication.readAuthorizedResource(sourceUrl).then((resource) => {
+            if (signal.aborted || this.inspectedCitation?.id !== citation.id) {
+              resource.revoke();
+              return;
+            }
+            this.citationSourceImageResource = resource;
+          }),
+        );
+      }
+      await Promise.all(requests);
+    },
+
+    releaseCitationInspectorImages() {
+      this.citationEvidenceImageResource?.revoke();
+      this.citationSourceImageResource?.revoke();
+      this.citationEvidenceImageResource = null;
+      this.citationSourceImageResource = null;
     },
 
     recordCitationImageDimensions(event) {

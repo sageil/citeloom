@@ -43,6 +43,6 @@ The API coordinates persistence, background workflows, document conversion, retr
 The browser does not connect directly to databases, workers, document processors, or model providers.
 
 The frontend does not require a separate package installation or production build step.
-An internet connection is currently required because the browser loads pinned HTMX and Alpine.js releases from jsDelivr.
+The web server serves pinned HTMX, Marked, DOMPurify, and Alpine.js releases from local dependencies, so the browser does not depend on a public CDN.
 
 See [Architecture](../docs/architecture.md) for the complete system boundaries.

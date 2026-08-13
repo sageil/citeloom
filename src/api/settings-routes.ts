@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { decodeWorkspaceId } from "../auth/boundary.js";
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 import {
   WorkspaceAuthorizationError,
   WorkspaceUnavailableError,
@@ -43,7 +43,7 @@ import {
 
 export interface SettingsRouteOptions {
   config: AppConfig;
-  requestPrincipals: WeakMap<object, AuthenticatedPrincipal>;
+  requestPrincipals: WeakMap<object, AuthorizationPrincipal>;
   services: WebServices;
   webConfig: WebConfig;
 }
@@ -305,7 +305,7 @@ function requireSettingsWorkspace(
 }
 
 function buildSettingsWorkspaceScope(
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   workspace: Awaited<ReturnType<WebServices["listWorkspaces"]>>[number],
   workspaces: Awaited<ReturnType<WebServices["listWorkspaces"]>>,
 ) {
@@ -317,7 +317,7 @@ function buildSettingsWorkspaceScope(
 
 async function readSettingsWorkspace(
   services: WebServices,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   workspaceId: string,
 ) {
   try {

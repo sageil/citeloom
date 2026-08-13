@@ -50,6 +50,7 @@ import {
   canAdministerWorkspace,
   readWorkspaceSummaries,
 } from "./workspaces.js";
+import { browserAuthentication } from "./browser-authentication.js";
 
 const documentNotificationRefreshDebounceMs = 250;
 const workflowRefreshIntervalMs = 60_000;
@@ -323,10 +324,15 @@ function registerShell(alpine) {
         this.workflowRefreshTimerId = window.setInterval(() => {
           void this.refreshDashboard();
         }, workflowRefreshIntervalMs);
-        this.workflowEventSource = new EventSource("/api/events");
-        this.workflowEventSource.addEventListener("revision", () => {
-          this.scheduleDashboardRefresh();
-          this.scheduleDocumentNotificationRefresh();
+        void browserAuthentication.isOAuthEnabled().then((oauthEnabled) => {
+          if (oauthEnabled) {
+            return;
+          }
+          this.workflowEventSource = new EventSource("/api/events");
+          this.workflowEventSource.addEventListener("revision", () => {
+            this.scheduleDashboardRefresh();
+            this.scheduleDocumentNotificationRefresh();
+          });
         });
       }
     },
@@ -461,6 +467,26 @@ function registerShell(alpine) {
 
     async loadCurrentSession() {
       try {
+        const oauthContext = await browserAuthentication.identityContext();
+        if (oauthContext !== null) {
+          const workspaceId = await browserAuthentication.selectedWorkspaceId();
+          const workspace = oauthContext.workspaces.find((candidate) => {
+            return candidate.id === workspaceId;
+          });
+          if (workspace === undefined) {
+            throw new Error("The selected OAuth workspace is unavailable.");
+          }
+          this.currentDataScope = "workspace";
+          this.currentDisplayName = oauthContext.displayName;
+          this.currentGlobalRole = oauthContext.globalRole;
+          this.currentRole = workspace.role;
+          this.currentUserId = oauthContext.userId;
+          this.currentWorkspaceId = workspace.id;
+          this.currentWorkspaceName = workspace.name;
+          this.loadDocumentNotifications(oauthContext.userId, workspace.id);
+          this.workspaces = oauthContext.workspaces;
+          return;
+        }
         const response = await fetch("/api/auth/session", {
           headers: { accept: "application/json" },
         });
@@ -533,6 +559,14 @@ function registerShell(alpine) {
       this.workspaceErrorMessage = "";
       this.workspaceSwitching = true;
       try {
+        if (await browserAuthentication.isOAuthEnabled()) {
+          await browserAuthentication.selectWorkspace(workspaceId);
+          if (this.currentGlobalRole !== "global_admin") {
+            writeSettingsTargetPreference(workspaceId);
+          }
+          window.location.reload();
+          return;
+        }
         const response = await fetch("/api/auth/session/workspace", {
           body: JSON.stringify({ workspaceId }),
           headers: {
@@ -1087,6 +1121,10 @@ function registerShell(alpine) {
     async signOut() {
       this.clearDocumentNotifications();
       clearSettingsTargetPreference();
+      if (await browserAuthentication.isOAuthEnabled()) {
+        await browserAuthentication.signOut();
+        return;
+      }
       try {
         await fetch("/api/auth/logout", { method: "POST" });
       } finally {

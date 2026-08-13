@@ -5,6 +5,7 @@ import {
   type EffectiveApplicationSettings,
 } from "../app/settings.js";
 import {
+  readDatabaseConfig,
   readStartupConfig,
   type AppConfig,
   type DoclingServiceTopology,
@@ -16,6 +17,7 @@ import {
   printCatalog,
   printEmbeddingSpaceGcReport,
   printHelp,
+  printHostAuthenticationRecovery,
   printProgress,
   printSystemStatus,
   readIngestVerb,
@@ -29,6 +31,10 @@ export async function main(arguments_: string[] = process.argv.slice(2)): Promis
     return;
   }
 
+  if (command.name === "auth-recover-local") {
+    await runHostAuthenticationRecovery(readDatabaseConfig(), command.apply);
+    return;
+  }
   const startup = readStartupConfig();
   const effectiveSettings = await readEffectiveCliConfig(
     startup.database,
@@ -316,6 +322,25 @@ export async function main(arguments_: string[] = process.argv.slice(2)): Promis
         `[${source.citationNumber}] ${source.kind}, pages ${pages}, ${source.sourceFile} (${source.documentId})`,
       );
     }
+  }
+}
+
+async function runHostAuthenticationRecovery(
+  database: AppConfig["database"],
+  apply: boolean,
+): Promise<void> {
+  const { OAuthApplicationStore } = await import(
+    "../oauth/application-store.js"
+  );
+  const session = await openDatabase(database);
+  try {
+    const authentication = new OAuthApplicationStore(session.database);
+    const status = apply
+      ? await authentication.recoverLocalAuthentication()
+      : await authentication.readHostRecoveryStatus();
+    printHostAuthenticationRecovery(status, apply);
+  } finally {
+    await session.close();
   }
 }
 

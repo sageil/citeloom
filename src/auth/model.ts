@@ -47,6 +47,7 @@ export interface AuthenticationSession {
 }
 
 export interface OrganizationUserAccount {
+  currentWorkspaceAccess: boolean;
   displayName: string;
   globalRole: GlobalRole;
   state: UserAccountState;

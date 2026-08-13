@@ -38,6 +38,8 @@
       <form
         class="login-form"
         aria-describedby="login-authentication-scope"
+        x-cloak
+        x-show="!oauthMode"
         @submit.prevent="submit()"
       >
         <p class="visually-hidden" id="login-authentication-scope">
@@ -168,6 +170,23 @@
           >Contact your administrator.</button>
         </p>
       </form>
+
+      <div class="login-form" x-cloak x-show="oauthMode">
+        <p class="visually-hidden">Sign in through the configured identity provider.</p>
+        <p
+          class="login-error"
+          role="alert"
+          x-show="errorMessage !== ''"
+          x-text="errorMessage"
+        ></p>
+        <button
+          class="login-submit"
+          :disabled="busy"
+          type="button"
+          @click="submit()"
+          x-text="busy ? 'Redirecting…' : 'Continue to sign in'"
+        ></button>
+      </div>
     </div>
 
     <footer class="login-card-footer" aria-label="Workspace assurances">

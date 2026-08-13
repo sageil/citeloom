@@ -3,7 +3,7 @@ import {
   type InferUIMessageChunk,
 } from "ai";
 
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 import {
   createAnswerContentWriter,
   type CiteLoomUIMessage,
@@ -62,7 +62,7 @@ export interface ChatMessageRequest {
 
 export function streamChatMessageWithRuntime(
   runtime: ApplicationRuntime,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   request: ChatMessageRequest,
   abortSignal: AbortSignal,
   reportProgress: (message: string) => void = () => undefined,
@@ -96,7 +96,7 @@ export function streamChatMessageWithRuntime(
 
 export async function answerChatMessageWithRuntime(
   runtime: ApplicationRuntime,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   request: ChatMessageRequest,
   abortSignal: AbortSignal,
   reportProgress: (message: string) => void = () => undefined,
@@ -327,7 +327,7 @@ interface ChatRunLease {
 
 function startChatRunLease(
   store: ChatStore,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   runId: string,
   attemptCount: number,
   requestSignal: AbortSignal,
@@ -409,7 +409,7 @@ export function createChatRetrievalConfig(config: AppConfig): AppConfig {
 
 async function readCompletedResponse(
   store: ChatStore,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   conversationId: string,
   runId: string,
 ): Promise<ChatMessageResponse> {

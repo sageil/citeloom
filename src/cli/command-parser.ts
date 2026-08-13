@@ -10,6 +10,7 @@ import {
 import { tagSchema } from "../domain/validation.js";
 
 const commandSchema = z.discriminatedUnion("name", [
+  z.object({ apply: z.boolean(), name: z.literal("auth-recover-local") }),
   z.object({ name: z.literal("doctor") }),
   z.object({ name: z.literal("documents") }),
   z.object({ name: z.literal("document-toc-backfill") }),
@@ -76,6 +77,8 @@ export function parseCliCommand(
     candidate = { name: "help" };
   } else if (commandName === "doctor") {
     candidate = { name: "doctor" };
+  } else if (commandName === "auth") {
+    candidate = parseAuthenticationArguments(commandArguments);
   } else if (commandName === "status") {
     candidate = { name: "status" };
   } else if (commandName === "source-content") {
@@ -103,6 +106,20 @@ export function parseCliCommand(
     throw new CliUsageError(readCommandUsageError(commandName));
   }
   return result.data;
+}
+
+function parseAuthenticationArguments(arguments_: string[]): unknown {
+  if (arguments_.length === 1 && arguments_[0] === "recover-local") {
+    return { apply: false, name: "auth-recover-local" };
+  }
+  if (
+    arguments_.length === 2
+    && arguments_[0] === "recover-local"
+    && arguments_[1] === "--apply"
+  ) {
+    return { apply: true, name: "auth-recover-local" };
+  }
+  throw new CliUsageError("Usage: citeloom auth recover-local [--apply]");
 }
 
 function parseSourceContentArguments(
@@ -425,6 +442,9 @@ function buildQueryScope(
 }
 
 function readCommandUsageError(commandName: string | undefined): string {
+  if (commandName === "auth") {
+    return "Usage: citeloom auth recover-local [--apply]";
+  }
   if (commandName === "ingest") {
     return "Usage: citeloom ingest [options] <path> [...paths]";
   }

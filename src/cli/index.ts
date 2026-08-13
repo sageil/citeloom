@@ -1,7 +1,7 @@
 import { hostname } from "node:os";
 import { pathToFileURL } from "node:url";
 
-import { readStartupConfig } from "../config/index.js";
+import { readDatabaseConfig } from "../config/index.js";
 import { sanitizeDiagnosticMessage } from "../observability/application-errors.js";
 import { reportEntryPointFailure } from "../observability/entrypoint-errors.js";
 import { main } from "./command-runner.js";
@@ -27,7 +27,7 @@ if (entryPoint !== undefined && import.meta.url === pathToFileURL(entryPoint).hr
       retryable: null,
       service: "cli",
       severity: "error",
-    }, () => readStartupConfig().database);
+    }, readDatabaseConfig);
     console.error(`CiteLoom command failed. Error ID: ${errorId}.`);
     process.exitCode = 1;
   });

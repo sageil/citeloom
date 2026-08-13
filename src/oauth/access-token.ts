@@ -7,10 +7,12 @@ import {
 } from "jose";
 import { z } from "zod";
 
-import type { EnabledOAuthConfig } from "./config.js";
+import {
+  BearerTokenRejectedError,
+  readBearerToken,
+} from "../auth/bearer-token.js";
 import type { VerifiedOAuthAccessToken } from "./model.js";
 
-const MAXIMUM_BEARER_TOKEN_LENGTH = 16_384;
 const DISCOVERY_TIMEOUT_MS = 10_000;
 const oidcMetadataSchema = z.object({
   issuer: z.url(),
@@ -53,8 +55,13 @@ export interface OAuthAccessTokenVerifier {
   ): Promise<VerifiedOAuthAccessToken>;
 }
 
+export interface OAuthAccessTokenVerificationConfig {
+  issuer: string;
+  resource: string;
+}
+
 export function createOAuthAccessTokenVerifier(
-  config: EnabledOAuthConfig,
+  config: OAuthAccessTokenVerificationConfig,
   fetchImplementation: typeof fetch = fetch,
 ): OAuthAccessTokenVerifier {
   let verificationKey: Promise<JWTVerifyGetKey> | null = null;
@@ -97,23 +104,18 @@ export function createOAuthAccessTokenVerifier(
 export function readOAuthBearerToken(
   authorizationHeader: string | string[] | undefined,
 ): string {
-  if (typeof authorizationHeader !== "string") {
+  try {
+    return readBearerToken(authorizationHeader);
+  } catch (error: unknown) {
+    if (!(error instanceof BearerTokenRejectedError)) {
+      throw error;
+    }
     throw new OAuthAccessTokenRejectedError();
   }
-  const match = /^Bearer ([^\s]+)$/i.exec(authorizationHeader);
-  const token = match?.[1];
-  if (
-    token === undefined
-    || token.length === 0
-    || token.length > MAXIMUM_BEARER_TOKEN_LENGTH
-  ) {
-    throw new OAuthAccessTokenRejectedError();
-  }
-  return token;
 }
 
 export async function verifyOAuthAuthorizationServerConfiguration(
-  config: EnabledOAuthConfig,
+  config: OAuthAccessTokenVerificationConfig,
   fetchImplementation: typeof fetch = fetch,
 ): Promise<void> {
   try {
@@ -141,7 +143,7 @@ export async function verifyOAuthAuthorizationServerConfiguration(
 }
 
 async function discoverVerificationKey(
-  config: EnabledOAuthConfig,
+  config: OAuthAccessTokenVerificationConfig,
   fetchImplementation: typeof fetch,
 ): Promise<JWTVerifyGetKey> {
   const jwksUrl = await discoverJsonWebKeySetUrl(config, fetchImplementation);
@@ -154,7 +156,7 @@ async function discoverVerificationKey(
 }
 
 async function discoverJsonWebKeySetUrl(
-  config: EnabledOAuthConfig,
+  config: OAuthAccessTokenVerificationConfig,
   fetchImplementation: typeof fetch,
 ): Promise<URL> {
   const discoveryUrl = buildOpenIdDiscoveryUrl(config.issuer);
@@ -190,9 +192,11 @@ function buildOpenIdDiscoveryUrl(issuer: string): URL {
 
 function readVerifiedAccessTokenClaims(
   payload: Record<string, unknown>,
-  config: EnabledOAuthConfig,
+  config: OAuthAccessTokenVerificationConfig,
 ): VerifiedOAuthAccessToken {
   const registeredClaims = z.object({
+    azp: z.string().min(1).max(1_024).optional(),
+    client_id: z.string().min(1).max(1_024).optional(),
     exp: z.number().int().positive(),
     scope: z.string().max(10_000).default(""),
     sub: z.string().min(1).max(1_024),
@@ -200,20 +204,15 @@ function readVerifiedAccessTokenClaims(
   if (!registeredClaims.success) {
     throw new OAuthAccessTokenRejectedError();
   }
-  const workspaceExternalId = z.string()
-    .min(1)
-    .max(1_024)
-    .refine((value) => value === value.trim())
-    .safeParse(payload[config.workspaceClaim]);
-  if (!workspaceExternalId.success) {
-    throw new OAuthAccessTokenRejectedError();
-  }
+  const clientId = registeredClaims.data.client_id
+    ?? registeredClaims.data.azp;
   const scopes = registeredClaims.data.scope.split(/\s+/u).filter(Boolean);
   return {
+    clientId: clientId ?? null,
+    expiresAt: registeredClaims.data.exp,
     issuer: config.issuer,
     scopes: [...new Set(scopes)].sort(),
     subject: registeredClaims.data.sub,
-    workspaceExternalId: workspaceExternalId.data,
   };
 }
 

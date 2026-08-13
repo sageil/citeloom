@@ -30,6 +30,7 @@ import {
 } from "../workspaces/settings-persistence.js";
 import type {
   AuthenticatedPrincipal,
+  AuthorizationPrincipal,
   AuthenticationSession,
   WorkspaceMember,
   WorkspaceMemberCandidate,
@@ -393,7 +394,7 @@ export class AuthenticationStore {
   }
 
   public async createWorkspace(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     input: CreateWorkspaceInput,
   ): Promise<WorkspaceSummary> {
     requireGlobalAdministrator(principal);
@@ -483,7 +484,7 @@ export class AuthenticationStore {
   }
 
   public async renameWorkspace(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     workspaceId: string,
     input: RenameWorkspaceInput,
   ): Promise<WorkspaceSummary> {
@@ -530,7 +531,7 @@ export class AuthenticationStore {
   }
 
   public async archiveWorkspace(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     workspaceId: string,
   ): Promise<void> {
     requireGlobalAdministrator(principal);
@@ -576,7 +577,7 @@ export class AuthenticationStore {
   }
 
   public async listWorkspaces(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
   ): Promise<WorkspaceSummary[]> {
     if (principal.dataScope === "all") {
       return [];
@@ -610,7 +611,7 @@ export class AuthenticationStore {
   }
 
   public async readWorkspaceForAdministration(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     workspaceId: string,
   ): Promise<WorkspaceSummary> {
     requireWorkspaceAdministrator(principal, workspaceId);
@@ -732,7 +733,7 @@ export class AuthenticationStore {
   }
 
   public async addWorkspaceMember(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     workspaceId: string,
     userId: string,
     role: WorkspaceRole = "member",
@@ -774,7 +775,7 @@ export class AuthenticationStore {
   }
 
   public async listWorkspaceMemberCandidates(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     workspaceId: string,
   ): Promise<WorkspaceMemberCandidate[]> {
     requireWorkspaceAdministrator(principal, workspaceId);
@@ -803,7 +804,7 @@ export class AuthenticationStore {
   }
 
   public async listWorkspaceMembers(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     workspaceId: string,
   ): Promise<WorkspaceMember[]> {
     requireWorkspaceAdministrator(principal, workspaceId);
@@ -826,7 +827,7 @@ export class AuthenticationStore {
   }
 
   public async removeWorkspaceMember(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     workspaceId: string,
     userId: string,
   ): Promise<void> {
@@ -873,7 +874,7 @@ export class AuthenticationStore {
   }
 
   public async changeWorkspaceMemberRole(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     workspaceId: string,
     userId: string,
     role: WorkspaceRole,
@@ -920,7 +921,7 @@ export class AuthenticationStore {
   }
 
   public async changeWorkspaceMemberAccess(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     workspaceId: string,
     userId: string,
     access: WorkspaceMembershipAccess,

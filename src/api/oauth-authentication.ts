@@ -4,120 +4,79 @@ import type {
   FastifyRequest,
 } from "fastify";
 
+import type {
+  WebServices,
+} from "./services.js";
 import {
-  readEnabledOAuthConfig,
-  type EnabledOAuthConfig,
-  type OAuthConfig,
-} from "../oauth/config.js";
-import {
-  createOAuthAccessTokenVerifier,
-  type OAuthAccessTokenVerifier,
-} from "../oauth/access-token.js";
-import {
-  OAuthResourceDisabledError,
-} from "../oauth/configuration-store.js";
-import type { OAuthPrincipal } from "../oauth/model.js";
-import type { OAuthSecurityWebServices } from "./services.js";
+  buildProtectedResourceMetadataPath,
+  isOAuthProtectedResourceMetadataPath,
+  OAUTH_PROTECTED_RESOURCE_METADATA_PATH,
+} from "../oauth/protected-resource.js";
 
-const OAUTH_PROTECTED_RESOURCE_METADATA_PATH =
-  "/.well-known/oauth-protected-resource";
-
-export interface OAuthRequestAuthenticator {
-  authenticate(
-    authorizationHeader: string | string[] | undefined,
-    requiredScopes: readonly string[],
-  ): Promise<OAuthPrincipal>;
-}
-
-export function createOAuthRequestAuthenticator(
-  services: Pick<
-    OAuthSecurityWebServices,
-    "readOAuthConfiguration" | "resolveOAuthPrincipal"
-  >,
-  publicOrigin: string,
-  fetchImplementation: typeof fetch = fetch,
-): OAuthRequestAuthenticator {
-  let verifier: OAuthAccessTokenVerifier | null = null;
-  let verifierKey: string | null = null;
-
-  return {
-    authenticate: async (authorizationHeader, requiredScopes) => {
-      const settings = await services.readOAuthConfiguration(publicOrigin);
-      const config = readEnabledOAuthConfig(settings);
-      if (!config.enabled) {
-        throw new OAuthResourceDisabledError();
-      }
-      const currentVerifierKey = buildOAuthVerifierKey(config);
-      if (verifier === null || verifierKey !== currentVerifierKey) {
-        verifier = createOAuthAccessTokenVerifier(config, fetchImplementation);
-        verifierKey = currentVerifierKey;
-      }
-      const token = await verifier.verify(authorizationHeader, requiredScopes);
-      return services.resolveOAuthPrincipal(token);
-    },
-  };
-}
+export { isOAuthProtectedResourceMetadataPath };
 
 export function registerOAuthProtectedResourceMetadata(
   server: FastifyInstance,
   options: {
     publicOrigin: string;
-    services: Pick<OAuthSecurityWebServices, "readOAuthConfiguration">;
+    services: Pick<WebServices, "readAuthenticationSettings">;
   },
 ): void {
   const handler = async (
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<unknown> => {
-    const settings = await options.services.readOAuthConfiguration(
+    const settings = await options.services.readAuthenticationSettings(
       options.publicOrigin,
     );
-    const config = readEnabledOAuthConfig(settings);
-    const metadataPath = buildOAuthProtectedResourceMetadataPath(config);
-    if (
-      !config.enabled
-      || metadataPath === null
-      || readRequestPathname(request.url) !== metadataPath
-    ) {
+    const configuration = settings.activeOAuthConfiguration;
+    if (settings.mode !== "oauth" || configuration === null) {
+      return reply.header("Cache-Control", "no-store").status(404).send();
+    }
+    const pathname = readRequestPathname(request.url);
+    const resource = readProtectedResource(configuration, pathname);
+    if (resource === null) {
       return reply.header("Cache-Control", "no-store").status(404).send();
     }
     reply.header("Cache-Control", "public, max-age=60");
     return {
-      authorization_servers: [config.issuer],
+      authorization_servers: [configuration.issuer],
       bearer_methods_supported: ["header"],
-      resource: config.resource,
-      scopes_supported: [...config.scopes],
+      resource: resource.identifier,
+      scopes_supported: [...resource.scopes],
     };
   };
   server.get(OAUTH_PROTECTED_RESOURCE_METADATA_PATH, handler);
   server.get(`${OAUTH_PROTECTED_RESOURCE_METADATA_PATH}/*`, handler);
 }
 
-export function buildOAuthProtectedResourceMetadataPath(
-  config: OAuthConfig,
-): string | null {
-  if (!config.enabled) {
-    return null;
+function readProtectedResource(
+  configuration: NonNullable<
+    Awaited<ReturnType<WebServices["readAuthenticationSettings"]>>[
+      "activeOAuthConfiguration"
+    ]
+  >,
+  pathname: string,
+): { identifier: string; scopes: string[] } | null {
+  const resources = [
+    {
+      identifier: configuration.apiResource,
+      scopes: configuration.apiScopes,
+    },
+    {
+      identifier: configuration.mcpResource,
+      scopes: configuration.mcpScopes,
+    },
+  ];
+  for (const resource of resources) {
+    const metadataPath = buildProtectedResourceMetadataPath(
+      resource.identifier,
+    );
+    if (pathname === metadataPath) {
+      return { identifier: resource.identifier, scopes: [...resource.scopes] };
+    }
   }
-  const resourcePath = new URL(config.resource).pathname;
-  if (resourcePath === "/") {
-    return OAUTH_PROTECTED_RESOURCE_METADATA_PATH;
-  }
-  return `${OAUTH_PROTECTED_RESOURCE_METADATA_PATH}${resourcePath}`;
-}
-
-export function isOAuthProtectedResourceMetadataPath(pathname: string): boolean {
-  return pathname === OAUTH_PROTECTED_RESOURCE_METADATA_PATH
-    || pathname.startsWith(`${OAUTH_PROTECTED_RESOURCE_METADATA_PATH}/`);
-}
-
-function buildOAuthVerifierKey(config: EnabledOAuthConfig): string {
-  return JSON.stringify({
-    issuer: config.issuer,
-    resource: config.resource,
-    scopes: config.scopes,
-    workspaceClaim: config.workspaceClaim,
-  });
+  return null;
 }
 
 function readRequestPathname(url: string): string {

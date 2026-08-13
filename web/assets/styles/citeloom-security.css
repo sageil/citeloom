@@ -169,6 +169,114 @@
   opacity: 0.5;
 }
 
+.security-mcp-key-drawer.access-add-drawer {
+  width: min(540px, 100%);
+  overflow-y: auto;
+}
+
+.security-mcp-key-drawer .security-mcp-key-form {
+  flex: 0 0 auto;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.security-mcp-key-scopes {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+}
+
+.security-mcp-key-scopes legend {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.security-mcp-key-scopes label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.security-mcp-key-scopes label > span {
+  display: grid;
+  gap: 4px;
+}
+
+.security-mcp-key-scopes input {
+  width: auto;
+  margin-top: 2px;
+}
+
+.security-mcp-key-create {
+  align-self: flex-end;
+}
+
+.security-mcp-key-secret {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 22px;
+  padding: 14px;
+  border: 1px solid rgba(0, 211, 238, 0.42);
+  border-radius: 8px;
+  background: rgba(0, 211, 238, 0.08);
+}
+
+.security-mcp-key-secret small,
+.security-mcp-key-list p,
+.security-mcp-key-list article small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.security-mcp-key-secret output {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  user-select: all;
+}
+
+.security-mcp-key-secret .button {
+  justify-self: end;
+}
+
+.security-mcp-key-list {
+  display: grid;
+  gap: 10px;
+  padding-top: 24px;
+}
+
+.security-mcp-key-list h3,
+.security-mcp-key-list p {
+  margin: 0;
+}
+
+.security-mcp-key-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.security-mcp-key-list article > span:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.security-mcp-key-status {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .security-oauth {
   display: grid;
   overflow: visible;

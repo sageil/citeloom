@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, count, eq, ne } from "drizzle-orm";
+import { and, asc, count, eq, ne, sql, type SQL } from "drizzle-orm";
 
 import type { CiteLoomDatabase } from "../database/client.js";
 import { readUniqueConstraintName } from "../database/errors.js";
@@ -15,7 +15,7 @@ import { DEFAULT_WORKSPACE_SECURITY_POLICY } from "../domain/security-policy-def
 import { requireGlobalAdministrator } from "./authorization.js";
 import type { NormalizedUserIdentity } from "./boundary.js";
 import type {
-  AuthenticatedPrincipal,
+  AuthorizationPrincipal,
   OrganizationUserAccount,
   UserPasswordLink,
 } from "./model.js";
@@ -51,7 +51,7 @@ export class UserAccountStore {
   ) {}
 
   public async create(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     identity: NormalizedUserIdentity,
   ): Promise<OrganizationUserAccount> {
     requireGlobalAdministrator(principal);
@@ -75,6 +75,7 @@ export class UserAccountStore {
       throw error;
     }
     return {
+      currentWorkspaceAccess: false,
       displayName: identity.displayName,
       globalRole: "standard",
       state: "pending",
@@ -85,11 +86,16 @@ export class UserAccountStore {
   }
 
   public async list(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
   ): Promise<OrganizationUserAccount[]> {
-    requireGlobalAdministrator(principal);
+    const visibility: SQL | undefined = principal.globalRole === "global_admin"
+      ? undefined
+      : eq(workspaceMemberships.workspaceId, principal.workspaceId);
     return this.database
       .select({
+        currentWorkspaceAccess: sql<boolean>`coalesce(bool_or(
+          ${workspaces.id} = ${principal.workspaceId}
+        ), false)`,
         displayName: users.displayName,
         globalRole: users.globalRole,
         state: users.state,
@@ -112,6 +118,7 @@ export class UserAccountStore {
           eq(workspaces.state, "active"),
         ),
       )
+      .where(visibility)
       .groupBy(
         users.id,
         users.displayName,
@@ -124,7 +131,7 @@ export class UserAccountStore {
   }
 
   public async createPasswordLink(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     userId: string,
   ): Promise<UserPasswordLink> {
     requireGlobalAdministrator(principal);

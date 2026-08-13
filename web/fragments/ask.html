@@ -1282,7 +1282,7 @@
               <div class="citation-image-highlight-frame">
                 <img
                   :alt="`Source image for citation ${inspectedCitation.citationNumber}`"
-                  :src="citationOriginalFileUrl()"
+                  :src="citationOriginalImageUrl()"
                   @load="recordCitationImageDimensions($event)"
                 />
                 <template x-for="(region, index) in inspectedCitation.regions" :key="`${region.pageNumber}-${index}`">

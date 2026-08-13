@@ -14,7 +14,22 @@ import {
   decodeWorkspaceMemberAccessInput,
 } from "../auth/boundary.js";
 import { canAdministerWorkspace } from "../auth/authorization.js";
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type {
+  AuthenticatedPrincipal,
+  AuthorizationPrincipal,
+} from "../auth/model.js";
+import {
+  OAuthAccessTokenRejectedError,
+  OAuthInsufficientScopeError,
+} from "../oauth/access-token.js";
+import {
+  OAuthIdentityUnavailableError,
+  type OAuthIdentityContext,
+} from "../oauth/principal-store.js";
+import {
+  OAUTH_BROWSER_CALLBACK_PATH,
+  OAUTH_MCP_RESOURCE_PATH,
+} from "../oauth/application-configuration.js";
 import { PasswordValidationError } from "../auth/password.js";
 import {
   AuthenticationRejectedError,
@@ -39,6 +54,10 @@ import {
 import type { WebConfig } from "./config.js";
 import { WebRequestError } from "./request-boundary.js";
 import type { WebServices } from "./services.js";
+import {
+  CITELOOM_WORKSPACE_HEADER,
+  type ApplicationOAuthRequestAuthenticator,
+} from "./application-authentication.js";
 import { isOAuthProtectedResourceMetadataPath } from "./oauth-authentication.js";
 import {
   decodeCreateSharedSourceLibraryInput,
@@ -59,6 +78,7 @@ const PUBLIC_LOGIN_WEB_PATHS = new Set([
   "/favicon.ico",
   "/fragments/login.html",
   "/login",
+  OAUTH_BROWSER_CALLBACK_PATH,
 ]);
 const ADMINISTRATOR_WEB_PATHS = new Set([
   "/errors",
@@ -76,6 +96,14 @@ const GLOBAL_ADMINISTRATOR_WEB_PATHS = new Set([
 ]);
 const LOGIN_REDIRECT_HEADER = "HX-Redirect";
 const LOGIN_REDIRECT_PATH = "/login";
+const OAUTH_LOCAL_AUTHENTICATION_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/auth/password",
+  "/api/auth/session",
+  "/api/auth/session/workspace",
+  "/api/auth/setup",
+]);
 const disabledAuthenticationPrincipal: AuthenticatedPrincipal = {
   dataScope: "all",
   displayName: "Disabled authentication",
@@ -90,7 +118,8 @@ const disabledAuthenticationPrincipal: AuthenticatedPrincipal = {
 
 export interface AuthenticationRouteOptions {
   authentication: "disabled" | "required";
-  requestPrincipals: WeakMap<object, AuthenticatedPrincipal>;
+  oauthAuthenticator: ApplicationOAuthRequestAuthenticator;
+  requestPrincipals: WeakMap<object, AuthorizationPrincipal>;
   services: WebServices;
   webConfig: WebConfig;
 }
@@ -101,11 +130,13 @@ export function registerAuthenticationRoutes(
 ): void {
   const {
     authentication,
+    oauthAuthenticator,
     requestPrincipals,
     services,
     webConfig,
   } = options;
   const loginRateLimiter = new LoginRateLimiter();
+  const requestIdentityContexts = new WeakMap<object, OAuthIdentityContext>();
 
   server.addHook("onRequest", async (request, reply) => {
     if (authentication === "disabled") {
@@ -113,10 +144,62 @@ export function registerAuthenticationRoutes(
       return;
     }
     const pathname = readRequestPathname(request.url);
-    if (!pathname.startsWith("/api/")) {
-      if (isPublicLoginWebPath(pathname)) {
+    if (pathname === OAUTH_MCP_RESOURCE_PATH) {
+      return;
+    }
+    if (pathname === "/api/auth/bootstrap") {
+      requireSameOriginForMutation(
+        request.method,
+        request.headers.origin,
+        webConfig,
+      );
+      return;
+    }
+    if (!pathname.startsWith("/api/") && isPublicLoginWebPath(pathname)) {
+      return;
+    }
+    const authenticationSettings = await services.readAuthenticationSettings(
+      webConfig.publicOrigin,
+    );
+    if (authenticationSettings.mode === "oauth") {
+      if (!pathname.startsWith("/api/")) {
+        clearStaleSessionCookie(request.cookies, reply, webConfig);
         return;
       }
+      if (OAUTH_LOCAL_AUTHENTICATION_PATHS.has(pathname)) {
+        clearStaleSessionCookie(request.cookies, reply, webConfig);
+        return reply.header("Cache-Control", "no-store").status(404).send();
+      }
+      requireSameOriginForMutation(
+        request.method,
+        request.headers.origin,
+        webConfig,
+      );
+      clearStaleSessionCookie(request.cookies, reply, webConfig);
+      try {
+        if (pathname === "/api/auth/context") {
+          const context = await oauthAuthenticator.readIdentityContext(
+            authenticationSettings,
+            request.headers.authorization,
+          );
+          requestIdentityContexts.set(request, context);
+          return;
+        }
+        const workspaceId = readOAuthWorkspaceId(
+          request.headers[CITELOOM_WORKSPACE_HEADER],
+        );
+        const principal = await oauthAuthenticator.authenticate(
+          authenticationSettings,
+          request.headers.authorization,
+          workspaceId,
+        );
+        requestPrincipals.set(request, principal);
+        return;
+      } catch (error: unknown) {
+        return sendOAuthAuthenticationError(reply, error);
+      }
+    }
+    if (!pathname.startsWith("/api/")) {
       const principal = await readRequestSession(
         request.cookies,
         reply,
@@ -190,6 +273,27 @@ export function registerAuthenticationRoutes(
       webConfig,
     );
     requestPrincipals.set(request, principal);
+  });
+
+  server.get("/api/auth/bootstrap", async (_request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    return services.readAuthenticationBootstrap(webConfig.publicOrigin);
+  });
+
+  server.get("/api/auth/context", async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    const oauthContext = requestIdentityContexts.get(request);
+    if (oauthContext !== undefined) {
+      return oauthContext;
+    }
+    const principal = requireRequestPrincipal(requestPrincipals, request);
+    return {
+      displayName: principal.displayName,
+      globalRole: principal.globalRole,
+      userId: principal.userId,
+      username: principal.username,
+      workspaces: await services.listWorkspaces(principal),
+    };
   });
 
   server.post("/api/auth/login", async (request, reply) => {
@@ -453,7 +557,7 @@ export function registerAuthenticationRoutes(
   });
 
   server.put("/api/auth/session/workspace", async (request) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
+    const principal = requireLocalSessionPrincipal(requestPrincipals, request);
     const workspaceId = decodeWorkspaceId(request.body);
     try {
       const switched = await services.switchWorkspace(principal, workspaceId);
@@ -477,7 +581,7 @@ export function registerAuthenticationRoutes(
   });
 
   server.put("/api/auth/password", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
+    const principal = requireLocalSessionPrincipal(requestPrincipals, request);
     try {
       const passwords = decodeChangePasswordInput(request.body);
       await services.changePassword(
@@ -594,9 +698,9 @@ export function registerAuthenticationRoutes(
 }
 
 export function requireRequestPrincipal<T extends object>(
-  principals: WeakMap<object, AuthenticatedPrincipal>,
+  principals: WeakMap<object, AuthorizationPrincipal>,
   request: T,
-): AuthenticatedPrincipal {
+): AuthorizationPrincipal {
   const principal = principals.get(request);
   if (principal === undefined) {
     throw new WebRequestError(401, "Authentication is required.");
@@ -605,10 +709,10 @@ export function requireRequestPrincipal<T extends object>(
 }
 
 export function requireWorkspaceAdministratorPrincipal<T extends object>(
-  principals: WeakMap<object, AuthenticatedPrincipal>,
+  principals: WeakMap<object, AuthorizationPrincipal>,
   request: T,
   workspaceId: string,
-): AuthenticatedPrincipal {
+): AuthorizationPrincipal {
   const principal = requireRequestPrincipal(principals, request);
   if (!canAdministerWorkspace(principal, workspaceId)) {
     throw new WebRequestError(
@@ -620,9 +724,9 @@ export function requireWorkspaceAdministratorPrincipal<T extends object>(
 }
 
 export function requireGlobalAdministratorPrincipal<T extends object>(
-  principals: WeakMap<object, AuthenticatedPrincipal>,
+  principals: WeakMap<object, AuthorizationPrincipal>,
   request: T,
-): AuthenticatedPrincipal {
+): AuthorizationPrincipal {
   const principal = requireRequestPrincipal(principals, request);
   if (principal.globalRole !== "global_admin") {
     throw new WebRequestError(
@@ -634,7 +738,8 @@ export function requireGlobalAdministratorPrincipal<T extends object>(
 }
 
 function isPublicAuthenticationPath(pathname: string): boolean {
-  return pathname === "/api/auth/login" || pathname === "/api/auth/setup";
+  return pathname === "/api/auth/login"
+    || pathname === "/api/auth/setup";
 }
 
 function isPublicLoginWebPath(pathname: string): boolean {
@@ -709,8 +814,66 @@ function clearSessionCookie(reply: FastifyReply, webConfig: WebConfig): void {
   reply.header("Cache-Control", "no-store");
 }
 
+function clearStaleSessionCookie(
+  cookies: Record<string, string | undefined>,
+  reply: FastifyReply,
+  webConfig: WebConfig,
+): void {
+  if (cookies[readSessionCookieName(webConfig)] !== undefined) {
+    clearSessionCookie(reply, webConfig);
+  }
+}
+
+function readOAuthWorkspaceId(
+  value: string | string[] | undefined,
+): string {
+  if (typeof value !== "string") {
+    throw new WebRequestError(
+      400,
+      `The ${CITELOOM_WORKSPACE_HEADER} header must identify one workspace.`,
+    );
+  }
+  try {
+    return decodeWorkspaceId({ workspaceId: value });
+  } catch (error: unknown) {
+    if (error instanceof ZodError) {
+      throw new WebRequestError(
+        400,
+        `The ${CITELOOM_WORKSPACE_HEADER} header must be a valid workspace ID.`,
+      );
+    }
+    throw error;
+  }
+}
+
+function sendOAuthAuthenticationError(
+  reply: FastifyReply,
+  error: unknown,
+): unknown {
+  if (error instanceof OAuthAccessTokenRejectedError) {
+    return reply
+      .header("WWW-Authenticate", 'Bearer error="invalid_token"')
+      .status(401)
+      .send({ error: { message: error.message } });
+  }
+  if (error instanceof OAuthInsufficientScopeError) {
+    const scope = error.requiredScopes.join(" ");
+    return reply
+      .header(
+        "WWW-Authenticate",
+        `Bearer error="insufficient_scope", scope="${scope}"`,
+      )
+      .status(403)
+      .send({ error: { message: error.message } });
+  }
+  if (error instanceof OAuthIdentityUnavailableError) {
+    return reply.status(403).send({ error: { message: error.message } });
+  }
+  throw error;
+}
+
 function buildSessionResponse(
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   expiresAt: string | null,
 ): {
   expiresAt: string | null;
@@ -738,6 +901,27 @@ function buildSessionResponse(
       role: principal.role,
     },
   };
+}
+
+function requireLocalSessionPrincipal<T extends object>(
+  principals: WeakMap<object, AuthorizationPrincipal>,
+  request: T,
+): AuthenticatedPrincipal {
+  const principal = requireRequestPrincipal(principals, request);
+  if (!isAuthenticatedPrincipal(principal)) {
+    throw new WebRequestError(
+      404,
+      "Session-based authentication is unavailable while OAuth is enabled.",
+    );
+  }
+  return principal;
+}
+
+function isAuthenticatedPrincipal(
+  principal: AuthorizationPrincipal,
+): principal is AuthenticatedPrincipal {
+  return "sessionTokenDigest" in principal
+    && typeof principal.sessionTokenDigest === "string";
 }
 
 function mapWorkspaceMembershipError(error: unknown): unknown {

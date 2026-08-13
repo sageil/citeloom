@@ -2,6 +2,34 @@ import type { CatalogEntry } from "../documents/catalog/index.js";
 import type { EmbeddingSpaceGcReport } from "../embedding/space/types.js";
 import { SUPPORTED_DOCUMENT_EXTENSIONS } from "../documents/format.js";
 import type { SystemStatus } from "../ingestion/worker.js";
+import type {
+  HostAuthenticationRecoveryStatus,
+} from "../oauth/application-store.js";
+
+export function printHostAuthenticationRecovery(
+  status: HostAuthenticationRecoveryStatus,
+  applied: boolean,
+): void {
+  console.log(`Authentication mode: ${status.mode}`);
+  console.log(
+    `Host recovery: ${status.hostRecoveryEnabled ? "enabled" : "disabled"}`,
+  );
+  if (!status.hostRecoveryEnabled) {
+    console.log("Recovery cannot be applied because host recovery is disabled.");
+    return;
+  }
+  if (!applied) {
+    const message = status.mode === "oauth"
+      ? "Recovery would switch authentication to local mode. Run with --apply to continue."
+      : "No recovery is required.";
+    console.log(message);
+    return;
+  }
+  const message = status.changed
+    ? "Authentication recovered to local mode. Users can now sign in with their CiteLoom username and password."
+    : "Authentication is already in local mode.";
+  console.log(message);
+}
 
 export function printCatalog(entries: CatalogEntry[]): void {
   if (entries.length === 0) {
@@ -128,6 +156,7 @@ Ingest and search:
   pnpm ask [--all | --document <id> | --file <path> | --tag <tag>] -- <question>
 
 Manage stored data:
+  pnpm dev auth recover-local [--apply]
   pnpm dev document-toc backfill
   pnpm dev source-content migrate --apply
   pnpm dev embedding-spaces pin --space <id> --reason <reason>
@@ -137,6 +166,7 @@ Manage stored data:
   pnpm jobs retry --file <stored-source-file>
 
 Notes:
+  - auth recover-local reads only the configured database. Without --apply it reports what recovery would do.
   - Add --enqueue to process ingestion in the background with a running worker.
   - Document TOC backfill uses stored document elements and does not rerun Docling or embeddings.
   - Stop every web and worker process before migrating source-content storage.

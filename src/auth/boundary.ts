@@ -198,6 +198,13 @@ export function decodeWorkspaceId(input: unknown): string {
   return z.object({ workspaceId: z.uuid() }).strict().parse(input).workspaceId;
 }
 
+export function decodeWorkspaceName(input: unknown): string {
+  return z.object({ workspaceName: workspaceNameSchema })
+    .strict()
+    .parse(input)
+    .workspaceName;
+}
+
 export function decodeWorkspaceMemberRoleInput(input: unknown): WorkspaceRole {
   return z.object({ role: workspaceRoleSchema }).strict().parse(input).role;
 }

@@ -4,6 +4,22 @@ import { parseCliCommand } from "../src/cli/index.js";
 import { parseEvaluationCommand } from "../tools/evaluation/cli.js";
 
 describe("parseCliCommand", () => {
+  it("parses host authentication recovery as report-only unless applied", () => {
+    expect(parseCliCommand(["auth", "recover-local"])).toEqual({
+      apply: false,
+      name: "auth-recover-local",
+    });
+    expect(parseCliCommand(["auth", "recover-local", "--apply"])).toEqual({
+      apply: true,
+      name: "auth-recover-local",
+    });
+    expect(() => parseCliCommand([
+      "auth",
+      "recover-local",
+      "--force",
+    ])).toThrow("auth recover-local [--apply]");
+  });
+
   it("parses multiple ingestion inputs and options", () => {
     expect(
       parseCliCommand([

@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <base href="/" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#060914" />
     <meta
@@ -10,7 +11,7 @@
     />
     <meta
       name="htmx-config"
-      content='{"historyCacheSize":0,"historyRestoreAsHxRequest":false,"refreshOnHistoryMiss":true}'
+      content='{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"historyRestoreAsHxRequest":false,"includeIndicatorStyles":false,"refreshOnHistoryMiss":true}'
     />
     <title>CiteLoom</title>
     <link rel="icon" href="./favicon.ico" sizes="any" />
@@ -30,28 +31,20 @@
     <link rel="stylesheet" href="./assets/styles/citeloom-shell.css" />
     <script
       defer
-      src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"
-      integrity="sha384-H5SrcfygHmAuTDZphMHqBJLc3FhssKjG7w/CeCpFReSfwBWDTKpkzPP8c+cLsK+V"
-      crossorigin="anonymous"
+      src="./assets/vendor/htmx.min.js"
     ></script>
     <script
       defer
-      src="https://cdn.jsdelivr.net/npm/marked@18.0.7/lib/marked.umd.js"
-      integrity="sha384-7njNzKcJUBdezPGfqUrIFizi2QkXJH0M6wF3o1h9GE/nce6X4YdecMwh31B19yTi"
-      crossorigin="anonymous"
+      src="./assets/vendor/marked.umd.js"
     ></script>
     <script
       defer
-      src="https://cdn.jsdelivr.net/npm/dompurify@3.4.13/dist/purify.min.js"
-      integrity="sha384-ZuC+DIACqSIZTsp+7YF57cR5Y+6qXa7YFbEKdA/EHA/R0T+41dtorqucYl71Zp+t"
-      crossorigin="anonymous"
+      src="./assets/vendor/purify.min.js"
     ></script>
     <script type="module" src="./assets/scripts/app.js"></script>
     <script
       defer
-      src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.12/dist/cdn.min.js"
-      integrity="sha384-pb6hrQvo4s23cEUFtj0CZkzGE3jyK3pj26RIupXXxhSrrcUA/Cn0lZgcCrGH0t6L"
-      crossorigin="anonymous"
+      src="./assets/vendor/alpine.min.js"
     ></script>
   </head>
   <body>
