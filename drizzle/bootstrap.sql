@@ -1068,6 +1068,7 @@ WITH canonical_settings AS (
       "lexicalWeight": 1,
       "maxAttempts": 3,
       "maxDocumentMegabytes": 100,
+      "mcpTaskRetentionDays": 30,
       "originalQueryWeight": 1,
       "queryExpansionTemperature": 0,
       "queryExpansionTimeoutSeconds": 60,

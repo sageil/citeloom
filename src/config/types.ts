@@ -15,6 +15,7 @@ export interface AppConfig {
   embeddingSpace: EmbeddingSpaceConfig;
   inference: InferenceConfig;
   maxDocumentBytes: number;
+  mcp: McpConfig;
   retry: RetryConfig;
   retrieval: RetrievalConfig;
   scheduling: SchedulingConfig;
@@ -24,6 +25,10 @@ export interface AppConfig {
   speechToText: SpeechToTextConfig | null;
   textToSpeech: TextToSpeechConfig | null;
   worker: WorkerConfig;
+}
+
+export interface McpConfig {
+  taskRetentionMs: number;
 }
 
 export interface ProviderRuntimeConfig {
@@ -365,6 +370,7 @@ export interface RuntimeSettings {
   lexicalWeight: number;
   maxAttempts: number;
   maxDocumentMegabytes: number;
+  mcpTaskRetentionDays: number;
   originalQueryWeight: number;
   queryExpansions: number;
   queryExpansionTemperature: number;

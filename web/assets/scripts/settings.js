@@ -1471,6 +1471,7 @@ export function registerPage(alpine) {
         Docling: "Choose how Docling reads and converts uploaded documents.",
         "Hughes Hallucination Evaluation Model": "Choose answer limits and how CiteLoom reports citation support.",
         "Document processing": "Choose upload limits, processing time, and how many documents CiteLoom handles at once.",
+        MCP: "Choose how long CiteLoom retains asynchronous MCP task results.",
         "Search and answers": "Choose how widely CiteLoom searches and how much source material it can use in an answer.",
         "Embedding model": "Choose how CiteLoom converts document content and questions into representations used for semantic search.",
         "Search ranking": "Choose how CiteLoom orders and filters semantic search results.",

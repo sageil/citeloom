@@ -142,6 +142,9 @@ export function buildAppConfig(
     embeddingSpace,
     inference,
     maxDocumentBytes: settings.maxDocumentMegabytes * 1_024 * 1_024,
+    mcp: {
+      taskRetentionMs: settings.mcpTaskRetentionDays * 24 * 60 * 60 * 1_000,
+    },
     retry,
     retrieval,
     scheduling: buildSchedulingConfig(

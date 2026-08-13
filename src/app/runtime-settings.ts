@@ -72,6 +72,7 @@ const runtimeSettingKeySchema = z.enum([
   "lexicalWeight",
   "maxAttempts",
   "maxDocumentMegabytes",
+  "mcpTaskRetentionDays",
   "originalQueryWeight",
   "queryExpansions",
   "queryExpansionTemperature",
@@ -284,6 +285,7 @@ export const runtimeSettingDefinitions: readonly RuntimeSettingDefinition[] = [
   numberSetting("workerConcurrency", "Document processing", "Documents processed at once", "How many documents each running CiteLoom service can process at the same time.", 1, 16, 1),
   numberSetting("backgroundProgressIntervalMs", "Document processing", "Maximum wait for document processing", "How long waiting document work can be delayed while Ask or Chat is using the configured AI services.", 100, 3_600_000, 100, "ms"),
   numberSetting("workerFallbackPollMs", "Document processing", "Waiting-document check interval", "How often CiteLoom checks for newly queued documents while no processing notices arrive.", 1_000, 300_000, 1_000, "ms"),
+  numberSetting("mcpTaskRetentionDays", "MCP", "Task retention", "How long CiteLoom keeps completed, failed, and cancelled MCP tasks before removing them.", 1, 3_650, 1, "days"),
   setting("aiMetricsEnabled", "Usage diagnostics", "AI request diagnostics", "boolean", "Record AI request times and usage without saving questions or answers."),
 ];
 
@@ -349,6 +351,7 @@ export const runtimeSettingChangeExamples = {
   ttsSpeed: "Set 1.25 to play spoken answers 25 percent faster.",
   ttsTimeoutSeconds: "Raise 60 to 120 if long answers time out during speech generation.",
   maxDocumentMegabytes: "Lower 100 to reject oversized documents sooner and reduce storage and processing demand.",
+  mcpTaskRetentionDays: "Change 30 to 7 to keep completed MCP task results for one week.",
   maxAttempts: "Raise 3 to 5 to keep retrying temporary document-processing failures.",
   retryBaseMs: "Raise 5 to 10 so the first retry waits ten seconds instead of five.",
   backgroundProgressIntervalMs: "Lower this value to reduce how long document processing waits while Ask or Chat is busy.",

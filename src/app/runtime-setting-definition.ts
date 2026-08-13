@@ -6,6 +6,7 @@ import type { ProviderCapability } from "../providers/profiles.js";
 export type RuntimeSettingGroup =
   | "Docling"
   | "Hughes Hallucination Evaluation Model"
+  | "MCP"
   | "Document processing"
   | "Search and answers"
   | "Embedding space"

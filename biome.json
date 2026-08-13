@@ -8,6 +8,7 @@
   "files": {
     "includes": [
       "*.ts",
+      "mcp-client/**/*.ts",
       "src/**/*.ts",
       "scripts/**/*.ts",
       "web/assets/scripts/**/*.js"

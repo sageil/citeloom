@@ -112,6 +112,7 @@ export const runtimeSettingsObjectSchema = z.object({
   lexicalWeight: z.number().positive().max(100),
   maxAttempts: z.number().int().min(1).max(20),
   maxDocumentMegabytes: z.number().int().min(1).max(100),
+  mcpTaskRetentionDays: z.number().int().min(1).max(3_650),
   originalQueryWeight: z.number().positive().max(100),
   queryExpansions: z.number().int().min(0).max(4),
   queryExpansionTemperature: z.number().min(0).max(2),

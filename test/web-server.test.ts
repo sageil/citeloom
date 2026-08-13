@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
@@ -7,23 +6,15 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createUIMessageStream, type InferUIMessageChunk } from "ai";
-
-import type { CiteLoomUIMessage } from "../src/answers/stream.js";
 import {
-  type EffectiveApplicationSettings,
   SettingsVersionConflictError,
 } from "../src/app/settings.js";
-import type { PendingIngestionJob } from "../src/documents/catalog/index.js";
 import type { StagedIngestionDocument } from "../src/ingestion/service.js";
 import type {
-  BrowserDocument,
   BrowseDocumentCatalogRequest,
-  BrowseDocumentCatalogResult,
 } from "../src/documents/catalog/browser.js";
 import {
   type AppConfig,
-  type RuntimeSettings,
   type SourceContentConfig,
 } from "../src/config/index.js";
 import { createTestProviderSettings } from "./provider-settings-fixture.js";
@@ -36,9 +27,9 @@ import {
   SourceDiscoveryUnavailableError,
 } from "../src/retrieval/discovery/pipeline.js";
 import type {
-  SourceDiscoveryResponse,
-} from "../src/retrieval/discovery/schema.js";
-import type { SecurityWebServices } from "../src/api/services.js";
+  AuthenticationSecurityWebServices,
+  SecurityWebServices,
+} from "../src/api/services.js";
 import { TextToSpeechUnavailableError } from "../src/providers/text-to-speech.js";
 import {
   SpeechToTextProviderError,
@@ -52,24 +43,38 @@ import {
   type RuntimeWebServices,
   type WebServices,
 } from "../src/web-server.js";
-import {
-  createTestRuntimeSettings,
-  readEqualWeightTestConfig,
-  TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
-} from "./config-fixture.js";
 import { createDeferred } from "./deferred-fixture.js";
-import type { AuthenticatedPrincipal } from "../src/auth/model.js";
+import {
+  TestRevisionResponse,
+  buildApplicationErrorPage,
+  buildAuthenticatedPrincipal,
+  buildBrowserDocument,
+  buildCatalogResult,
+  buildConfig,
+  buildEffectiveSettings,
+  buildOAuthAuthenticationSettings,
+  buildOAuthPrincipal,
+  buildPendingJob,
+  buildPrincipalWorkspace,
+  buildReadyDiagnosticCheck,
+  buildServices,
+  buildSourceContentMigrationRecord,
+  buildSourceDiscoveryRequest,
+  buildSourceDiscoveryResponse,
+  buildSpeechToTextConfig,
+  buildAudioFile,
+  buildTranscriptionForm,
+  createAnswerStream,
+} from "./web-server-fixture.js";
 import {
   AuthenticationRejectedError,
   WorkspaceAuthorizationError,
   WorkspaceNameUnavailableError,
 } from "../src/auth/store.js";
-import type {
-  DoctorCheck,
-  DoctorLiveChecks,
-} from "../src/observability/doctor.js";
+import type { DoctorLiveChecks } from "../src/observability/doctor.js";
 import { SourceLibraryArchiveConflictError } from "../src/workspaces/source-library-store.js";
 import { SourceLibraryDeletionConflictError } from "../src/workspaces/source-library-deletion.js";
+import { OAuthIdentityLinkRemovalRejectedError } from "../src/oauth/identity-link-store.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -91,6 +96,49 @@ afterEach(async () => {
 });
 
 describe("web server boundary", () => {
+  it("exposes the active authentication mode without requiring a session", async () => {
+    const readAuthenticationBootstrap = vi.fn<
+      WebServices["readAuthenticationBootstrap"]
+    >(async () => ({
+      mode: "oauth",
+      oauth: {
+        apiResource: "https://localhost:3443/api",
+        apiScopes: ["citeloom.app"],
+        browserCallbackUri: "https://localhost:3443/oauth/callback",
+        browserClientId: "citeloom-browser",
+        browserPostLogoutRedirectUri: "https://localhost:3443/login",
+        browserScopes: ["openid", "citeloom.app"],
+        issuer: "https://identity.example.com/oidc",
+      },
+    }));
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ readAuthenticationBootstrap }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/api/auth/bootstrap",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(response.json()).toMatchObject({
+        mode: "oauth",
+        oauth: {
+          apiResource: "https://localhost:3443/api",
+          browserClientId: "citeloom-browser",
+        },
+      });
+      expect(readAuthenticationBootstrap).toHaveBeenCalledWith(
+        "https://localhost:3443",
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
   it("fails closed for unauthenticated API requests", async () => {
     const server = await buildProductionWebServer(buildConfig(), {
       logger: false,
@@ -103,6 +151,381 @@ describe("web server boundary", () => {
       expect(response.json()).toEqual({
         error: { message: "Authentication is required." },
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("replaces cookie authentication with bearer authentication in OAuth mode", async () => {
+    const settings = buildOAuthAuthenticationSettings();
+    const readSession = vi.fn<WebServices["readSession"]>();
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readAuthenticationSettings: async () => settings,
+        readSession,
+      }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "stale-local-session" },
+        headers: {
+          "x-citeloom-workspace-id": "00000000-0000-4000-8000-000000000000",
+        },
+        method: "GET",
+        url: "/api/workspaces",
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(response.headers["www-authenticate"]).toBe(
+        'Bearer error="invalid_token"',
+      );
+      expect(response.headers["set-cookie"]).toContain(
+        "__Host-citeloom_session=;",
+      );
+      expect(readSession).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("authorizes an OAuth API request against its explicit local workspace", async () => {
+    const settings = buildOAuthAuthenticationSettings();
+    const principal = buildOAuthPrincipal();
+    const authenticate = vi.fn(async () => principal);
+    const readIdentityContext = vi.fn();
+    const listWorkspaces = vi.fn<WebServices["listWorkspaces"]>(async () => [{
+      id: principal.workspaceId,
+      name: principal.workspaceName,
+      role: principal.role,
+    }]);
+    const readSession = vi.fn<WebServices["readSession"]>();
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      oauthAuthenticator: {
+        authenticate,
+        readIdentityContext,
+        verifyMcpAccess: vi.fn(),
+      },
+      services: buildServices({
+        listWorkspaces,
+        readAuthenticationSettings: async () => settings,
+        readSession,
+      }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "stale-local-session" },
+        headers: {
+          authorization: "Bearer valid-access-token",
+          "x-citeloom-workspace-id": principal.workspaceId,
+        },
+        method: "GET",
+        url: "/api/workspaces",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(authenticate).toHaveBeenCalledWith(
+        settings,
+        "Bearer valid-access-token",
+        principal.workspaceId,
+      );
+      expect(listWorkspaces).toHaveBeenCalledWith(principal);
+      expect(readSession).not.toHaveBeenCalled();
+      expect(response.headers["set-cookie"]).toContain(
+        "__Host-citeloom_session=;",
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("uses a bearer identity context without an external workspace claim", async () => {
+    const settings = buildOAuthAuthenticationSettings();
+    const principal = buildOAuthPrincipal();
+    const context = {
+      displayName: principal.displayName,
+      globalRole: principal.globalRole,
+      userId: principal.userId,
+      username: principal.username,
+      workspaces: [{
+        id: principal.workspaceId,
+        name: principal.workspaceName,
+        role: principal.role,
+      }],
+    };
+    const authenticate = vi.fn();
+    const readIdentityContext = vi.fn(async () => context);
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      oauthAuthenticator: {
+        authenticate,
+        readIdentityContext,
+        verifyMcpAccess: vi.fn(),
+      },
+      services: buildServices({
+        readAuthenticationSettings: async () => settings,
+      }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        headers: { authorization: "Bearer valid-access-token" },
+        method: "GET",
+        url: "/api/auth/context",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(response.json()).toEqual(context);
+      expect(readIdentityContext).toHaveBeenCalledWith(
+        settings,
+        "Bearer valid-access-token",
+      );
+      expect(authenticate).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("disables local authentication endpoints after OAuth activation", async () => {
+    const authenticateLocally = vi.fn<WebServices["authenticate"]>();
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        authenticate: authenticateLocally,
+        readAuthenticationSettings: async () => {
+          return buildOAuthAuthenticationSettings();
+        },
+      }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        method: "POST",
+        url: "/api/auth/login",
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(authenticateLocally).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("publishes separate OAuth metadata for the API and MCP resources", async () => {
+    const settings = buildOAuthAuthenticationSettings();
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readAuthenticationSettings: async () => settings,
+      }),
+      staticDirectory: null,
+    });
+    try {
+      const apiResponse = await server.inject({
+        method: "GET",
+        url: "/.well-known/oauth-protected-resource/api",
+      });
+      const mcpResponse = await server.inject({
+        method: "GET",
+        url: "/.well-known/oauth-protected-resource/mcp",
+      });
+
+      expect(apiResponse.statusCode).toBe(200);
+      expect(apiResponse.json()).toMatchObject({
+        resource: "https://localhost:3443/api",
+        scopes_supported: ["citeloom.app"],
+      });
+      expect(mcpResponse.statusCode).toBe(200);
+      expect(mcpResponse.json()).toMatchObject({
+        resource: "https://localhost:3443/mcp",
+        scopes_supported: ["citeloom.answer", "citeloom.search"],
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+
+  it("stages verified application-wide OAuth settings without changing local auth", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "global_admin");
+    const stageOAuthApplicationConfiguration = vi.fn<
+      AuthenticationSecurityWebServices["stageOAuthApplicationConfiguration"]
+    >(async () => buildOAuthAuthenticationSettings());
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readSession: async () => principal,
+        stageOAuthApplicationConfiguration,
+      }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "PUT",
+        payload: {
+          apiScopes: ["citeloom.app", "citeloom.app"],
+          browserClientId: "citeloom-browser",
+          browserScopes: ["profile", "openid", "citeloom.app"],
+          expectedVersion: 1,
+          issuer: "https://identity.example.com/oidc",
+          mcpScopes: ["citeloom.search", "citeloom.answer"],
+        },
+        url: "/api/security/authentication/oauth/staged",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(stageOAuthApplicationConfiguration).toHaveBeenCalledWith(
+        principal,
+        {
+          apiScopes: ["citeloom.app"],
+          browserClientId: "citeloom-browser",
+          browserScopes: ["citeloom.app", "openid", "profile"],
+          issuer: "https://identity.example.com/oidc",
+          mcpScopes: ["citeloom.answer", "citeloom.search"],
+          schemaVersion: 1,
+        },
+        1,
+        "https://localhost:3443",
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("configures host authentication recovery as a versioned security setting", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "global_admin");
+    const configureHostAuthenticationRecovery = vi.fn<
+      AuthenticationSecurityWebServices["configureHostAuthenticationRecovery"]
+    >(async () => ({
+      ...buildOAuthAuthenticationSettings(),
+      hostRecoveryEnabled: true,
+    }));
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        configureHostAuthenticationRecovery,
+        readSession: async () => principal,
+      }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "PUT",
+        payload: { enabled: true, expectedVersion: 2 },
+        url: "/api/security/authentication/host-recovery",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(configureHostAuthenticationRecovery).toHaveBeenCalledWith(
+        principal,
+        true,
+        2,
+        "https://localhost:3443",
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("requires a verified bearer identity to activate staged OAuth", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "global_admin");
+    const activateOAuthApplication = vi.fn<
+      AuthenticationSecurityWebServices["activateOAuthApplication"]
+    >(async () => buildOAuthAuthenticationSettings());
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        activateOAuthApplication,
+        readSession: async () => principal,
+      }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: {
+          origin: "https://localhost:3443",
+          "x-citeloom-oauth-activation-proof": "Bearer staged-issuer-token",
+        },
+        method: "POST",
+        payload: { expectedVersion: 2 },
+        url: "/api/security/authentication/oauth/activate",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(activateOAuthApplication).toHaveBeenCalledWith(
+        principal,
+        "Bearer staged-issuer-token",
+        2,
+        "https://localhost:3443",
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reports protected OAuth identity removal as a conflict", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "global_admin");
+    const unlinkOAuthApplicationUserIdentity = vi.fn<
+      AuthenticationSecurityWebServices["unlinkOAuthApplicationUserIdentity"]
+    >(async () => {
+      throw new OAuthIdentityLinkRemovalRejectedError(
+        "You cannot remove your own identity mapping while OAuth is active.",
+      );
+    });
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readSession: async () => principal,
+        unlinkOAuthApplicationUserIdentity,
+      }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "DELETE",
+        url: `/api/security/authentication/oauth/users/${principal.userId}`,
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({
+        error: {
+          code: "invalid_request",
+          message: "You cannot remove your own identity mapping while OAuth is active.",
+        },
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("does not expose the removed external workspace mapping API", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "global_admin");
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ readSession: async () => principal }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "PUT",
+        payload: { externalWorkspaceId: "external-workspace" },
+        url: `/api/security/oauth/workspaces/${principal.workspaceId}`,
+      });
+
+      expect(response.statusCode).toBe(404);
     } finally {
       await server.close();
     }
@@ -213,6 +636,13 @@ describe("web server boundary", () => {
       const loginResponse = await server.inject({ method: "GET", url: "/login" });
       expect(loginResponse.statusCode).toBe(200);
       expect(loginResponse.body).toBe("<main>CiteLoom</main>");
+
+      const oauthCallbackResponse = await server.inject({
+        method: "GET",
+        url: "/oauth/callback?code=authorization-code&state=callback-state",
+      });
+      expect(oauthCallbackResponse.statusCode).toBe(200);
+      expect(oauthCallbackResponse.body).toBe("<main>CiteLoom</main>");
 
       const dependencyResponse = await server.inject({
         method: "GET",
@@ -1055,6 +1485,28 @@ describe("web server boundary", () => {
       expect(baseResponse.statusCode).toBe(200);
       expect(baseResponse.body).toBe("<main>CiteLoom</main>");
       expect(baseResponse.headers.location).toBeUndefined();
+      expect(baseResponse.headers["content-security-policy"]).toContain(
+        "script-src 'self'",
+      );
+      expect(baseResponse.headers["content-security-policy"]).toContain(
+        "script-src 'self' 'unsafe-eval'",
+      );
+
+      for (const route of [
+        "/assets/vendor/alpine.min.js",
+        "/assets/vendor/htmx.min.js",
+        "/assets/vendor/marked.umd.js",
+        "/assets/vendor/purify.min.js",
+      ]) {
+        const vendorResponse = await server.inject({ method: "GET", url: route });
+        expect(vendorResponse.statusCode).toBe(200);
+        expect(vendorResponse.headers["content-type"]).toContain(
+          "application/javascript",
+        );
+        expect(vendorResponse.headers["cache-control"]).toBe(
+          "public, max-age=31536000, immutable",
+        );
+      }
 
       const fallbackResponse = await server.inject({
         method: "GET",
@@ -2091,6 +2543,7 @@ describe("web server boundary", () => {
     };
     const readWorkspaceSecurityOverview = vi.fn(async () => securityOverview);
     const organizationUser = {
+      currentWorkspaceAccess: false,
       displayName: "Workspace Member",
       globalRole: "standard" as const,
       state: "pending" as const,
@@ -2125,9 +2578,14 @@ describe("web server boundary", () => {
       }),
       createOrganizationUser,
       createOrganizationUserPasswordLink,
+      createMcpApiKey: async () => {
+        throw new Error("Not used in this test.");
+      },
       listOrganizationUsers,
+      listMcpApiKeys: async () => [],
       readPasswordPolicy: async () => securityOverview.policy,
       readWorkspaceSecurityOverview,
+      revokeMcpApiKey: async () => undefined,
       updateWorkspaceSecurityPolicy: async () => securityOverview,
     };
     const server = await buildProductionWebServer(buildConfig(), {
@@ -2283,7 +2741,7 @@ describe("web server boundary", () => {
     }
   });
 
-  it("keeps organization account operations restricted to global administrators", async () => {
+  it("allows workspace administrators to view users but not manage passwords", async () => {
     const principal = buildAuthenticatedPrincipal("admin", "standard");
     const createOrganizationUser = vi.fn<
       SecurityWebServices["createOrganizationUser"]
@@ -2293,7 +2751,7 @@ describe("web server boundary", () => {
     >();
     const listOrganizationUsers = vi.fn<
       SecurityWebServices["listOrganizationUsers"]
-    >();
+    >(async () => []);
     const securityOverview = {
       activeResetLinkCount: 0,
       administrators: [],
@@ -2311,9 +2769,14 @@ describe("web server boundary", () => {
       ...buildServices({ readSession: async () => principal }),
       createOrganizationUser,
       createOrganizationUserPasswordLink,
+      createMcpApiKey: async () => {
+        throw new Error("Not used in this test.");
+      },
       listOrganizationUsers,
+      listMcpApiKeys: async () => [],
       readPasswordPolicy: async () => securityOverview.policy,
       readWorkspaceSecurityOverview: async () => securityOverview,
+      revokeMcpApiKey: async () => undefined,
       updateWorkspaceSecurityPolicy: async () => securityOverview,
     };
     const server = await buildProductionWebServer(buildConfig(), {
@@ -2346,13 +2809,126 @@ describe("web server boundary", () => {
       ]);
 
       expect(responses.map((response) => response.statusCode)).toEqual([
-        403,
+        200,
         403,
         403,
       ]);
       expect(createOrganizationUser).not.toHaveBeenCalled();
       expect(createOrganizationUserPasswordLink).not.toHaveBeenCalled();
-      expect(listOrganizationUsers).not.toHaveBeenCalled();
+      expect(listOrganizationUsers).toHaveBeenCalledWith(principal);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("allows a workspace administrator to issue and revoke a key for its target user", async () => {
+    const principal = buildAuthenticatedPrincipal("admin", "standard");
+    const userId = "00000000-0000-4000-8000-000000000701";
+    const apiKeyId = "00000000-0000-4000-8000-000000000702";
+    const record = {
+      createdAt: "2026-08-13T19:00:00.000Z",
+      expiresAt: "2026-11-13T19:00:00.000Z",
+      id: apiKeyId,
+      label: "Codex",
+      revokedAt: null,
+      scopes: ["citeloom.search" as const],
+      userId,
+      workspaceId: principal.workspaceId,
+      workspaceName: principal.workspaceName,
+    };
+    const createMcpApiKey = vi.fn<SecurityWebServices["createMcpApiKey"]>(
+      async () => ({ ...record, apiKey: "clm_mcp_secret" }),
+    );
+    const listMcpApiKeys = vi.fn<SecurityWebServices["listMcpApiKeys"]>(
+      async () => [record],
+    );
+    const revokeMcpApiKey = vi.fn<SecurityWebServices["revokeMcpApiKey"]>(
+      async () => undefined,
+    );
+    const services = {
+      ...buildServices({ readSession: async () => principal }),
+      createMcpApiKey,
+      createOrganizationUser: vi.fn<SecurityWebServices["createOrganizationUser"]>(),
+      createOrganizationUserPasswordLink:
+        vi.fn<SecurityWebServices["createOrganizationUserPasswordLink"]>(),
+      listMcpApiKeys,
+      listOrganizationUsers: async () => [],
+      readPasswordPolicy: async () => ({
+        minimumPasswordLength: 12,
+        requireLetterAndNumber: true,
+        requireSpecialCharacter: false,
+      }),
+      readWorkspaceSecurityOverview: async () => ({
+        activeResetLinkCount: 0,
+        administrators: [],
+        policy: {
+          minimumPasswordLength: 12,
+          requireLetterAndNumber: true,
+          requireSpecialCharacter: false,
+          resetLinkLifetimeSeconds: 3_600,
+          updatedAt: "2026-08-13T19:00:00.000Z",
+          version: 1,
+        },
+        recentChanges: [],
+      }),
+      revokeMcpApiKey,
+      updateWorkspaceSecurityPolicy: vi.fn<
+        SecurityWebServices["updateWorkspaceSecurityPolicy"]
+      >(),
+    };
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services,
+      staticDirectory: null,
+    });
+    try {
+      const cookies = { "__Host-citeloom_session": "private-session-token" };
+      const createResponse = await server.inject({
+        cookies,
+        headers: { origin: "https://localhost:3443" },
+        method: "POST",
+        payload: {
+          expiresAt: record.expiresAt,
+          label: record.label,
+          scopes: record.scopes,
+        },
+        url: `/api/security/users/${userId}/mcp-api-keys`,
+      });
+      const listResponse = await server.inject({
+        cookies,
+        method: "GET",
+        url: `/api/security/users/${userId}/mcp-api-keys`,
+      });
+      const revokeResponse = await server.inject({
+        cookies,
+        headers: { origin: "https://localhost:3443" },
+        method: "DELETE",
+        url: `/api/security/users/${userId}/mcp-api-keys/${apiKeyId}`,
+      });
+
+      expect(createResponse.statusCode).toBe(201);
+      expect(createResponse.headers["cache-control"]).toBe("no-store");
+      expect(createResponse.json()).toMatchObject({
+        apiKey: "clm_mcp_secret",
+        userId,
+      });
+      expect(listResponse.json()).toEqual([record]);
+      expect(revokeResponse.statusCode).toBe(204);
+      expect(createMcpApiKey).toHaveBeenCalledWith(
+        principal,
+        userId,
+        {
+          expiresAt: new Date(record.expiresAt),
+          label: "Codex",
+          scopes: ["citeloom.search"],
+        },
+      );
+      expect(listMcpApiKeys).toHaveBeenCalledWith(principal, userId);
+      expect(revokeMcpApiKey).toHaveBeenCalledWith(
+        principal,
+        userId,
+        apiKeyId,
+      );
     } finally {
       await server.close();
     }
@@ -4113,641 +4689,6 @@ describe("research API boundary", () => {
 
 });
 
-type TestWebServiceOverrides = Partial<RuntimeWebServices>
-  & Partial<Pick<
-    WebServices,
-    | "addWorkspaceMember"
-    | "archiveSharedSourceLibrary"
-    | "archiveWorkspace"
-    | "authenticate"
-    | "cancelSourceContentMigration"
-    | "changePassword"
-    | "changeWorkspaceMemberAccess"
-    | "changeWorkspaceMemberRole"
-    | "completePasswordSetup"
-    | "copyEmbeddingInputFormat"
-    | "createSharedSourceLibrary"
-    | "deleteSharedSourceLibrary"
-    | "createEmbeddingInputFormat"
-    | "createWorkspace"
-    | "listWorkspaceMemberCandidates"
-    | "listWorkspaces"
-    | "listSourceLibraries"
-    | "listWorkspaceMembers"
-    | "openAICodex"
-    | "purgeApplicationErrors"
-    | "readApplicationErrors"
-    | "readSession"
-    | "readSourceLibraryAdministration"
-    | "readSettings"
-    | "readWorkspaceSettings"
-    | "readSourceContentStorage"
-    | "reportApplicationError"
-    | "removeWorkspaceMember"
-    | "renameSharedSourceLibrary"
-    | "renameWorkspace"
-    | "restoreSharedSourceLibrary"
-    | "retireEmbeddingInputFormat"
-    | "revokeSession"
-    | "revokeSourceLibraryGrant"
-    | "reviseEmbeddingInputFormat"
-    | "queueSourceContentMigration"
-    | "subscribeRevisions"
-    | "switchWorkspace"
-    | "setSourceLibraryGrant"
-    | "testSourceContentStorage"
-    | "updateSettings"
-    | "updateWorkspaceSettings"
-  >>;
-
-function buildReadyDiagnosticCheck(): DoctorCheck {
-  return {
-    category: "persistence",
-    detail: "ready",
-    groupId: "infrastructure",
-    groupName: "Infrastructure",
-    items: [],
-    mode: "readiness",
-    name: "Database",
-    ok: true,
-  };
-}
-
-function buildServices(
-  overrides: TestWebServiceOverrides = {},
-): WebServices {
-  const runtimeServices: RuntimeWebServices = {
-    addResearchFeedback: async () => ({ negativeCount: 0, positiveCount: 1, rating: 1 }),
-    browseDocuments: async () => buildCatalogResult(),
-    compareDocumentVersions: async () => null,
-    config: buildConfig(),
-    createChatConversation: async (_principal, title, scope) => ({
-      createdAt: "2026-07-15T12:00:00.000Z",
-      id: "00000000-0000-4000-8000-000000000301",
-      ownerUserId: "00000000-0000-4000-8000-000000000000",
-      runs: [],
-      scope,
-      title,
-      updatedAt: "2026-07-15T12:00:00.000Z",
-      workspaceId: "00000000-0000-4000-8000-000000000000",
-    }),
-    createResearchThread: async (_principal, title) => ({
-      createdAt: "2026-07-15T12:00:00.000Z",
-      id: "00000000-0000-4000-8000-000000000001",
-      title,
-      turns: [],
-      updatedAt: "2026-07-15T12:00:00.000Z",
-    }),
-    deleteChatConversation: async () => undefined,
-    deleteIndexedDocument: async () => ({ kind: "not-found" }),
-    deleteResearchThread: async () => undefined,
-    exportResearchThread: async () => null,
-    generateSpeech: async () => ({
-      audio: Readable.from([Buffer.from("audio")]),
-      completion: Promise.resolve(),
-      contentType: "audio/wav",
-    }),
-    ingest: async () => ({ documents: [], failures: [] }),
-    listChatConversations: async () => [],
-    listDocumentVersions: async () => [],
-    listResearchThreads: async () => [],
-    processNextChatVerification: async () => false,
-    processNextResearchVerification: async () => false,
-    readCitationEvidence: async () => null,
-    readCitationHighlightedFile: async () => null,
-    readCitationImage: async () => null,
-    readChatCitationEvidence: async () => null,
-    readChatCitationFile: async () => null,
-    readChatCitationHighlightedFile: async () => null,
-    readChatCitationImage: async () => null,
-    readChatConversation: async () => null,
-    readDocumentFile: async () => null,
-    readHealth: async () => [buildReadyDiagnosticCheck()],
-    readResearchThread: async () => null,
-    readResearchFeedback: async () => ({ negativeCount: 0, positiveCount: 0, rating: 0 }),
-    readRevisions: async () => ({ catalog: "0", jobs: "0", settings: "0" }),
-    readStatus: async () => ({ inference: [], queue: [], workers: [] }),
-    readTelemetry: async () => buildTelemetryDashboard(),
-    readVersionedDocumentFile: async () => null,
-    reconcileIngestionCancellations: async () => undefined,
-    reconcileSourceLibraryDeletions: async () => false,
-    reconcileUploadedDocuments: async () => 0,
-    reindexDocument: async () => ({ kind: "not-found" }),
-    retryFailedJob: async () => ({ kind: "not-found" }),
-    requestIngestionControl: async () => ({ kind: "not-found" }),
-    resumeIngestion: async () => ({ kind: "not-found" }),
-    searchSources: async () => buildSourceDiscoveryResponse(),
-    streamAnswer: () => createAnswerStream("Answer"),
-    streamChatMessage: () => createAnswerStream("Answer"),
-    transcribeAudio: async () => ({ text: "Transcript" }),
-    updateDocumentTags: async () => null,
-  };
-  const effectiveRuntimeServices: RuntimeWebServices = {
-    ...runtimeServices,
-    ...overrides,
-  };
-  return {
-    archiveSharedSourceLibrary: overrides.archiveSharedSourceLibrary
-      ?? (async () => undefined),
-    archiveWorkspace: overrides.archiveWorkspace ?? (async () => undefined),
-    authenticate: overrides.authenticate ?? (async () => {
-      throw new Error("Authentication is not configured in boundary tests.");
-    }),
-    changePassword: overrides.changePassword ?? (async () => {
-      throw new Error("Authentication is not configured in boundary tests.");
-    }),
-    changeWorkspaceMemberAccess: overrides.changeWorkspaceMemberAccess ?? (async () => {
-      throw new Error("Authentication is not configured in boundary tests.");
-    }),
-    changeWorkspaceMemberRole: overrides.changeWorkspaceMemberRole ?? (async () => {
-      throw new Error("Authentication is not configured in boundary tests.");
-    }),
-    cancelSourceContentMigration: overrides.cancelSourceContentMigration
-      ?? (async (id) => buildSourceContentMigrationRecord(id)),
-    completePasswordSetup: overrides.completePasswordSetup ?? (async () => {
-      throw new Error("Authentication is not configured in boundary tests.");
-    }),
-    copyEmbeddingInputFormat: overrides.copyEmbeddingInputFormat
-      ?? (async () => buildEmbeddingInputFormatRecord()),
-    createEmbeddingInputFormat: overrides.createEmbeddingInputFormat
-      ?? (async () => buildEmbeddingInputFormatRecord()),
-    createSharedSourceLibrary: overrides.createSharedSourceLibrary ?? (async () => {
-      throw new Error("Source library management is not configured in boundary tests.");
-    }),
-    deleteSharedSourceLibrary: overrides.deleteSharedSourceLibrary
-      ?? (async () => undefined),
-    addWorkspaceMember: overrides.addWorkspaceMember ?? (async () => {
-      throw new Error("Authentication is not configured in boundary tests.");
-    }),
-    createWorkspace: overrides.createWorkspace ?? (async () => {
-      throw new Error("Authentication is not configured in boundary tests.");
-    }),
-    listWorkspaceMembers: overrides.listWorkspaceMembers ?? (async () => []),
-    listWorkspaceMemberCandidates: overrides.listWorkspaceMemberCandidates
-      ?? (async () => []),
-    listWorkspaces: overrides.listWorkspaces ?? (async () => []),
-    listSourceLibraries: overrides.listSourceLibraries ?? (async () => []),
-    openAICodex: overrides.openAICodex ?? {
-      disconnect: async () => undefined,
-      readConnectionState: async () => ({
-        expiresAt: null,
-        state: "disconnected",
-        updatedAt: null,
-      }),
-      readModels: async () => [],
-      replaceCredentials: async () => undefined,
-    },
-    purgeApplicationErrors: overrides.purgeApplicationErrors
-      ?? (async () => ({ deleted: 0 })),
-    readApplicationErrors: overrides.readApplicationErrors
-      ?? (async () => buildApplicationErrorPage()),
-    readRevisions: effectiveRuntimeServices.readRevisions,
-    readSettings: overrides.readSettings ?? (async () => buildEffectiveSettings()),
-    readWorkspaceSettings: overrides.readWorkspaceSettings ?? (async () => ({
-      ...buildEffectiveSettings(),
-      providerOverrideCapabilities: [],
-    })),
-    readSourceContentStorage: overrides.readSourceContentStorage
-      ?? (async () => ({
-        activeConfig: buildConfig().sourceContent,
-        documentCount: 0,
-        migration: null,
-        settingsVersion: 2,
-      })),
-    reportApplicationError: overrides.reportApplicationError
-      ?? (async () => ({ id: "00000000-0000-4000-8000-000000000099" })),
-    removeWorkspaceMember: overrides.removeWorkspaceMember ?? (async () => {
-      throw new Error("Authentication is not configured in boundary tests.");
-    }),
-    retireEmbeddingInputFormat: overrides.retireEmbeddingInputFormat
-      ?? (async () => buildEmbeddingInputFormatRecord()),
-    readSession: overrides.readSession ?? (async () => null),
-    readSourceLibraryAdministration:
-      overrides.readSourceLibraryAdministration ?? (async () => ({
-        libraries: [],
-        workspaces: [],
-      })),
-    renameSharedSourceLibrary: overrides.renameSharedSourceLibrary
-      ?? (async () => undefined),
-    renameWorkspace: overrides.renameWorkspace
-      ?? (async (_principal, workspaceId, input) => ({
-        id: workspaceId,
-        name: input.name,
-        role: "admin",
-      })),
-    restoreSharedSourceLibrary: overrides.restoreSharedSourceLibrary
-      ?? (async () => undefined),
-    revokeSession: overrides.revokeSession ?? (async () => undefined),
-    revokeSourceLibraryGrant: overrides.revokeSourceLibraryGrant
-      ?? (async () => undefined),
-    switchWorkspace: overrides.switchWorkspace ?? (async (principal) => principal),
-    setSourceLibraryGrant: overrides.setSourceLibraryGrant
-      ?? (async () => undefined),
-    run: async (operation) => operation(effectiveRuntimeServices),
-    runInWorkspace: async (_principal, operation) => {
-      return operation(effectiveRuntimeServices);
-    },
-    runManaged: async (operation) => {
-      const task = await operation(effectiveRuntimeServices);
-      return task.value;
-    },
-    runManagedInWorkspace: async (_principal, operation) => {
-      const task = await operation(effectiveRuntimeServices);
-      return task.value;
-    },
-    stream: (operation) => operation(effectiveRuntimeServices),
-    streamInWorkspace: (_principal, operation) => {
-      return operation(effectiveRuntimeServices);
-    },
-    subscribeRevisions: overrides.subscribeRevisions ?? (() => () => undefined),
-    reviseEmbeddingInputFormat: overrides.reviseEmbeddingInputFormat
-      ?? (async () => buildEmbeddingInputFormatRecord()),
-    queueSourceContentMigration: overrides.queueSourceContentMigration
-      ?? (async (_requestedByUserId, request) => {
-        return buildSourceContentMigrationRecord(
-          "00000000-0000-4000-8000-000000000401",
-          request.targetConfig,
-        );
-      }),
-    testSourceContentStorage: overrides.testSourceContentStorage
-      ?? (async () => undefined),
-    updateSettings: overrides.updateSettings ?? (async () => buildEffectiveSettings()),
-    updateWorkspaceSettings: overrides.updateWorkspaceSettings ?? (async () => ({
-      ...buildEffectiveSettings(),
-      providerOverrideCapabilities: [],
-    })),
-  };
-}
-
-function buildSourceContentMigrationRecord(
-  id: string,
-  targetConfig = buildConfig().sourceContent,
-) {
-  const now = new Date("2026-08-10T16:00:00.000Z");
-  return {
-    activeSlot: 1,
-    attemptCount: 0,
-    completedAt: null,
-    copiedDocuments: 0,
-    createdAt: now,
-    errorMessage: null,
-    id,
-    lastDocumentId: null,
-    leaseExpiresAt: null,
-    leaseOwner: null,
-    requestedByUserId: "00000000-0000-4000-8000-000000000301",
-    sourceConfig: buildConfig().sourceContent,
-    startedAt: null,
-    state: "queued" as const,
-    targetConfig,
-    totalDocuments: 0,
-    updatedAt: now,
-    verifiedDocuments: 0,
-  };
-}
-
-function buildSourceDiscoveryRequest() {
-  return {
-    includeRelated: true,
-    keywordPage: 1,
-    query: "loan",
-    scope: { kind: "all" as const },
-  };
-}
-
-function buildAuthenticatedPrincipal(
-  role: "admin" | "member",
-  globalRole: "global_admin" | "standard" = role === "admin"
-    ? "global_admin"
-    : "standard",
-): AuthenticatedPrincipal {
-  return {
-    dataScope: "workspace",
-    displayName: "Test User",
-    globalRole,
-    role,
-    sessionTokenDigest: "a".repeat(64),
-    userId: "00000000-0000-4000-8000-000000000301",
-    username: "test-user",
-    workspaceId: "00000000-0000-4000-8000-000000000302",
-    workspaceName: "Test Workspace",
-  };
-}
-
-function buildPrincipalWorkspace(principal: AuthenticatedPrincipal) {
-  return {
-    id: principal.workspaceId,
-    name: principal.workspaceName,
-    role: "admin" as const,
-  };
-}
-
-function buildApplicationErrorPage() {
-  return {
-    counts: {
-      all: 0,
-      application: 0,
-      general: 0,
-      ingestion: 0,
-    },
-    errors: [],
-    generatedAt: "2026-07-27T12:00:00.000Z",
-    page: 1,
-    pageCount: 0,
-    pageSize: 50 as const,
-    total: 0,
-  };
-}
-
-class TestRevisionResponse extends EventEmitter {
-  public readonly headers: Record<string, string> = {};
-  public statusCode = 0;
-  public text = "";
-
-  public end(): void {
-    this.emit("close");
-  }
-
-  public write(value: string): boolean {
-    this.text += value;
-    return true;
-  }
-
-  public writeHead(statusCode: number, headers: Record<string, string>): void {
-    this.statusCode = statusCode;
-    Object.assign(this.headers, headers);
-  }
-}
-
-function buildTelemetryDashboard() {
-  return {
-    corrections: [],
-    enabled: false,
-    generatedAt: "2026-07-15T12:00:00.000Z",
-    requests: [],
-    scheduling: [],
-    stages: [],
-    windowHours: 24,
-  };
-}
-
-function buildSourceDiscoveryResponse(): SourceDiscoveryResponse {
-  return {
-    query: "loan",
-    results: {
-      exact: {
-        documents: [],
-        page: 1,
-        pageSize: 10,
-        totalDocuments: 0,
-      },
-      kind: "exact-and-related",
-      related: {
-        documents: [],
-        limit: 10,
-        matchedPassageCount: 0,
-        reviewedPassageCount: 0,
-      },
-    },
-  };
-}
-
-function buildEffectiveSettings(): EffectiveApplicationSettings {
-  const config = buildConfig();
-  const runtimeSettings = buildRuntimeSettings();
-  return {
-    config,
-    defaults: runtimeSettings,
-    embeddingInputFormats: [{
-      ...buildEmbeddingInputFormatRecord(),
-      embeddingSpaceCount: 0,
-    }],
-    indexedDocumentCount: 0,
-    overrides: {},
-    providerSettings: createTestProviderSettings(),
-    runtimeSettings,
-    selectedEmbeddingSpaceDocumentCount: 0,
-    updatedAt: null,
-    version: 0,
-  };
-}
-
-function buildRuntimeSettings(): RuntimeSettings {
-  return createTestRuntimeSettings({
-    claimVerifierRuntimeName: "test verifier runtime",
-    embeddingInputFormatId: TEST_PLAIN_EMBEDDING_INPUT_FORMAT.id,
-    maxDocumentMegabytes: 1,
-    workerFallbackPollMs: 1_000,
-  });
-}
-
-function buildEmbeddingInputFormatRecord() {
-  return {
-    ...TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
-    createdAt: new Date("2026-07-15T12:00:00.000Z"),
-    retiredAt: null,
-  };
-}
-
-function buildBrowserDocument(
-  overrides: Partial<BrowserDocument> = {},
-): BrowserDocument {
-  return {
-    activeDocumentId: "a".repeat(64),
-    activeVersionId: "00000000-0000-4000-8000-000000000001",
-    attemptCount: null,
-    byteLength: 4_096,
-    controlError: null,
-    controlState: "active",
-    displayStatus: "ready",
-    documentId: "a".repeat(64),
-    embeddingSpaceIds: [
-      "embedding-model:plain:768:window-2e666b3b90c9157e",
-    ],
-    embeddingProgress: {
-      completedElements: 5,
-      state: "complete",
-      totalElements: 5,
-    },
-    errorMessage: null,
-    images: 0,
-    indexingActivity: null,
-    maxAttempts: null,
-    mediaDescriptionProgress: {
-      completedImages: 0,
-      completedTables: 1,
-    },
-    nextAttemptAt: null,
-    pageCount: null,
-    phase: null,
-    queryStatus: "ready",
-    sourceFile: "/documents/handbook.docx",
-    sourceLibraryId: "00000000-0000-4000-8000-000000000405",
-    status: "ready",
-    tables: 1,
-    tags: ["handbook"],
-    textChunks: 4,
-    totalElements: 5,
-    updatedAt: "2026-07-13T16:00:00.000Z",
-    uploadedByUserId: null,
-    ...overrides,
-  };
-}
-
-function buildCatalogResult(
-  documents: BrowserDocument[] = [buildBrowserDocument()],
-): BrowseDocumentCatalogResult {
-  return {
-    attention: { documents: [], total: 0 },
-    documents,
-    facets: {
-      failed: 0,
-      pending: 0,
-      processing: 0,
-      queryable: 1,
-      queryableTags: [{ count: 1, tag: "handbook" }],
-      ready: 1,
-      reindexRequired: 0,
-      running: 0,
-      tags: [{ count: 1, tag: "handbook" }],
-      total: documents.length,
-      untagged: 0,
-      uploads: 0,
-    },
-    page: 1,
-    pageSize: 25,
-    total: documents.length,
-  };
-}
-
-function buildPendingJob(sourceFile: string): PendingIngestionJob {
-  return {
-    attemptCount: 0,
-    documentId: "b".repeat(64),
-    doclingAttemptConfig: null,
-    doclingRunId: null,
-    elementSetId: "c".repeat(64),
-    embeddingSpaceId: "embedding-model:plain:768:window-2e666b3b90c9157e",
-    controlError: null,
-    controlState: "active",
-    errorMessage: null,
-    format: {
-      extension: ".pdf",
-      mediaType: "application/pdf",
-    },
-    generationId: "00000000-0000-4000-8000-000000000001",
-    images: 0,
-    indexingActivity: "preparing",
-    leaseExpiresAt: null,
-    maxAttempts: 3,
-    nextAttemptAt: "2026-07-14T04:00:00.000Z",
-    ownerId: null,
-    pageCount: null,
-    phase: "normalized",
-    sourceFile,
-    sourceLibraryId: null,
-    state: "pending",
-    tables: 1,
-    tags: ["legal"],
-    textChunks: 4,
-    totalElements: 5,
-    updatedAt: "2026-07-14T04:00:00.000Z",
-    uploadedByUserId: null,
-  };
-}
-
-function buildConfig(): AppConfig {
-  return readEqualWeightTestConfig({
-    embeddingInputFormat: TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
-    providerOptions: {
-      inferenceBaseUrl: "http://127.0.0.1:1234/v1",
-    },
-    runtime: buildRuntimeSettings(),
-  });
-}
-
-function buildSpeechToTextConfig(): NonNullable<AppConfig["speechToText"]> {
-  return {
-    adapter: "omlx-transcription",
-    apiToken: "transcription-token",
-    baseUrl: "http://localhost:9000/v1",
-    providerId: "local-ai",
-    language: "English",
-    maxAudioBytes: 10 * 1_024 * 1_024,
-    model: "Qwen3-ASR-1.7B-8bit",
-    prompt: "CiteLoom is the product name. Preserve the exact spelling CiteLoom.",
-    runtimeName: "oMLX",
-    timeoutMs: 60_000,
-  };
-}
-
-function buildAudioFile(content: string, type: string): File {
-  return new File([content], "browser-name.webm", { type });
-}
-
-function buildTranscriptionForm(
-  files: File[],
-  field?: [string, string],
-): FormData {
-  const form = new FormData();
-  if (field !== undefined) {
-    form.append(field[0], field[1]);
-  }
-  for (const file of files) {
-    form.append("file", file, file.name);
-  }
-  return form;
-}
-
-function createAnswerStream(
-  answer: string,
-): ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>> {
-  return createUIMessageStream<CiteLoomUIMessage>({
-    execute: ({ writer }) => {
-      writer.write({ type: "start" });
-      writer.write({
-        data: {
-          answerDocument: {
-            citations: [{
-              citationNumber: 1,
-              documentId: "a".repeat(64),
-              documentVersionId: "00000000-0000-4000-8000-000000000002",
-              elementId: "b".repeat(64),
-              evidence: { excerpt: "Supporting evidence.", kind: "text" },
-              id: "00000000-0000-4000-8000-000000000003",
-              kind: "text",
-              pageNumbers: [1],
-              regions: [],
-              sectionPath: [],
-              sourceFile: "/tmp/report.pdf",
-            }],
-            content: answer,
-            schemaVersion: 2,
-            statements: [{
-              citationIds: ["00000000-0000-4000-8000-000000000003"],
-              content: answer,
-              presentation: "paragraph",
-              section: "answer",
-            }],
-          },
-          claims: [],
-          matchedDocuments: [],
-          runDetails: null,
-          turn: {
-            runId: "00000000-0000-4000-8000-000000000004",
-            sequence: 1,
-            threadId: "00000000-0000-4000-8000-000000000001",
-            turnId: "00000000-0000-4000-8000-000000000005",
-          },
-          verificationState: "not-applicable",
-        },
-        id: "answer",
-        type: "data-answer",
-      });
-      writer.write({ finishReason: "stop", type: "finish" });
-    },
-  });
-}
 
 async function createTemporaryDirectory(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "citeloom-web-"));

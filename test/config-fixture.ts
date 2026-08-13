@@ -112,6 +112,7 @@ const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
   lexicalWeight: 1,
   maxAttempts: 3,
   maxDocumentMegabytes: 100,
+  mcpTaskRetentionDays: 30,
   originalQueryWeight: 1,
   queryExpansions: 2,
   queryExpansionTemperature: 0,

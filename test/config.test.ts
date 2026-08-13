@@ -29,6 +29,7 @@ describe("application configuration", () => {
         aiMetricsEnabled: false,
         embeddingDimensions: 384,
         maxDocumentMegabytes: 100,
+        mcpTaskRetentionDays: 14,
         topK: 7,
       },
       settingsVersion: 4,
@@ -51,6 +52,7 @@ describe("application configuration", () => {
     });
     expect(config.inferenceMetrics.enabled).toBe(false);
     expect(config.maxDocumentBytes).toBe(100 * 1_024 * 1_024);
+    expect(config.mcp.taskRetentionMs).toBe(14 * 24 * 60 * 60 * 1_000);
     expect(config.retrieval.topK).toBe(7);
   });
 
@@ -170,6 +172,10 @@ describe("application configuration", () => {
       doclingMaxTimeoutSeconds: 60,
       doclingTimeoutSeconds: 120,
     })).toThrow("doclingMaxTimeoutSeconds");
+    expect(() => parseRuntimeSettings({
+      ...runtimeSettings,
+      mcpTaskRetentionDays: 0,
+    })).toThrow("mcpTaskRetentionDays");
     expect(() => parseRuntimeSettings({
       ...runtimeSettings,
       retrievalChunkTargetTokens: 0,

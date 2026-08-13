@@ -29,6 +29,8 @@ It can use local or remote model providers, and it keeps saved answers tied to t
 - Route language, embedding, ranking, document-processing, and speech work to different providers.
 - Operate the workspace with accounts, roles, diagnostics, durable jobs, backups, and recovery tools.
 
+[![CiteLoom feature overview](assets/citeloom-feature-map-v2.png)](assets/citeloom-feature-map-v2.png)
+
 The [feature guide](docs/features.md) lists the supported formats, user features, administrator controls, and important limits.
 
 ## Install CiteLoom

@@ -46,7 +46,10 @@ import {
 import { readProviderFeatureConfiguration } from "../src/providers/profiles.js";
 import {
   applicationSettings,
+  authenticationConfigurationEvents,
+  authenticationSettings,
   ingestionJobs,
+  mcpApiKeys,
   sourceDocuments,
   sourceLibraries,
   sourceLibraryDeletionSources,
@@ -80,6 +83,26 @@ import { SourceLibraryIngestionUnavailableError } from "../src/documents/catalog
 import { readDocumentFormat } from "../src/documents/format.js";
 import { SourceContentStore } from "../src/documents/storage/source-content-store.js";
 import { readEqualWeightTestConfig } from "./config-fixture.js";
+import {
+  parseOAuthApplicationConfiguration,
+} from "../src/oauth/application-configuration.js";
+import {
+  HostRecoveryConfigurationRejectedError,
+  HostRecoveryDisabledError,
+  OAuthActivationRejectedError,
+  OAuthApplicationStore,
+} from "../src/oauth/application-store.js";
+import { OAuthPrincipalStore } from "../src/oauth/principal-store.js";
+import {
+  OAuthIdentityLinkRemovalRejectedError,
+  OAuthIdentityLinkStore,
+} from "../src/oauth/identity-link-store.js";
+import { McpTaskStore } from "../src/mcp/tasks/store.js";
+import {
+  McpApiKeyInsufficientScopeError,
+  McpApiKeyRejectedError,
+  McpApiKeyStore,
+} from "../src/mcp/api-key-store.js";
 
 const databaseUrl = process.env.CITELOOM_TEST_DATABASE_URL
   ?? "postgresql://citeloom:citeloom@127.0.0.1:5433/citeloom_test";
@@ -98,6 +121,19 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  await session.database.delete(authenticationConfigurationEvents);
+  await session.database
+    .update(authenticationSettings)
+    .set({
+      activeOAuthConfiguration: null,
+      activatedAt: null,
+      activatedByUserId: null,
+      hostRecoveryEnabled: false,
+      mode: "local",
+      stagedOAuthConfiguration: null,
+      updatedByUserId: null,
+      version: 1,
+    });
   await session.database.delete(userSessions);
   await session.database.delete(userSetupTokens);
   await session.database.delete(userPasswordCredentials);
@@ -425,6 +461,275 @@ describe("database administrator bootstrap", () => {
 
 });
 
+describe("application authentication mode", () => {
+  it("stages OAuth without changing local auth and activates it atomically", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const sessionResult = await authentication.authenticate(decodeLoginInput({
+      password: administratorPassword,
+      username: administratorUsername,
+    }));
+    const principal = sessionResult.principal;
+    const issuer = "https://identity.example.com/oidc";
+    const subject = "external-admin-subject";
+    const identityLinks = new OAuthIdentityLinkStore(session.database);
+    await identityLinks.link(
+      principal,
+      issuer,
+      principal.userId,
+      subject,
+    );
+    const configuration = parseOAuthApplicationConfiguration({
+      apiScopes: ["citeloom.app"],
+      browserClientId: "citeloom-browser",
+      browserScopes: ["citeloom.app", "openid"],
+      issuer,
+      mcpScopes: ["citeloom.answer", "citeloom.search"],
+    });
+    const store = new OAuthApplicationStore(session.database);
+
+    const staged = await store.stage(
+      principal,
+      configuration,
+      1,
+      "https://citeloom.example.com",
+    );
+
+    expect(staged).toMatchObject({
+      activeOAuthConfiguration: null,
+      mode: "local",
+      stagedOAuthConfiguration: {
+        apiResource: "https://citeloom.example.com/api",
+        mcpResource: "https://citeloom.example.com/mcp",
+      },
+      version: 2,
+    });
+    await expect(
+      session.database.select().from(userSessions),
+    ).resolves.toHaveLength(1);
+    await expect(store.recoverLocalAuthentication()).rejects.toBeInstanceOf(
+      HostRecoveryDisabledError,
+    );
+    await expect(store.activate(
+      principal,
+      { issuer, subject },
+      staged.version,
+      "https://citeloom.example.com",
+    )).rejects.toBeInstanceOf(OAuthActivationRejectedError);
+
+    const recoveryEnabled = await store.configureHostRecovery(
+      principal,
+      true,
+      staged.version,
+      "https://citeloom.example.com",
+    );
+
+    const activated = await store.activate(
+      principal,
+      { issuer, subject },
+      recoveryEnabled.version,
+      "https://citeloom.example.com",
+    );
+
+    expect(activated).toMatchObject({
+      activeOAuthConfiguration: {
+        browserClientId: "citeloom-browser",
+      },
+      mode: "oauth",
+      stagedOAuthConfiguration: null,
+      version: 4,
+    });
+    await expect(identityLinks.unlink(
+      principal,
+      issuer,
+      principal.userId,
+    )).rejects.toBeInstanceOf(OAuthIdentityLinkRemovalRejectedError);
+    await expect(store.configureHostRecovery(
+      principal,
+      false,
+      activated.version,
+      "https://citeloom.example.com",
+    )).rejects.toBeInstanceOf(HostRecoveryConfigurationRejectedError);
+    await expect(
+      session.database.select().from(userSessions),
+    ).resolves.toHaveLength(0);
+    const principalStore = new OAuthPrincipalStore(session.database);
+    const token = {
+      clientId: "mcp-client",
+      expiresAt: 1_800_000_000,
+      issuer,
+      scopes: ["citeloom.app"],
+      subject,
+    };
+    const oauthPrincipal = await principalStore.resolvePrincipal(
+      token,
+      principal.workspaceId,
+    );
+    expect(oauthPrincipal).toMatchObject({
+      globalRole: "global_admin",
+      issuer,
+      userId: principal.userId,
+      workspaceId: principal.workspaceId,
+    });
+    await expect(principalStore.resolvePrincipalByWorkspaceName(
+      token,
+      `  ${principal.workspaceName.toUpperCase()}  `,
+    )).resolves.toMatchObject({
+      userId: principal.userId,
+      workspaceId: principal.workspaceId,
+      workspaceName: principal.workspaceName,
+    });
+    const disabled = await store.disable(
+      oauthPrincipal,
+      activated.version,
+      "https://citeloom.example.com",
+    );
+    expect(disabled).toMatchObject({
+      activeOAuthConfiguration: null,
+      mode: "local",
+      stagedOAuthConfiguration: {
+        browserClientId: "citeloom-browser",
+      },
+      version: 5,
+    });
+    await expect(store.configureHostRecovery(
+      oauthPrincipal,
+      false,
+      disabled.version,
+      "https://citeloom.example.com",
+    )).resolves.toMatchObject({
+      hostRecoveryEnabled: false,
+      mode: "local",
+      version: 6,
+    });
+    await expect(
+      session.database
+        .select()
+        .from(authenticationConfigurationEvents)
+        .orderBy(authenticationConfigurationEvents.settingsVersion),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        eventType: "staged",
+        fromMode: "local",
+        settingsVersion: 2,
+        toMode: "local",
+      }),
+      expect.objectContaining({
+        eventType: "host_recovery_enabled",
+        fromMode: "local",
+        settingsVersion: 3,
+        toMode: "local",
+      }),
+      expect.objectContaining({
+        eventType: "activated",
+        fromMode: "local",
+        settingsVersion: 4,
+        toMode: "oauth",
+      }),
+      expect.objectContaining({
+        eventType: "disabled",
+        fromMode: "oauth",
+        settingsVersion: 5,
+        toMode: "local",
+      }),
+      expect.objectContaining({
+        eventType: "host_recovery_disabled",
+        fromMode: "local",
+        settingsVersion: 6,
+        toMode: "local",
+      }),
+    ]);
+  });
+
+  it("recovers OAuth to local auth without changing passwords or restoring sessions", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const initialSession = await authentication.authenticate(decodeLoginInput({
+      password: administratorPassword,
+      username: administratorUsername,
+    }));
+    const principal = initialSession.principal;
+    const issuer = "https://identity.example.com/oidc";
+    const subject = "external-recovery-admin";
+    await new OAuthIdentityLinkStore(session.database).link(
+      principal,
+      issuer,
+      principal.userId,
+      subject,
+    );
+    const configuration = parseOAuthApplicationConfiguration({
+      apiScopes: ["citeloom.app"],
+      browserClientId: "citeloom-browser",
+      browserScopes: ["citeloom.app", "openid"],
+      issuer,
+      mcpScopes: ["citeloom.answer", "citeloom.search"],
+    });
+    const store = new OAuthApplicationStore(session.database);
+    const staged = await store.stage(
+      principal,
+      configuration,
+      1,
+      "https://citeloom.example.com",
+    );
+    const enabled = await store.configureHostRecovery(
+      principal,
+      true,
+      staged.version,
+      "https://citeloom.example.com",
+    );
+    await store.activate(
+      principal,
+      { issuer, subject },
+      enabled.version,
+      "https://citeloom.example.com",
+    );
+    await authentication.authenticate(decodeLoginInput({
+      password: administratorPassword,
+      username: administratorUsername,
+    }));
+    const credentialsBefore = await session.database
+      .select()
+      .from(userPasswordCredentials);
+
+    await expect(store.readHostRecoveryStatus()).resolves.toMatchObject({
+      changed: false,
+      hostRecoveryEnabled: true,
+      mode: "oauth",
+      version: 4,
+    });
+    await expect(store.recoverLocalAuthentication()).resolves.toMatchObject({
+      changed: true,
+      hostRecoveryEnabled: true,
+      mode: "local",
+      version: 5,
+    });
+    await expect(store.recoverLocalAuthentication()).resolves.toMatchObject({
+      changed: false,
+      mode: "local",
+      version: 5,
+    });
+    await expect(session.database.select().from(userSessions)).resolves.toHaveLength(0);
+    await expect(session.database.select().from(userPasswordCredentials))
+      .resolves.toEqual(credentialsBefore);
+    await expect(session.database
+      .select({
+        actorUserId: authenticationConfigurationEvents.actorUserId,
+        eventType: authenticationConfigurationEvents.eventType,
+      })
+      .from(authenticationConfigurationEvents)
+      .where(eq(authenticationConfigurationEvents.eventType, "recovered")))
+      .resolves.toEqual([{ actorUserId: null, eventType: "recovered" }]);
+
+    await expect(authentication.authenticate(decodeLoginInput({
+      password: administratorPassword,
+      username: administratorUsername,
+    }))).resolves.toMatchObject({
+      principal: { userId: principal.userId },
+    });
+    await expect(session.database.select().from(userSessions)).resolves.toHaveLength(1);
+  });
+});
+
 function removeProviderSpeechDefaults(
   document: StoredApplicationSettings,
   providerId: "mistral" | "together",
@@ -530,6 +835,7 @@ describe("authentication persistence", () => {
     const account = await accounts.create(administrator.principal, identity);
 
     expect(account).toMatchObject({
+      currentWorkspaceAccess: false,
       displayName: identity.displayName,
       state: "pending",
       username: identity.username,
@@ -565,6 +871,7 @@ describe("authentication persistence", () => {
     );
     await expect(accounts.list(administrator.principal)).resolves.toContainEqual(
       expect.objectContaining({
+        currentWorkspaceAccess: false,
         state: "pending",
         userId: account.userId,
         workspaceCount: 0,
@@ -601,6 +908,7 @@ describe("authentication persistence", () => {
     });
     await expect(accounts.list(administrator.principal)).resolves.toContainEqual(
       expect.objectContaining({
+        currentWorkspaceAccess: true,
         state: "active",
         userId: account.userId,
         workspaceCount: 1,
@@ -640,6 +948,7 @@ describe("authentication persistence", () => {
     );
     await expect(accounts.list(administrator.principal)).resolves.toContainEqual(
       expect.objectContaining({
+        currentWorkspaceAccess: false,
         state: "active",
         userId: account.userId,
         workspaceCount: 0,
@@ -654,6 +963,91 @@ describe("authentication persistence", () => {
       .from(userPasswordCredentials)
       .where(eq(userPasswordCredentials.userId, account.userId)))
       .resolves.toEqual([{ userId: account.userId }]);
+  });
+
+  it("binds MCP API keys to the target user and selected workspace", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(authentication);
+    const accounts = new UserAccountStore(session.database);
+    const account = await accounts.create(
+      administrator.principal,
+      normalizeUserIdentity({
+        displayName: "MCP User",
+        username: "mcp-user",
+      }),
+    );
+    await authentication.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      account.userId,
+      "member",
+    );
+    await session.database
+      .update(users)
+      .set({ state: "active" })
+      .where(eq(users.id, account.userId));
+    const now = new Date("2026-08-13T19:00:00.000Z");
+    const apiKeys = new McpApiKeyStore(session.database, () => now);
+
+    const created = await apiKeys.create(
+      administrator.principal,
+      account.userId,
+      {
+        expiresAt: new Date("2026-11-13T19:00:00.000Z"),
+        label: "Codex",
+        scopes: ["citeloom.search"],
+      },
+    );
+
+    expect(created).toMatchObject({
+      label: "Codex",
+      scopes: ["citeloom.search"],
+      userId: account.userId,
+      workspaceId: administrator.principal.workspaceId,
+    });
+    expect(created.apiKey).toMatch(/^clm_mcp_/u);
+    await expect(session.database
+      .select({
+        createdByUserId: mcpApiKeys.createdByUserId,
+        tokenDigest: mcpApiKeys.tokenDigest,
+        userId: mcpApiKeys.userId,
+      })
+      .from(mcpApiKeys)
+      .where(eq(mcpApiKeys.id, created.id)))
+      .resolves.toEqual([{
+        createdByUserId: administrator.principal.userId,
+        tokenDigest: expect.not.stringContaining(created.apiKey),
+        userId: account.userId,
+      }]);
+    const access = await apiKeys.authenticate(
+      `bEaReR ${created.apiKey}`,
+      ["citeloom.search"],
+    );
+    expect(access.principal).toMatchObject({
+      userId: account.userId,
+      workspaceId: administrator.principal.workspaceId,
+    });
+    await expect(apiKeys.authenticate(
+      `Bearer ${created.apiKey}`,
+      ["citeloom.answer"],
+    )).rejects.toBeInstanceOf(McpApiKeyInsufficientScopeError);
+    await expect(apiKeys.list(
+      administrator.principal,
+      account.userId,
+    )).resolves.toEqual([
+      expect.objectContaining({ id: created.id, userId: account.userId }),
+    ]);
+
+    await apiKeys.revoke(
+      administrator.principal,
+      account.userId,
+      created.id,
+    );
+    await expect(apiKeys.authenticate(
+      `Bearer ${created.apiKey}`,
+      ["citeloom.search"],
+    )).rejects.toBeInstanceOf(McpApiKeyRejectedError);
   });
 
   it("allows only administrators to add existing users to a workspace", async () => {
@@ -1792,6 +2186,125 @@ describe("workspace provisioning and switching", () => {
       archivingAdministrator.principal,
       workspace.id,
     )).rejects.toBeInstanceOf(WorkspaceUnavailableError);
+  });
+});
+
+describe("MCP task persistence", () => {
+  it("persists ownership, claims once, and cooperatively cancels", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(authentication);
+    const owner = {
+      clientId: "mcp-client",
+      issuer: "https://identity.example.com/oidc",
+      subject: "mcp-task-user",
+      userId: administrator.principal.userId,
+      workspaceId: administrator.principal.workspaceId,
+    };
+    const tasks = new McpTaskStore(
+      session.database,
+      30 * 24 * 60 * 60 * 1_000,
+    );
+    const task = await tasks.create(owner, {
+      question: "What is the retention period?",
+      scope: { kind: "all" },
+      threadTitle: "Retention research",
+    });
+
+    await expect(tasks.readForOwner(owner, task.id)).resolves.toMatchObject({
+      id: task.id,
+      status: "working",
+    });
+    await expect(tasks.readForOwner(
+      { ...owner, subject: "another-user" },
+      task.id,
+    )).resolves.toBeNull();
+
+    const leaseOwner = randomUUID();
+    await expect(tasks.claim(
+      task.id,
+      leaseOwner,
+      new Date(Date.now() + 30_000),
+    )).resolves.toMatchObject({ leaseOwner, status: "working" });
+    await expect(tasks.claim(
+      task.id,
+      randomUUID(),
+      new Date(Date.now() + 30_000),
+    )).resolves.toBeNull();
+    await expect(tasks.requestCancellation(owner, task.id)).resolves.toBe(true);
+    await expect(tasks.renewLease(
+      task.id,
+      leaseOwner,
+      new Date(Date.now() + 30_000),
+    )).resolves.toBe("cancel");
+    await expect(tasks.cancelClaimed(task.id, leaseOwner)).resolves.toBe(true);
+    await expect(tasks.readForOwner(owner, task.id)).resolves.toMatchObject({
+      status: "cancelled",
+    });
+  });
+
+  it("marks an interrupted leased task as a JSON-RPC failure", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(authentication);
+    const owner = {
+      clientId: "mcp-client",
+      issuer: "https://identity.example.com/oidc",
+      subject: "mcp-task-user",
+      userId: administrator.principal.userId,
+      workspaceId: administrator.principal.workspaceId,
+    };
+    const tasks = new McpTaskStore(
+      session.database,
+      30 * 24 * 60 * 60 * 1_000,
+    );
+    const task = await tasks.create(owner, {
+      question: "What is the retention period?",
+      scope: { kind: "all" },
+      threadTitle: "Retention research",
+    });
+    await tasks.claim(task.id, randomUUID(), new Date(0));
+
+    await expect(tasks.failExpiredLeases(new Date())).resolves.toBe(1);
+    await expect(tasks.readForOwner(owner, task.id)).resolves.toMatchObject({
+      error: { code: -32_603 },
+      status: "failed",
+    });
+  });
+
+  it("deletes expired terminal tasks in a bounded batch but retains active work", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(authentication);
+    const owner = {
+      clientId: "mcp-client",
+      issuer: "https://identity.example.com/oidc",
+      subject: "mcp-task-user",
+      userId: administrator.principal.userId,
+      workspaceId: administrator.principal.workspaceId,
+    };
+    const tasks = new McpTaskStore(session.database, 60_000);
+    const terminalTask = await tasks.create(owner, {
+      question: "What is the retention period?",
+      scope: { kind: "all" },
+      threadTitle: "Terminal retention research",
+    });
+    const activeTask = await tasks.create(owner, {
+      question: "What remains active?",
+      scope: { kind: "all" },
+      threadTitle: "Active retention research",
+    });
+    await expect(tasks.requestCancellation(owner, terminalTask.id)).resolves.toBe(true);
+    const afterExpiry = new Date(Math.max(
+      terminalTask.expiresAt.getTime(),
+      activeTask.expiresAt.getTime(),
+    ) + 1);
+
+    await expect(tasks.deleteExpiredTerminalBatch(afterExpiry, 1)).resolves.toBe(1);
+    await expect(tasks.readForOwner(owner, terminalTask.id)).resolves.toBeNull();
+    await expect(tasks.readForOwner(owner, activeTask.id)).resolves.toMatchObject({
+      status: "working",
+    });
   });
 });
 
