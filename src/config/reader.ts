@@ -1,6 +1,5 @@
 import {
   readDatabaseEnvironment,
-  readDoclingServiceTopology,
 } from "./schemas.js";
 import type {
   DatabaseConfig,
@@ -12,7 +11,6 @@ export function readStartupConfig(
 ): StartupConfig {
   return {
     database: readDatabaseEnvironment(environment),
-    doclingTopology: readDoclingServiceTopology(environment),
   };
 }
 

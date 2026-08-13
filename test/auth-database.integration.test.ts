@@ -38,7 +38,6 @@ import {
 } from "../src/database/client.js";
 import { applyDatabaseBootstrap } from "../src/database/administrator-bootstrap.js";
 import { ApplicationSettingsRepository } from "../src/app/settings.js";
-import { readDoclingServiceTopologyFromConfig } from "../src/config/index.js";
 import {
   parseStoredApplicationSettings,
   type StoredApplicationSettings,
@@ -1386,10 +1385,9 @@ describe("workspace provisioning and switching", () => {
       database: { poolMax: 2, url: databaseUrl },
       sourceContent: { directory: sourceContentDirectory, kind: "filesystem" },
     });
-    const topology = readDoclingServiceTopologyFromConfig(config);
     const organization = await new ApplicationSettingsRepository(
       session.database,
-    ).read(config.database, topology);
+    ).read(config.database);
     const answer = readProviderFeatureConfiguration(
       organization.providerSettings,
       "answer",
@@ -1555,12 +1553,10 @@ describe("workspace provisioning and switching", () => {
       database: { poolMax: 2, url: databaseUrl },
       sourceContent: { directory: sourceContentDirectory, kind: "filesystem" },
     });
-    const topology = readDoclingServiceTopologyFromConfig(config);
     const repository = new WorkspaceSettingsRepository(session.database);
     const inherited = await repository.read(
       administrator.principal.workspaceId,
       config.database,
-      topology,
     );
     const answer = readProviderFeatureConfiguration(
       inherited.providerSettings,
@@ -1573,7 +1569,6 @@ describe("workspace provisioning and switching", () => {
       administrator.principal.workspaceId,
       administrator.principal.userId,
       config.database,
-      topology,
       inherited.version,
       [
         { key: "retrievalCandidates", value: 24 },
@@ -1589,7 +1584,7 @@ describe("workspace provisioning and switching", () => {
     );
     const organization = await new ApplicationSettingsRepository(
       session.database,
-    ).read(config.database, topology);
+    ).read(config.database);
 
     expect(updated.runtimeSettings).toMatchObject({
       retrievalCandidates: 24,
@@ -1607,7 +1602,6 @@ describe("workspace provisioning and switching", () => {
       administrator.principal.workspaceId,
       administrator.principal.userId,
       config.database,
-      topology,
       updated.version,
       [
         { key: "retrievalCandidates", reset: true },

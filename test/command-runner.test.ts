@@ -38,11 +38,10 @@ vi.mock("../src/config/index.js", () => ({
     events.push("database-config-read");
     return {};
   },
-  readStartupConfig: (): { database: object; doclingTopology: object } => {
+  readStartupConfig: (): { database: object } => {
     events.push("startup-config-read");
     return {
       database: {},
-      doclingTopology: {},
     };
   },
 }));

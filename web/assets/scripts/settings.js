@@ -62,6 +62,9 @@ function createDraftValue(field, value) {
   if (field.input === "boolean") {
     return value === true;
   }
+  if (field.input === "json") {
+    return JSON.stringify(value, null, 2);
+  }
   if (field.sensitive || value === null) {
     return "";
   }
@@ -144,6 +147,13 @@ function parseDraftValue(field, draft) {
       throw new Error(`${field.label} must be a number.`);
     }
     return value;
+  }
+  if (field.input === "json") {
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(`${field.label} must be valid JSON.`);
+    }
   }
   if (field.input === "select") {
     for (const option of field.options) {
@@ -1470,6 +1480,7 @@ export function registerPage(alpine) {
       const descriptions = {
         Docling: "Choose how Docling reads and converts uploaded documents.",
         "Hughes Hallucination Evaluation Model": "Choose answer limits and how CiteLoom reports citation support.",
+        Database: "Choose how application processes connect to PostgreSQL.",
         "Document processing": "Choose upload limits, processing time, and how many documents CiteLoom handles at once.",
         MCP: "Choose how long CiteLoom retains asynchronous MCP task results.",
         "Search and answers": "Choose how widely CiteLoom searches and how much source material it can use in an answer.",
@@ -1482,6 +1493,7 @@ export function registerPage(alpine) {
         "Speech input": "Choose how CiteLoom turns recorded questions into text.",
         "Spoken answers": "Choose how CiteLoom creates and plays answer audio.",
         "Usage diagnostics": "Choose whether CiteLoom records AI request times and usage.",
+        "Web server": "Choose browser-facing upload and security behavior.",
       };
       return descriptions[this.selectedArea]
         ?? `Configure ${this.selectedArea.toLocaleLowerCase()} behavior.`;

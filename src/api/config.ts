@@ -1,38 +1,25 @@
 import { resolve } from "node:path";
 
 import { z } from "zod";
+import type { WebRuntimeConfig } from "../config/index.js";
 
 const webEnvironmentSchema = z.object({
-  CITELOOM_MAX_UPLOAD_REQUEST_MEGABYTES: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(100)
-    .default(100),
-  CITELOOM_PUBLIC_ORIGIN: z.url().refine((value) => {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  }, "must use http or https").default("https://localhost:3443"),
-  CITELOOM_SECURE_SESSION_COOKIE: z.enum(["true", "false"]).default("true"),
-  CITELOOM_TRUST_PROXY: z.enum(["true", "false"]).default("false"),
   CITELOOM_UPLOAD_DIRECTORY: z.string().trim().min(1).default("documents/uploads"),
   CITELOOM_WEB_HOST: z.string().trim().min(1).default("127.0.0.1"),
   CITELOOM_WEB_PORT: z.coerce.number().int().min(1).max(65_535).default(3_000),
 });
 
-export interface WebConfig {
+export interface WebStartupConfig {
   host: string;
-  maximumUploadRequestBytes: number;
   port: number;
-  publicOrigin: string;
-  secureSessionCookie: boolean;
-  trustProxy: boolean;
   uploadDirectory: string;
 }
 
-export function readWebConfig(
+export interface WebConfig extends WebRuntimeConfig, WebStartupConfig {}
+
+export function readWebStartupConfig(
   environment: NodeJS.ProcessEnv = process.env,
-): WebConfig {
+): WebStartupConfig {
   const result = webEnvironmentSchema.safeParse(environment);
   if (!result.success) {
     const details = result.error.issues.map(formatWebConfigIssue).join("\n");
@@ -41,14 +28,16 @@ export function readWebConfig(
 
   return {
     host: result.data.CITELOOM_WEB_HOST,
-    maximumUploadRequestBytes:
-      result.data.CITELOOM_MAX_UPLOAD_REQUEST_MEGABYTES * 1_024 * 1_024,
     port: result.data.CITELOOM_WEB_PORT,
-    publicOrigin: result.data.CITELOOM_PUBLIC_ORIGIN,
-    secureSessionCookie: result.data.CITELOOM_SECURE_SESSION_COOKIE === "true",
-    trustProxy: result.data.CITELOOM_TRUST_PROXY === "true",
     uploadDirectory: resolve(result.data.CITELOOM_UPLOAD_DIRECTORY),
   };
+}
+
+export function buildWebConfig(
+  runtime: WebRuntimeConfig,
+  startup: WebStartupConfig = readWebStartupConfig(),
+): WebConfig {
+  return { ...runtime, ...startup };
 }
 
 function formatWebConfigIssue(issue: z.core.$ZodIssue): string {

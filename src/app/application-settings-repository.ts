@@ -8,7 +8,6 @@ import {
   readProviderProfile,
   type AppConfig,
   type DatabaseConfig,
-  type DoclingServiceTopology,
   type RuntimeSettings,
   type RuntimeSettingsOverrides,
 } from "../config/index.js";
@@ -32,7 +31,6 @@ import {
   type StoredApplicationSettings,
 } from "../providers/settings-persistence.js";
 import {
-  buildDoclingServiceInstances,
   buildEffectiveSettings,
   calculateRuntimeOverrides,
   decodeStoredSettingsRow,
@@ -60,7 +58,6 @@ export class ApplicationSettingsRepository {
 
   public async read(
     databaseConfig: DatabaseConfig,
-    doclingTopology: DoclingServiceTopology,
   ): Promise<EffectiveApplicationSettings> {
     const rows = await this.database
       .select()
@@ -80,7 +77,6 @@ export class ApplicationSettingsRepository {
     const settings = buildEffectiveSettings(
       databaseConfig,
       stored,
-      doclingTopology,
       inputFormats,
     );
     const availability = await readEmbeddingSpaceAvailability(
@@ -92,7 +88,6 @@ export class ApplicationSettingsRepository {
 
   public async update(
     databaseConfig: DatabaseConfig,
-    doclingTopology: DoclingServiceTopology,
     expectedVersion: number,
     changes: NormalizedRuntimeSettingChange[],
     providerChanges: NormalizedProviderSettingsChange[] = [],
@@ -117,7 +112,6 @@ export class ApplicationSettingsRepository {
       ).listWithEmbeddingSpaceCounts();
       const resolved = resolveApplicationSettingsUpdate({
         databaseConfig,
-        doclingTopology,
         inputFormats,
         expectedVersion,
         providerChanges,
@@ -170,12 +164,10 @@ export class ApplicationSettingsRepository {
 
   public async readForRuntime(
     databaseConfig: DatabaseConfig,
-    doclingTopology: DoclingServiceTopology,
   ): Promise<EffectiveApplicationSettings> {
     return readApplicationSettingsForRuntime(
       this.database,
       databaseConfig,
-      doclingTopology,
     );
   }
 }
@@ -188,7 +180,6 @@ type ApplicationSettingsReaderDatabase = Pick<
 export async function readApplicationSettingsForRuntime(
   database: ApplicationSettingsReaderDatabase,
   databaseConfig: DatabaseConfig,
-  doclingTopology: DoclingServiceTopology,
   lock = false,
 ): Promise<EffectiveApplicationSettings> {
   const query = database
@@ -219,7 +210,6 @@ export async function readApplicationSettingsForRuntime(
   const settings = buildEffectiveSettings(
     databaseConfig,
     stored,
-    doclingTopology,
     inputFormats,
   );
   return {
@@ -235,7 +225,6 @@ type ApplicationSettingsTransaction = Parameters<
 
 interface ApplicationSettingsUpdateRequest {
   databaseConfig: DatabaseConfig;
-  doclingTopology: DoclingServiceTopology;
   inputFormats: EmbeddingInputFormatRecordWithUsage[];
   expectedVersion: number;
   providerChanges: NormalizedProviderSettingsChange[];
@@ -311,10 +300,6 @@ function resolveApplicationSettingsUpdate(
       currentRuntimeSettings,
       request.stored.version,
       currentProviderSettings,
-      buildDoclingServiceInstances(
-        request.doclingTopology,
-        currentRuntimeSettings,
-      ),
       request.stored.settings.sourceContent,
       currentInputFormat,
     );
@@ -337,10 +322,6 @@ function resolveApplicationSettingsUpdate(
       runtimeSettings,
       resultVersion,
       providerSettings,
-      buildDoclingServiceInstances(
-        request.doclingTopology,
-        runtimeSettings,
-      ),
       request.stored.settings.sourceContent,
       selectedInputFormat,
     );
@@ -392,10 +373,6 @@ function normalizeEmbeddingSpaceIdAfterIdentityChange(
     automaticSettings,
     request.expectedVersion + 1,
     providerSettings,
-    buildDoclingServiceInstances(
-      request.doclingTopology,
-      automaticSettings,
-    ),
     request.stored.settings.sourceContent,
     inputFormat,
   );

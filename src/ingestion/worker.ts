@@ -11,11 +11,9 @@ import {
 } from "../app/application-state-revisions.js";
 import type { ApplicationRuntime } from "../app/runtime.js";
 import { ApplicationSettingsRepository } from "../app/settings.js";
-import {
-  readApplicationErrorRetentionConfig,
-  readDoclingServiceTopologyFromConfig,
-  type AppConfig,
-  type ProviderConcurrencyConfig,
+import type {
+  AppConfig,
+  ProviderConcurrencyConfig,
 } from "../config/index.js";
 import { openDatabase, type CiteLoomDatabase } from "../database/client.js";
 import {
@@ -109,7 +107,6 @@ export async function runIngestionWorker(
   config: AppConfig,
   options: WorkerOptions,
 ): Promise<void> {
-  const retentionConfig = readApplicationErrorRetentionConfig(process.env);
   const databaseSession = await openDatabase(config.database);
   let revisions: ApplicationStateRevisionSource | null = null;
   try {
@@ -143,7 +140,7 @@ export async function runIngestionWorker(
     const errorRetention = startApplicationErrorRetentionController({
       cleanup: async () => enforceApplicationErrorRetention(
         databaseSession.database,
-        retentionConfig,
+        processor.applicationErrorRetention,
       ),
       reportError: async (error) => {
         await errors.report(error, {
@@ -489,11 +486,12 @@ class ReloadingIngestionProcessor {
     return this.config.worker.fallbackPollIntervalMs;
   }
 
+  public get applicationErrorRetention(): AppConfig["applicationErrorRetention"] {
+    return this.config.applicationErrorRetention;
+  }
+
   public async initialize(): Promise<void> {
-    const settings = await this.repository.read(
-      this.baseConfig.database,
-      readDoclingServiceTopologyFromConfig(this.baseConfig),
-    );
+    const settings = await this.repository.read(this.baseConfig.database);
     await this.install(settings.config, settings.version);
   }
 
@@ -520,10 +518,7 @@ class ReloadingIngestionProcessor {
 
   public async refreshIfChanged(): Promise<boolean> {
     try {
-      const settings = await this.repository.read(
-        this.baseConfig.database,
-        readDoclingServiceTopologyFromConfig(this.baseConfig),
-      );
+      const settings = await this.repository.read(this.baseConfig.database);
       if (settings.version === this.version) {
         return false;
       }

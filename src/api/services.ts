@@ -18,11 +18,9 @@ import {
   type EffectiveApplicationSettings,
 } from "../app/settings.js";
 import { DocumentCatalog } from "../documents/catalog/index.js";
-import {
-  readApplicationErrorRetentionConfig,
-  readDoclingServiceTopologyFromConfig,
-  type AppConfig,
-  type SourceContentConfig,
+import type {
+  AppConfig,
+  SourceContentConfig,
 } from "../config/index.js";
 import { openDatabase } from "../database/client.js";
 import {
@@ -601,8 +599,6 @@ function buildDiagnosticRequestKey(
 export async function startWebServices(
   config: AppConfig,
 ): Promise<OwnedWebServices> {
-  const retentionConfig = readApplicationErrorRetentionConfig(process.env);
-  const doclingTopology = readDoclingServiceTopologyFromConfig(config);
   const initialSettings = await readInitialSettings(config);
   const manager = await ApplicationRuntimeManager.start(initialSettings.config);
   let revisions: ApplicationStateRevisionSource;
@@ -663,10 +659,7 @@ export async function startWebServices(
     readCurrentVersion: () => manager.settingsVersion,
     readSettings: async () => manager.withRuntime(async (runtime) => {
       const repository = new ApplicationSettingsRepository(runtime.database);
-      return repository.read(
-        config.database,
-        doclingTopology,
-      );
+      return repository.read(config.database);
     }),
     reload: async (nextConfig) => manager.reload(nextConfig),
     reportError: async (error) => manager.withRuntime(async (runtime) => {
@@ -688,7 +681,7 @@ export async function startWebServices(
     cleanup: async () => manager.withRuntime(async (runtime) => {
       return enforceApplicationErrorRetention(
         runtime.database,
-        retentionConfig,
+        runtime.config.applicationErrorRetention,
       );
     }),
     reportError: async (error) => manager.withRuntime(async (runtime) => {
@@ -792,7 +785,6 @@ export function createWebServices(
   manager: ApplicationRuntimeManager,
   revisions: ApplicationStateRevisionSource,
 ): ApplicationWebServices {
-  const doclingTopology = readDoclingServiceTopologyFromConfig(config);
   const createWorkspaceRuntimeServices = async (
     runtime: ApplicationRuntime,
     principal: AuthorizationPrincipal,
@@ -801,7 +793,6 @@ export function createWebServices(
     const workspaceConfig = await repository.readConfig(
       principal.workspaceId,
       config.database,
-      doclingTopology,
     );
     const view = createApplicationRuntimeView(runtime, workspaceConfig);
     return createRuntimeWebServices(view);
@@ -1163,10 +1154,7 @@ export function createWebServices(
     }),
     readSettings: async () => manager.withRuntime(async (runtime) => {
       const repository = new ApplicationSettingsRepository(runtime.database);
-      return repository.read(
-        config.database,
-        doclingTopology,
-      );
+      return repository.read(config.database);
     }),
     readWorkspaceSettings: async (principal, workspaceId) => {
       return manager.withRuntime(async (runtime) => {
@@ -1179,7 +1167,6 @@ export function createWebServices(
         return repository.read(
           workspaceId,
           config.database,
-          doclingTopology,
         );
       });
     },
@@ -1383,7 +1370,6 @@ export function createWebServices(
         const repository = new ApplicationSettingsRepository(runtime.database);
         return repository.update(
           config.database,
-          doclingTopology,
           request.expectedVersion,
           request.changes,
           request.providerChanges,
@@ -1406,7 +1392,6 @@ export function createWebServices(
           workspaceId,
           principal.userId,
           config.database,
-          doclingTopology,
           request.expectedVersion,
           request.changes,
           request.providerChanges,
@@ -1973,14 +1958,10 @@ async function buildHighlightedCitationFile(
 async function readInitialSettings(
   config: AppConfig,
 ): Promise<EffectiveApplicationSettings> {
-  const doclingTopology = readDoclingServiceTopologyFromConfig(config);
   const session = await openDatabase(config.database);
   try {
     const repository = new ApplicationSettingsRepository(session.database);
-    return await repository.read(
-      config.database,
-      doclingTopology,
-    );
+    return await repository.read(config.database);
   } finally {
     await session.close();
   }

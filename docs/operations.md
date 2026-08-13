@@ -210,7 +210,7 @@ The purge includes global operational rows visible in that workspace and cannot 
 It does not truncate Docker, systemd, or other host process logs.
 
 CiteLoom also enforces age and row-count retention in the background.
-Configure those limits with `CITELOOM_APPLICATION_ERROR_RETENTION_DAYS` and `CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS` before starting the web process.
+Configure those limits under Usage diagnostics in Settings.
 The cleanup runs in bounded batches under a PostgreSQL advisory lock so multiple web processes do not perform the same retention work concurrently.
 
 AI request diagnostics and Docling conversion diagnostics are separate settings.

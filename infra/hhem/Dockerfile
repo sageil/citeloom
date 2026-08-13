@@ -17,6 +17,7 @@ RUN pip install \
     && pip install --no-cache-dir --requirement requirements.txt
 
 COPY services/hhem/hhem_service.py ./hhem_service.py
+COPY services/runtime_settings_bootstrap.py ./runtime_settings_bootstrap.py
 
 RUN addgroup --system hhem \
     && adduser --system --ingroup hhem --home /app hhem \
@@ -26,4 +27,4 @@ RUN addgroup --system hhem \
 USER hhem
 EXPOSE 8080
 
-CMD ["python", "hhem_service.py"]
+CMD ["python", "runtime_settings_bootstrap.py", "hhem", "python", "hhem_service.py"]

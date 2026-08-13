@@ -72,10 +72,7 @@ export async function main(arguments_: string[] = process.argv.slice(2)): Promis
   }
 
   const startup = readStartupConfig();
-  const effectiveSettings = await readEffectiveEvaluationConfig(
-    startup.database,
-    startup.doclingTopology,
-  );
+  const effectiveSettings = await readEffectiveEvaluationConfig(startup.database);
   let config = effectiveSettings.config;
   if (command.name === "tune-evaluation") {
     const { readEvaluationCodeIdentity } = await import("./code-identity.js");

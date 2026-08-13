@@ -8,7 +8,6 @@ import {
   readDatabaseConfig,
   readStartupConfig,
   type AppConfig,
-  type DoclingServiceTopology,
 } from "../config/index.js";
 import { openDatabase } from "../database/client.js";
 import type { EmbeddingSpaceGcReport } from "../embedding/space/types.js";
@@ -36,10 +35,7 @@ export async function main(arguments_: string[] = process.argv.slice(2)): Promis
     return;
   }
   const startup = readStartupConfig();
-  const effectiveSettings = await readEffectiveCliConfig(
-    startup.database,
-    startup.doclingTopology,
-  );
+  const effectiveSettings = await readEffectiveCliConfig(startup.database);
   const config = effectiveSettings.config;
 
   if (command.name === "source-content-migrate") {
@@ -346,15 +342,11 @@ async function runHostAuthenticationRecovery(
 
 async function readEffectiveCliConfig(
   database: AppConfig["database"],
-  doclingTopology: DoclingServiceTopology,
 ): Promise<EffectiveApplicationSettings> {
   const session = await openDatabase(database);
   try {
     const repository = new ApplicationSettingsRepository(session.database);
-    return await repository.read(
-      database,
-      doclingTopology,
-    );
+    return await repository.read(database);
   } finally {
     await session.close();
   }

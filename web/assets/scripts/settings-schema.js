@@ -44,6 +44,7 @@ export const thinkingModes = Object.freeze(["auto", "disabled", "enabled"]);
 const providerAdapterConfigurations = Object.freeze(["catalog", "connection"]);
 const runtimeInputs = Object.freeze([
   "boolean",
+  "json",
   "number",
   "password",
   "select",
@@ -369,7 +370,11 @@ function readRuntimeSettingField(value) {
       field.defaultConfigured,
       "setting default configured state",
     ),
-    defaultValue: readRuntimeSettingValue(field.defaultValue, "setting default"),
+    defaultValue: readRuntimeSettingValue(
+      field.defaultValue,
+      "setting default",
+      input,
+    ),
     description: readNonEmptyString(field.description, "setting description"),
     feature,
     group: readNonEmptyString(field.group, "setting group"),
@@ -385,7 +390,7 @@ function readRuntimeSettingField(value) {
     source: readEnum(field.source, runtimeSources, "setting source"),
     step: readNullableFiniteNumber(field.step, "setting step"),
     unit: readNullableNonEmptyString(field.unit, "setting unit"),
-    value: readRuntimeSettingValue(field.value, "setting value"),
+    value: readRuntimeSettingValue(field.value, "setting value", input),
   };
 }
 
@@ -412,7 +417,10 @@ function readRuntimeSettingOptions(value) {
   return options;
 }
 
-function readRuntimeSettingValue(value, label) {
+function readRuntimeSettingValue(value, label, input) {
+  if (input === "json") {
+    return readDoclingServiceDeclarations(value, label);
+  }
   if (value === null || typeof value === "string" || typeof value === "boolean") {
     return value;
   }
@@ -420,6 +428,18 @@ function readRuntimeSettingValue(value, label) {
     return value;
   }
   throw new Error(`The ${label} response is invalid.`);
+}
+
+function readDoclingServiceDeclarations(value, label) {
+  const declarations = readArray(value, label);
+  return declarations.map((entry) => {
+    const declaration = readPlainObject(entry, label);
+    return {
+      baseUrl: readNonEmptyString(declaration.baseUrl, `${label} base URL`),
+      capacity: readPositiveInteger(declaration.capacity, `${label} capacity`),
+      id: readNonEmptyString(declaration.id, `${label} identifier`),
+    };
+  });
 }
 
 function readProviderSettings(value) {

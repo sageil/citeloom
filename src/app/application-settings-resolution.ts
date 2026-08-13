@@ -5,8 +5,6 @@ import { z } from "zod";
 import {
   buildAppConfig,
   type DatabaseConfig,
-  type DoclingServiceInstanceConfig,
-  type DoclingServiceTopology,
   type RuntimeSettings,
   type RuntimeSettingsOverrides,
 } from "../config/index.js";
@@ -45,7 +43,6 @@ type EffectiveApplicationSettingsWithoutAvailability = Omit<
 export function buildEffectiveSettings(
   databaseConfig: DatabaseConfig,
   stored: StoredSettings,
-  doclingTopology: DoclingServiceTopology,
   inputFormats: EmbeddingInputFormatRecordWithUsage[],
 ): EffectiveApplicationSettingsWithoutAvailability {
   const defaults = stored.defaults.runtime;
@@ -61,7 +58,6 @@ export function buildEffectiveSettings(
       runtimeSettings,
       stored.version,
       providerSettings,
-      buildDoclingServiceInstances(doclingTopology, runtimeSettings),
       stored.settings.sourceContent,
       inputFormat,
     ),
@@ -148,25 +144,6 @@ export function readSelectedInputFormat(
     queryTemplate: inputFormat.queryTemplate,
     schemaVersion: inputFormat.schemaVersion,
   });
-}
-
-export function buildDoclingServiceInstances(
-  topology: DoclingServiceTopology,
-  settings: RuntimeSettings,
-): DoclingServiceInstanceConfig[] {
-  const services: DoclingServiceInstanceConfig[] = [{
-    baseUrl: settings.doclingBaseUrl,
-    capacity: settings.doclingDefaultServiceCapacity,
-    id: "default",
-    process: { ...topology.process },
-  }];
-  for (const declaration of topology.additionalServices) {
-    services.push({
-      ...declaration,
-      process: { ...topology.process },
-    });
-  }
-  return services;
 }
 
 export interface StoredSettings {

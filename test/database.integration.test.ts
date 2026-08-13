@@ -94,7 +94,6 @@ import {
   type BrowseDocumentCatalogRequest,
 } from "../src/documents/catalog/browser.js";
 import {
-  readDoclingServiceTopologyFromConfig,
   type AppConfig,
   type DoclingServiceInstanceConfig,
   type EmbeddingSpaceConfig,
@@ -8787,7 +8786,6 @@ function createStructuralTieParentId(value: number): string {
 describe("PostgreSQL application settings", () => {
   it("requires a connected device credential before routing to OpenAI Codex", async () => {
     const config = buildTestConfig();
-    const doclingTopology = readDoclingServiceTopologyFromConfig(config);
     const repository = new ApplicationSettingsRepository(session.database);
     const routeChange = {
       action: "route" as const,
@@ -8797,7 +8795,6 @@ describe("PostgreSQL application settings", () => {
 
     await expect(repository.update(
       config.database,
-      doclingTopology,
       1,
       [],
       [routeChange],
@@ -8814,7 +8811,6 @@ describe("PostgreSQL application settings", () => {
     });
     const updated = await repository.update(
       config.database,
-      doclingTopology,
       1,
       [],
       [routeChange],
@@ -8827,17 +8823,14 @@ describe("PostgreSQL application settings", () => {
 
   it("requires database-owned settings and never creates them at runtime", async () => {
     const config = buildTestConfig();
-    const doclingTopology = readDoclingServiceTopologyFromConfig(config);
     const repository = new ApplicationSettingsRepository(session.database);
     await session.database.delete(applicationSettings);
 
     await expect(repository.read(
       config.database,
-      doclingTopology,
     )).rejects.toThrow("The database does not contain application settings.");
     await expect(repository.update(
       config.database,
-      doclingTopology,
       0,
       [{ key: "topK", value: 4 }],
     )).rejects.toThrow("The database does not contain application settings.");
@@ -8878,12 +8871,10 @@ describe("PostgreSQL application settings", () => {
 
   it("does not persist an unchanged database-owned settings document", async () => {
     const config = buildTestConfig();
-    const doclingTopology = readDoclingServiceTopologyFromConfig(config);
     const repository = new ApplicationSettingsRepository(session.database);
 
     const unchanged = await repository.update(
       config.database,
-      doclingTopology,
       1,
       [],
     );
@@ -8898,12 +8889,10 @@ describe("PostgreSQL application settings", () => {
 
   it("persists the default Docling service capacity", async () => {
     const config = buildTestConfig();
-    const doclingTopology = readDoclingServiceTopologyFromConfig(config);
     const repository = new ApplicationSettingsRepository(session.database);
 
     const updated = await repository.update(
       config.database,
-      doclingTopology,
       1,
       [
         { key: "doclingDefaultServiceCapacity", value: 2 },
@@ -8917,7 +8906,6 @@ describe("PostgreSQL application settings", () => {
     }]);
     await expect(repository.read(
       config.database,
-      doclingTopology,
     )).resolves.toMatchObject({
       overrides: {
         doclingDefaultServiceCapacity: 2,
@@ -8928,12 +8916,10 @@ describe("PostgreSQL application settings", () => {
 
   it("persists the application search method independently from providers", async () => {
     const config = buildTestConfig();
-    const doclingTopology = readDoclingServiceTopologyFromConfig(config);
     const repository = new ApplicationSettingsRepository(session.database);
 
     const updated = await repository.update(
       config.database,
-      doclingTopology,
       1,
       [{ key: "searchMethod", value: "bm25" }],
     );
@@ -8942,7 +8928,6 @@ describe("PostgreSQL application settings", () => {
     expect(updated.config.retrieval.mode).toBe("bm25");
     await expect(repository.read(
       config.database,
-      doclingTopology,
     )).resolves.toMatchObject({
       overrides: { searchMethod: "bm25" },
       version: 2,
@@ -8973,12 +8958,9 @@ describe("PostgreSQL application settings", () => {
       buildAvailableDoclingServiceVerification(defaultService),
     ]);
     await services.ensureAssignment(ownerId, sourceFile);
-
-    const doclingTopology = readDoclingServiceTopologyFromConfig(config);
     const repository = new ApplicationSettingsRepository(session.database);
     await expect(repository.update(
       config.database,
-      doclingTopology,
       1,
       [{ key: "doclingBaseUrl", value: "http://127.0.0.1:5999" }],
     )).rejects.toThrow(
@@ -8986,18 +8968,15 @@ describe("PostgreSQL application settings", () => {
     );
     await expect(repository.read(
       config.database,
-      doclingTopology,
     )).resolves.toMatchObject({ overrides: {}, version: 1 });
   });
 
   it("persists typed overrides, detects stale revisions, and restores defaults", async () => {
     const config = buildTestConfig();
-    const doclingTopology = readDoclingServiceTopologyFromConfig(config);
     const repository = new ApplicationSettingsRepository(session.database);
 
     const initial = await repository.read(
       config.database,
-      doclingTopology,
     );
     expect(initial.version).toBe(1);
     expect(initial.updatedAt).not.toBeNull();
@@ -9005,7 +8984,6 @@ describe("PostgreSQL application settings", () => {
 
     const updated = await repository.update(
       config.database,
-      doclingTopology,
       1,
       [
         { key: "claimVerifierSupportThreshold", value: 0.8 },
@@ -9038,7 +9016,6 @@ describe("PostgreSQL application settings", () => {
 
     const persisted = await repository.read(
       config.database,
-      doclingTopology,
     );
     expect(persisted.overrides).toEqual({
       claimVerifierSupportThreshold: 0.8,
@@ -9054,14 +9031,12 @@ describe("PostgreSQL application settings", () => {
     });
     await expect(repository.update(
       config.database,
-      doclingTopology,
       1,
       [{ key: "topK", value: 4 }],
     )).rejects.toBeInstanceOf(SettingsVersionConflictError);
 
     const reset = await repository.update(
       config.database,
-      doclingTopology,
       2,
       [
         { key: "claimVerifierSupportThreshold", reset: true },

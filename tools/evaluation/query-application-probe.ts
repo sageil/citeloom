@@ -155,10 +155,7 @@ export async function main(arguments_: string[] = process.argv.slice(2)): Promis
   );
   const definition = await readProbeDefinition(definitionPath);
   const startup = readStartupConfig();
-  const effective = await readEffectiveEvaluationConfig(
-    startup.database,
-    startup.doclingTopology,
-  );
+  const effective = await readEffectiveEvaluationConfig(startup.database);
   const session = await openDatabase(effective.config.database);
   try {
     const report = await runProbe(

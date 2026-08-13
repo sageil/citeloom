@@ -12,8 +12,6 @@ import {
 import type {
   AppConfig,
   DatabaseConfig,
-  DoclingServiceInstanceConfig,
-  DoclingServiceTopology,
   EmbeddingDimensions,
   EmbeddingInferenceConfig,
   InferenceConfig,
@@ -47,7 +45,6 @@ export function buildAppConfig(
   settingsValue: RuntimeSettings,
   settingsVersion: number,
   providerSettingsValue: ProviderSettings,
-  doclingServiceValues: readonly DoclingServiceInstanceConfig[],
   sourceContent: SourceContentConfig,
   embeddingInputFormatValue: EmbeddingInputFormatContract,
 ): AppConfig {
@@ -82,10 +79,7 @@ export function buildAppConfig(
     embeddingSpaceBaseId,
   );
   const reranker = buildRerankerConfig(settings, providerSettings);
-  const doclingServices = normalizeDoclingServiceInstances(
-    doclingServiceValues,
-    settings,
-  );
+  const doclingServices = buildDoclingServiceInstances(settings);
   const claimVerifier: AppConfig["claimVerifier"] = {
     baseUrl: removeTrailingSlash(settings.claimVerifierBaseUrl),
     model: HHEM_DISPLAY_MODEL,
@@ -132,11 +126,18 @@ export function buildAppConfig(
     fallbackPollIntervalMs: settings.workerFallbackPollMs,
   };
   return {
+    applicationErrorRetention: {
+      maximumRows: settings.applicationErrorMaximumRows,
+      retentionDays: settings.applicationErrorRetentionDays,
+    },
     claimVerifier,
     inferenceMetrics: {
       enabled: settings.aiMetricsEnabled,
     },
-    database,
+    database: {
+      poolMax: settings.databasePoolMax,
+      url: database.url,
+    },
     docling,
     doclingServices,
     embeddingSpace,
@@ -157,6 +158,19 @@ export function buildAppConfig(
     sourceContent,
     speechToText: buildSpeechToTextConfig(settings, providerSettings),
     textToSpeech: buildTextToSpeechConfig(settings, providerSettings),
+    verifierProcess: {
+      maxAttentionCells: settings.hhemMaxAttentionCells,
+      maxPaddedTokens: settings.hhemMaxPaddedTokens,
+      modelBatchSize: settings.hhemModelBatchSize,
+      torchThreads: settings.hhemTorchThreads,
+    },
+    web: {
+      maximumUploadRequestBytes:
+        settings.maxUploadRequestMegabytes * 1_024 * 1_024,
+      publicOrigin: removeTrailingSlash(settings.publicOrigin),
+      secureSessionCookie: settings.secureSessionCookie,
+      trustProxy: settings.trustProxy,
+    },
     worker,
   };
 }
@@ -262,57 +276,26 @@ export function readEmbeddingConfigurationWarnings(
   ];
 }
 
-export function readDoclingServiceTopologyFromConfig(
-  config: AppConfig,
-): DoclingServiceTopology {
-  const defaultService = config.doclingServices.find((service) => {
-    return service.id === "default";
-  });
-  if (defaultService === undefined) {
-    throw new Error('Docling service configuration must include service ID "default".');
-  }
-  const additionalServices: DoclingServiceTopology["additionalServices"] = [];
-  for (const service of config.doclingServices) {
-    if (service.id === "default") {
-      continue;
-    }
-    additionalServices.push({
-      baseUrl: service.baseUrl,
-      capacity: service.capacity,
-      id: service.id,
-    });
-  }
-  return {
-    additionalServices,
-    process: { ...defaultService.process },
-  };
-}
-
-function normalizeDoclingServiceInstances(
-  values: readonly DoclingServiceInstanceConfig[],
+function buildDoclingServiceInstances(
   settings: RuntimeSettings,
-): DoclingServiceInstanceConfig[] {
-  const singleService = values[0];
-  if (
-    values.length === 1
-    && singleService !== undefined
-    && singleService.id === "default"
-  ) {
-    return [{
-      baseUrl: removeTrailingSlash(settings.doclingBaseUrl),
-      capacity: settings.doclingDefaultServiceCapacity,
-      id: singleService.id,
-      process: { ...singleService.process },
-    }];
-  }
-  const services: DoclingServiceInstanceConfig[] = [];
+): AppConfig["doclingServices"] {
+  const process = {
+    numThreads: settings.doclingNumThreads,
+    pageBatchSize: settings.doclingPageBatchSize,
+    profilePipelineTimings: settings.doclingProfilePipelineTimings,
+  };
+  const services: AppConfig["doclingServices"] = [{
+    baseUrl: removeTrailingSlash(settings.doclingBaseUrl),
+    capacity: settings.doclingDefaultServiceCapacity,
+    id: "default",
+    process,
+  }];
   const identifiers = new Set<string>();
   const baseUrls = new Set<string>();
-  let foundDefault = false;
-  for (const value of values) {
-    const baseUrl = value.id === "default"
-      ? removeTrailingSlash(settings.doclingBaseUrl)
-      : removeTrailingSlash(value.baseUrl);
+  identifiers.add("default");
+  baseUrls.add(removeTrailingSlash(settings.doclingBaseUrl));
+  for (const value of settings.doclingAdditionalServiceInstances) {
+    const baseUrl = removeTrailingSlash(value.baseUrl);
     if (identifiers.has(value.id)) {
       throw new Error(`Duplicate Docling service ID ${value.id}.`);
     }
@@ -322,26 +305,14 @@ function normalizeDoclingServiceInstances(
     if (!Number.isInteger(value.capacity) || value.capacity < 1) {
       throw new Error(`Docling service ${value.id} must have positive integer capacity.`);
     }
-    if (!Number.isInteger(value.process.numThreads) || value.process.numThreads < 1) {
-      throw new Error(`Docling service ${value.id} must have positive integer thread count.`);
-    }
-    if (!Number.isInteger(value.process.pageBatchSize) || value.process.pageBatchSize < 1) {
-      throw new Error(`Docling service ${value.id} must have positive integer page batch size.`);
-    }
-    foundDefault = foundDefault || value.id === "default";
     identifiers.add(value.id);
     baseUrls.add(baseUrl);
     services.push({
       baseUrl,
-      capacity: value.id === "default"
-        ? settings.doclingDefaultServiceCapacity
-        : value.capacity,
+      capacity: value.capacity,
       id: value.id,
-      process: { ...value.process },
+      process: { ...process },
     });
-  }
-  if (!foundDefault) {
-    throw new Error('Docling service configuration must include service ID "default".');
   }
   return services;
 }

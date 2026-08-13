@@ -3,6 +3,8 @@ FROM quay.io/docling-project/docling-serve-cpu:v1.27.0@sha256:a70cd391c5d9e7ad23
 # Changing these OCR assets or checksums requires a DOCLING_PROTOCOL_VERSION bump.
 USER 0
 
+RUN pip install --no-cache-dir "psycopg[binary]==3.3.4"
+
 ARG RAPIDOCR_REVISION=2d2fd79784088d11b3b840a9e63d7b710fe7fee8
 ARG RAPIDOCR_BASE_URL=https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/${RAPIDOCR_REVISION}
 
@@ -21,6 +23,8 @@ ADD --checksum=sha256:d1979e9f794c464c0d2e0b70a7fe14dd978e9dc644c0e71f14158cdf83
 
 COPY infra/docling/config.yml /opt/app-root/src/citeloom-docling-config.yml
 COPY infra/docling/citeloom_docling /opt/app-root/src/citeloom_docling
+COPY services/docling_benchmark_bootstrap.py /opt/app-root/src/docling_benchmark_bootstrap.py
+COPY services/runtime_settings_bootstrap.py /opt/app-root/src/runtime_settings_bootstrap.py
 COPY infra/docling/patches/api-image-text-first.patch /tmp/api-image-text-first.patch
 
 # Docling 2.113.0 puts the image before the prompt in OpenAI-compatible
@@ -36,10 +40,14 @@ RUN api_image_request=/opt/app-root/lib64/python3.12/site-packages/docling/utils
 RUN chown -R 1001:0 \
     /opt/app-root/src/citeloom-docling-config.yml \
     /opt/app-root/src/citeloom_docling \
+    /opt/app-root/src/docling_benchmark_bootstrap.py \
+    /opt/app-root/src/runtime_settings_bootstrap.py \
     /opt/app-root/src/citeloom-ocr-models \
   && chmod 0444 \
     /opt/app-root/src/citeloom-docling-config.yml \
     /opt/app-root/src/citeloom_docling/*.py \
+    /opt/app-root/src/docling_benchmark_bootstrap.py \
+    /opt/app-root/src/runtime_settings_bootstrap.py \
     /opt/app-root/src/citeloom-ocr-models/*
 
 ENV DOCLING_SERVE_CONFIG_FILE=/opt/app-root/src/citeloom-docling-config.yml \
@@ -47,4 +55,4 @@ ENV DOCLING_SERVE_CONFIG_FILE=/opt/app-root/src/citeloom-docling-config.yml \
 
 USER 1001
 
-CMD ["python", "-m", "uvicorn", "citeloom_docling.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "5001"]
+CMD ["python", "/opt/app-root/src/runtime_settings_bootstrap.py", "docling", "python", "-m", "uvicorn", "citeloom_docling.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "5001"]

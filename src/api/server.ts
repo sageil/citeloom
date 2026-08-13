@@ -110,7 +110,12 @@ import {
   startWebServices,
   type WebServices,
 } from "./services.js";
-import { readWebConfig, type WebConfig } from "./config.js";
+import {
+  buildWebConfig,
+  readWebStartupConfig,
+  type WebConfig,
+  type WebStartupConfig,
+} from "./config.js";
 import type { AuthorizationPrincipal } from "../auth/model.js";
 import { canAdministerWorkspace } from "../auth/authorization.js";
 import { WorkspaceSourceLibraryUnavailableError } from "../workspaces/source-library-access.js";
@@ -180,6 +185,7 @@ export interface BuildWebServerOptions {
   services?: WebServices;
   staticDirectory?: string | null;
   uploadDirectory?: string;
+  webConfig?: WebConfig;
 }
 
 const BACKGROUND_DELETION_RECONCILIATION_INTERVAL_MS = 2_000;
@@ -189,7 +195,7 @@ export async function buildWebServer(
   options: BuildWebServerOptions = {},
 ): Promise<FastifyInstance> {
   const logger = options.logger ?? true;
-  const webConfig = readWebConfig();
+  const webConfig = options.webConfig ?? buildWebConfig(config.web);
   const server = Fastify({ logger, trustProxy: webConfig.trustProxy });
   server.addHook("onRequest", async (_request, reply) => {
     reply.header("Content-Security-Policy", BROWSER_CONTENT_SECURITY_POLICY);
@@ -1115,24 +1121,23 @@ export function openApplicationStateRevisionEventStream(
 
 export async function startWebServer(
   startup = readStartupConfig(),
-  webConfig: WebConfig = readWebConfig(),
+  webStartup: WebStartupConfig = readWebStartupConfig(),
 ): Promise<FastifyInstance> {
   const session = await openDatabase(startup.database);
   let effectiveSettings: EffectiveApplicationSettings;
   try {
     const repository = new ApplicationSettingsRepository(session.database);
-    effectiveSettings = await repository.read(
-      startup.database,
-      startup.doclingTopology,
-    );
+    effectiveSettings = await repository.read(startup.database);
   } finally {
     await session.close();
   }
   const apiOnly = process.argv.includes("--api-only");
+  const webConfig = buildWebConfig(effectiveSettings.config.web, webStartup);
   const server = await buildWebServer(effectiveSettings.config, {
     maximumUploadRequestBytes: webConfig.maximumUploadRequestBytes,
     staticDirectory: apiOnly ? null : defaultStaticDirectory,
     uploadDirectory: webConfig.uploadDirectory,
+    webConfig,
   });
   try {
     await server.listen({ host: webConfig.host, port: webConfig.port });

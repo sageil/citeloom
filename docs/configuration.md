@@ -46,10 +46,7 @@ The [standalone frontend guide](../web/README.md) documents its additional varia
 | --- | --- |
 | `CITELOOM_IMAGE_TAG` | Exact semantic-version tag used by `compose.dockerhub.yml` for every CiteLoom image |
 | `CITELOOM_RELEASE` | Release identifier stored with operational error events |
-| `CITELOOM_APPLICATION_ERROR_RETENTION_DAYS` | Maximum age of retained operational errors |
-| `CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS` | Maximum number of retained operational error rows |
 | `DATABASE_URL` | PostgreSQL connection string |
-| `DATABASE_POOL_MAX` | Maximum PostgreSQL connections per process |
 | `CITELOOM_POSTGRES_DATA_DIRECTORY` | Host directory bind-mounted for Compose PostgreSQL data |
 | `CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY` | Host directory bind-mounted as filesystem source content by Compose |
 | `CITELOOM_SOURCE_CONTENT_DIRECTORY` | Process-visible filesystem path used for a fresh database and as the offline migration target |
@@ -63,30 +60,28 @@ The [standalone frontend guide](../web/README.md) documents its additional varia
 | `CITELOOM_S3_SECRET_ACCESS_KEY` | SeaweedFS secret key used by the optional Compose overlay |
 | `CITELOOM_SEAWEEDFS_DATA_DIRECTORY` | Host directory containing optional SeaweedFS data |
 | `CITELOOM_UPLOAD_DIRECTORY` | Web staging directory for in-progress uploads |
-| `CITELOOM_MAX_UPLOAD_REQUEST_MEGABYTES` | Aggregate byte limit for one multipart upload request |
 | `CITELOOM_WEB_HOST` | Listener address for a host-run web process |
 | `CITELOOM_WEB_PORT` | Listener port for a host-run web process; Docker replicas use internal port 3000 |
 | `CITELOOM_ADMIN_USERNAME` | Required migration input used to create the first administrator in a new database |
 | `CITELOOM_ADMIN_PASSWORD` | Required migration input used to create the first administrator password in a new database |
-| `CITELOOM_PUBLIC_ORIGIN` | Required browser origin for state-changing requests |
-| `CITELOOM_SECURE_SESSION_COOKIE` | Secure-cookie enforcement |
-| `CITELOOM_TRUST_PROXY` | Explicit trusted-proxy mode for a host-run web process; the supplied Compose web service enables it behind Caddy |
 
-### Service process variables
+### Database-owned service settings
 
-| Setting | Purpose |
+The following values are stored in application settings and edited through their matching Settings pages.
+Web and worker processes first use one bootstrap database connection, read these settings, and then open their configured pools.
+Docling and HHEM read their process settings from PostgreSQL before starting.
+
+| Settings page | Values |
 | --- | --- |
-| `DOCLING_NUM_THREADS` | Worker threads used by each Docling service |
-| `DOCLING_PERF_PAGE_BATCH_SIZE` | Docling page-processing batch size |
-| `DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS` | Enables Docling pipeline timing diagnostics |
-| `DOCLING_SERVE_QUEUE_MAX_SIZE` | Maximum number of queued tasks in each Docling service |
-| `DOCLING_ADDITIONAL_SERVICE_INSTANCES` | JSON list of additional Docling instances reachable by a host-run application |
-| `DOCLING_CONTAINER_ADDITIONAL_SERVICE_INSTANCES` | JSON list of the same stable Docling instances using container-reachable URLs |
-| `HHEM_MAX_PADDED_TOKENS` | Maximum padded tokens accepted by one HHEM batch |
-| `HHEM_MAX_ATTENTION_CELLS` | Maximum estimated attention cells accepted by one HHEM batch |
-| `HHEM_MODEL_BATCH_SIZE` | Maximum number of claim-evidence pairs in one HHEM model batch |
-| `HHEM_TORCH_THREADS` | CPU thread count used by HHEM |
-| `HHEM_PORT` | Host port published for the HHEM service |
+| Database | Maximum connections per web or worker process |
+| Docling | Additional service instances, pipeline profiling, thread count, page batch size, queue size, local engine workers, and model sharing |
+| Hughes Hallucination Evaluation Model | Maximum padded tokens, attention cells, model batch size, and Torch thread count |
+| Usage diagnostics | Application error row and age limits |
+| Web server | Maximum upload request size, public origin, secure-cookie enforcement, and trusted-proxy mode |
+
+Process-level Docling and HHEM changes require restarting the matching service.
+Web server settings and the worker database pool require restarting the affected application processes.
+`HHEM_PORT` remains deployment configuration because it selects the host port published by Compose rather than application behavior.
 
 Docker Compose defaults `CITELOOM_POSTGRES_DATA_DIRECTORY` to `./data/citeloomdb`, resolved from the repository root.
 It defaults `CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY` to `./documents/blobs`.
@@ -444,8 +439,8 @@ The headings help discovery but never become evidence or citations.
 After enabling this setting, follow the [document-heading backfill procedure](operations.md#update-document-heading-routes) for existing documents.
 Turning it off removes the extra route without disabling normal search.
 
-Thread count, page batch size, and pipeline profiling are startup settings.
-Restart Docling after changing them, and keep those process settings consistent across workers so operational records remain accurate.
+Thread count, page batch size, queue capacity, local engine settings, and pipeline profiling are database-owned process settings.
+Restart Docling after changing them so the service reads the saved revision.
 
 ## Multiple Docling instances
 
@@ -460,10 +455,7 @@ The supplied topology uses named services instead of `docker compose --scale doc
 Maximum parallel conversions (`doclingDefaultServiceCapacity`) in the application Settings page limits the default service, and each additional service declares its own independent capacity.
 The optional `docling-scale` Compose profile provides one named replica for local multi-instance operation.
 
-```dotenv
-DOCLING_ADDITIONAL_SERVICE_INSTANCES=[{"id":"replica-b","baseUrl":"http://127.0.0.1:5003","capacity":2}]
-DOCLING_CONTAINER_ADDITIONAL_SERVICE_INSTANCES=[{"id":"replica-b","baseUrl":"http://docling-replica:5001","capacity":2}]
-```
+Add each replica to the Additional Docling services field on the Docling Settings page using a unique ID, a URL reachable by the application processes, and its capacity.
 
 ```bash
 docker compose --profile docling-scale up -d --wait docling-replica

@@ -225,7 +225,8 @@ Existing exact-version deployments remain unchanged during a partial publication
 
 ## Configure a production proxy
 
-Set `CITELOOM_PUBLIC_ORIGIN`, `CITELOOM_SECURE_SESSION_COOKIE`, and `CITELOOM_TRUST_PROXY` for the deployed origin and proxy path.
+Set Public origin, Secure session cookie, and Trust reverse proxy on the Web server Settings page for the deployed origin and proxy path.
+Restart the web service after saving these values.
 Keep secure cookies enabled outside isolated automated tests.
 Enable trusted-proxy mode only when a trusted proxy replaces forwarded client headers, as the supplied Caddy service does.
 Internet-facing deployments need production TLS, network access controls, and an availability design beyond the supplied local setup.
@@ -244,7 +245,7 @@ Authentication stores session data in PostgreSQL and uses a host-only cookie wit
 Regular sessions expire after 2 hours of inactivity or 12 hours in total.
 Remembered sessions expire after 7 days of inactivity or 30 days in total.
 Administrator-created setup and password-reset links expire after 24 hours and are consumed when the user sets a password.
-`CITELOOM_PUBLIC_ORIGIN` is the required origin for state-changing browser requests.
+The database-owned Public origin setting is the required origin for state-changing browser requests.
 
 Workspace members can use document, ingestion, reindexing, search, and research APIs.
 Workspace administrators can also manage membership, settings, and diagnostics.

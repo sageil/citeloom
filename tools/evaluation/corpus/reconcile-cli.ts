@@ -79,10 +79,7 @@ export async function main(
   let result: CorpusQueueReconciliationResult;
   try {
     const repository = new ApplicationSettingsRepository(session.database);
-    const settings = await repository.read(
-      startup.database,
-      startup.doclingTopology,
-    );
+    const settings = await repository.read(startup.database);
     result = await reconcileCorpusQueue(
       settings.config,
       corpus,

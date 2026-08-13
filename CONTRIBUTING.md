@@ -42,12 +42,11 @@ pnpm worker
 Start the web application in another terminal.
 
 ```bash
-CITELOOM_PUBLIC_ORIGIN=http://127.0.0.1:3000 \
-CITELOOM_SECURE_SESSION_COOKIE=false \
 pnpm dev:web
 ```
 
 Open `http://127.0.0.1:3000` for the host-run web application.
+Before using state-changing actions on this HTTP origin, set Public origin to `http://127.0.0.1:3000` and disable Secure session cookie on the Web server Settings page, then restart the host-run web process.
 
 See [Configuration](docs/configuration.md) for model providers, retrieval settings, and processing capacity.
 

@@ -7,6 +7,7 @@ import type { ProviderId } from "../providers/profiles.js";
 export type { EmbeddingDimensions };
 
 export interface AppConfig {
+  applicationErrorRetention: ApplicationErrorRetentionConfig;
   claimVerifier: ClaimVerifierConfig;
   inferenceMetrics: InferenceMetricsConfig;
   database: DatabaseConfig;
@@ -24,6 +25,8 @@ export interface AppConfig {
   sourceContent: SourceContentConfig;
   speechToText: SpeechToTextConfig | null;
   textToSpeech: TextToSpeechConfig | null;
+  verifierProcess: VerifierProcessConfig;
+  web: WebRuntimeConfig;
   worker: WorkerConfig;
 }
 
@@ -86,6 +89,20 @@ export interface InferenceMetricsConfig {
 export interface ApplicationErrorRetentionConfig {
   maximumRows: number;
   retentionDays: number;
+}
+
+export interface VerifierProcessConfig {
+  maxAttentionCells: number;
+  maxPaddedTokens: number;
+  modelBatchSize: number;
+  torchThreads: number;
+}
+
+export interface WebRuntimeConfig {
+  maximumUploadRequestBytes: number;
+  publicOrigin: string;
+  secureSessionCookie: boolean;
+  trustProxy: boolean;
 }
 
 export interface DatabaseConfig {
@@ -228,11 +245,6 @@ export interface DoclingServiceDeclaration {
   id: string;
 }
 
-export interface DoclingServiceTopology {
-  additionalServices: DoclingServiceDeclaration[];
-  process: DoclingProcessConfiguration;
-}
-
 export interface DoclingServiceInstanceConfig {
   baseUrl: string;
   capacity: number;
@@ -326,6 +338,8 @@ export interface WorkerConfig {
 }
 
 export interface RuntimeSettings {
+  applicationErrorMaximumRows: number;
+  applicationErrorRetentionDays: number;
   answerMinimumOutputTokens: number;
   answerProviderSafetyMarginTokens: number;
   answerTemperature: number;
@@ -339,16 +353,23 @@ export interface RuntimeSettings {
   chatTemperature: number;
   denseWeight: number;
   doclingApiKey: string | null;
+  doclingAdditionalServiceInstances: DoclingServiceDeclaration[];
   doclingBaseUrl: string;
   doclingMaxTimeoutSeconds: number;
   doclingMegabyteTimeoutSeconds: number;
+  doclingNumThreads: number;
   doclingOcrEnabled: boolean;
   doclingPageTimeoutSeconds: number;
   doclingPdfBackend: DoclingPdfBackend;
   doclingPerformanceMetricsEnabled: boolean;
   doclingPerformanceMetricsRetentionDays: number;
   doclingPipeline: DoclingProcessingPipeline;
+  doclingPageBatchSize: number;
+  doclingProfilePipelineTimings: boolean;
+  doclingQueueMaxSize: number;
   doclingSecondaryImageScale: number;
+  doclingServeEngineWorkers: number;
+  doclingServeShareModels: boolean;
   doclingTableMode: DoclingTableMode;
   doclingTableStructureEnabled: boolean;
   doclingTocEnabled: boolean;
@@ -368,8 +389,14 @@ export interface RuntimeSettings {
   findSourcesPassagesPerDocument: number;
   findSourcesResults: number;
   lexicalWeight: number;
+  databasePoolMax: number;
+  hhemMaxAttentionCells: number;
+  hhemMaxPaddedTokens: number;
+  hhemModelBatchSize: number;
+  hhemTorchThreads: number;
   maxAttempts: number;
   maxDocumentMegabytes: number;
+  maxUploadRequestMegabytes: number;
   mcpTaskRetentionDays: number;
   originalQueryWeight: number;
   queryExpansions: number;
@@ -382,6 +409,8 @@ export interface RuntimeSettings {
   retryBaseMs: number;
   rrfK: number;
   searchMethod: RetrievalMode;
+  publicOrigin: string;
+  secureSessionCookie: boolean;
   indexingTimeoutSeconds: number;
   queryExpansionTimeoutSeconds: number;
   sttLanguage: string | null;
@@ -392,6 +421,7 @@ export interface RuntimeSettings {
   ttsPreloadEnabled: boolean;
   ttsSpeed: number;
   ttsTimeoutSeconds: number;
+  trustProxy: boolean;
   workerConcurrency: number;
   workerFallbackPollMs: number;
 }
@@ -404,5 +434,4 @@ export type RuntimeSettingsOverrides = Partial<
 
 export interface StartupConfig {
   database: DatabaseConfig;
-  doclingTopology: DoclingServiceTopology;
 }

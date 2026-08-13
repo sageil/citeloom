@@ -1,13 +1,10 @@
 export {
   buildAppConfig,
   readEmbeddingConfigurationWarnings,
-  readDoclingServiceTopologyFromConfig,
 } from "./builder.js";
 export {
+  BOOTSTRAP_DATABASE_POOL_MAX,
   parseRuntimeSettings,
-  readApplicationErrorRetentionConfig,
-  readDoclingProcessConfiguration,
-  readDoclingServiceTopology,
   runtimeSettingsObjectSchema,
   runtimeSettingsSchema,
 } from "./schemas.js";
@@ -26,7 +23,6 @@ export type {
   DoclingPdfBackend,
   DoclingServiceDeclaration,
   DoclingServiceInstanceConfig,
-  DoclingServiceTopology,
   DoclingTableMode,
   DoclingVlmConfig,
   DoclingVlmEngineType,
@@ -65,6 +61,7 @@ export type {
   TextToSpeechConfig,
   TextToSpeechAdapter,
   WorkloadClass,
+  WebRuntimeConfig,
   WorkerConfig,
 } from "./types.js";
 export type {
