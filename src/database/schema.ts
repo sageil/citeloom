@@ -413,6 +413,127 @@ export const workspaceMemberships = pgTable(
   ],
 );
 
+export const oauthResourceSettings = pgTable(
+  "oauth_resource_settings",
+  {
+    enabled: boolean("enabled").notNull().default(false),
+    id: varchar("id", { length: 32 }).primaryKey(),
+    issuer: text("issuer"),
+    resource: text("resource"),
+    scopes: text("scopes").array().notNull().default([]),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    version: integer("version").notNull().default(1),
+    workspaceClaim: text("workspace_claim"),
+  },
+  (table) => [
+    check(
+      "oauth_resource_settings_singleton_check",
+      sql`${table.id} = 'resource' AND ${table.version} > 0`,
+    ),
+    check(
+      "oauth_resource_settings_issuer_check",
+      sql`${table.issuer} IS NULL OR (
+        length(${table.issuer}) > 0
+        AND ${table.issuer} = trim(${table.issuer})
+      )`,
+    ),
+    check(
+      "oauth_resource_settings_resource_check",
+      sql`${table.resource} IS NULL OR (
+        length(${table.resource}) > 0
+        AND ${table.resource} = trim(${table.resource})
+      )`,
+    ),
+    check(
+      "oauth_resource_settings_workspace_claim_check",
+      sql`${table.workspaceClaim} IS NULL OR (
+        length(${table.workspaceClaim}) > 0
+        AND ${table.workspaceClaim} = trim(${table.workspaceClaim})
+      )`,
+    ),
+    check(
+      "oauth_resource_settings_enabled_values_check",
+      sql`(
+        NOT ${table.enabled}
+        AND ${table.issuer} IS NULL
+        AND ${table.resource} IS NULL
+        AND cardinality(${table.scopes}) = 0
+        AND ${table.workspaceClaim} IS NULL
+      ) OR (
+        ${table.issuer} IS NOT NULL
+        AND ${table.resource} IS NOT NULL
+        AND cardinality(${table.scopes}) > 0
+        AND ${table.workspaceClaim} IS NOT NULL
+      )`,
+    ),
+  ],
+);
+
+export const oauthUserIdentityLinks = pgTable(
+  "oauth_user_identity_links",
+  {
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    issuer: text("issuer").notNull(),
+    subject: text("subject").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.issuer, table.subject] }),
+    uniqueIndex("oauth_user_identity_links_issuer_user_idx")
+      .on(table.issuer, table.userId),
+    check(
+      "oauth_user_identity_links_issuer_check",
+      sql`length(${table.issuer}) > 0 AND ${table.issuer} = trim(${table.issuer})`,
+    ),
+    check(
+      "oauth_user_identity_links_subject_check",
+      sql`length(${table.subject}) > 0 AND ${table.subject} = trim(${table.subject})`,
+    ),
+  ],
+);
+
+export const oauthWorkspaceLinks = pgTable(
+  "oauth_workspace_links",
+  {
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    externalWorkspaceId: text("external_workspace_id").notNull(),
+    issuer: text("issuer").notNull(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.issuer, table.externalWorkspaceId] }),
+    uniqueIndex("oauth_workspace_links_issuer_workspace_idx")
+      .on(table.issuer, table.workspaceId),
+    check(
+      "oauth_workspace_links_external_id_check",
+      sql`length(${table.externalWorkspaceId}) > 0 AND ${table.externalWorkspaceId} = trim(${table.externalWorkspaceId})`,
+    ),
+    check(
+      "oauth_workspace_links_issuer_check",
+      sql`length(${table.issuer}) > 0 AND ${table.issuer} = trim(${table.issuer})`,
+    ),
+  ],
+);
+
 export const workspaceSecurityPolicies = pgTable(
   "workspace_security_policies",
   {

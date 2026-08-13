@@ -11,6 +11,7 @@ import {
 } from "./boundary-readers.js";
 import { requestConfirmation } from "./confirmation.js";
 import { createOrganizationUserManagement } from "./organization-users.js";
+import { createOAuthLinkManagement } from "./oauth-links.js";
 
 function readAdministrator(value) {
   const administrator = readPlainObject(value, "security administrator");
@@ -131,10 +132,12 @@ function copyEditablePolicy(policy) {
 export function registerPage(alpine) {
   alpine.data("citeloomSecurityPage", () => ({
     ...createOrganizationUserManagement(),
+    ...createOAuthLinkManagement(),
     activeResetLinkCount: 0,
     administrators: [],
     busy: false,
     errorMessage: "",
+    globalAdministratorSectionsInitialized: false,
     invalidateOutstandingResetLinks: false,
     loadFailed: false,
     loading: true,
@@ -144,6 +147,7 @@ export function registerPage(alpine) {
     requireSpecialCharacter: null,
     resetLinkLifetimeSeconds: null,
     savedPolicy: null,
+    securitySection: "password",
     version: null,
 
     get policyChanged() {
@@ -157,8 +161,41 @@ export function registerPage(alpine) {
     },
 
     initialize() {
+      this.$watch("currentGlobalRole", () => {
+        this.initializeGlobalAdministratorSections();
+      });
       void this.loadOverview();
+      this.initializeGlobalAdministratorSections();
+    },
+
+    initializeGlobalAdministratorSections() {
+      if (
+        this.currentGlobalRole !== "global_admin"
+        || this.globalAdministratorSectionsInitialized
+      ) {
+        return;
+      }
+      this.globalAdministratorSectionsInitialized = true;
+      this.securitySection = "users";
       this.initializeOrganizationUserManagement();
+      this.initializeOAuthLinkManagement();
+    },
+
+    selectSecuritySection(section) {
+      if (
+        section !== "password"
+        && section !== "users"
+        && section !== "oauth"
+      ) {
+        return;
+      }
+      if (
+        this.currentGlobalRole !== "global_admin"
+        && section !== "password"
+      ) {
+        return;
+      }
+      this.securitySection = section;
     },
 
     applyOverview(overview) {

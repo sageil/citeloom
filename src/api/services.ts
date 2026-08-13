@@ -110,6 +110,7 @@ import type {
 import type { PasswordInput } from "../auth/password.js";
 import type {
   AuthenticatedPrincipal,
+  AuthorizationPrincipal,
   AuthenticationSession,
   OrganizationUserAccount,
   UserPasswordLink,
@@ -122,8 +123,26 @@ import type {
   WorkspaceSummary,
 } from "../auth/model.js";
 import { AuthenticationStore } from "../auth/store.js";
+import { requireGlobalAdministrator } from "../auth/authorization.js";
 import { WorkspaceSecurityPolicyStore } from "../auth/security-policy-store.js";
 import { UserAccountStore } from "../auth/user-account-store.js";
+import {
+  verifyOAuthAuthorizationServerConfiguration,
+} from "../oauth/access-token.js";
+import type {
+  OAuthConfigurationUpdateInput,
+} from "../oauth/boundary.js";
+import type {
+  OAuthConfigurationValues,
+  OAuthResourceSettings,
+} from "../oauth/config.js";
+import { OAuthConfigurationStore } from "../oauth/configuration-store.js";
+import { OAuthLinkStore } from "../oauth/link-store.js";
+import type {
+  OAuthPrincipal,
+  OAuthSecurityOverview,
+  VerifiedOAuthAccessToken,
+} from "../oauth/model.js";
 import {
   authorizeCatalogSourceForPrincipal,
   authorizeDocumentVersionForPrincipal,
@@ -312,21 +331,21 @@ export interface WebServices {
     operation: (runtime: RuntimeWebServices) => Promise<T>,
   ) => Promise<T>;
   runInWorkspace: <T>(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     operation: (runtime: RuntimeWebServices) => Promise<T>,
   ) => Promise<T>;
   runManaged: <T>(
     operation: (runtime: RuntimeWebServices) => Promise<ManagedTask<T>>,
   ) => Promise<T>;
   runManagedInWorkspace: <T>(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     operation: (runtime: RuntimeWebServices) => Promise<ManagedTask<T>>,
   ) => Promise<T>;
   stream: <T>(
     operation: (runtime: RuntimeWebServices) => ReadableStream<T>,
   ) => ReadableStream<T>;
   streamInWorkspace: <T>(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     operation: (runtime: RuntimeWebServices) => ReadableStream<T>,
   ) => ReadableStream<T>;
   subscribeRevisions: (
@@ -401,7 +420,58 @@ export interface SecurityWebServices {
   ) => Promise<WorkspaceSecurityOverview>;
 }
 
-export type ApplicationWebServices = WebServices & SecurityWebServices;
+export interface OAuthSecurityWebServices {
+  disableOAuthConfiguration: (
+    principal: AuthenticatedPrincipal,
+    expectedVersion: number,
+    publicOrigin: string,
+  ) => Promise<OAuthResourceSettings>;
+  linkOAuthUserIdentity: (
+    principal: AuthenticatedPrincipal,
+    publicOrigin: string,
+    userId: string,
+    subject: string,
+  ) => Promise<void>;
+  linkOAuthWorkspace: (
+    principal: AuthenticatedPrincipal,
+    publicOrigin: string,
+    workspaceId: string,
+    externalWorkspaceId: string,
+  ) => Promise<void>;
+  readOAuthConfiguration: (
+    publicOrigin: string,
+  ) => Promise<OAuthResourceSettings>;
+  readOAuthSecurityOverview: (
+    principal: AuthenticatedPrincipal,
+    publicOrigin: string,
+  ) => Promise<OAuthSecurityOverview>;
+  resolveOAuthPrincipal: (
+    token: VerifiedOAuthAccessToken,
+  ) => Promise<OAuthPrincipal>;
+  unlinkOAuthUserIdentity: (
+    principal: AuthenticatedPrincipal,
+    publicOrigin: string,
+    userId: string,
+  ) => Promise<void>;
+  unlinkOAuthWorkspace: (
+    principal: AuthenticatedPrincipal,
+    publicOrigin: string,
+    workspaceId: string,
+  ) => Promise<void>;
+  updateOAuthConfiguration: (
+    principal: AuthenticatedPrincipal,
+    input: OAuthConfigurationUpdateInput,
+    publicOrigin: string,
+  ) => Promise<OAuthResourceSettings>;
+  verifyOAuthConfiguration: (
+    principal: AuthenticatedPrincipal,
+    configuration: OAuthConfigurationValues,
+  ) => Promise<void>;
+}
+
+export type ApplicationWebServices = WebServices
+  & SecurityWebServices
+  & OAuthSecurityWebServices;
 
 export interface OwnedWebServices {
   close(): Promise<void>;
@@ -663,7 +733,7 @@ export function createWebServices(
   const doclingTopology = readDoclingServiceTopologyFromConfig(config);
   const createWorkspaceRuntimeServices = async (
     runtime: ApplicationRuntime,
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
   ): Promise<RuntimeWebServices> => {
     const repository = new WorkspaceSettingsRepository(runtime.database);
     const workspaceConfig = await repository.readConfig(
@@ -675,6 +745,20 @@ export function createWebServices(
     return createRuntimeWebServices(view);
   };
   const services: ApplicationWebServices = {
+    disableOAuthConfiguration: async (
+      principal,
+      expectedVersion,
+      publicOrigin,
+    ) => {
+      return manager.withRuntime(async (runtime) => {
+        const configuration = new OAuthConfigurationStore(runtime.database);
+        return configuration.disable(
+          principal,
+          expectedVersion,
+          publicOrigin,
+        );
+      });
+    },
     archiveSharedSourceLibrary: async (principal, libraryId) => {
       return manager.withRuntime(async (runtime) => {
         const libraries = new SourceLibraryStore(runtime.database);
@@ -792,6 +876,33 @@ export function createWebServices(
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
         return authentication.listWorkspaceMembers(principal, workspaceId);
+      });
+    },
+    linkOAuthUserIdentity: async (
+      principal,
+      publicOrigin,
+      userId,
+      subject,
+    ) => {
+      return manager.withRuntime(async (runtime) => {
+        const links = new OAuthLinkStore(runtime.database);
+        await links.linkUserIdentity(principal, publicOrigin, userId, subject);
+      });
+    },
+    linkOAuthWorkspace: async (
+      principal,
+      publicOrigin,
+      workspaceId,
+      externalWorkspaceId,
+    ) => {
+      return manager.withRuntime(async (runtime) => {
+        const links = new OAuthLinkStore(runtime.database);
+        await links.linkWorkspace(
+          principal,
+          publicOrigin,
+          workspaceId,
+          externalWorkspaceId,
+        );
       });
     },
     listOrganizationUsers: async (principal) => {
@@ -941,6 +1052,18 @@ export function createWebServices(
       const authentication = new AuthenticationStore(runtime.database);
       return authentication.readSession(sessionToken);
     }),
+    readOAuthConfiguration: async (publicOrigin) => {
+      return manager.withRuntime(async (runtime) => {
+        const configuration = new OAuthConfigurationStore(runtime.database);
+        return configuration.read(publicOrigin);
+      });
+    },
+    readOAuthSecurityOverview: async (principal, publicOrigin) => {
+      return manager.withRuntime(async (runtime) => {
+        const links = new OAuthLinkStore(runtime.database);
+        return links.readOverview(principal, publicOrigin);
+      });
+    },
     run: async (operation) => manager.withRuntime(async (runtime) => {
       return operation(createRuntimeWebServices(runtime));
     }),
@@ -982,10 +1105,49 @@ export function createWebServices(
       const authentication = new AuthenticationStore(runtime.database);
       await authentication.revokeSession(sessionToken);
     }),
+    resolveOAuthPrincipal: async (token) => {
+      return manager.withRuntime(async (runtime) => {
+        const links = new OAuthLinkStore(runtime.database);
+        return links.resolvePrincipal(token);
+      });
+    },
     switchWorkspace: async (principal, workspaceId) => {
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
         return authentication.switchWorkspace(principal, workspaceId);
+      });
+    },
+    unlinkOAuthUserIdentity: async (principal, publicOrigin, userId) => {
+      return manager.withRuntime(async (runtime) => {
+        const links = new OAuthLinkStore(runtime.database);
+        await links.unlinkUserIdentity(principal, publicOrigin, userId);
+      });
+    },
+    unlinkOAuthWorkspace: async (principal, publicOrigin, workspaceId) => {
+      return manager.withRuntime(async (runtime) => {
+        const links = new OAuthLinkStore(runtime.database);
+        await links.unlinkWorkspace(principal, publicOrigin, workspaceId);
+      });
+    },
+    updateOAuthConfiguration: async (principal, input, publicOrigin) => {
+      requireGlobalAdministrator(principal);
+      await verifyOAuthAuthorizationServerConfiguration({
+        enabled: true,
+        issuer: input.issuer,
+        resource: input.resource,
+        scopes: input.scopes,
+        workspaceClaim: input.workspaceClaim,
+      });
+      return manager.withRuntime(async (runtime) => {
+        const configuration = new OAuthConfigurationStore(runtime.database);
+        return configuration.update(principal, input, publicOrigin);
+      });
+    },
+    verifyOAuthConfiguration: async (principal, configuration) => {
+      requireGlobalAdministrator(principal);
+      await verifyOAuthAuthorizationServerConfiguration({
+        ...configuration,
+        enabled: true,
       });
     },
     revokeSourceLibraryGrant: async (principal, libraryId, workspaceId) => {
@@ -1552,7 +1714,7 @@ function createRuntimeWebServices(
   return services;
 }
 
-function readWorkspaceScope(principal: AuthenticatedPrincipal): string | null {
+function readWorkspaceScope(principal: AuthorizationPrincipal): string | null {
   return principal.dataScope === "all"
     ? null
     : principal.workspaceId;

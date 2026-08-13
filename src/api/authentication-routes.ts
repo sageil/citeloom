@@ -39,6 +39,7 @@ import {
 import type { WebConfig } from "./config.js";
 import { WebRequestError } from "./request-boundary.js";
 import type { WebServices } from "./services.js";
+import { isOAuthProtectedResourceMetadataPath } from "./oauth-authentication.js";
 import {
   decodeCreateSharedSourceLibraryInput,
   decodeRenameSharedSourceLibraryInput,
@@ -637,7 +638,9 @@ function isPublicAuthenticationPath(pathname: string): boolean {
 }
 
 function isPublicLoginWebPath(pathname: string): boolean {
-  return pathname.startsWith("/assets/") || PUBLIC_LOGIN_WEB_PATHS.has(pathname);
+  return pathname.startsWith("/assets/")
+    || PUBLIC_LOGIN_WEB_PATHS.has(pathname)
+    || isOAuthProtectedResourceMetadataPath(pathname);
 }
 
 function readRequestPathname(url: string): string {

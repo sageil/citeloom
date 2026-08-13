@@ -1,4 +1,4 @@
-import type { AuthenticatedPrincipal } from "./model.js";
+import type { AuthorizationPrincipal } from "./model.js";
 
 export class WorkspaceAuthorizationError extends Error {
   public constructor(message: string = "Workspace administrator access is required.") {
@@ -15,7 +15,7 @@ export class GlobalAuthorizationError extends Error {
 }
 
 export function canAdministerWorkspace(
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   workspaceId: string,
 ): boolean {
   if (principal.dataScope === "all") {
@@ -28,7 +28,7 @@ export function canAdministerWorkspace(
 }
 
 export function requireWorkspaceAdministrator(
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   workspaceId: string,
 ): void {
   if (!canAdministerWorkspace(principal, workspaceId)) {
@@ -39,7 +39,7 @@ export function requireWorkspaceAdministrator(
 }
 
 export function requireGlobalAdministrator(
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
 ): void {
   if (principal.globalRole !== "global_admin") {
     throw new GlobalAuthorizationError();

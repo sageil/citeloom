@@ -2,7 +2,10 @@ import type { InferUIMessageChunk } from "ai";
 
 import type { CiteLoomUIMessage } from "../answers/stream.js";
 import type { ApplicationStateRevisionSnapshot } from "../app/application-state-revisions.js";
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type {
+  AuthenticatedPrincipal,
+  AuthorizationPrincipal,
+} from "../auth/model.js";
 import type { ChatMessageRequest } from "../chat/pipeline.js";
 import type {
   ChatConversation,
@@ -176,12 +179,12 @@ export interface RuntimeResearchServices {
     id: string,
   ) => Promise<ResearchThread | null>;
   searchSources: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     request: SourceDiscoveryRequest,
     abortSignal: AbortSignal,
   ) => Promise<SourceDiscoveryResponse>;
   streamAnswer: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     request: QuestionRequest,
     abortSignal: AbortSignal,
   ) => ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>>;

@@ -116,6 +116,11 @@ import {
   readSecurityWebServices,
   registerSecurityRoutes,
 } from "./security-routes.js";
+import {
+  readOAuthSecurityWebServices,
+  registerOAuthSecurityRoutes,
+} from "./oauth-security-routes.js";
+import { registerOAuthProtectedResourceMetadata } from "./oauth-authentication.js";
 
 export type {
   ApplicationStateRevisionSignal,
@@ -315,6 +320,14 @@ export async function buildWebServer(
     webConfig,
   });
 
+  const oauthSecurityServices = readOAuthSecurityWebServices(services);
+  if (oauthSecurityServices !== null) {
+    registerOAuthProtectedResourceMetadata(server, {
+      publicOrigin: webConfig.publicOrigin,
+      services: oauthSecurityServices,
+    });
+  }
+
   server.get("/api/dashboard", async (request): Promise<DashboardResponse> => {
     const principal = requireRequestPrincipal(requestPrincipals, request);
     return services.run(async (runtime) => {
@@ -365,6 +378,14 @@ export async function buildWebServer(
     registerSecurityRoutes(server, {
       requestPrincipals,
       services: securityServices,
+    });
+  }
+
+  if (oauthSecurityServices !== null) {
+    registerOAuthSecurityRoutes(server, {
+      publicOrigin: webConfig.publicOrigin,
+      requestPrincipals,
+      services: oauthSecurityServices,
     });
   }
 
