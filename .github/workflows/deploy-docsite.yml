@@ -1,0 +1,52 @@
+name: Deploy CiteLoom documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-docsite.yml"
+      - "docs/**"
+      - "docsite/**"
+      - "deployments/examples/seaweedfs-caddy/README.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Build and upload Astro site
+        uses: withastro/action@v6
+        with:
+          path: ./docsite
+          node-version: 26
+          package-manager: pnpm@11
+
+  deploy:
+    name: Deploy GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

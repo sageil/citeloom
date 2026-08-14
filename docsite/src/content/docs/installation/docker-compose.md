@@ -1,0 +1,96 @@
+---
+title: Required Docker Compose stack
+description: Install the smallest complete CiteLoom stack from published container images.
+---
+
+This guide installs only the components required by the supplied CiteLoom deployment.
+SeaweedFS and Logto are not part of this procedure.
+
+## Prerequisites
+
+- Docker Engine or Docker Desktop with the Docker Compose plugin.
+- Persistent host storage for PostgreSQL and source documents.
+- A separately operated model endpoint that CiteLoom can reach after startup.
+
+## 1. Prepare the repository
+
+```bash
+git clone https://github.com/sageil/citeloom.git
+cd citeloom
+cp .env.example .env
+chmod 600 .env
+```
+
+Choose the first administrator credentials and one exact published CiteLoom release.
+The image tag and release identifier should be the same semantic version.
+
+```dotenv
+CITELOOM_ADMIN_USERNAME=admin
+CITELOOM_ADMIN_PASSWORD='replace-with-a-private-passphrase'
+CITELOOM_IMAGE_TAG=1.0.0
+CITELOOM_RELEASE=1.0.0
+```
+
+The initial password must contain between 15 and 1,024 characters.
+Migration runs continue to require both administrator variables, but an existing database keeps its stored users and password hashes unchanged.
+
+## 2. Choose persistent paths
+
+The Compose defaults keep PostgreSQL under `./data/citeloomdb` and source files under `./documents/blobs`.
+Set absolute paths before the first start when the data belongs elsewhere.
+
+```dotenv
+CITELOOM_POSTGRES_DATA_DIRECTORY=/srv/citeloom/postgres
+CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY=/srv/citeloom/documents/blobs
+```
+
+Back up PostgreSQL and source content together because database records refer to the stored source bytes.
+
+## 3. Start the stack
+
+```bash
+docker compose --env-file .env -f compose.dockerhub.yml pull
+docker compose --env-file .env -f compose.dockerhub.yml up -d --wait
+```
+
+The migration service creates or updates the schema before the application services start.
+When Compose reports the services healthy, open `https://localhost:3443` and sign in with the administrator account.
+
+## 4. Trust local HTTPS
+
+The supplied Caddy service creates a private certificate authority for local HTTPS.
+Its public root certificate is stored at `data/caddy/caddy/pki/authorities/local/root.crt`.
+Keep the rest of `data/caddy` private because it contains the local certificate-authority keys.
+
+## 5. Configure model routes
+
+Open Settings and configure provider connections before ingesting documents.
+Ask, Chat, the Indexing model, and the Embedding model require routes.
+Query Expansion requires a route only when its expansion count is greater than zero.
+Search ranking, Speech input, and Spoken answers are optional.
+
+Use the [provider-routing guide](../../configuration/providers/) to choose local, remote, or hybrid inference.
+
+## 6. Verify the installation
+
+```bash
+docker compose --env-file .env -f compose.dockerhub.yml config --quiet
+docker compose --env-file .env -f compose.dockerhub.yml run --rm --no-deps web node dist/cli/index.js doctor
+docker compose --env-file .env -f compose.dockerhub.yml ps
+```
+
+Then verify these user-visible outcomes:
+
+- The administrator can sign in over HTTPS.
+- Settings can verify each required provider and exact model identifier.
+- A representative document reaches Ready state.
+- Find Sources returns evidence from that document.
+- Ask returns an answer whose citations open the expected evidence.
+
+## Stop without deleting data
+
+```bash
+docker compose --env-file .env -f compose.dockerhub.yml down
+```
+
+The [complete deployment reference](../../reference/deployment/) describes source builds, service scaling, production proxy settings, and recovery behavior.

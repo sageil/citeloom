@@ -53,6 +53,8 @@ Always inspect the linked evidence before relying on an important answer.
 
 ## Documentation
 
+Read the published [CiteLoom installation and configuration guides](https://sammyageil.com/citeloom/) or choose a repository guide below.
+
 Choose the guide that matches the work you need to do.
 
 | Goal | Guide |

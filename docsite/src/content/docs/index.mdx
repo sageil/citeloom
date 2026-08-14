@@ -1,0 +1,71 @@
+---
+title: CiteLoom
+description: Domain-agnostic retrieval-augmented generation with evidence you can inspect.
+template: splash
+hero:
+  tagline: Domain-agnostic RAG for private document libraries, grounded answers, and evidence you can inspect.
+  actions:
+    - text: Install with Docker Compose
+      link: /citeloom/installation/docker-compose/
+      icon: right-arrow
+      variant: primary
+    - text: Connect an MCP client
+      link: /citeloom/configuration/mcp/
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import citeLoomAsk from '../../assets/citeloom-ask.png';
+
+CiteLoom turns mixed document collections into searchable evidence and cited answers without assuming a legal, medical, academic, or other domain.
+Workspaces, source libraries, retrieval settings, and model routes let one installation serve different knowledge domains while keeping authorization local to CiteLoom.
+
+<div class="app-shot">
+  <Image src={citeLoomAsk} alt="The CiteLoom Ask workspace, with research controls, a question field, and a panel reserved for cited sources." />
+</div>
+
+## Put each model where it belongs
+
+<CardGrid>
+  <Card title="Local models" icon="seti:lock">
+    Keep inference on infrastructure you control when document privacy, predictable data residency, or offline operation matters most.
+    CiteLoom supports local endpoints such as Ollama and other compatible services.
+  </Card>
+  <Card title="Remote providers" icon="seti:cloud">
+    Use managed models when you need broader model choice, elastic capacity, or a capability your local hardware does not provide.
+    CiteLoom sends content only to the provider routes you configure for each feature.
+  </Card>
+  <Card title="A deliberate mix" icon="seti:settings">
+    Keep embeddings and document processing local while routing answer generation, ranking, speech, or visual document work to selected remote providers.
+    Each feature has its own route, model, limits, and credentials.
+  </Card>
+</CardGrid>
+
+## Why use CiteLoom
+
+<CardGrid>
+  <Card title="Answers stay tied to evidence" icon="document">
+    Ask and Chat preserve citations to the exact source versions used for a saved answer.
+    You can inspect cited text, tables, images, and highlighted source passages.
+  </Card>
+  <Card title="Search is useful without generation" icon="magnifier">
+    Find exact keyword matches or related material without asking a language model to write an answer.
+    Retrieval can be keyword, semantic, or hybrid.
+  </Card>
+  <Card title="Infrastructure is composable" icon="setting">
+    The required Compose stack is usable on its own.
+    Add SeaweedFS for S3-compatible object storage or Logto for application-wide OAuth only when the deployment needs them.
+  </Card>
+  <Card title="MCP is built in" icon="puzzle">
+    Connect interactive clients through OAuth or unattended clients through a revocable, workspace-bound API key.
+    Both methods use the same CiteLoom authorization and retrieval services.
+  </Card>
+</CardGrid>
+
+## Choose a path
+
+- Start with the [required Docker Compose stack](/citeloom/installation/docker-compose/) for the smallest complete installation.
+- Review the [component map](/citeloom/installation/components/) before adding optional infrastructure.
+- Configure [local, remote, or hybrid model routes](/citeloom/configuration/providers/) after the first sign-in.
+- Follow the [MCP client guide](/citeloom/configuration/mcp/) for complete OAuth and API-key examples.
