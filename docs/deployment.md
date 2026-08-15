@@ -266,6 +266,7 @@ Remembered sessions expire after 7 days of inactivity or 30 days in total.
 Administrator-created setup and password-reset links expire after 24 hours and are consumed when the user sets a password.
 The database-owned Public origins list contains the origins that can make state-changing browser requests.
 The first entry is the canonical origin for OAuth and MCP URLs.
+When OAuth is active, the browser moves from another listed origin to the canonical origin before sign-in.
 
 Workspace members can use document, ingestion, reindexing, search, and research APIs.
 Workspace administrators can also manage membership, settings, and diagnostics.

@@ -319,6 +319,7 @@ For this guide, the value is:
 
 CiteLoom derives the API resource, MCP resource, callback URI, and post-logout URI from the first origin.
 CiteLoom accepts state-changing browser requests from every origin in the list.
+When OAuth is active, CiteLoom moves browser sessions from another listed origin to the first origin before sign-in.
 You do not enter those four derived values in the OAuth form.
 
 ### 7. Stage OAuth in CiteLoom
