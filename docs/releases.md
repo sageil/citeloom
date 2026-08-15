@@ -1,8 +1,8 @@
 # Release notes
 
-## v0.3.5
+## v1.0.0
 
-CiteLoom 0.3.5 adds optional S3-compatible object storage for original source documents, including a bundled SeaweedFS deployment option.
+CiteLoom 1.0.0 adds optional S3-compatible object storage for original source documents, including a bundled SeaweedFS deployment option.
 Filesystem storage remains supported, and administrators can test a target and run a verified background migration from Settings > Object storage.
 
 Object storage keeps source bytes independent from application containers and lets operators use self-hosted infrastructure or another S3-compatible service.
