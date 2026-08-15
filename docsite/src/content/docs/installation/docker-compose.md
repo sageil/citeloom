@@ -26,8 +26,8 @@ The image tag and release identifier should be the same semantic version.
 ```dotenv
 CITELOOM_ADMIN_USERNAME=admin
 CITELOOM_ADMIN_PASSWORD='replace-with-a-private-passphrase'
-CITELOOM_IMAGE_TAG=1.0.0
-CITELOOM_RELEASE=1.0.0
+CITELOOM_IMAGE_TAG=1.1.0
+CITELOOM_RELEASE=1.1.0
 ```
 
 The initial password must contain between 15 and 1,024 characters.

@@ -32,7 +32,7 @@ import { configureTlsTrust } from "./tls-trust.js";
 
 const MCP_SMOKE_CLIENT_INFO = {
   name: "citeloom-mcp-smoke-client",
-  version: "1.0.0",
+  version: "1.1.0",
 } as const;
 
 export interface McpSmokeReport {

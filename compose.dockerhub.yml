@@ -4,11 +4,11 @@
 
 name: citeloom
 
-x-citeloom-image: &citeloom-image sageil/citeloom:${CITELOOM_IMAGE_TAG:-1.0.0}
+x-citeloom-image: &citeloom-image sageil/citeloom:${CITELOOM_IMAGE_TAG:-1.1.0}
 
 services:
   postgres:
-    image: sageil/citeloom-postgres:${CITELOOM_IMAGE_TAG:-1.0.0}
+    image: sageil/citeloom-postgres:${CITELOOM_IMAGE_TAG:-1.1.0}
     command: ["postgres", "-c", "shared_preload_libraries=pg_textsearch"]
     restart: unless-stopped
     environment:
@@ -26,7 +26,7 @@ services:
       retries: 12
 
   docling:
-    image: sageil/citeloom-docling:${CITELOOM_IMAGE_TAG:-1.0.0}
+    image: sageil/citeloom-docling:${CITELOOM_IMAGE_TAG:-1.1.0}
     restart: unless-stopped
     environment:
       CITELOOM_DOCLING_CHECKPOINT_DIRECTORY: /app/docling-checkpoints
@@ -46,7 +46,7 @@ services:
       start_period: 60s
 
   docling-replica:
-    image: sageil/citeloom-docling:${CITELOOM_IMAGE_TAG:-1.0.0}
+    image: sageil/citeloom-docling:${CITELOOM_IMAGE_TAG:-1.1.0}
     profiles: ["docling-scale"]
     restart: unless-stopped
     environment:
@@ -67,7 +67,7 @@ services:
       start_period: 60s
 
   hhem:
-    image: sageil/citeloom-hhem:${CITELOOM_IMAGE_TAG:-1.0.0}
+    image: sageil/citeloom-hhem:${CITELOOM_IMAGE_TAG:-1.1.0}
     restart: unless-stopped
     init: true
     environment:
@@ -105,7 +105,7 @@ services:
     image: *citeloom-image
     command: ["node", "dist/cli/index.js", "worker"]
     environment:
-      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-1.0.0}
+      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-1.1.0}
       DATABASE_URL: postgresql://citeloom:citeloom@postgres:5432/citeloom
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -131,7 +131,7 @@ services:
     image: *citeloom-image
     command: ["node", "dist/web-server.js"]
     environment:
-      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-1.0.0}
+      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-1.1.0}
       CITELOOM_UPLOAD_DIRECTORY: /app/documents/uploads
       CITELOOM_WEB_HOST: 0.0.0.0
       CITELOOM_WEB_PORT: "3000"

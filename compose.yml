@@ -137,7 +137,7 @@ services:
     build: *app-build
     command: ["node", "dist/cli/index.js", "worker"]
     environment:
-      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-1.0.0}
+      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-1.1.0}
       DATABASE_URL: postgresql://citeloom:citeloom@postgres:5432/citeloom
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -163,7 +163,7 @@ services:
     build: *app-build
     command: ["node", "dist/web-server.js"]
     environment:
-      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-1.0.0}
+      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-1.1.0}
       CITELOOM_UPLOAD_DIRECTORY: /app/documents/uploads
       CITELOOM_WEB_HOST: 0.0.0.0
       CITELOOM_WEB_PORT: "3000"
