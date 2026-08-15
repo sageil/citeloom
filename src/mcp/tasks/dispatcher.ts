@@ -4,7 +4,7 @@ import type { WebServices } from "../../api/services.js";
 import {
   MCP_ANSWER_SCOPE,
   MCP_API_KEY_TASK_ISSUER,
-} from "../contract.js";
+} from "../mcp.js";
 import { executeMcpAnswerTask } from "./answer.js";
 import type {
   McpTaskOwner,
@@ -146,12 +146,12 @@ export class McpTaskDispatcher {
     }, this.reconciliationIntervalMs);
     heartbeat.unref();
     try {
-      const principal = task.issuer === MCP_API_KEY_TASK_ISSUER
-        ? await this.resolveApiKeyPrincipal(task.clientId, task.workspaceId)
-        : await this.resolveOAuthPrincipal(task.issuer, task.subject, task.workspaceId);
+      const principals = task.issuer === MCP_API_KEY_TASK_ISSUER
+        ? await this.resolveApiKeyPrincipals(task.clientId)
+        : await this.resolveOAuthPrincipals(task.issuer, task.subject);
       const result = await executeMcpAnswerTask(
         this.options.services,
-        principal,
+        principals,
         task.request,
         active.abortController.signal,
       );
@@ -176,23 +176,20 @@ export class McpTaskDispatcher {
     }
   }
 
-  private async resolveApiKeyPrincipal(
+  private async resolveApiKeyPrincipals(
     apiKeyId: string,
-    workspaceId: string,
-  ): Promise<import("../../auth/model.js").AuthorizationPrincipal> {
+  ): Promise<import("../../auth/model.js").AuthorizationPrincipal[]> {
     const access = await this.options.services.resolveMcpApiKeyPrincipal(
       apiKeyId,
-      workspaceId,
       [MCP_ANSWER_SCOPE],
     );
-    return access.principal;
+    return access.principals;
   }
 
-  private async resolveOAuthPrincipal(
+  private async resolveOAuthPrincipals(
     issuer: string,
     subject: string,
-    workspaceId: string,
-  ): Promise<import("../../auth/model.js").AuthorizationPrincipal> {
+  ): Promise<import("../../auth/model.js").AuthorizationPrincipal[]> {
     const authentication = await this.options.services
       .readAuthenticationSettings(this.options.publicOrigin);
     if (
@@ -204,9 +201,8 @@ export class McpTaskDispatcher {
     ) {
       throw new Error("OAuth authentication is no longer active.");
     }
-    return this.options.services.resolveOAuthPrincipal(
+    return this.options.services.resolveOAuthPrincipals(
       { issuer, scopes: [MCP_ANSWER_SCOPE], subject },
-      workspaceId,
     );
   }
 

@@ -571,14 +571,13 @@ describe("application authentication mode", () => {
       userId: principal.userId,
       workspaceId: principal.workspaceId,
     });
-    await expect(principalStore.resolvePrincipalByWorkspaceName(
-      token,
-      `  ${principal.workspaceName.toUpperCase()}  `,
-    )).resolves.toMatchObject({
-      userId: principal.userId,
-      workspaceId: principal.workspaceId,
-      workspaceName: principal.workspaceName,
-    });
+    await expect(principalStore.resolvePrincipals(token)).resolves.toEqual([
+      expect.objectContaining({
+        userId: principal.userId,
+        workspaceId: principal.workspaceId,
+        workspaceName: principal.workspaceName,
+      }),
+    ]);
     const disabled = await store.disable(
       oauthPrincipal,
       activated.version,
@@ -965,7 +964,7 @@ describe("authentication persistence", () => {
       .resolves.toEqual([{ userId: account.userId }]);
   });
 
-  it("binds MCP API keys to a user and resolves each selected workspace", async () => {
+  it("binds MCP API keys to a user and resolves all available workspaces", async () => {
     await applyDatabaseBootstrap(session.database, administratorEnvironment());
     const authentication = new AuthenticationStore(session.database);
     const administrator = await authenticateAdministrator(authentication);
@@ -1034,23 +1033,18 @@ describe("authentication persistence", () => {
       }]);
     const access = await apiKeys.authenticate(
       `bEaReR ${created.apiKey}`,
-      administrator.principal.workspaceName,
       ["citeloom.search"],
     );
-    expect(access.principal).toMatchObject({
-      userId: account.userId,
-      workspaceId: administrator.principal.workspaceId,
-    });
-    await expect(apiKeys.authenticate(
-      `Bearer ${created.apiKey}`,
-      secondWorkspace.name,
-      ["citeloom.search"],
-    )).resolves.toMatchObject({
-      principal: {
+    expect(access.principals).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        userId: account.userId,
+        workspaceId: administrator.principal.workspaceId,
+      }),
+      expect.objectContaining({
         userId: account.userId,
         workspaceId: secondWorkspace.id,
-      },
-    });
+      }),
+    ]));
     await authentication.changeWorkspaceMemberAccess(
       administrator.principal,
       secondWorkspace.id,
@@ -1059,12 +1053,14 @@ describe("authentication persistence", () => {
     );
     await expect(apiKeys.authenticate(
       `Bearer ${created.apiKey}`,
-      secondWorkspace.name,
       ["citeloom.search"],
-    )).rejects.toBeInstanceOf(McpApiKeyRejectedError);
+    )).resolves.toMatchObject({
+      principals: [expect.objectContaining({
+        workspaceId: administrator.principal.workspaceId,
+      })],
+    });
     await expect(apiKeys.authenticate(
       `Bearer ${created.apiKey}`,
-      administrator.principal.workspaceName,
       ["citeloom.answer"],
     )).rejects.toBeInstanceOf(McpApiKeyInsufficientScopeError);
     await expect(apiKeys.list(
@@ -1081,7 +1077,6 @@ describe("authentication persistence", () => {
     );
     await expect(apiKeys.authenticate(
       `Bearer ${created.apiKey}`,
-      administrator.principal.workspaceName,
       ["citeloom.search"],
     )).rejects.toBeInstanceOf(McpApiKeyRejectedError);
   });

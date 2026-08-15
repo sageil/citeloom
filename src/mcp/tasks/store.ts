@@ -42,7 +42,6 @@ const mcpTaskRowSchema = z.object({
   subject: z.string().min(1),
   updatedAt: z.date(),
   userId: z.uuid(),
-  workspaceId: z.uuid(),
 }).strict();
 
 export class McpTaskStore {
@@ -74,7 +73,6 @@ export class McpTaskStore {
         subject: owner.subject,
         updatedAt: now,
         userId: owner.userId,
-        workspaceId: owner.workspaceId,
       })
       .returning();
     return readMcpTaskRow(rows[0]);
@@ -91,8 +89,8 @@ export class McpTaskStore {
         eq(mcpTasks.id, taskId),
         eq(mcpTasks.issuer, owner.issuer),
         eq(mcpTasks.subject, owner.subject),
+        eq(mcpTasks.clientId, owner.clientId),
         eq(mcpTasks.userId, owner.userId),
-        eq(mcpTasks.workspaceId, owner.workspaceId),
       ))
       .limit(1);
     return rows[0] === undefined ? null : readMcpTaskRow(rows[0]);
@@ -329,8 +327,8 @@ function buildOwnerConditions(owner: McpTaskOwner, taskId: string) {
     eq(mcpTasks.id, taskId),
     eq(mcpTasks.issuer, owner.issuer),
     eq(mcpTasks.subject, owner.subject),
+    eq(mcpTasks.clientId, owner.clientId),
     eq(mcpTasks.userId, owner.userId),
-    eq(mcpTasks.workspaceId, owner.workspaceId),
   ];
 }
 

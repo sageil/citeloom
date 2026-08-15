@@ -242,7 +242,6 @@ export interface WebServices {
   authenticate: (input: LoginInput) => Promise<AuthenticationSession>;
   authenticateMcpApiKey: (
     authorizationHeader: string | string[] | undefined,
-    workspaceName: string,
     requiredScopes: readonly string[],
   ) => Promise<McpApiKeyAccess>;
   completePasswordSetup: (
@@ -358,13 +357,11 @@ export interface WebServices {
     token: OAuthPrincipalIdentity,
     workspaceId: string,
   ) => Promise<OAuthPrincipal>;
-  resolveOAuthPrincipalByWorkspaceName: (
+  resolveOAuthPrincipals: (
     token: OAuthPrincipalIdentity,
-    workspaceName: string,
-  ) => Promise<OAuthPrincipal>;
+  ) => Promise<OAuthPrincipal[]>;
   resolveMcpApiKeyPrincipal: (
     apiKeyId: string,
-    workspaceId: string,
     requiredScopes: readonly string[],
   ) => Promise<McpApiKeyAccess>;
   readSettings: () => Promise<EffectiveApplicationSettings>;
@@ -887,14 +884,12 @@ export function createWebServices(
     }),
     authenticateMcpApiKey: async (
       authorizationHeader,
-      workspaceName,
       requiredScopes,
     ) => {
       return manager.withRuntime(async (runtime) => {
         const apiKeys = new McpApiKeyStore(runtime.database);
         return apiKeys.authenticate(
           authorizationHeader,
-          workspaceName,
           requiredScopes,
         );
       });
@@ -1283,20 +1278,19 @@ export function createWebServices(
         return principals.resolvePrincipal(token, workspaceId);
       });
     },
-    resolveOAuthPrincipalByWorkspaceName: async (token, workspaceName) => {
+    resolveOAuthPrincipals: async (token) => {
       return manager.withRuntime(async (runtime) => {
         const principals = new OAuthPrincipalStore(runtime.database);
-        return principals.resolvePrincipalByWorkspaceName(token, workspaceName);
+        return principals.resolvePrincipals(token);
       });
     },
     resolveMcpApiKeyPrincipal: async (
       apiKeyId,
-      workspaceId,
       requiredScopes,
     ) => {
       return manager.withRuntime(async (runtime) => {
         const apiKeys = new McpApiKeyStore(runtime.database);
-        return apiKeys.resolveForTask(apiKeyId, workspaceId, requiredScopes);
+        return apiKeys.resolveForTask(apiKeyId, requiredScopes);
       });
     },
     switchWorkspace: async (principal, workspaceId) => {
@@ -1829,16 +1823,26 @@ function createRuntimeWebServices(
       }
       return resumeIngestionWithRuntime(runtime, sourceFile, actor);
     },
-    searchSources: async (principal, request, abortSignal) => {
+    searchSources: async (
+      principal,
+      request,
+      abortSignal,
+      workspaceIds = readWorkspaceScopes(principal),
+    ) => {
       return searchIndexedSourcesWithRuntime(
         runtime,
         request,
         reportWebProgress,
         abortSignal,
-        readWorkspaceScope(principal),
+        workspaceIds,
       );
     },
-    streamAnswer: (principal, request, abortSignal) => {
+    streamAnswer: (
+      principal,
+      request,
+      abortSignal,
+      workspaceIds = readWorkspaceScopes(principal),
+    ) => {
       return streamIndexedDocumentAnswerWithRuntime(
         runtime,
         request.question,
@@ -1846,7 +1850,7 @@ function createRuntimeWebServices(
         request.scope,
         request.threadId,
         abortSignal,
-        readWorkspaceScope(principal),
+        workspaceIds,
       );
     },
     transcribeAudio: async (audio, abortSignal) => {
@@ -1890,6 +1894,13 @@ function readWorkspaceScope(principal: AuthorizationPrincipal): string | null {
   return principal.dataScope === "all"
     ? null
     : principal.workspaceId;
+}
+
+function readWorkspaceScopes(
+  principal: AuthorizationPrincipal,
+): readonly string[] | null {
+  const workspaceId = readWorkspaceScope(principal);
+  return workspaceId === null ? null : [workspaceId];
 }
 
 function readMatchingCatalogAuthorizationWorkspaceId(

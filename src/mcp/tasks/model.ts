@@ -3,27 +3,25 @@ import { z } from "zod";
 
 import {
   streamedAnswerSchema,
-  type StreamedAnswer,
 } from "../../answers/stream.js";
 import { queryScopeSchema } from "../../domain/query-scope.js";
 
-export const MCP_TASK_EXTENSION_ID = "io.modelcontextprotocol/tasks";
+export const MCP_ANSWER_POLL_INTERVAL_MS = 1_000;
 
 export const mcpAnswerTaskRequestSchema = z.object({
   question: z.string().trim().min(1).max(8_000).describe(
-    "Question CiteLoom should answer from authorized documents in the selected workspace.",
+    "Question CiteLoom should answer from authorized documents in every available workspace.",
   ),
   scope: queryScopeSchema,
   threadTitle: z.string().trim().min(1).max(500).describe(
     "Title for the durable CiteLoom research thread that will store this cited answer.",
   ),
 }).strict().describe(
-  "A durable cited-answer request executed through the MCP Tasks extension.",
+  "A durable request for a cited answer from authorized CiteLoom documents.",
 );
 
 export const mcpTaskStatusSchema = z.enum([
   "working",
-  "input_required",
   "completed",
   "cancelled",
   "failed",
@@ -44,12 +42,13 @@ const mcpResourceLinkContentSchema = z.object({
 }).strict();
 
 export const mcpAnswerTaskResultSchema = z.object({
+  answer: streamedAnswerSchema,
   content: z.array(z.union([
     mcpTextContentSchema,
     mcpResourceLinkContentSchema,
   ])),
   resultType: z.literal("complete"),
-  structuredContent: streamedAnswerSchema,
+  workspaceIds: z.array(z.uuid()).min(1),
 }).strict();
 
 export const mcpTaskErrorSchema = z.object({
@@ -57,54 +56,56 @@ export const mcpTaskErrorSchema = z.object({
   message: z.string().min(1),
 }).strict();
 
-const mcpTaskBaseSchema = z.object({
+const mcpAnswerStatusBaseSchema = z.object({
   createdAt: z.iso.datetime({ offset: true }),
+  expiresAt: z.iso.datetime({ offset: true }),
   lastUpdatedAt: z.iso.datetime({ offset: true }),
+  pollIntervalMs: z.number().int().positive(),
   statusMessage: z.string().min(1).optional(),
   taskId: z.uuid(),
-  ttlMs: z.number().int().positive(),
 }).strict();
 
-export const mcpCreateTaskResultSchema = mcpTaskBaseSchema.extend({
-  resultType: z.literal("task"),
+export const mcpAnswerHandleSchema = mcpAnswerStatusBaseSchema.extend({
   status: z.literal("working"),
 }).strict();
 
-const mcpWorkingTaskSchema = mcpTaskBaseSchema.extend({
-  resultType: z.literal("complete"),
+const mcpWorkingAnswerStatusSchema = mcpAnswerStatusBaseSchema.extend({
   status: z.literal("working"),
 }).strict();
 
-const mcpCompletedTaskSchema = mcpTaskBaseSchema.extend({
-  result: mcpAnswerTaskResultSchema,
-  resultType: z.literal("complete"),
+const mcpCompletedAnswerStatusSchema = mcpAnswerStatusBaseSchema.extend({
+  answer: streamedAnswerSchema,
+  resources: z.array(mcpResourceLinkContentSchema),
   status: z.literal("completed"),
+  workspaceIds: z.array(z.uuid()).min(1),
 }).strict();
 
-const mcpCancelledTaskSchema = mcpTaskBaseSchema.extend({
-  resultType: z.literal("complete"),
+const mcpCancelledAnswerStatusSchema = mcpAnswerStatusBaseSchema.extend({
   status: z.literal("cancelled"),
 }).strict();
 
-const mcpFailedTaskSchema = mcpTaskBaseSchema.extend({
+const mcpFailedAnswerStatusSchema = mcpAnswerStatusBaseSchema.extend({
   error: mcpTaskErrorSchema,
-  resultType: z.literal("complete"),
   status: z.literal("failed"),
 }).strict();
 
-export const mcpDetailedTaskSchema = z.discriminatedUnion("status", [
-  mcpWorkingTaskSchema,
-  mcpCompletedTaskSchema,
-  mcpCancelledTaskSchema,
-  mcpFailedTaskSchema,
+export const mcpAnswerStatusSchema = z.discriminatedUnion("status", [
+  mcpWorkingAnswerStatusSchema,
+  mcpCompletedAnswerStatusSchema,
+  mcpCancelledAnswerStatusSchema,
+  mcpFailedAnswerStatusSchema,
 ]);
+
+export const mcpAnswerCancellationSchema = z.object({
+  cancellationRequested: z.literal(true),
+  taskId: z.uuid(),
+}).strict();
 
 export interface McpTaskOwner {
   clientId: string;
   issuer: string;
   subject: string;
   userId: string;
-  workspaceId: string;
 }
 
 export type McpAnswerTaskRequest = z.output<
@@ -133,7 +134,6 @@ export interface McpTaskRecord {
   subject: string;
   updatedAt: Date;
   userId: string;
-  workspaceId: string;
 }
 
 export interface McpTaskServices {
@@ -176,30 +176,35 @@ export interface McpTaskServices {
   ): Promise<boolean>;
 }
 
-export type McpDetailedTask = z.output<typeof mcpDetailedTaskSchema>;
-export type McpCreateTaskResult = z.output<typeof mcpCreateTaskResultSchema>;
+export type McpAnswerHandle = z.output<typeof mcpAnswerHandleSchema>;
+export type McpAnswerStatus = z.output<typeof mcpAnswerStatusSchema>;
+export type McpAnswerCancellation = z.output<
+  typeof mcpAnswerCancellationSchema
+>;
 
 export function buildMcpAnswerTaskResult(
-  answer: StreamedAnswer,
+  answer: z.output<typeof streamedAnswerSchema>,
   content: ContentBlock[],
+  workspaceIds: readonly string[],
 ): McpAnswerTaskResult {
   return mcpAnswerTaskResultSchema.parse({
+    answer,
     content,
     resultType: "complete",
-    structuredContent: answer,
+    workspaceIds,
   });
 }
 
-export function buildCreateTaskResult(
+export function buildMcpAnswerHandle(
   task: McpTaskRecord,
-): McpCreateTaskResult {
-  const result: McpCreateTaskResult = {
+): McpAnswerHandle {
+  const result: McpAnswerHandle = {
     createdAt: task.createdAt.toISOString(),
+    expiresAt: task.expiresAt.toISOString(),
     lastUpdatedAt: task.updatedAt.toISOString(),
-    resultType: "task",
+    pollIntervalMs: MCP_ANSWER_POLL_INTERVAL_MS,
     status: "working",
     taskId: task.id,
-    ttlMs: readTaskTtlMs(task),
   };
   if (task.statusMessage !== null) {
     result.statusMessage = task.statusMessage;
@@ -207,52 +212,71 @@ export function buildCreateTaskResult(
   return result;
 }
 
-export function buildDetailedTask(task: McpTaskRecord): McpDetailedTask {
-  const base = {
+export function buildMcpAnswerStatus(
+  task: McpTaskRecord,
+  availableWorkspaceIds: ReadonlySet<string>,
+): McpAnswerStatus {
+  const base: {
+    createdAt: string;
+    expiresAt: string;
+    lastUpdatedAt: string;
+    pollIntervalMs: number;
+    statusMessage?: string;
+    taskId: string;
+  } = {
     createdAt: task.createdAt.toISOString(),
+    expiresAt: task.expiresAt.toISOString(),
     lastUpdatedAt: task.updatedAt.toISOString(),
-    resultType: "complete" as const,
+    pollIntervalMs: MCP_ANSWER_POLL_INTERVAL_MS,
     taskId: task.id,
-    ttlMs: readTaskTtlMs(task),
   };
-  const statusMessage = task.statusMessage === null
-    ? {}
-    : { statusMessage: task.statusMessage };
+  if (task.statusMessage !== null) {
+    base.statusMessage = task.statusMessage;
+  }
   if (task.status === "working") {
-    return { ...base, ...statusMessage, status: "working" };
+    return { ...base, status: "working" };
   }
   if (task.status === "completed") {
     if (task.result === null) {
       throw new Error("A completed MCP task is missing its result.");
     }
+    const unavailableWorkspace = task.result.workspaceIds.some((workspaceId) => {
+      return !availableWorkspaceIds.has(workspaceId);
+    });
+    if (unavailableWorkspace) {
+      return {
+        ...base,
+        error: {
+          code: -32_003,
+          message: "This answer used a workspace that is no longer available to this user.",
+        },
+        status: "failed",
+      };
+    }
+    const resources: z.output<typeof mcpResourceLinkContentSchema>[] = [];
+    for (const content of task.result.content) {
+      if (
+        content.type === "resource_link"
+      ) {
+        resources.push(content);
+      }
+    }
     return {
       ...base,
-      ...statusMessage,
-      result: task.result,
+      answer: task.result.answer,
+      resources,
       status: "completed",
+      workspaceIds: task.result.workspaceIds,
     };
   }
   if (task.status === "cancelled") {
-    return { ...base, ...statusMessage, status: "cancelled" };
+    return { ...base, status: "cancelled" };
   }
   if (task.status === "failed") {
     if (task.error === null) {
       throw new Error("A failed MCP task is missing its JSON-RPC error.");
     }
-    return {
-      ...base,
-      ...statusMessage,
-      error: task.error,
-      status: "failed",
-    };
+    return { ...base, error: task.error, status: "failed" };
   }
-  throw new Error("CiteLoom ask-document tasks do not request client input.");
-}
-
-function readTaskTtlMs(task: McpTaskRecord): number {
-  const ttlMs = task.expiresAt.getTime() - task.createdAt.getTime();
-  if (!Number.isSafeInteger(ttlMs) || ttlMs <= 0) {
-    throw new Error("The MCP task retention period is invalid.");
-  }
-  return ttlMs;
+  throw new Error("The MCP task status is invalid.");
 }

@@ -58,7 +58,7 @@ import type {
 import type {
   SourceDiscoveryRequest,
   SourceDiscoveryResponse,
-} from "../retrieval/discovery/schema.js";
+} from "../retrieval/discovery/boundary.js";
 import type {
   QuestionRequest,
 } from "./request-boundary.js";
@@ -179,11 +179,13 @@ export interface RuntimeResearchServices {
     principal: AuthorizationPrincipal,
     request: SourceDiscoveryRequest,
     abortSignal: AbortSignal,
+    workspaceIds?: readonly string[] | null,
   ) => Promise<SourceDiscoveryResponse>;
   streamAnswer: (
     principal: AuthorizationPrincipal,
     request: QuestionRequest,
     abortSignal: AbortSignal,
+    workspaceIds?: readonly string[] | null,
   ) => ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>>;
 }
 

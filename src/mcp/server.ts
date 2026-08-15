@@ -5,13 +5,11 @@ import {
   ResourceNotFoundError,
   ResourceTemplate,
   type AuthInfo,
-  type ServerCapabilities,
+  type ContentBlock,
 } from "@modelcontextprotocol/server";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 
-import { streamedAnswerSchema } from "../answers/stream.js";
-import { decodeWorkspaceName } from "../auth/boundary.js";
 import {
   globalRoleSchema,
   workspaceRoleSchema,
@@ -33,7 +31,7 @@ import {
 import {
   sourceDiscoveryRequestSchema,
   sourceDiscoveryResponseSchema,
-} from "../retrieval/discovery/schema.js";
+} from "../retrieval/discovery/boundary.js";
 import {
   SourceDiscoveryScopeError,
   SourceDiscoveryUnavailableError,
@@ -47,6 +45,8 @@ import { applicationMetadata } from "../app/application-metadata.js";
 import {
   MCP_ANSWER_SCOPE,
   MCP_ANSWER_PROMPT,
+  MCP_ANSWER_CANCEL_TOOL,
+  MCP_ANSWER_STATUS_TOOL,
   MCP_API_KEY_TASK_ISSUER,
   MCP_ANSWER_TOOL,
   MCP_CITATION_RESOURCE_TEMPLATE,
@@ -57,8 +57,7 @@ import {
   MCP_SERVER_TITLE,
   MCP_THREAD_RESOURCE_TEMPLATE,
   MCP_WORKSPACE_CONTEXT_RESOURCE,
-  MCP_WORKSPACE_NAME_HEADER,
-} from "./contract.js";
+} from "./mcp.js";
 import {
   buildMcpAnswerPrompt,
   buildMcpSearchPrompt,
@@ -66,11 +65,14 @@ import {
 } from "./guidance.js";
 import { McpTaskDispatcher } from "./tasks/dispatcher.js";
 import {
-  MCP_TASK_EXTENSION_ID,
+  buildMcpAnswerHandle,
+  buildMcpAnswerStatus,
+  mcpAnswerCancellationSchema,
+  mcpAnswerHandleSchema,
+  mcpAnswerStatusSchema,
   mcpAnswerTaskRequestSchema,
   type McpTaskOwner,
 } from "./tasks/model.js";
-import { McpTaskProtocol } from "./tasks/protocol.js";
 
 const mcpPrincipalSchema = z.object({
   dataScope: z.enum(["all", "workspace"]),
@@ -83,25 +85,36 @@ const mcpPrincipalSchema = z.object({
   workspaceName: z.string().min(1),
 }).strict();
 
+const mcpTaskOwnerSchema = z.object({
+  clientId: z.string().min(1),
+  issuer: z.string().min(1),
+  subject: z.string().min(1),
+  userId: z.uuid(),
+}).strict();
+
+const mcpRequestContextSchema = z.object({
+  principals: z.array(mcpPrincipalSchema).min(1),
+  taskOwner: mcpTaskOwnerSchema,
+}).strict();
+
+const mcpAnswerTaskIdSchema = z.object({
+  taskId: z.uuid().describe(
+    "Durable answer task identifier returned by citeloom.ask_documents.",
+  ),
+}).strict();
+
 const mcpSearchPromptArgumentsSchema = sourceDiscoveryRequestSchema.pick({
   query: true,
 }).describe(
-  "Arguments for a source-search workflow in the selected CiteLoom workspace.",
+  "Arguments for a source-search workflow across every available CiteLoom workspace.",
 );
 
 const mcpAnswerPromptArgumentsSchema = mcpAnswerTaskRequestSchema.pick({
   question: true,
   threadTitle: true,
 }).describe(
-  "Arguments for a durable cited-answer workflow using the MCP Tasks extension.",
+  "Arguments for a durable cited-answer workflow.",
 );
-
-class McpWorkspaceSelectorError extends Error {
-  public constructor(message: string) {
-    super(message);
-    this.name = "McpWorkspaceSelectorError";
-  }
-}
 
 export interface McpRouteOptions {
   oauthAuthenticator: ApplicationOAuthRequestAuthenticator;
@@ -122,18 +135,16 @@ export function registerMcpRoutes(
     services: options.services,
     tasks: options.services.mcpTasks,
   });
-  const taskProtocol = new McpTaskProtocol({
-    dispatcher,
-    onError: reportTaskError,
-    tasks: options.services.mcpTasks,
-  });
   const handler = createMcpHandler((context) => {
-    const principal = readMcpPrincipal(context.authInfo);
+    const requestContext = readMcpRequestContext(context.authInfo);
     return createCiteLoomMcpServer(
-      principal,
+      requestContext.principals,
+      requestContext.taskOwner,
       context.authInfo?.scopes ?? [],
+      dispatcher,
       options.services,
       options.webConfig.publicOrigin,
+      reportTaskError,
     );
   }, {
     legacy: "reject",
@@ -148,8 +159,11 @@ export function registerMcpRoutes(
     await handler.close();
   });
 
-  server.get(OAUTH_MCP_RESOURCE_PATH, async (request, reply) => {
-    if (request.headers.authorization !== undefined) {
+  const sendMcpGetResponse = async (
+    authorizationHeader: string | string[] | undefined,
+    reply: FastifyReply,
+  ): Promise<unknown> => {
+    if (authorizationHeader !== undefined) {
       return reply
         .header("Allow", "POST")
         .status(405)
@@ -173,6 +187,9 @@ export function registerMcpRoutes(
         error: "invalid_token",
         error_description: "An MCP bearer credential is required.",
       });
+  };
+  server.get(OAUTH_MCP_RESOURCE_PATH, async (request, reply) => {
+    return sendMcpGetResponse(request.headers.authorization, reply);
   });
 
   server.route({
@@ -194,30 +211,16 @@ export function registerMcpRoutes(
         const access = await authenticateMcpRequest(
           options,
           request.headers.authorization,
-          request.headers[MCP_WORKSPACE_NAME_HEADER],
           requiredScopes,
         );
-        if (taskProtocol.canHandle(
-          request.headers["mcp-method"],
-          request.headers["mcp-name"],
-        )) {
-          await taskProtocol.handle({
-            acceptHeader: request.headers.accept,
-            body: request.body,
-            contentTypeHeader: request.headers["content-type"],
-            methodHeader: request.headers["mcp-method"],
-            nameHeader: request.headers["mcp-name"],
-            owner: buildMcpTaskOwner(access.principal, access.identity),
-            protocolVersionHeader: request.headers["mcp-protocol-version"],
-            reply,
-          });
-          return reply;
-        }
         const rawToken = readOAuthBearerToken(request.headers.authorization);
         const authInfo: AuthInfo = {
           clientId: access.identity.clientId,
           expiresAt: access.expiresAt,
-          extra: { principal: buildMcpPrincipalAuthData(access.principal) },
+          extra: {
+            principals: buildMcpPrincipalAuthData(access.principals),
+            taskOwner: buildMcpTaskOwner(access.principals, access.identity),
+          },
           resource: access.resource,
           scopes: access.scopes,
           token: rawToken,
@@ -252,7 +255,7 @@ interface McpRequestAccess {
     issuer: string;
     subject: string;
   };
-  principal: AuthorizationPrincipal;
+  principals: AuthorizationPrincipal[];
   resource: URL;
   scopes: string[];
 }
@@ -260,24 +263,22 @@ interface McpRequestAccess {
 async function authenticateMcpRequest(
   options: McpRouteOptions,
   authorizationHeader: string | string[] | undefined,
-  workspaceHeader: string | string[] | undefined,
   requiredScopes: readonly string[],
 ): Promise<McpRequestAccess> {
   if (hasMcpApiKeyPrefix(authorizationHeader)) {
-    const workspaceName = readMcpWorkspaceName(workspaceHeader);
     const access = await options.services.authenticateMcpApiKey(
       authorizationHeader,
-      workspaceName,
       requiredScopes,
     );
+    const principal = readFirstPrincipal(access.principals);
     return {
       expiresAt: access.expiresAt,
       identity: {
         clientId: access.apiKeyId,
         issuer: MCP_API_KEY_TASK_ISSUER,
-        subject: access.principal.userId,
+        subject: principal.userId,
       },
-      principal: access.principal,
+      principals: access.principals,
       resource: new URL(OAUTH_MCP_RESOURCE_PATH, options.webConfig.publicOrigin),
       scopes: access.scopes,
     };
@@ -289,11 +290,9 @@ async function authenticateMcpRequest(
   if (settings.mode !== "oauth" || configuration === null) {
     throw new McpApiKeyRejectedError();
   }
-  const workspaceName = readMcpWorkspaceName(workspaceHeader);
   const access = await options.oauthAuthenticator.verifyMcpAccess(
     settings,
     authorizationHeader,
-    workspaceName,
     requiredScopes,
   );
   const configuredScopes = new Set(configuration.mcpScopes);
@@ -307,45 +306,62 @@ async function authenticateMcpRequest(
       issuer: access.token.issuer,
       subject: access.token.subject,
     },
-    principal: access.principal,
+    principals: access.principals,
     resource: new URL(configuration.mcpResource),
     scopes,
   };
 }
 
 function buildMcpTaskOwner(
-  principal: AuthorizationPrincipal,
+  principals: readonly AuthorizationPrincipal[],
   token: { clientId: string; issuer: string; subject: string },
 ): McpTaskOwner {
+  const principal = readFirstPrincipal(principals);
   return {
     clientId: token.clientId,
     issuer: token.issuer,
     subject: token.subject,
     userId: principal.userId,
-    workspaceId: principal.workspaceId,
   };
 }
 
 function buildMcpPrincipalAuthData(
-  principal: AuthorizationPrincipal,
+  principals: readonly AuthorizationPrincipal[],
+): AuthorizationPrincipal[] {
+  const result: AuthorizationPrincipal[] = [];
+  for (const principal of principals) {
+    result.push({
+      dataScope: principal.dataScope,
+      displayName: principal.displayName,
+      globalRole: principal.globalRole,
+      role: principal.role,
+      userId: principal.userId,
+      username: principal.username,
+      workspaceId: principal.workspaceId,
+      workspaceName: principal.workspaceName,
+    });
+  }
+  return result;
+}
+
+function readFirstPrincipal(
+  principals: readonly AuthorizationPrincipal[],
 ): AuthorizationPrincipal {
-  return {
-    dataScope: principal.dataScope,
-    displayName: principal.displayName,
-    globalRole: principal.globalRole,
-    role: principal.role,
-    userId: principal.userId,
-    username: principal.username,
-    workspaceId: principal.workspaceId,
-    workspaceName: principal.workspaceName,
-  };
+  const principal = principals[0];
+  if (principal === undefined) {
+    throw new OAuthIdentityUnavailableError();
+  }
+  return principal;
 }
 
 function createCiteLoomMcpServer(
-  principal: AuthorizationPrincipal,
+  principals: AuthorizationPrincipal[],
+  taskOwner: McpTaskOwner,
   grantedScopes: readonly string[],
+  dispatcher: McpTaskDispatcher,
   services: WebServices,
   publicOrigin: string,
+  onError: (error: unknown) => void,
 ): McpServer {
   const scopes = new Set(grantedScopes);
   const mcp = new McpServer({
@@ -355,17 +371,21 @@ function createCiteLoomMcpServer(
     version: applicationMetadata.version,
     websiteUrl: publicOrigin,
   }, {
-    capabilities: buildMcpServerCapabilities(scopes),
+    capabilities: {
+      prompts: { listChanged: false },
+      resources: { listChanged: false },
+      tools: { listChanged: false },
+    },
     instructions: buildMcpServerInstructions(grantedScopes),
   });
   if (scopes.has(MCP_SEARCH_SCOPE)) {
-    registerSourceSearchTool(mcp, principal, services);
+    registerSourceSearchTool(mcp, principals, services, onError);
     registerSourceSearchPrompt(mcp);
   }
   if (scopes.has(MCP_ANSWER_SCOPE)) {
-    registerAnswerTool(mcp);
+    registerAnswerTools(mcp, principals, taskOwner, dispatcher, services);
     registerAnswerPrompt(mcp);
-    registerResearchResources(mcp, principal, services);
+    registerResearchResources(mcp, principals, services);
   }
   mcp.registerResource(
     "workspace-context",
@@ -375,22 +395,26 @@ function createCiteLoomMcpServer(
         audience: ["assistant", "user"],
         priority: 1,
       },
-      description: "The CiteLoom user and local workspace selected for this authenticated request.",
+      description: "The authenticated CiteLoom user and every workspace available to that user.",
       mimeType: "application/json",
-      title: "CiteLoom workspace context",
+      title: "CiteLoom workspace access",
     },
     async (uri) => {
+      const principal = readFirstPrincipal(principals);
+      const workspaces = principals.map((workspacePrincipal) => ({
+        id: workspacePrincipal.workspaceId,
+        name: workspacePrincipal.workspaceName,
+        role: workspacePrincipal.role,
+      }));
       return {
         contents: [{
           mimeType: "application/json",
           text: JSON.stringify({
             displayName: principal.displayName,
             globalRole: principal.globalRole,
-            role: principal.role,
             userId: principal.userId,
             username: principal.username,
-            workspaceId: principal.workspaceId,
-            workspaceName: principal.workspaceName,
+            workspaces,
           }),
           uri: uri.toString(),
         }],
@@ -400,20 +424,11 @@ function createCiteLoomMcpServer(
   return mcp;
 }
 
-function buildMcpServerCapabilities(
-  scopes: ReadonlySet<string>,
-): ServerCapabilities {
-  const capabilities: ServerCapabilities = {};
-  if (scopes.has(MCP_ANSWER_SCOPE)) {
-    capabilities.extensions = { [MCP_TASK_EXTENSION_ID]: {} };
-  }
-  return capabilities;
-}
-
 function registerSourceSearchTool(
   mcp: McpServer,
-  principal: AuthorizationPrincipal,
+  principals: readonly AuthorizationPrincipal[],
   services: WebServices,
+  onError: (error: unknown) => void,
 ): void {
   mcp.registerTool(
     MCP_SEARCH_TOOL,
@@ -424,41 +439,52 @@ function registerSourceSearchTool(
         openWorldHint: false,
         readOnlyHint: true,
       },
-      description: "Search authorized documents in the selected CiteLoom workspace for exact keyword matches and, when requested, semantically related passages. This read-only operation does not create a saved research turn and returns source identifiers, files, page numbers, section paths, and source regions for evidence-aware use.",
+      description: "Search the combined authorized document set from every CiteLoom workspace available to the authenticated user. One search returns exact keyword matches and, when requested, semantically related passages with source identifiers, files, page numbers, section paths, and source regions.",
       inputSchema: sourceDiscoveryRequestSchema,
       outputSchema: sourceDiscoveryResponseSchema,
       title: "Search CiteLoom sources",
     },
     async (input, context) => {
+      const principal = readFirstPrincipal(principals);
+      const workspaceIds = principals.map((workspacePrincipal) => {
+        return workspacePrincipal.workspaceId;
+      });
       try {
-        const result = await services.runInWorkspace(
-          principal,
-          async (runtime) => {
-            return runtime.searchSources(
-              principal,
-              input,
-              context.mcpReq.signal,
-            );
-          },
-        );
+        const result = await services.run(async (runtime) => {
+          return runtime.searchSources(
+            principal,
+            input,
+            context.mcpReq.signal,
+            workspaceIds,
+          );
+        });
+        const parsed = sourceDiscoveryResponseSchema.parse(result);
         return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
-          structuredContent: result,
+          content: [{ type: "text", text: JSON.stringify(parsed) }],
+          structuredContent: parsed,
         };
       } catch (error: unknown) {
-        if (
-          error instanceof SourceDiscoveryScopeError
-          || error instanceof SourceDiscoveryUnavailableError
-        ) {
-          return {
-            content: [{ type: "text", text: error.message }],
-            isError: true,
-          };
-        }
-        throw error;
+        onError(error);
+        return {
+          content: [{
+            type: "text",
+            text: readMcpSearchError(error),
+          }],
+          isError: true,
+        };
       }
     },
   );
+}
+
+function readMcpSearchError(error: unknown): string {
+  if (
+    error instanceof SourceDiscoveryScopeError
+    || error instanceof SourceDiscoveryUnavailableError
+  ) {
+    return error.message;
+  }
+  return "CiteLoom could not search the available documents.";
 }
 
 function registerSourceSearchPrompt(mcp: McpServer): void {
@@ -466,11 +492,11 @@ function registerSourceSearchPrompt(mcp: McpServer): void {
     MCP_SEARCH_PROMPT,
     {
       argsSchema: mcpSearchPromptArgumentsSchema,
-      description: "Prepare a source-grounded search of the selected CiteLoom workspace while preserving document and passage evidence metadata.",
-      title: "Search a CiteLoom workspace",
+      description: "Prepare a source-grounded search across every available CiteLoom workspace while preserving workspace, document, and passage evidence metadata.",
+      title: "Search CiteLoom workspaces",
     },
     ({ query }) => ({
-      description: "Search the selected CiteLoom workspace and report evidence-bearing source passages.",
+      description: "Search every available CiteLoom workspace and report evidence-bearing source passages.",
       messages: [{
         content: { text: buildMcpSearchPrompt(query), type: "text" },
         role: "user",
@@ -479,8 +505,12 @@ function registerSourceSearchPrompt(mcp: McpServer): void {
   );
 }
 
-function registerAnswerTool(
+function registerAnswerTools(
   mcp: McpServer,
+  principals: readonly AuthorizationPrincipal[],
+  taskOwner: McpTaskOwner,
+  dispatcher: McpTaskDispatcher,
+  services: WebServices,
 ): void {
   mcp.registerTool(
     MCP_ANSWER_TOOL,
@@ -491,17 +521,107 @@ function registerAnswerTool(
         openWorldHint: false,
         readOnlyHint: false,
       },
-      description: "Create a synthesized answer from authorized documents in the selected CiteLoom workspace and save the cited result as a durable research turn. This operation requires host support for the io.modelcontextprotocol/tasks extension, returns a task handle for the host to resolve, and can expose resource links for the saved thread and immutable citation evidence when complete.",
+      description: "Start one durable cited-answer task over the combined authorized document set from every CiteLoom workspace available to the authenticated user. Call citeloom.get_answer with the returned task ID until the status is completed, failed, or cancelled.",
       inputSchema: mcpAnswerTaskRequestSchema,
-      outputSchema: streamedAnswerSchema,
+      outputSchema: mcpAnswerHandleSchema,
       title: "Ask CiteLoom documents",
     },
-    async () => {
-      throw new Error(
-        "citeloom.ask_documents requires the MCP Tasks extension.",
-      );
+    async (input) => {
+      const task = await services.mcpTasks.create(taskOwner, input);
+      dispatcher.enqueue(task.id);
+      const handle = buildMcpAnswerHandle(task);
+      return {
+        content: [{
+          text: `CiteLoom started answer task ${task.id}. Call ${MCP_ANSWER_STATUS_TOOL} with this task ID until the task reaches a final status.`,
+          type: "text",
+        }],
+        structuredContent: handle,
+      };
     },
   );
+  mcp.registerTool(
+    MCP_ANSWER_STATUS_TOOL,
+    {
+      annotations: {
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: true,
+      },
+      description: "Read the current state of a durable CiteLoom answer task. Call this tool again after pollIntervalMs while the status is working. A completed result contains one cited answer over the combined authorized document set.",
+      inputSchema: mcpAnswerTaskIdSchema,
+      outputSchema: mcpAnswerStatusSchema,
+      title: "Get a CiteLoom answer",
+    },
+    async ({ taskId }) => {
+      const task = await services.mcpTasks.readForOwner(taskOwner, taskId);
+      if (task === null) {
+        return buildMissingAnswerTaskResult(taskId);
+      }
+      const availableWorkspaceIds = new Set<string>();
+      for (const principal of principals) {
+        availableWorkspaceIds.add(principal.workspaceId);
+      }
+      const status = buildMcpAnswerStatus(task, availableWorkspaceIds);
+      return {
+        content: buildAnswerStatusContent(status),
+        structuredContent: status,
+      };
+    },
+  );
+  mcp.registerTool(
+    MCP_ANSWER_CANCEL_TOOL,
+    {
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+        readOnlyHint: false,
+      },
+      description: "Request cancellation of a durable CiteLoom answer task. Call citeloom.get_answer after this tool to confirm the final task state.",
+      inputSchema: mcpAnswerTaskIdSchema,
+      outputSchema: mcpAnswerCancellationSchema,
+      title: "Cancel a CiteLoom answer",
+    },
+    async ({ taskId }) => {
+      const found = await dispatcher.requestCancellation(taskOwner, taskId);
+      if (!found) {
+        return buildMissingAnswerTaskResult(taskId);
+      }
+      const result = { cancellationRequested: true as const, taskId };
+      return {
+        content: [{
+          text: `CiteLoom accepted the cancellation request for answer task ${taskId}.`,
+          type: "text",
+        }],
+        structuredContent: result,
+      };
+    },
+  );
+}
+
+function buildAnswerStatusContent(
+  status: z.output<typeof mcpAnswerStatusSchema>,
+): ContentBlock[] {
+  if (status.status === "completed") {
+    const content: ContentBlock[] = [{
+      text: status.answer.answerDocument.content,
+      type: "text",
+    }];
+    content.push(...status.resources);
+    return content;
+  }
+  return [{ text: JSON.stringify(status), type: "text" as const }];
+}
+
+function buildMissingAnswerTaskResult(taskId: string) {
+  return {
+    content: [{
+      text: `CiteLoom cannot find answer task ${taskId} for this credential. Check the task ID. The task can also be expired.`,
+      type: "text" as const,
+    }],
+    isError: true as const,
+  };
 }
 
 function registerAnswerPrompt(mcp: McpServer): void {
@@ -509,7 +629,7 @@ function registerAnswerPrompt(mcp: McpServer): void {
     MCP_ANSWER_PROMPT,
     {
       argsSchema: mcpAnswerPromptArgumentsSchema,
-      description: "Prepare a cited document-answer workflow that saves its result as a CiteLoom research turn and uses the completed task result supplied by the MCP host.",
+      description: "Prepare a cited document-answer workflow that saves its result as a CiteLoom research turn. Use citeloom.get_answer to read the completed result.",
       title: "Answer with CiteLoom citations",
     },
     ({ question, threadTitle }) => ({
@@ -527,7 +647,7 @@ function registerAnswerPrompt(mcp: McpServer): void {
 
 function registerResearchResources(
   mcp: McpServer,
-  principal: AuthorizationPrincipal,
+  principals: readonly AuthorizationPrincipal[],
   services: WebServices,
 ): void {
   mcp.registerResource(
@@ -538,11 +658,16 @@ function registerResearchResources(
         audience: ["assistant", "user"],
         priority: 0.9,
       },
-      description: "A saved CiteLoom research thread in the selected workspace.",
+      description: "A saved CiteLoom research thread in one available workspace.",
       mimeType: "application/json",
       title: "CiteLoom research thread",
     },
     async (uri, variables) => {
+      const workspaceId = readMcpResourceId(
+        variables.workspaceId,
+        "workspace ID",
+      );
+      const principal = findMcpWorkspacePrincipal(principals, workspaceId);
       const threadId = readMcpResourceId(variables.threadId, "thread ID");
       const thread = await services.runInWorkspace(principal, async (runtime) => {
         return runtime.readResearchThread(principal, threadId);
@@ -572,6 +697,11 @@ function registerResearchResources(
       title: "CiteLoom citation evidence",
     },
     async (uri, variables) => {
+      const workspaceId = readMcpResourceId(
+        variables.workspaceId,
+        "workspace ID",
+      );
+      const principal = findMcpWorkspacePrincipal(principals, workspaceId);
       const citationId = readMcpResourceId(
         variables.citationId,
         "citation ID",
@@ -596,6 +726,20 @@ function registerResearchResources(
   );
 }
 
+function findMcpWorkspacePrincipal(
+  principals: readonly AuthorizationPrincipal[],
+  workspaceId: string,
+): AuthorizationPrincipal {
+  for (const principal of principals) {
+    if (principal.workspaceId === workspaceId) {
+      return principal;
+    }
+  }
+  throw new ResourceNotFoundError(
+    `citeloom://workspaces/${workspaceId}`,
+  );
+}
+
 function readMcpResourceId(
   value: string | string[] | undefined,
   field: string,
@@ -615,13 +759,13 @@ function readMcpOperationScopes(
   if (method === "tools/call" && name === MCP_SEARCH_TOOL) {
     return [MCP_SEARCH_SCOPE];
   }
-  if (method === "tools/call" && name === MCP_ANSWER_TOOL) {
-    return [MCP_ANSWER_SCOPE];
-  }
   if (
-    method === "tasks/get"
-    || method === "tasks/update"
-    || method === "tasks/cancel"
+    method === "tools/call"
+    && (
+      name === MCP_ANSWER_TOOL
+      || name === MCP_ANSWER_STATUS_TOOL
+      || name === MCP_ANSWER_CANCEL_TOOL
+    )
   ) {
     return [MCP_ANSWER_SCOPE];
   }
@@ -634,23 +778,11 @@ function readMcpOperationScopes(
   return [];
 }
 
-function readMcpPrincipal(authInfo: AuthInfo | undefined): AuthorizationPrincipal {
-  return mcpPrincipalSchema.parse(authInfo?.extra?.principal);
-}
-
-function readMcpWorkspaceName(value: string | string[] | undefined): string {
-  if (typeof value !== "string") {
-    throw new McpWorkspaceSelectorError(
-      `The ${MCP_WORKSPACE_NAME_HEADER} header must identify one workspace.`,
-    );
-  }
-  try {
-    return decodeWorkspaceName({ workspaceName: value });
-  } catch {
-    throw new McpWorkspaceSelectorError(
-      `The ${MCP_WORKSPACE_NAME_HEADER} header must be a valid workspace name.`,
-    );
-  }
+function readMcpRequestContext(authInfo: AuthInfo | undefined): {
+  principals: AuthorizationPrincipal[];
+  taskOwner: McpTaskOwner;
+} {
+  return mcpRequestContextSchema.parse(authInfo?.extra);
 }
 
 function sendMcpAuthenticationError(
@@ -660,12 +792,6 @@ function sendMcpAuthenticationError(
   publicOrigin: string,
 ): unknown {
   const metadataUrl = buildMcpProtectedResourceMetadataUrl(publicOrigin);
-  if (error instanceof McpWorkspaceSelectorError) {
-    return reply.status(400).send({
-      error: "invalid_request",
-      error_description: error.message,
-    });
-  }
   if (error instanceof OAuthAccessTokenRejectedError) {
     const scope = requiredScopes.length === 0
       ? ""

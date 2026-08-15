@@ -310,7 +310,7 @@ export function streamIndexedDocumentAnswerWithRuntime(
   scope: QueryScope,
   threadId: string,
   abortSignal: AbortSignal,
-  workspaceId: string | null = null,
+  workspaceIds: readonly string[] | null = null,
 ): ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>> {
   const questionInput = createQuestionInput(question);
   return createUIMessageStream<CiteLoomUIMessage>({
@@ -328,9 +328,9 @@ export function streamIndexedDocumentAnswerWithRuntime(
             runtime.config,
             "interactive-answer",
             defaultPrepareRetrievalOptions,
-            workspaceId,
+            workspaceIds,
           ),
-          workspaceId,
+          readResearchWorkspaceId(workspaceIds),
         );
       } catch (error: unknown) {
         await reportUntrackedAnswerStreamFailure(
@@ -343,6 +343,15 @@ export function streamIndexedDocumentAnswerWithRuntime(
     },
     onError: readAnswerStreamError,
   });
+}
+
+function readResearchWorkspaceId(
+  workspaceIds: readonly string[] | null,
+): string | null {
+  if (workspaceIds?.length === 1) {
+    return workspaceIds[0] ?? null;
+  }
+  return null;
 }
 
 export async function retrieveIndexedDocuments(
@@ -453,7 +462,7 @@ export async function prepareRetrievalWithRuntime(
   config: AppConfig = runtime.config,
   workload: WorkloadClass = "interactive-search",
   options: PrepareRetrievalOptions = defaultPrepareRetrievalOptions,
-  workspaceId: string | null = null,
+  workspaceIds: readonly string[] | null = null,
 ): Promise<PreparedRetrieval> {
   const questionInput = readQuestionInput(question);
   return prepareRetrievalWithResources(
@@ -475,7 +484,7 @@ export async function prepareRetrievalWithRuntime(
     runTelemetry,
     workload === "interactive-answer",
     options,
-    workspaceId,
+    workspaceIds,
   );
 }
 
@@ -494,9 +503,9 @@ async function prepareRetrievalWithResources(
   runTelemetry: RunTelemetry,
   useDocumentToc: boolean,
   options: PrepareRetrievalOptions,
-  workspaceId: string | null = null,
+  workspaceIds: readonly string[] | null = null,
 ): Promise<PreparedRetrieval> {
-  const catalog = new DocumentCatalog(databaseSession.database, { workspaceId });
+  const catalog = new DocumentCatalog(databaseSession.database, { workspaceIds });
   const scopeStage = runTelemetry.startStage({
     model: null,
     name: "scope-resolution",

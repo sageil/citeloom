@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, desc, eq, gt, isNull, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -24,7 +24,7 @@ import {
   type McpApiKeyAccess,
   type McpApiKeyRecord,
 } from "./api-key-model.js";
-import { MCP_API_KEY_PREFIX } from "./contract.js";
+import { MCP_API_KEY_PREFIX } from "./mcp.js";
 
 const mcpApiKeyRecordRowSchema = z.object({
   createdAt: z.date(),
@@ -220,7 +220,6 @@ export class McpApiKeyStore {
 
   public async authenticate(
     authorizationHeader: string | string[] | undefined,
-    workspaceName: string,
     requiredScopes: readonly string[],
   ): Promise<McpApiKeyAccess> {
     let parsed: ReturnType<typeof parseMcpApiKeyAuthorization>;
@@ -231,7 +230,6 @@ export class McpApiKeyStore {
     }
     return this.readAccess(
       parsed.id,
-      { kind: "name", workspaceName },
       requiredScopes,
       eq(mcpApiKeys.tokenDigest, digestOpaqueToken(parsed.apiKey)),
     );
@@ -239,19 +237,16 @@ export class McpApiKeyStore {
 
   public async resolveForTask(
     apiKeyId: string,
-    workspaceId: string,
     requiredScopes: readonly string[],
   ): Promise<McpApiKeyAccess> {
     return this.readAccess(
       apiKeyId,
-      { kind: "id", workspaceId },
       requiredScopes,
     );
   }
 
   private async readAccess(
     apiKeyId: string,
-    workspaceSelector: WorkspaceSelector,
     requiredScopes: readonly string[],
     secretCondition?: SQL,
   ): Promise<McpApiKeyAccess> {
@@ -263,13 +258,6 @@ export class McpApiKeyStore {
       eq(workspaceMemberships.access, "enabled"),
       eq(workspaces.state, "active"),
     ];
-    if (workspaceSelector.kind === "id") {
-      conditions.push(eq(workspaces.id, workspaceSelector.workspaceId));
-    } else {
-      conditions.push(
-        sql`lower(trim(${workspaces.name})) = lower(trim(${workspaceSelector.workspaceName}))`,
-      );
-    }
     if (secretCondition !== undefined) {
       conditions.push(secretCondition);
     }
@@ -294,31 +282,38 @@ export class McpApiKeyStore {
       )
       .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
       .where(and(...conditions))
-      .limit(1);
-    const row = rows[0];
-    if (row === undefined) {
+      .orderBy(asc(workspaces.name), asc(workspaces.id));
+    if (rows.length === 0) {
       throw new McpApiKeyRejectedError();
     }
-    const key = mcpApiKeyAccessRowSchema.parse(row);
+    const keys = mcpApiKeyAccessRowSchema.array().parse(rows);
+    const key = keys[0];
+    if (key === undefined) {
+      throw new McpApiKeyRejectedError();
+    }
     const scopeSet = new Set<string>(key.scopes);
     for (const requiredScope of requiredScopes) {
       if (!scopeSet.has(requiredScope)) {
         throw new McpApiKeyInsufficientScopeError();
       }
     }
+    const principals: AuthorizationPrincipal[] = [];
+    for (const workspaceKey of keys) {
+      principals.push({
+        dataScope: "workspace",
+        displayName: workspaceKey.displayName,
+        globalRole: workspaceKey.globalRole,
+        role: workspaceKey.role,
+        userId: workspaceKey.userId,
+        username: workspaceKey.username,
+        workspaceId: workspaceKey.workspaceId,
+        workspaceName: workspaceKey.workspaceName,
+      });
+    }
     return {
       apiKeyId: key.id,
       expiresAt: Math.floor(key.expiresAt.getTime() / 1_000),
-      principal: {
-        dataScope: "workspace",
-        displayName: key.displayName,
-        globalRole: key.globalRole,
-        role: key.role,
-        userId: key.userId,
-        username: key.username,
-        workspaceId: key.workspaceId,
-        workspaceName: key.workspaceName,
-      },
+      principals,
       scopes: key.scopes,
     };
   }
@@ -370,10 +365,6 @@ function buildMcpApiKeyRecord(
   }
   return { ...record, apiKey };
 }
-
-type WorkspaceSelector =
-  | { kind: "id"; workspaceId: string }
-  | { kind: "name"; workspaceName: string };
 
 function requireMcpApiKeyManager(
   principal: AuthorizationPrincipal,

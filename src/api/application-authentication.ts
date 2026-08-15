@@ -29,10 +29,9 @@ export interface ApplicationOAuthRequestAuthenticator {
   verifyMcpAccess(
     settings: AuthenticationSettings,
     authorizationHeader: string | string[] | undefined,
-    workspaceName: string,
     requiredScopes: readonly string[],
   ): Promise<{
-    principal: OAuthPrincipal;
+    principals: OAuthPrincipal[];
     token: McpOAuthIdentityAccessToken;
   }>;
 }
@@ -48,7 +47,7 @@ export function createApplicationOAuthRequestAuthenticator(
   services: Pick<
     WebServices,
     "readOAuthIdentityContext" | "resolveOAuthPrincipal"
-    | "resolveOAuthPrincipalByWorkspaceName"
+    | "resolveOAuthPrincipals"
   >,
   fetchImplementation: typeof fetch = fetch,
 ): ApplicationOAuthRequestAuthenticator {
@@ -100,7 +99,6 @@ export function createApplicationOAuthRequestAuthenticator(
     verifyMcpAccess: async (
       settings,
       authorizationHeader,
-      workspaceName,
       requiredScopes,
     ) => {
       const token = await verify(
@@ -119,11 +117,8 @@ export function createApplicationOAuthRequestAuthenticator(
         scopes: token.scopes,
         subject: token.subject,
       };
-      const principal = await services.resolveOAuthPrincipalByWorkspaceName(
-        mcpToken,
-        workspaceName,
-      );
-      return { principal, token: mcpToken };
+      const principals = await services.resolveOAuthPrincipals(mcpToken);
+      return { principals, token: mcpToken };
     },
   };
 }

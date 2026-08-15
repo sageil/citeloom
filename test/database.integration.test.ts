@@ -3880,6 +3880,20 @@ describe("PostgreSQL document catalog", () => {
         return document.sourceFile;
       })).toEqual([secondSourceFile, sharedSourceFile]);
 
+      const combinedCatalog = new DocumentCatalog(session.database, {
+        workspaceIds: [original.workspaceId, secondWorkspaceId],
+      });
+      const combinedDocuments = await combinedCatalog.listAvailableDocuments(
+        space768.id,
+      );
+      expect(combinedDocuments.map((document) => {
+        return document.sourceFile;
+      }).sort()).toEqual([
+        originalSourceFile,
+        secondSourceFile,
+        sharedSourceFile,
+      ].sort());
+
       const sharedLibraryRequest: BrowseDocumentCatalogRequest = {
         ...request,
         sourceLibraryId: sharedLibraryId,

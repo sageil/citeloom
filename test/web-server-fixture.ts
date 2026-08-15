@@ -17,7 +17,7 @@ import type {
   BrowseDocumentCatalogResult,
 } from "../src/documents/catalog/browser.js";
 import type { DoctorCheck } from "../src/observability/doctor.js";
-import type { SourceDiscoveryResponse } from "../src/retrieval/discovery/schema.js";
+import type { SourceDiscoveryResponse } from "../src/retrieval/discovery/boundary.js";
 import type {
   RuntimeWebServices,
   WebServices,
@@ -74,7 +74,7 @@ export type TestWebServiceOverrides = Partial<RuntimeWebServices>
     | "readSourceContentStorage"
     | "reportApplicationError"
     | "resolveOAuthPrincipal"
-    | "resolveOAuthPrincipalByWorkspaceName"
+    | "resolveOAuthPrincipals"
     | "resolveMcpApiKeyPrincipal"
     | "removeWorkspaceMember"
     | "renameSharedSourceLibrary"
@@ -302,10 +302,9 @@ export function buildServices(
     resolveOAuthPrincipal: overrides.resolveOAuthPrincipal ?? (async () => {
       throw new Error("OAuth authentication is not configured in boundary tests.");
     }),
-    resolveOAuthPrincipalByWorkspaceName:
-      overrides.resolveOAuthPrincipalByWorkspaceName ?? (async () => {
-        throw new Error("OAuth authentication is not configured in boundary tests.");
-      }),
+    resolveOAuthPrincipals: overrides.resolveOAuthPrincipals ?? (async () => {
+      throw new Error("OAuth authentication is not configured in boundary tests.");
+    }),
     resolveMcpApiKeyPrincipal:
       overrides.resolveMcpApiKeyPrincipal ?? (async () => {
         throw new Error("MCP API key authentication is not configured in boundary tests.");
@@ -389,8 +388,8 @@ export function createInMemoryMcpTaskServices(): McpTaskServices {
       task === undefined
       || task.issuer !== owner.issuer
       || task.subject !== owner.subject
+      || task.clientId !== owner.clientId
       || task.userId !== owner.userId
-      || task.workspaceId !== owner.workspaceId
     ) {
       return null;
     }
@@ -475,7 +474,6 @@ export function createInMemoryMcpTaskServices(): McpTaskServices {
         subject: owner.subject,
         updatedAt: now,
         userId: owner.userId,
-        workspaceId: owner.workspaceId,
       };
       tasks.set(task.id, task);
       return task;

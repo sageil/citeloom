@@ -65,7 +65,7 @@ import {
   SourceDiscoveryScopeError,
   SourceDiscoveryUnavailableError,
 } from "../retrieval/discovery/pipeline.js";
-import type { SourceDiscoveryResponse } from "../retrieval/discovery/schema.js";
+import type { SourceDiscoveryResponse } from "../retrieval/discovery/boundary.js";
 import {
   buildInlineContentDisposition,
   decodeApplicationErrorQuery,

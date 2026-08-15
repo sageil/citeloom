@@ -65,9 +65,9 @@ export const queryScopeSchema: z.ZodType<QueryScope> = z.discriminatedUnion(
   [
     z.object({
       kind: z.literal("all").describe(
-        "Search every document authorized for the current user in the selected workspace.",
+        "Search every document authorized for the current operation.",
       ),
-    }).strict().describe("Search all authorized workspace documents."),
+    }).strict().describe("Search all authorized documents."),
     z.object({
       documentIds: z.array(contentIdSchema).min(1).describe(
         "Content-addressed document identifiers to search.",

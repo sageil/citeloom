@@ -15,7 +15,7 @@ import {
 import {
   MCP_DOCUMENTATION_URL,
   MCP_SERVER_TITLE,
-} from "../mcp/contract.js";
+} from "../mcp/mcp.js";
 
 const OAUTH_DOCUMENTATION_URL =
   "https://sammyageil.com/citeloom/reference/oauth/";

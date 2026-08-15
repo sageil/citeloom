@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { MCP_ANSWER_SCOPE, MCP_SEARCH_SCOPE } from "./contract.js";
+import { MCP_ANSWER_SCOPE, MCP_SEARCH_SCOPE } from "./mcp.js";
 
 export const mcpApiKeyScopeSchema = z.enum([
   MCP_SEARCH_SCOPE,
@@ -32,6 +32,6 @@ export interface CreatedMcpApiKey extends McpApiKeyRecord {
 export interface McpApiKeyAccess {
   apiKeyId: string;
   expiresAt: number;
-  principal: import("../auth/model.js").AuthorizationPrincipal;
+  principals: import("../auth/model.js").AuthorizationPrincipal[];
   scopes: McpApiKeyScope[];
 }

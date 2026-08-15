@@ -8,10 +8,6 @@ import type {
 import type { AuthorizationPrincipal } from "../../auth/model.js";
 import type { WebServices } from "../../api/services.js";
 import {
-  MCP_CITATION_RESOURCE_TEMPLATE,
-  MCP_THREAD_RESOURCE_TEMPLATE,
-} from "../contract.js";
-import {
   buildMcpAnswerTaskResult,
   type McpAnswerTaskRequest,
   type McpAnswerTaskResult,
@@ -19,30 +15,52 @@ import {
 
 export async function executeMcpAnswerTask(
   services: WebServices,
-  principal: AuthorizationPrincipal,
+  principals: readonly AuthorizationPrincipal[],
   request: McpAnswerTaskRequest,
   abortSignal: AbortSignal,
 ): Promise<McpAnswerTaskResult> {
-  const answer = await services.runInWorkspace(
-    principal,
+  const principal = readFirstPrincipal(principals);
+  const workspaceIds = principals.map((workspacePrincipal) => {
+    return workspacePrincipal.workspaceId;
+  });
+  const combinedPrincipal: AuthorizationPrincipal = {
+    ...principal,
+    dataScope: "all",
+  };
+  const answer = await services.run(
     async (runtime) => {
       const thread = await runtime.createResearchThread(
-        principal,
+        combinedPrincipal,
         request.threadTitle,
       );
       const stream = runtime.streamAnswer(
-        principal,
+        combinedPrincipal,
         {
           question: request.question,
           scope: request.scope,
           threadId: thread.id,
         },
         abortSignal,
+        workspaceIds,
       );
       return readStreamedAnswer(stream);
     },
   );
-  return buildMcpAnswerTaskResult(answer, buildAnswerContent(answer));
+  return buildMcpAnswerTaskResult(
+    answer,
+    buildAnswerContent(answer),
+    workspaceIds,
+  );
+}
+
+function readFirstPrincipal(
+  principals: readonly AuthorizationPrincipal[],
+): AuthorizationPrincipal {
+  const principal = principals[0];
+  if (principal === undefined) {
+    throw new Error("The MCP user has no available workspace.");
+  }
+  return principal;
 }
 
 async function readStreamedAnswer(
@@ -60,35 +78,11 @@ async function readStreamedAnswer(
   return answer;
 }
 
-function buildAnswerContent(answer: StreamedAnswer): ContentBlock[] {
-  const content: ContentBlock[] = [{
+function buildAnswerContent(
+  answer: StreamedAnswer,
+): ContentBlock[] {
+  return [{
     text: answer.answerDocument.content,
     type: "text",
-  }, {
-    description: "The saved research thread containing this answer.",
-    mimeType: "application/json",
-    name: "research-thread",
-    title: "Saved research thread",
-    type: "resource_link",
-    uri: buildResearchThreadResourceUri(answer.turn.threadId),
   }];
-  for (const citation of answer.answerDocument.citations) {
-    content.push({
-      description: `Citation ${citation.citationNumber} from ${citation.sourceFile}.`,
-      mimeType: "application/json",
-      name: `citation-${citation.citationNumber}`,
-      title: `Citation ${citation.citationNumber}`,
-      type: "resource_link",
-      uri: buildCitationResourceUri(citation.id),
-    });
-  }
-  return content;
-}
-
-function buildResearchThreadResourceUri(threadId: string): string {
-  return MCP_THREAD_RESOURCE_TEMPLATE.replace("{threadId}", threadId);
-}
-
-function buildCitationResourceUri(citationId: string): string {
-  return MCP_CITATION_RESOURCE_TEMPLATE.replace("{citationId}", citationId);
 }

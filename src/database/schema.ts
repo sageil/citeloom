@@ -700,9 +700,6 @@ export const mcpTasks = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    workspaceId: uuid("workspace_id")
-      .notNull()
-      .references(() => workspaces.id, { onDelete: "cascade" }),
   },
   (table) => [
     index("mcp_tasks_dispatch_idx").on(
@@ -713,7 +710,7 @@ export const mcpTasks = pgTable(
     index("mcp_tasks_owner_idx").on(
       table.issuer,
       table.subject,
-      table.workspaceId,
+      table.clientId,
       table.createdAt,
     ),
     index("mcp_tasks_retention_idx").on(

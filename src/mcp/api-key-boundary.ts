@@ -4,7 +4,7 @@ import {
   hasBearerTokenPrefix,
   readBearerToken,
 } from "../auth/bearer-token.js";
-import { MCP_API_KEY_PREFIX } from "./contract.js";
+import { MCP_API_KEY_PREFIX } from "./mcp.js";
 import {
   mcpApiKeyScopeSchema,
   type CreateMcpApiKeyInput,

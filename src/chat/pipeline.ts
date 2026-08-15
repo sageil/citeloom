@@ -202,7 +202,7 @@ export async function answerChatMessageWithRuntime(
       createChatRetrievalConfig(runtime.config),
       "interactive-answer",
       undefined,
-      principal.dataScope === "all" ? null : principal.workspaceId,
+      principal.dataScope === "all" ? null : [principal.workspaceId],
     );
 
     await store.transitionRun(

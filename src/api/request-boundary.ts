@@ -36,7 +36,7 @@ import {
 import {
   decodeSourceDiscoveryRequest,
   type SourceDiscoveryRequest,
-} from "../retrieval/discovery/schema.js";
+} from "../retrieval/discovery/boundary.js";
 import type { SpeechRequest } from "../providers/text-to-speech.js";
 import type {
   NormalizedProviderSettingsChange,

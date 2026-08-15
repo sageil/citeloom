@@ -1,4 +1,4 @@
-import { and, asc, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, type SQL } from "drizzle-orm";
 
 import type {
   AuthorizationPrincipal,
@@ -69,22 +69,22 @@ export class OAuthPrincipalStore {
     token: OAuthPrincipalIdentity,
     workspaceId: string,
   ): Promise<OAuthAuthorizationPrincipal> {
-    const rows = await this.readAccessibleIdentities(token, {
-      kind: "id",
-      workspaceId,
-    });
+    const rows = await this.readAccessibleIdentities(token, workspaceId);
     return buildOAuthAuthorizationPrincipal(token, rows);
   }
 
-  public async resolvePrincipalByWorkspaceName(
+  public async resolvePrincipals(
     token: OAuthPrincipalIdentity,
-    workspaceName: string,
-  ): Promise<OAuthAuthorizationPrincipal> {
-    const rows = await this.readAccessibleIdentities(token, {
-      kind: "name",
-      workspaceName,
-    });
-    return buildOAuthAuthorizationPrincipal(token, rows);
+  ): Promise<OAuthAuthorizationPrincipal[]> {
+    const rows = await this.readAccessibleIdentities(token, null);
+    if (rows.length === 0) {
+      throw new OAuthIdentityUnavailableError();
+    }
+    const principals: OAuthAuthorizationPrincipal[] = [];
+    for (const row of rows) {
+      principals.push(buildOAuthAuthorizationPrincipal(token, [row]));
+    }
+    return principals;
   }
 
   public async readContext(
@@ -114,7 +114,7 @@ export class OAuthPrincipalStore {
 
   private async readAccessibleIdentities(
     token: OAuthPrincipalIdentity,
-    workspaceSelector: WorkspaceSelector | null,
+    workspaceId: string | null,
   ): Promise<AccessibleIdentityRow[]> {
     const conditions: SQL[] = [
       eq(oauthUserIdentityLinks.issuer, token.issuer),
@@ -123,13 +123,8 @@ export class OAuthPrincipalStore {
       eq(workspaceMemberships.access, "enabled"),
       eq(workspaces.state, "active"),
     ];
-    if (workspaceSelector?.kind === "id") {
-      conditions.push(eq(workspaces.id, workspaceSelector.workspaceId));
-    }
-    if (workspaceSelector?.kind === "name") {
-      conditions.push(
-        sql`lower(trim(${workspaces.name})) = lower(trim(${workspaceSelector.workspaceName}))`,
-      );
+    if (workspaceId !== null) {
+      conditions.push(eq(workspaces.id, workspaceId));
     }
     return this.database
       .select({
@@ -152,10 +147,6 @@ export class OAuthPrincipalStore {
       .orderBy(asc(workspaces.name), asc(workspaces.id));
   }
 }
-
-type WorkspaceSelector =
-  | { kind: "id"; workspaceId: string }
-  | { kind: "name"; workspaceName: string };
 
 function buildOAuthAuthorizationPrincipal(
   token: OAuthPrincipalIdentity,

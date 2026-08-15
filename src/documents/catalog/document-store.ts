@@ -26,12 +26,14 @@ import type {
   ResolvedQueryScopeTarget,
 } from "../../domain/query-scope.js";
 import { contentIdSchema } from "../../domain/validation.js";
-import { buildAccessibleSourceLibraryCondition } from "../../workspaces/source-library-access.js";
+import {
+  buildAccessibleSourceLibraryConditionForWorkspaces,
+} from "../../workspaces/source-library-access.js";
 
 export class CatalogDocumentStore {
   public constructor(
     private readonly database: CiteLoomDatabase,
-    private readonly workspaceId: string | null = null,
+    private readonly workspaceIds: readonly string[] | null = null,
   ) {}
 
   public async countDocumentReferences(documentId: string): Promise<number> {
@@ -208,12 +210,12 @@ export class CatalogDocumentStore {
   }
 
   private indexedDocumentAccessCondition() {
-    if (this.workspaceId === null) {
+    if (this.workspaceIds === null) {
       return undefined;
     }
-    return buildAccessibleSourceLibraryCondition(
+    return buildAccessibleSourceLibraryConditionForWorkspaces(
       indexedDocuments.sourceLibraryId,
-      this.workspaceId,
+      this.workspaceIds,
     );
   }
 }
