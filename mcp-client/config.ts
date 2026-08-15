@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 
 import { z } from "zod";
 
-import { MCP_API_KEY_PREFIX } from "../src/mcp/contract.js";
+import {
+  MCP_API_KEY_PREFIX,
+} from "../src/mcp/mcp.js";
 
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1_000;
@@ -15,7 +17,6 @@ const valueOptionNames = new Set([
   "--question",
   "--server-url",
   "--timeout-ms",
-  "--workspace",
 ]);
 
 const commonCommandInputSchema = z.object({
@@ -40,7 +41,6 @@ export interface McpOAuthClientConfig extends McpClientBaseConfig {
     clientId: string;
     kind: "oauth";
   };
-  workspaceName: string;
 }
 
 export interface McpApiKeyClientConfig extends McpClientBaseConfig {
@@ -48,7 +48,6 @@ export interface McpApiKeyClientConfig extends McpClientBaseConfig {
     apiKey: string;
     kind: "api-key";
   };
-  workspaceName: string;
 }
 
 export type McpClientConfig = McpOAuthClientConfig | McpApiKeyClientConfig;
@@ -90,14 +89,10 @@ export function readMcpClientCommand(
   if (apiKeyFile !== undefined) {
     rejectOptions(values, ["--callback-url", "--client-id"]);
     const normalizedApiKey = readMcpApiKeyFile(apiKeyFile, readSecretFile);
-    const workspaceName = z.string().trim().min(1).max(200).parse(
-      requireOption(values, "--workspace"),
-    );
     return {
       config: {
         ...commonConfig,
         authentication: { apiKey: normalizedApiKey, kind: "api-key" },
-        workspaceName,
       },
       kind: "run",
     };
@@ -108,14 +103,10 @@ export function readMcpClientCommand(
   const clientId = z.string().trim().min(1).max(1_024).parse(
     requireOption(values, "--client-id"),
   );
-  const workspaceName = z.string().trim().min(1).max(200).parse(
-    requireOption(values, "--workspace"),
-  );
   return {
     config: {
       ...commonConfig,
       authentication: { callbackUrl, clientId, kind: "oauth" },
-      workspaceName,
     },
     kind: "run",
   };
@@ -128,15 +119,13 @@ export function mcpClientUsage(): string {
     "    --server-url <https://host/mcp> \\",
     "    --client-id <native OAuth App ID> \\",
     "    --callback-url <http://127.0.0.1:port/path> \\",
-    "    --workspace <CiteLoom workspace name> \\",
-    "    --question <question covered by the workspace documents>",
+    "    --question <question covered by the available workspace documents>",
     "",
     "Usage with an MCP API key:",
     "  pnpm mcp:client -- \\",
     "    --server-url <https://host/mcp> \\",
     "    --api-key-file <file containing a CiteLoom MCP key> \\",
-    "    --workspace <CiteLoom workspace name> \\",
-    "    --question <question covered by the workspace documents>",
+    "    --question <question covered by the available workspace documents>",
     "",
     "Optional:",
     "  --ca-file <PEM path>              Add a private CA for this process",
@@ -242,8 +231,8 @@ function readMcpServerUrl(value: string): string {
       "The MCP server URL must use HTTPS, except for loopback HTTP testing.",
     );
   }
-  if (url.pathname === "/") {
-    throw new Error("The MCP server URL must include its endpoint path.");
+  if (url.pathname !== "/mcp") {
+    throw new Error("The MCP server URL must use /mcp.");
   }
   return url.toString();
 }

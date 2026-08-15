@@ -7,13 +7,20 @@ import {
   UnauthorizedError,
 } from "@modelcontextprotocol/client";
 
-import { sourceDiscoveryResponseSchema } from "../src/retrieval/discovery/schema.js";
+import { sourceDiscoveryResponseSchema } from "../src/retrieval/discovery/boundary.js";
 import {
+  MCP_ANSWER_CANCEL_TOOL,
+  MCP_ANSWER_STATUS_TOOL,
   MCP_ANSWER_TOOL,
   MCP_PROTOCOL_VERSION,
   MCP_SEARCH_TOOL,
-} from "../src/mcp/contract.js";
-import { MCP_TASK_EXTENSION_ID } from "../src/mcp/tasks/model.js";
+} from "../src/mcp/mcp.js";
+import {
+  mcpAnswerHandleSchema,
+  mcpAnswerStatusSchema,
+  type McpAnswerHandle,
+  type McpAnswerStatus,
+} from "../src/mcp/tasks/model.js";
 import { listenForOAuthCallback } from "./callback-server.js";
 import type {
   McpClientConfig,
@@ -21,14 +28,12 @@ import type {
   McpOAuthClientConfig,
 } from "./config.js";
 import { InMemoryMcpOAuthProvider } from "./oauth-provider.js";
-import {
-  buildMcpSmokeClientCapabilities,
-  MCP_SMOKE_CLIENT_INFO,
-} from "./protocol.js";
-import { createMcpRequestFetch } from "./request-fetch.js";
-import { McpTaskExtensionClient } from "./task-client.js";
-import { waitForAnswerTask } from "./task-extension.js";
 import { configureTlsTrust } from "./tls-trust.js";
+
+const MCP_SMOKE_CLIENT_INFO = {
+  name: "citeloom-mcp-smoke-client",
+  version: "1.0.0",
+} as const;
 
 export interface McpSmokeReport {
   answer: string;
@@ -50,7 +55,7 @@ export async function runMcpSmokeTest(
   const client = new Client(
     MCP_SMOKE_CLIENT_INFO,
     {
-      capabilities: buildMcpSmokeClientCapabilities(),
+      capabilities: {},
       enforceStrictCapabilities: true,
       versionNegotiation: { mode: { pin: MCP_PROTOCOL_VERSION } },
     },
@@ -58,17 +63,12 @@ export async function runMcpSmokeTest(
   try {
     await authentication.connect(client);
     options.log(`Connected with MCP protocol ${MCP_PROTOCOL_VERSION}.`);
-    const discovery = client.getDiscoverResult();
-    if (discovery?.capabilities.extensions?.[MCP_TASK_EXTENSION_ID] === undefined) {
-      throw new Error(
-        `The server did not advertise ${MCP_TASK_EXTENSION_ID}.`,
-      );
-    }
-
     const listedTools = await client.listTools(undefined, { cacheMode: "bypass" });
     const tools = listedTools.tools.map((tool) => tool.name).sort();
     requireTool(tools, MCP_SEARCH_TOOL);
     requireTool(tools, MCP_ANSWER_TOOL);
+    requireTool(tools, MCP_ANSWER_STATUS_TOOL);
+    requireTool(tools, MCP_ANSWER_CANCEL_TOOL);
     options.log(`Discovered tools: ${tools.join(", ")}.`);
 
     const searchCall = await client.callTool({
@@ -91,39 +91,30 @@ export async function runMcpSmokeTest(
       : search.results.exact.totalDocuments;
     options.log(`Source search returned ${searchDocumentCount} document(s).`);
 
-    const taskClient = new McpTaskExtensionClient({
-      serverUrl: config.serverUrl,
-      tokenProvider: authentication.tokenProvider,
-      workspaceName: config.workspaceName,
-    });
-    const createdTask = await taskClient.createAnswerTask(
-      {
+    const answerCall = await client.callTool({
+      arguments: {
         question: config.question,
         scope: { kind: "all" },
         threadTitle: `MCP smoke test: ${config.question.slice(0, 450)}`,
       },
-      options.signal,
+      name: MCP_ANSWER_TOOL,
+    }, { signal: options.signal });
+    if (answerCall.isError === true) {
+      throw new Error("The MCP answer tool returned an error.");
+    }
+    const createdTask = mcpAnswerHandleSchema.parse(
+      answerCall.structuredContent,
     );
     options.log(`Created asynchronous answer task ${createdTask.taskId}.`);
-    let lastTaskUpdate = "";
-    const completedTask = await waitForAnswerTask(taskClient, createdTask.taskId, {
-      onStatus: (task) => {
-        if (task.lastUpdatedAt === lastTaskUpdate) {
-          return;
-        }
-        lastTaskUpdate = task.lastUpdatedAt;
-        options.log(`Task ${task.taskId}: ${task.status}.`);
-      },
+    const completedTask = await waitForCoreAnswer(client, createdTask, {
+      log: options.log,
       pollIntervalMs: config.pollIntervalMs,
       signal: options.signal,
       timeoutMs: config.timeoutMs,
     });
 
     const linkedResourcesRead: string[] = [];
-    for (const content of completedTask.result.content) {
-      if (content.type !== "resource_link") {
-        continue;
-      }
+    for (const content of completedTask.resources) {
       const resource = await client.readResource(
         { uri: content.uri },
         { cacheMode: "bypass", signal: options.signal },
@@ -133,13 +124,10 @@ export async function runMcpSmokeTest(
       }
       linkedResourcesRead.push(content.uri);
     }
-    if (linkedResourcesRead.length === 0) {
-      throw new Error("The completed MCP answer returned no linked resources.");
-    }
     options.log(`Read ${linkedResourcesRead.length} linked MCP resource(s).`);
 
     return {
-      answer: completedTask.result.structuredContent.answerDocument.content,
+      answer: completedTask.answer.answerDocument.content,
       linkedResourcesRead,
       searchDocumentCount,
       taskId: completedTask.taskId,
@@ -151,10 +139,86 @@ export async function runMcpSmokeTest(
   }
 }
 
+type CompletedMcpAnswerStatus = Extract<
+  McpAnswerStatus,
+  { status: "completed" }
+>;
+
+async function waitForCoreAnswer(
+  client: Client,
+  handle: McpAnswerHandle,
+  options: {
+    log(message: string): void;
+    pollIntervalMs: number;
+    signal: AbortSignal;
+    timeoutMs: number;
+  },
+): Promise<CompletedMcpAnswerStatus> {
+  const deadline = Date.now() + options.timeoutMs;
+  let lastUpdatedAt = "";
+  let status: McpAnswerStatus = handle;
+  while (status.status === "working") {
+    if (Date.now() >= deadline) {
+      throw new Error(`MCP answer task ${handle.taskId} timed out.`);
+    }
+    const pollIntervalMs = Math.max(
+      options.pollIntervalMs,
+      status.pollIntervalMs,
+    );
+    await waitForPollInterval(pollIntervalMs, options.signal);
+    const statusCall = await client.callTool({
+      arguments: { taskId: handle.taskId },
+      name: MCP_ANSWER_STATUS_TOOL,
+    }, { signal: options.signal });
+    if (statusCall.isError === true) {
+      throw new Error(`MCP answer task ${handle.taskId} could not be read.`);
+    }
+    status = mcpAnswerStatusSchema.parse(statusCall.structuredContent);
+    if (status.lastUpdatedAt !== lastUpdatedAt) {
+      lastUpdatedAt = status.lastUpdatedAt;
+      options.log(`Task ${status.taskId}: ${status.status}.`);
+    }
+  }
+  if (status.status === "completed") {
+    return status;
+  }
+  if (status.status === "failed") {
+    throw new Error(
+      `MCP answer task ${status.taskId} failed: ${status.error.message}`,
+    );
+  }
+  throw new Error(`MCP answer task ${status.taskId} was cancelled.`);
+}
+
+function waitForPollInterval(
+  milliseconds: number,
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) {
+    return Promise.reject(readAbortReason(signal));
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", abort);
+      resolve();
+    }, milliseconds);
+    const abort = (): void => {
+      clearTimeout(timer);
+      reject(readAbortReason(signal));
+    };
+    signal.addEventListener("abort", abort, { once: true });
+  });
+}
+
+function readAbortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error("The MCP smoke test was cancelled.");
+}
+
 interface McpClientAuthentication {
   close(): Promise<void>;
   connect(client: Client): Promise<void>;
-  tokenProvider: { accessToken(): string };
 }
 
 async function createClientAuthentication(
@@ -162,13 +226,11 @@ async function createClientAuthentication(
   log: (message: string) => void,
 ): Promise<McpClientAuthentication> {
   if (isApiKeyConfig(config)) {
-    const apiKey = config.authentication.apiKey;
     return {
       close: async () => undefined,
       connect: async (client) => {
         await client.connect(createTransport(config));
       },
-      tokenProvider: { accessToken: () => apiKey },
     };
   }
   const oauthState = randomBytes(32).toString("base64url");
@@ -194,7 +256,6 @@ async function createClientAuthentication(
       config,
       callbackListener.callback,
     ),
-    tokenProvider: provider,
   };
 }
 
@@ -226,7 +287,6 @@ function createTransport(
   if (isApiKeyConfig(config)) {
     return new StreamableHTTPClientTransport(new URL(config.serverUrl), {
       authProvider: { token: async () => config.authentication.apiKey },
-      fetch: createMcpRequestFetch(config.serverUrl, config.workspaceName),
     });
   }
   if (provider === undefined) {
@@ -234,7 +294,6 @@ function createTransport(
   }
   return new StreamableHTTPClientTransport(new URL(config.serverUrl), {
     authProvider: provider,
-    fetch: createMcpRequestFetch(config.serverUrl, config.workspaceName),
   });
 }
 

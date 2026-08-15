@@ -9,7 +9,7 @@ import type {
 import {
   MCP_ANSWER_SCOPE,
   MCP_SEARCH_SCOPE,
-} from "../src/mcp/contract.js";
+} from "../src/mcp/mcp.js";
 
 export class InMemoryMcpOAuthProvider implements OAuthClientProvider {
   private codeVerifierValue: string | null = null;
