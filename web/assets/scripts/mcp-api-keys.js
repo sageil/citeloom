@@ -173,7 +173,10 @@ export function createMcpApiKeyManagement() {
         const rows = readArray(value, "MCP API keys");
         const keys = [];
         for (const row of rows) {
-          keys.push(readMcpApiKey(row));
+          const key = readMcpApiKey(row);
+          if (key.revokedAt === null) {
+            keys.push(key);
+          }
         }
         this.mcpApiKeys = keys;
       } catch (error) {

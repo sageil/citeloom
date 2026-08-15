@@ -102,7 +102,7 @@
 
         <section class="security-mcp-key-list" aria-labelledby="mcp-api-key-existing-title">
           <h3 id="mcp-api-key-existing-title">Existing keys</h3>
-          <p x-show="!mcpApiKeyBusy &amp;&amp; mcpApiKeys.length === 0">No keys have been created for this user.</p>
+          <p x-show="!mcpApiKeyBusy &amp;&amp; mcpApiKeys.length === 0">No keys are available for this user.</p>
           <template x-for="key in mcpApiKeys" :key="key.id">
             <article>
               <span><strong x-text="key.label ?? 'Unlabeled key'"></strong><small x-text="`${formatMcpApiKeyScopes(key)} · expires ${formatDate(key.expiresAt)}`"></small></span>
