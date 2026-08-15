@@ -137,7 +137,7 @@ const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
   retrievalWindowPolicy: "structured-token-v3",
   retryBaseMs: 5_000,
   rrfK: 60,
-  publicOrigin: "https://localhost:3443",
+  publicOrigins: ["https://localhost:3443"] satisfies RuntimeSettings["publicOrigins"],
   searchMethod: "hybrid",
   secureSessionCookie: true,
   sttLanguage: "English",

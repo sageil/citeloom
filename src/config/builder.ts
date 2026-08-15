@@ -167,7 +167,8 @@ export function buildAppConfig(
     web: {
       maximumUploadRequestBytes:
         settings.maxUploadRequestMegabytes * 1_024 * 1_024,
-      publicOrigin: removeTrailingSlash(settings.publicOrigin),
+      publicOrigin: settings.publicOrigins[0],
+      publicOrigins: [...settings.publicOrigins],
       secureSessionCookie: settings.secureSessionCookie,
       trustProxy: settings.trustProxy,
     },

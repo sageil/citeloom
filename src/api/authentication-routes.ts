@@ -777,7 +777,7 @@ function requireSameOriginForMutation(
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
     return;
   }
-  if (origin !== webConfig.publicOrigin) {
+  if (origin === undefined || !webConfig.publicOrigins.includes(origin)) {
     throw new WebRequestError(403, "The request origin is not allowed.");
   }
 }

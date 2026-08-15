@@ -6,6 +6,7 @@ import { RETRIEVAL_MODES } from "../retrieval/mode.js";
 
 import type {
   DatabaseConfig,
+  PublicOrigins,
   RuntimeSettings,
 } from "./types.js";
 
@@ -13,6 +14,28 @@ const httpUrlSchema = z.url().refine((value) => {
   const protocol = new URL(value).protocol;
   return protocol === "http:" || protocol === "https:";
 }, "must use http or https");
+const publicOriginSchema = httpUrlSchema
+  .refine((value) => {
+    const url = new URL(value);
+    return url.username === ""
+      && url.password === ""
+      && url.pathname === "/"
+      && url.search === ""
+      && url.hash === "";
+  }, "must contain only a scheme, host, and optional port")
+  .transform((value) => new URL(value).origin);
+const publicOriginsSchema = z
+  .tuple([publicOriginSchema], publicOriginSchema)
+  .transform((origins): PublicOrigins => {
+    const [canonicalOrigin, ...additionalOrigins] = origins;
+    const uniqueAdditionalOrigins = additionalOrigins.filter(
+      (origin, index) => {
+        return origin !== canonicalOrigin
+          && additionalOrigins.indexOf(origin) === index;
+      },
+    );
+    return [canonicalOrigin, ...uniqueAdditionalOrigins];
+  });
 const runtimeNameSchema = z.string().trim().min(1).max(100);
 const databaseEnvironmentSchema = z.object({
   DATABASE_URL: z.url().refine(isPostgresUrl, "must use postgres or postgresql"),
@@ -147,7 +170,7 @@ export const runtimeSettingsObjectSchema = z.object({
   retrievalWindowPolicy: z.literal("structured-token-v3"),
   retryBaseMs: z.number().int().min(100).max(3_600_000),
   rrfK: z.number().int().min(1).max(1_000),
-  publicOrigin: httpUrlSchema,
+  publicOrigins: publicOriginsSchema,
   searchMethod: z.enum(RETRIEVAL_MODES),
   secureSessionCookie: z.boolean(),
   queryExpansionTimeoutSeconds: z.number().int().min(1).max(3_600),

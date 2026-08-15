@@ -731,6 +731,39 @@ describe("web server boundary", () => {
     }
   });
 
+  it("accepts login requests from an additional public origin", async () => {
+    const principal = buildAuthenticatedPrincipal("admin");
+    const authenticate = vi.fn<WebServices["authenticate"]>(async () => ({
+      expiresAt: "2026-08-01T12:00:00.000Z",
+      principal,
+      token: "private-session-token",
+    }));
+    const config = buildConfig();
+    config.web.publicOrigins.push("https://citeloom.example");
+    const server = await buildProductionWebServer(config, {
+      logger: false,
+      services: buildServices({ authenticate }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        headers: { origin: "https://citeloom.example" },
+        method: "POST",
+        payload: {
+          password: "correct horse battery staple",
+          remember: false,
+          username: "Admin",
+        },
+        url: "/api/auth/login",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(authenticate).toHaveBeenCalledOnce();
+    } finally {
+      await server.close();
+    }
+  });
+
   it("returns one generic response for rejected credentials", async () => {
     const authenticate = vi.fn<WebServices["authenticate"]>(async () => {
       throw new AuthenticationRejectedError();

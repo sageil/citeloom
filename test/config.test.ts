@@ -35,7 +35,11 @@ describe("application configuration", () => {
         maxDocumentMegabytes: 100,
         maxUploadRequestMegabytes: 64,
         mcpTaskRetentionDays: 14,
-        publicOrigin: "https://localhost:4443/",
+        publicOrigins: [
+          "https://localhost:4443/",
+          "https://citeloom.example/",
+          "https://citeloom.example",
+        ],
         secureSessionCookie: false,
         topK: 7,
         trustProxy: true,
@@ -76,6 +80,10 @@ describe("application configuration", () => {
     expect(config.web).toEqual({
       maximumUploadRequestBytes: 64 * 1_024 * 1_024,
       publicOrigin: "https://localhost:4443",
+      publicOrigins: [
+        "https://localhost:4443",
+        "https://citeloom.example",
+      ],
       secureSessionCookie: false,
       trustProxy: true,
     });
@@ -202,6 +210,30 @@ describe("application configuration", () => {
       ...runtimeSettings,
       searchMethod: "automatic",
     })).toThrow("searchMethod");
+    expect(() => parseRuntimeSettings({
+      ...runtimeSettings,
+      publicOrigins: [],
+    })).toThrow("publicOrigins");
+    expect(() => parseRuntimeSettings({
+      ...runtimeSettings,
+      publicOrigins: ["https://citeloom.example/login"],
+    })).toThrow("publicOrigins");
+  });
+
+  it("normalizes and removes duplicate public origins", () => {
+    const settings = parseRuntimeSettings({
+      ...createTestRuntimeSettings(),
+      publicOrigins: [
+        "https://citeloom.example/",
+        "https://localhost:3443/",
+        "https://citeloom.example",
+      ],
+    });
+
+    expect(settings.publicOrigins).toEqual([
+      "https://citeloom.example",
+      "https://localhost:3443",
+    ]);
   });
 
   it("accepts retrieval counts above the former fixed limits", () => {

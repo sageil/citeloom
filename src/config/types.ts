@@ -101,9 +101,12 @@ export interface VerifierProcessConfig {
 export interface WebRuntimeConfig {
   maximumUploadRequestBytes: number;
   publicOrigin: string;
+  publicOrigins: PublicOrigins;
   secureSessionCookie: boolean;
   trustProxy: boolean;
 }
+
+export type PublicOrigins = [string, ...string[]];
 
 export interface DatabaseConfig {
   poolMax: number;
@@ -409,7 +412,7 @@ export interface RuntimeSettings {
   retryBaseMs: number;
   rrfK: number;
   searchMethod: RetrievalMode;
-  publicOrigin: string;
+  publicOrigins: PublicOrigins;
   secureSessionCookie: boolean;
   indexingTimeoutSeconds: number;
   queryExpansionTimeoutSeconds: number;

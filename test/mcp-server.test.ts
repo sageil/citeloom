@@ -116,6 +116,38 @@ describe("MCP server", () => {
     }
   });
 
+  it("accepts an MCP request origin from the public origin list", async () => {
+    const config = buildConfig();
+    config.web.publicOrigins.push("https://citeloom.example");
+    const server = await buildProductionWebServer(config, {
+      logger: false,
+      services: buildServices(),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        headers: { origin: "https://citeloom.example" },
+        method: "POST",
+        payload: {
+          id: 1,
+          jsonrpc: "2.0",
+          method: "initialize",
+          params: {
+            capabilities: {},
+            clientInfo: { name: "test-client", version: "1.0.0" },
+            protocolVersion: "2025-11-25",
+          },
+        },
+        url: "/mcp",
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toMatchObject({ error: "invalid_token" });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("serves a user-bound MCP API key in the selected workspace", async () => {
     const principal = buildAuthenticatedPrincipal("member", "standard");
     const apiKeyId = "00000000-0000-4000-8000-000000000810";

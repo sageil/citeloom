@@ -37,6 +37,7 @@ export type {
   LanguageThinkingMode,
   ProviderConcurrencyConfig,
   ProviderRuntimeConfig,
+  PublicOrigins,
   RankFusionConfig,
   RerankerAdapter,
   RerankerConfig,

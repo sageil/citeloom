@@ -179,7 +179,7 @@ export function registerMcpRoutes(
     handler: async (request, reply) => {
       if (
         request.headers.origin !== undefined
-        && request.headers.origin !== options.webConfig.publicOrigin
+        && !options.webConfig.publicOrigins.includes(request.headers.origin)
       ) {
         return reply.status(403).send({
           error: "invalid_request",

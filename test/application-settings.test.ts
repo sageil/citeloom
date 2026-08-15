@@ -32,6 +32,13 @@ describe("runtime setting contract", () => {
     expect(() => decodeRuntimeSettingValue("topK", "10")).toThrow(
       "Invalid value for Sections available for answers",
     );
+    expect(decodeRuntimeSettingValue("publicOrigins", [
+      "https://citeloom.example/",
+      "https://localhost:3443",
+    ])).toEqual([
+      "https://citeloom.example",
+      "https://localhost:3443",
+    ]);
   });
 
   it("groups the unbounded retrieval counts in one search-size panel", () => {

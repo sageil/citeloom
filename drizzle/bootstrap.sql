@@ -1095,7 +1095,7 @@ WITH canonical_settings AS (
       "retrievalWindowPolicy": "structured-token-v3",
       "retryBaseMs": 5000,
       "rrfK": 60,
-      "publicOrigin": "https://localhost:3443",
+      "publicOrigins": ["https://localhost:3443"],
       "searchMethod": "hybrid",
       "secureSessionCookie": true,
       "sttLanguage": "English",
