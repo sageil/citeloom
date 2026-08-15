@@ -33,6 +33,9 @@
     "ingest": "node --env-file-if-exists=.env.development --import tsx src/cli/index.ts ingest",
     "jobs": "node --env-file-if-exists=.env.development --import tsx src/cli/index.ts jobs",
     "mcp:client": "node --import tsx mcp-client/cli.ts",
+    "mcp:inspect": "mcp-inspector --tui --config mcp-client/inspector.json",
+    "mcp:inspect:web": "mcp-inspector --web --config mcp-client/inspector.json",
+    "mcp:inspect:tools": "mcp-inspector --cli --config mcp-client/inspector.json --server citeloom --method tools/list",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "restore": "./infra/scripts/restore.sh",
@@ -98,6 +101,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.6",
     "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/inspector": "2.2.0",
     "@types/html-encoding-sniffer": "3.0.2",
     "@types/mdast": "4.0.4",
     "@types/node": "26.1.2",

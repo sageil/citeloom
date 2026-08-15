@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "citeloom": {
+      "type": "http",
+      "url": "https://citeloom.xyz/mcp",
+      "protocolEra": "modern",
+      "oauth": {
+        "clientId": "s96olz0u10zu803azq656",
+        "scopes": "citeloom.search citeloom.answer"
+      }
+    },
+    "citeloom-api-key": {
+      "type": "http",
+      "url": "https://citeloom.xyz/mcp",
+      "protocolEra": "modern"
+    }
+  }
+}
