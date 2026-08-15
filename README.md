@@ -63,7 +63,7 @@ Choose the guide that matches the work you need to do.
 | Learn the available workflows and product limits | [Features](docs/features.md) |
 | Install or deploy CiteLoom | [Deployment](docs/deployment.md) |
 | Configure providers, search, speech, and document processing | [Configuration](docs/configuration.md) |
-| Configure opt-in OAuth with Logto | [OAuth](docs/oauth.md) |
+| Configure optional OAuth with a compatible authorization server | [OAuth](docs/oauth.md) |
 | Back up, restore, reindex, diagnose, or recover the service | [Operations](docs/operations.md) |
 | Look up a package command | [pnpm commands](docs/commands.md) |
 | Understand system boundaries and execution paths | [Architecture](docs/architecture.md) |

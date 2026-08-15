@@ -1,111 +1,140 @@
 ---
-title: Connect an MCP client
-description: Use CiteLoom MCP through an interactive OAuth flow or a workspace-bound API key.
+title: Configure MCP
+description: Connect an MCP host to CiteLoom with OAuth or a user-bound API key, then use its search and cited-answer capabilities.
 ---
 
-CiteLoom exposes its modern MCP endpoint at `POST /mcp` and supports two authentication workflows.
-Both use the same local users, workspace memberships, authorization checks, retrieval, answers, threads, and citations.
+CiteLoom serves MCP at `https://citeloom.example/mcp` over Streamable HTTP.
+Replace `https://citeloom.example` with the public origin of your CiteLoom installation.
+CiteLoom accepts only [MCP protocol `2026-07-28`](https://modelcontextprotocol.io/specification/2026-07-28).
 
-| Workflow | Best for | Workspace selection | Browser interaction |
+## Capabilities exposed to the model
+
+The LLM receives only the capabilities allowed by the current OAuth token or API key.
+
+| Scope | Name | Type | Behavior |
 | --- | --- | --- | --- |
-| OAuth | Interactive desktop or developer clients acting as a person. | The client sends the visible workspace name. | Required for Authorization Code with PKCE. |
-| MCP API key | Automation and clients where a workspace-scoped credential is preferable. | The key is permanently bound to its selected workspace. | Not required. |
+| Any authenticated request | `citeloom://workspace/context` | Resource | Lets the host provide the authenticated CiteLoom user and selected workspace to the model. |
+| `citeloom.search` | `citeloom.search_sources` | Tool | Lets the model retrieve exact keyword matches and optional semantic matches without creating a research turn. |
+| `citeloom.search` | `citeloom.search_workspace` | Prompt | Instructs the model to search while preserving document and passage evidence metadata. |
+| `citeloom.answer` | `citeloom.ask_documents` | Tool | Lets the model request a durable cited answer. |
+| `citeloom.answer` | `citeloom.answer_with_citations` | Prompt | Instructs the model to request and present a durable cited answer. |
+| `citeloom.answer` | `citeloom://workspace/research/threads/{threadId}` | Resource template | Lets the host provide a saved research thread to the model. |
+| `citeloom.answer` | `citeloom://workspace/research/citations/{citationId}` | Resource template | Lets the host provide immutable citation evidence to the model. |
 
-The repository includes a smoke client that exercises protocol discovery, tool discovery, source search, asynchronous answer creation and polling, and every linked thread or citation resource returned by the answer.
+The model selects tools and supplies their arguments.
+The MCP host handles discovery, authentication, resource retrieval, and task polling, then returns the resulting content to the model.
+When `citeloom.answer` is granted, `server/discover` also advertises the `io.modelcontextprotocol/tasks` extension.
+The MCP host must advertise the same extension in each answer or task request.
 
-## OAuth workflow
+## Connect with OAuth
 
-### 1. Register the native client
+Use OAuth when the MCP host acts for an interactive CiteLoom user.
 
-Register a public native application with the OAuth provider used by CiteLoom.
-Its redirect URI must exactly match the loopback callback supplied to the client.
+### Configure CiteLoom and the authorization server
 
-For the example below, register:
+1. Set CiteLoom's public origin to an HTTPS origin and activate OAuth under Security > Authentication.
+2. Configure the authorization server with the MCP resource identifier `https://citeloom.example/mcp`.
+3. Allow the MCP resource to grant `citeloom.search`, `citeloom.answer`, or both.
+4. Configure a public MCP client with Authorization Code and PKCE, using the registration method supported by the MCP host and authorization server.
+5. Link the OAuth subject to an active CiteLoom user who has enabled membership in the workspace the host will select.
+
+The MCP client's redirect URI is configured in the authorization server, not in CiteLoom.
+The [OAuth guide](../../installation/oauth/) defines the compatibility contract and includes a Logto example.
+
+### Configure the MCP host
+
+Provide these values through the host's MCP configuration:
+
+| Setting | Value |
+| --- | --- |
+| Transport | Streamable HTTP |
+| Server URL | `https://citeloom.example/mcp` |
+| OAuth resource | `https://citeloom.example/mcp` |
+| OAuth client | The configured public-client ID, or the registration method supported by the MCP host and authorization server. |
+| Scopes | `citeloom.search`, `citeloom.answer`, or both. |
+| MCP request header | `X-CiteLoom-Workspace-Name: <visible workspace name>` |
+
+Send `X-CiteLoom-Workspace-Name` only to the CiteLoom MCP endpoint.
+Do not send it to the authorization server.
+
+### OAuth discovery and validation
+
+CiteLoom publishes MCP protected-resource metadata at:
 
 ```text
-http://127.0.0.1:6276/oauth/callback
+https://citeloom.example/.well-known/oauth-protected-resource/mcp
 ```
 
-Allow that application to request `citeloom.search` and `citeloom.answer` for the CiteLoom MCP resource.
-For an installation whose public origin is `https://citeloom.example`, the resource indicator is `https://citeloom.example/mcp`.
+That response identifies the authorization server, MCP resource, supported scopes, CiteLoom MCP name, and this documentation.
+An unauthenticated `GET /mcp` request returns HTTP 401 with a `WWW-Authenticate` header that points to this metadata.
+An authenticated `GET /mcp` request returns HTTP 405 with `Allow: POST` because CiteLoom accepts MCP protocol messages through `POST /mcp`.
+A rejected OAuth bearer token returns a `WWW-Authenticate` challenge containing the protected-resource metadata URL.
 
-The external OAuth subject must already be linked to an active CiteLoom user, and that user must have active membership in the requested workspace.
+The OAuth access token must have:
 
-### 2. Run the client
+- the configured authorization-server issuer;
+- the exact `https://citeloom.example/mcp` audience;
+- an unexpired signature verifiable through the issuer's JWKS;
+- a client identifier;
+- the scope that the requested CiteLoom operation needs.
 
-```bash
-pnpm mcp:client -- \
-  --server-url https://citeloom.example/mcp \
-  --client-id '<native OAuth App ID>' \
-  --callback-url http://127.0.0.1:6276/oauth/callback \
-  --workspace '<CiteLoom workspace name>' \
-  --question 'What policy is documented in this workspace?'
+CiteLoom then resolves the token subject and `X-CiteLoom-Workspace-Name` to an active local user, active workspace, and enabled workspace membership.
+
+### Verify OAuth access
+
+1. Reconnect the MCP server and complete the host's browser authorization flow.
+2. Read `citeloom://workspace/context`.
+3. Confirm that `username`, `workspaceId`, and `workspaceName` identify the intended CiteLoom account and workspace.
+4. List tools and confirm that the granted scopes expose the expected CiteLoom tools.
+
+## Connect with an MCP API key
+
+Use an MCP API key for automation or when the MCP host accepts a fixed bearer secret.
+This workflow works while CiteLoom browser authentication is in either local or OAuth mode.
+
+### Create the key
+
+1. Open Security > User accounts.
+2. Open the target user's Actions menu and select Manage MCP API keys.
+3. Set the optional label, expiry, and the `citeloom.search` or `citeloom.answer` scopes that the key needs.
+4. Copy the cleartext key when CiteLoom displays it.
+
+Global administrators can manage keys for any active user.
+Workspace administrators can manage keys for active users in their selected workspace.
+
+CiteLoom displays the key once and stores only its SHA-256 digest.
+Store the key in the MCP host's secret store.
+
+### Configure the MCP host
+
+Use the same Streamable HTTP server URL and send the key as a bearer credential:
+
+```http
+Authorization: Bearer <CiteLoom MCP API key>
 ```
 
-Open the authorization URL printed by the command, sign in, and approve access.
-The client keeps OAuth tokens only in process memory and listens only on the configured loopback callback address.
+Do not configure an OAuth client, OAuth resource, or callback for an API key.
+Send `X-CiteLoom-Workspace-Name: <visible workspace name>` with every CiteLoom MCP request.
+The key identifies one user and can select any active workspace where that user has enabled membership.
 
-OAuth access tokens must target the distinct MCP audience and grant the scope required by each operation.
-The client sends `X-CiteLoom-Workspace-Name` on CiteLoom MCP requests; it does not send that selector to the authorization server.
+For every request, CiteLoom rechecks the key digest, expiry, revocation state, owner state, workspace state, membership state, and scope.
 
-## API-key workflow
+### Verify API-key access
 
-### 1. Generate a workspace-bound key
+1. Reconnect the MCP server.
+2. Read `citeloom://workspace/context`.
+3. Confirm that the returned user and workspace match the key's owner and selected workspace.
+4. List tools and confirm that the key's scopes expose only the intended CiteLoom tools.
 
-In CiteLoom, open Security > User accounts, choose the target user's Actions menu, and select Manage MCP API keys.
-Select the intended workspace and grant only the operations the client needs:
+## Diagnose rejected requests
 
-| Permission | Scope | MCP surface |
+| Result | Meaning | Corrective action |
 | --- | --- | --- |
-| Search documents | `citeloom.search` | `citeloom.search_sources` |
-| Ask documents | `citeloom.answer` | `citeloom.ask_documents`, task methods, saved thread resources, and citation resources. |
+| HTTP 400 `invalid_request` | The workspace header is missing, repeated, or invalid. | Send one `X-CiteLoom-Workspace-Name` value containing the visible workspace name on CiteLoom MCP requests. |
+| HTTP 401 `invalid_token` | The OAuth token or API key is absent, invalid, expired, or revoked. | Reauthorize OAuth or replace the API key, then reconnect. |
+| HTTP 403 `insufficient_scope` | The credential does not grant the scope that the tool, task method, or resource needs. | Grant `citeloom.search` or `citeloom.answer` as reported by the challenge. |
+| HTTP 403 `access_denied` | The OAuth identity cannot access the selected local workspace. | Check the subject link, user state, workspace state, membership, and visible workspace name. |
+| JSON-RPC missing-capability error | The host called `citeloom.ask_documents` or a task method without declaring the Tasks extension. | Enable `io.modelcontextprotocol/tasks` in the host or use `citeloom.search_sources` only. |
+| HTTP 400 protocol mismatch | The host used a protocol other than `2026-07-28`. | Configure or update the host to use MCP `2026-07-28`. |
 
-The cleartext key is shown once.
-CiteLoom stores only its SHA-256 digest and rechecks the key, owner, workspace, membership, expiry, revocation, and scopes for every request.
-
-### 2. Save the key without exposing it in process arguments
-
-```bash
-umask 077
-read -r -s CITELOOM_MCP_KEY
-printf '%s\n' "$CITELOOM_MCP_KEY" > ./citeloom-mcp.key
-unset CITELOOM_MCP_KEY
-```
-
-Paste the key at the hidden prompt and press Enter.
-
-### 3. Run the client
-
-```bash
-pnpm mcp:client -- \
-  --server-url https://citeloom.example/mcp \
-  --api-key-file ./citeloom-mcp.key \
-  --question 'What policy is documented in this workspace?'
-```
-
-Do not pass `--workspace`, `--client-id`, or `--callback-url` with `--api-key-file`.
-The key already carries its local workspace binding and needs no OAuth registration, redirect, or interactive sign-in.
-
-## Private local certificate authority
-
-The repository Compose deployment stores Caddy's public root certificate at `data/caddy/caddy/pki/authorities/local/root.crt`.
-When Node does not already trust that private certificate authority, add this option to either workflow:
-
-```text
---ca-file data/caddy/caddy/pki/authorities/local/root.crt
-```
-
-The client adds that certificate only to its own process while retaining normal certificate and hostname verification.
-Do not pass `--ca-file` when the deployment uses a publicly trusted certificate.
-
-## Authorization failures
-
-Check these boundaries in order:
-
-1. Confirm the server URL includes `/mcp` and uses HTTPS, except for loopback-only testing.
-2. For OAuth, confirm the token audience is the MCP resource, the requested scopes are granted, and the workspace name exactly identifies an accessible local workspace.
-3. For an API key, confirm it has not expired or been revoked and that its owner and bound workspace membership remain active.
-4. Confirm the credential grants `citeloom.search` for source search and `citeloom.answer` for asynchronous answers and saved answer resources.
-5. Run `pnpm mcp:client -- --help` to check timeout, polling, callback, and private-CA options.
-
-The [complete OAuth and MCP reference](../../reference/oauth/#mcp) documents protected-resource metadata, protocol versioning, task retention, and extension behavior.
+The [OAuth and MCP reference](../../reference/oauth/#mcp) documents the complete server-side authentication and task-retention behavior.
