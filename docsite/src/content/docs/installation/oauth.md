@@ -45,7 +45,7 @@ This guide uses `https://citeloom.example`.
 
 | Value | Example or source |
 | --- | --- |
-| CiteLoom public origin | `https://citeloom.example` |
+| First CiteLoom public origin | `https://citeloom.example` |
 | Authorization server issuer | `https://identity.example.com/oidc` |
 | Browser API resource | `https://citeloom.example/api` |
 | MCP resource | `https://citeloom.example/mcp` |
@@ -57,8 +57,8 @@ This guide uses `https://citeloom.example`.
 | MCP callback | The exact callback URI from the MCP host |
 | MCP public client ID | The client ID from the authorization server when the host uses a configured client ID |
 
-Use the exact public origin of your installation.
-Do not add a trailing slash to the origin.
+Put the exact canonical public origin first in the list.
+CiteLoom accepts browser requests from every origin in the list.
 
 ## Configure CiteLoom with a compatible authorization server
 
@@ -68,7 +68,7 @@ Do not add a trailing slash to the origin.
 4. Register the CiteLoom browser as a public client with Authorization Code and PKCE S256.
 5. Register the exact CiteLoom browser callback and post-logout redirect URIs.
 6. Configure the MCP client registration path that the MCP host and authorization server support.
-7. Set the CiteLoom public origin under **Settings > Web server** and restart the web service.
+7. Set the CiteLoom public origins under **Settings > Web server** and restart the web service.
 8. Open **Security > Authentication** and stage the issuer, browser client ID, browser scopes, API scopes, and MCP scopes.
 9. Link each external `sub` value to an existing CiteLoom user.
 10. Enable host recovery and activate OAuth with a linked global administrator.
@@ -126,6 +126,27 @@ Start the independent Logto stack:
 ```bash
 docker compose --env-file .env -f compose.logto.yml up -d --wait
 ```
+
+#### Upgrade an existing Logto database
+
+Apply the Logto database alterations before you start a newer Logto image with an existing database.
+The target version must match `LOGTO_IMAGE`.
+
+For Logto `1.42.0`:
+
+```bash
+docker compose --env-file .env -f compose.logto.yml pull logto
+docker compose --env-file .env -f compose.logto.yml up -d --wait logto-postgres
+docker compose --env-file .env -f compose.logto.yml run --rm --no-deps \
+  -e CI=true --entrypoint sh logto \
+  -c 'npm run alteration deploy 1.42.0'
+docker compose --env-file .env -f compose.logto.yml up -d --wait
+```
+
+Run the alteration job once.
+If it fails, correct the reported problem and run the same command again.
+Logto runs each alteration script in a database transaction.
+See the [Logto database-alteration guide](https://docs.logto.io/logto-oss/using-cli/database-alteration) before you upgrade across more than one release.
 
 The Compose file publishes the Logto public service and admin service on separate ports.
 Put both services behind trusted HTTPS.
@@ -280,20 +301,24 @@ If an MCP host does not let you set an OAuth client ID, it cannot use this manua
 
 The [Logto third-party application guide](https://docs.logto.io/integrate-logto/third-party-applications) describes Native public clients and PKCE.
 
-### 6. Configure the CiteLoom public origin
+### 6. Configure the CiteLoom public origins
 
 Sign in to CiteLoom as a global administrator.
 Open **Settings** and select **Web server**.
-Set **Public origin** to the exact public HTTPS origin.
+Set **Public origins** to a JSON list of browser origins.
+Put the origin used for OAuth and MCP first.
 Restart the CiteLoom web service after you save this setting.
 
 For this guide, the value is:
 
-```text
-https://citeloom.example
+```json
+[
+  "https://citeloom.example"
+]
 ```
 
-CiteLoom derives the API resource, MCP resource, callback URI, and post-logout URI from this origin.
+CiteLoom derives the API resource, MCP resource, callback URI, and post-logout URI from the first origin.
+CiteLoom accepts state-changing browser requests from every origin in the list.
 You do not enter those four derived values in the OAuth form.
 
 ### 7. Stage OAuth in CiteLoom

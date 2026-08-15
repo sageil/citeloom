@@ -166,6 +166,23 @@ It does not synchronize new writes or deletions back to that filesystem.
 Keep the old source directory and its mount for the recovery period that your policy defines.
 CiteLoom does not delete the previous files automatically.
 
+## Return to local filesystem storage
+
+Keep SeaweedFS running until the reverse migration is complete.
+The previous filesystem does not contain documents that CiteLoom added after the S3 cutover.
+
+1. Confirm that the web and worker services still mount the local source directory at `/app/documents/blobs`.
+2. Open **Settings > Object storage**.
+3. Select **Local filesystem**.
+4. Set **Directory** to `/app/documents/blobs`.
+5. Select **Test connection**.
+6. Select **Start migration**.
+7. Wait until the status is **Completed** and **Local filesystem** is active.
+8. Open a representative source document and confirm that its content is unchanged.
+
+After this verification, start CiteLoom without the SeaweedFS overlay.
+Keep the SeaweedFS data directory until your recovery period ends because CiteLoom does not delete the previous S3 objects.
+
 ## Use another S3-compatible service
 
 Do not start the SeaweedFS overlay when you use another S3-compatible service.

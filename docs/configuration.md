@@ -77,7 +77,7 @@ Docling and HHEM read their process settings from PostgreSQL before starting.
 | Docling | Additional service instances, pipeline profiling, thread count, page batch size, queue size, local engine workers, and model sharing |
 | Hughes Hallucination Evaluation Model | Maximum padded tokens, attention cells, model batch size, and Torch thread count |
 | Usage diagnostics | Application error row and age limits |
-| Web server | Maximum upload request size, public origin, secure-cookie enforcement, and trusted-proxy mode |
+| Web server | Maximum upload request size, public origins, secure-cookie enforcement, and trusted-proxy mode |
 
 Process-level Docling and HHEM changes require restarting the matching service.
 Web server settings and the worker database pool require restarting the affected application processes.

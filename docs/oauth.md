@@ -44,7 +44,7 @@ It does not read this configuration from process environment variables.
 
 ### Values that CiteLoom derives
 
-CiteLoom derives these values from its configured public origin:
+CiteLoom derives these values from the first entry in its configured Public origins list:
 
 | Purpose | Value |
 | --- | --- |
@@ -60,7 +60,7 @@ Register the exact resource identifiers and redirect URIs in the authorization s
 
 CiteLoom does these checks:
 
-- The public origin uses HTTPS.
+- The first public origin uses HTTPS.
 - The issuer has a valid OpenID Connect discovery document.
 - The issuer has a valid signing-key set.
 - A concurrent change does not use an old settings version.
@@ -265,6 +265,25 @@ Start Logto separately from CiteLoom:
 ```sh
 docker compose --env-file .env -f compose.logto.yml up -d --wait
 ```
+
+When an existing Logto database moves to a newer Logto image, apply the database alterations before you start the new application version.
+The alteration target must match `LOGTO_IMAGE`.
+
+For Logto `1.42.0`:
+
+```sh
+docker compose --env-file .env -f compose.logto.yml pull logto
+docker compose --env-file .env -f compose.logto.yml up -d --wait logto-postgres
+docker compose --env-file .env -f compose.logto.yml run --rm --no-deps \
+  -e CI=true --entrypoint sh logto \
+  -c 'npm run alteration deploy 1.42.0'
+docker compose --env-file .env -f compose.logto.yml up -d --wait
+```
+
+Run the alteration job once.
+If it fails, correct the reported problem and run the same command again.
+Logto runs each alteration script in a database transaction.
+See the [Logto database-alteration guide](https://docs.logto.io/logto-oss/using-cli/database-alteration) before you upgrade across more than one release.
 
 Then configure Logto:
 

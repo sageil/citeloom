@@ -137,6 +137,22 @@ After a completed migration, the previous filesystem content remains available f
 Retain the old content and mount until the SeaweedFS deployment has been verified for the required recovery period.
 Cleanup is a separate explicit operator action because CiteLoom never deletes the previous backend automatically.
 
+#### Return to the local filesystem
+
+Keep SeaweedFS running and keep the S3 environment values available until the reverse migration is complete.
+The previous filesystem does not contain documents that CiteLoom added after the S3 cutover.
+
+1. Confirm that the web and worker services still mount the local source directory at `/app/documents/blobs`.
+2. Sign in as an administrator and open Settings > Object storage.
+3. Select Local filesystem and set Directory to `/app/documents/blobs`.
+4. Select Test connection and wait for the successful write and delete probe.
+5. Select Start migration and confirm the request.
+6. Wait until the migration status is Completed and Active storage reports Local filesystem.
+7. Open a representative source document and confirm that its content is unchanged.
+
+After this verification, stop the stack that includes `compose.seaweedfs.yml` and start the base stack without that overlay.
+Retain the SeaweedFS data directory for the required recovery period because CiteLoom does not delete the previous S3 objects.
+
 The durable migration and recovery details are documented in [Migrate source-content storage](operations.md#migrate-source-content-storage).
 
 Stop a Docker Hub stack without deleting its bind-mounted data.
@@ -227,7 +243,8 @@ Existing exact-version deployments remain unchanged during a partial publication
 
 ## Configure a production proxy
 
-Set Public origin, Secure session cookie, and Trust reverse proxy on the Web server Settings page for the deployed origin and proxy path.
+Set Public origins, Secure session cookie, and Trust reverse proxy on the Web server Settings page for the deployed origins and proxy path.
+Put the canonical public origin first in the list.
 Restart the web service after saving these values.
 Keep secure cookies enabled outside isolated automated tests.
 Enable trusted-proxy mode only when a trusted proxy replaces forwarded client headers, as the supplied Caddy service does.
@@ -247,7 +264,8 @@ Authentication stores session data in PostgreSQL and uses a host-only cookie wit
 Regular sessions expire after 2 hours of inactivity or 12 hours in total.
 Remembered sessions expire after 7 days of inactivity or 30 days in total.
 Administrator-created setup and password-reset links expire after 24 hours and are consumed when the user sets a password.
-The database-owned Public origin setting is the required origin for state-changing browser requests.
+The database-owned Public origins list contains the origins that can make state-changing browser requests.
+The first entry is the canonical origin for OAuth and MCP URLs.
 
 Workspace members can use document, ingestion, reindexing, search, and research APIs.
 Workspace administrators can also manage membership, settings, and diagnostics.

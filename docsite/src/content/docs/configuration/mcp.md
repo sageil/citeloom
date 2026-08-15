@@ -4,7 +4,7 @@ description: Connect an MCP host to CiteLoom with OAuth or a user-bound API key,
 ---
 
 CiteLoom serves MCP at `https://citeloom.example/mcp` over Streamable HTTP.
-Replace `https://citeloom.example` with the public origin of your CiteLoom installation.
+Replace `https://citeloom.example` with the first origin in the CiteLoom **Public origins** list.
 CiteLoom accepts only [MCP protocol `2026-07-28`](https://modelcontextprotocol.io/specification/2026-07-28).
 
 ## Capabilities exposed to the model
@@ -32,7 +32,7 @@ Use OAuth when the MCP host acts for an interactive CiteLoom user.
 
 ### Configure CiteLoom and the authorization server
 
-1. Set CiteLoom's public origin to an HTTPS origin and activate OAuth under Security > Authentication.
+1. Put the HTTPS origin used for MCP first in CiteLoom's **Public origins** list and activate OAuth under Security > Authentication.
 2. Configure the authorization server with the MCP resource identifier `https://citeloom.example/mcp`.
 3. Allow the MCP resource to grant `citeloom.search`, `citeloom.answer`, or both.
 4. Configure a public MCP client with Authorization Code and PKCE, using the registration method supported by the MCP host and authorization server.
