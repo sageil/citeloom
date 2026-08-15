@@ -69,7 +69,9 @@ The `source-content migrate --apply` command remains available for planned offli
 
 The optional `compose.seaweedfs.yml` overlay runs a pinned single-node SeaweedFS service and configures CiteLoom through its S3-compatible endpoint.
 Set strong credentials in `.env` before the first start.
-Keep each CiteLoom database on an exclusive bucket and key prefix because orphan reconciliation treats objects outside that database as removable.
+If independent CiteLoom environments use the same S3 service, give each environment a different bucket or key prefix.
+All web and worker containers in one environment use the same storage location.
+During orphan cleanup, one environment can delete an object that only the other environment has in its database when both environments use the same bucket and prefix.
 
 For a fixed single-host example with two stateless S3 gateways behind Caddy, follow [Self-hosted SeaweedFS with Caddy](../deployments/examples/seaweedfs-caddy/README.md).
 That example runs exactly three SeaweedFS containers and preserves the same internal S3 endpoint and data directory as this overlay.

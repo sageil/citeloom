@@ -59,28 +59,3 @@ for (const entry of entries) {
   ].join("\n");
   await writeFile(join(targetDirectory, entry.name), frontmatter + body, "utf8");
 }
-
-const exampleSource = join(repositoryDirectory, "deployments", "examples", "seaweedfs-caddy", "README.md");
-const exampleTarget = join(targetDirectory, "seaweedfs-caddy-example.md");
-const example = await readFile(exampleSource, "utf8");
-const exampleBody = example
-  .replace(/^# .+\n+/u, "")
-  .replace(/\]\(\.\.\/\.\.\/\.\.\/docs\/([^):#]+)\.md(#[^)]+)?\)/gu, (_match, fileName, hash = "") => {
-    return `](../${fileName}/${hash})`;
-  })
-  .replace(/\]\(\.\.\/\.\.\/\.\.\/([^):#]+)(#[^)]+)?\)/gu, (_match, path, hash = "") => {
-    return `](${repositoryUrl}${path}${hash})`;
-  })
-  .replace(/\]\(\.\/([^):#]+)(#[^)]+)?\)/gu, (_match, path, hash = "") => {
-    return `](${repositoryUrl}deployments/examples/seaweedfs-caddy/${path}${hash})`;
-  })
-  .replace(/\]\(\.env\.example\)/gu, `](${repositoryUrl}deployments/examples/seaweedfs-caddy/.env.example)`);
-await writeFile(exampleTarget, [
-  "---",
-  "title: Self-hosted SeaweedFS with Caddy",
-  "description: A fixed single-host SeaweedFS deployment with two stateless S3 gateways behind Caddy.",
-  `editUrl: ${repositoryEditUrl}deployments/examples/seaweedfs-caddy/README.md`,
-  "---",
-  "",
-  exampleBody,
-].join("\n"), "utf8");
