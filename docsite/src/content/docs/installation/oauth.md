@@ -49,6 +49,7 @@ This guide uses `https://citeloom.example`.
 | Authorization server issuer | `https://identity.example.com/oidc` |
 | Browser API resource | `https://citeloom.example/api` |
 | MCP resource | `https://citeloom.example/mcp` |
+| MCP server URL | `https://citeloom.example/mcp` |
 | Browser callback | `https://citeloom.example/oauth/callback` |
 | Browser post-logout redirect | `https://citeloom.example/login` |
 | Browser public client ID | The client ID from the authorization server |
@@ -392,10 +393,10 @@ Enter these values in the MCP host:
 | OAuth client ID | The Application ID of the shared Logto MCP application |
 | OAuth resource | `https://citeloom.example/mcp` |
 | OAuth scopes | `citeloom.search citeloom.answer` |
-| Request header | `X-CiteLoom-Workspace-Name: <visible workspace name>` |
 
-Send the workspace header only to the CiteLoom MCP endpoint.
-Do not send it to Logto.
+Do not add a custom workspace header.
+Do not add a workspace name to the server URL.
+The authenticated CiteLoom user gets access to every active workspace where that user has an enabled membership.
 
 Then connect the host:
 
@@ -406,7 +407,7 @@ Then connect the host:
 5. The user signs in and approves the MCP scopes.
 6. Logto redirects the browser to the exact host callback URI.
 7. The host exchanges the authorization code for an access token.
-8. The host sends the token and workspace header to CiteLoom.
+8. The host sends the token to the CiteLoom MCP server URL.
 
 A loopback callback such as `http://127.0.0.1:6276/oauth/callback` runs on the user's computer.
 The CiteLoom and Logto servers can be on the internet.
@@ -421,12 +422,13 @@ pnpm mcp:client -- \
   --server-url https://citeloom.example/mcp \
   --client-id 'YOUR_LOGTO_NATIVE_APPLICATION_ID' \
   --callback-url http://127.0.0.1:6276/oauth/callback \
-  --workspace 'YOUR_WORKSPACE_NAME' \
-  --question 'What policy is documented in this workspace?'
+  --question 'What policy is documented in my workspaces?'
 ```
 
 If the deployment uses a private certificate authority, add `--ca-file` with the public root certificate path.
 Do not disable certificate or host-name verification.
+
+For a browser interface, follow [Test with MCP Inspector](../../configuration/mcp/#test-with-mcp-inspector).
 
 ### 11. Verify the complete setup
 
@@ -440,11 +442,13 @@ Complete these checks in order:
 6. Sign out of CiteLoom and complete the browser OAuth flow.
 7. Connect the MCP host and approve its Logto consent screen.
 8. Read `citeloom://workspace/context`.
-9. Confirm the returned username and workspace name.
+9. Confirm the returned username and complete workspace list.
 10. List MCP tools and confirm that the granted scopes expose the expected tools.
+11. Call `citeloom.ask_documents` and save its returned `taskId`.
+12. Call `citeloom.get_answer` after `pollIntervalMs` until the task reaches a final state.
+13. Confirm that the result contains one cited answer over the combined authorized document set.
 
-The MCP host must support `io.modelcontextprotocol/tasks` to use `citeloom.ask_documents`.
-A host without that extension can still use `citeloom.search_sources` when it has `citeloom.search`.
+The answer workflow uses standard MCP tool calls.
 
 ## Correct common errors
 
