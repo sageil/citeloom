@@ -53,7 +53,9 @@ function readHttpsUrl(value, label) {
 function readApplicationUrl(value, label) {
   const url = new URL(readNonEmptyString(value, label));
   if (url.origin !== window.location.origin) {
-    throw new Error(`${label} must use the CiteLoom application origin.`);
+    throw new Error(
+      `This page uses ${window.location.origin}, but the configured ${label} uses ${url.origin}. Open ${url.origin} and try again.`,
+    );
   }
   return url;
 }

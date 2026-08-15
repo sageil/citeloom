@@ -398,7 +398,13 @@ function registerShell(alpine) {
       this.confirmationTitle = request.title;
       this.confirmationTone = request.tone;
       this.confirmationOpen = true;
-      this.$nextTick(() => this.$refs.confirmationCancel?.focus());
+      this.$nextTick(() => {
+        if (this.confirmationCancelLabel === null) {
+          this.$refs.confirmationConfirm?.focus();
+          return;
+        }
+        this.$refs.confirmationCancel?.focus();
+      });
     },
 
     cancelConfirmation() {
@@ -416,8 +422,14 @@ function registerShell(alpine) {
     cycleConfirmationFocus(event) {
       const cancelButton = this.$refs.confirmationCancel;
       const confirmButton = this.$refs.confirmationConfirm;
-      if (!(cancelButton instanceof HTMLButtonElement)
-        || !(confirmButton instanceof HTMLButtonElement)) {
+      if (!(confirmButton instanceof HTMLButtonElement)) {
+        return;
+      }
+      if (this.confirmationCancelLabel === null) {
+        confirmButton.focus();
+        return;
+      }
+      if (!(cancelButton instanceof HTMLButtonElement)) {
         return;
       }
       if (event.shiftKey) {

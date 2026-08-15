@@ -167,6 +167,26 @@ describe("browser OAuth authentication", () => {
     expect(storage.getItem("citeloom.oauth.transaction.v1")).not.toBeNull();
   });
 
+  it("tells the user how to correct an OAuth origin mismatch", async () => {
+    const module = await import(
+      "../web/assets/scripts/browser-authentication.js?activation-origin"
+    );
+    await module.browserAuthentication.ready();
+    const authentication = module.createBrowserAuthentication({
+      fetchImplementation: vi.fn(async () => jsonResponse({
+        mode: "local",
+        oauth: null,
+      })),
+      sessionStorage: createStorage(),
+    });
+    const configuration = buildOAuthBootstrap().oauth;
+    configuration.apiResource = "https://other-citeloom.example/api";
+
+    await expect(authentication.beginActivation(configuration, 7)).rejects.toThrow(
+      "This page uses https://citeloom.example, but the configured API resource uses https://other-citeloom.example. Open https://other-citeloom.example and try again.",
+    );
+  });
+
   it("rejects an expired OAuth callback transaction", async () => {
     const module = await import(
       "../web/assets/scripts/browser-authentication.js?expired-transaction"

@@ -11,7 +11,7 @@ import {
   readTimestamp,
 } from "./boundary-readers.js";
 import { browserAuthentication } from "./browser-authentication.js";
-import { requestConfirmation } from "./confirmation.js";
+import { requestConfirmation, showMessage } from "./confirmation.js";
 
 const userStates = ["active", "pending", "suspended"];
 
@@ -134,6 +134,16 @@ function normalizeSearch(value) {
   return value.trim().toLocaleLowerCase();
 }
 
+function showOAuthError(error, fallback, title) {
+  const description = error instanceof Error ? error.message : fallback;
+  void showMessage({
+    actionLabel: "Close",
+    description,
+    title,
+    tone: "danger",
+  });
+}
+
 function parseScopeDraft(value) {
   return [...new Set(value.split(/[\s,]+/u).filter(Boolean))].sort();
 }
@@ -152,7 +162,6 @@ export function createOAuthLinkManagement() {
     oauthBrowserScopes: "",
     oauthBusy: false,
     oauthConfigurationDrawerOpen: false,
-    oauthError: "",
     oauthLoading: false,
     oauthMappingDrawer: null,
     oauthMcpScopes: "",
@@ -243,7 +252,6 @@ export function createOAuthLinkManagement() {
       this.oauthBrowserScopes = configuration?.browserScopes.join(" ") ?? "";
       this.oauthApiScopes = configuration?.apiScopes.join(" ") ?? "";
       this.oauthMcpScopes = configuration?.mcpScopes.join(" ") ?? "";
-      this.oauthError = "";
       this.oauthConfigurationDrawerOpen = true;
     },
 
@@ -257,7 +265,6 @@ export function createOAuthLinkManagement() {
       if (!this.oauthConfigured || this.oauthBusy) {
         return;
       }
-      this.oauthError = "";
       this.oauthSubject = "";
       this.oauthUserId = "";
       this.oauthMappingDrawer = "user";
@@ -286,7 +293,6 @@ export function createOAuthLinkManagement() {
         return;
       }
       this.oauthBusy = true;
-      this.oauthError = "";
       try {
         const response = await fetch(
           "/api/security/authentication/oauth/staged",
@@ -307,9 +313,11 @@ export function createOAuthLinkManagement() {
         this.oauthConfigurationDrawerOpen = false;
         await this.loadOAuthLinks();
       } catch (error) {
-        this.oauthError = error instanceof Error
-          ? error.message
-          : "OAuth authentication could not be staged.";
+        showOAuthError(
+          error,
+          "OAuth authentication could not be staged.",
+          "OAuth settings could not be staged",
+        );
       } finally {
         this.oauthBusy = false;
       }
@@ -335,7 +343,6 @@ export function createOAuthLinkManagement() {
         return;
       }
       this.oauthBusy = true;
-      this.oauthError = "";
       try {
         await browserAuthentication.beginActivation(
           this.oauthSettings.stagedOAuthConfiguration,
@@ -343,9 +350,11 @@ export function createOAuthLinkManagement() {
         );
       } catch (error) {
         this.oauthBusy = false;
-        this.oauthError = error instanceof Error
-          ? error.message
-          : "OAuth activation could not be started.";
+        showOAuthError(
+          error,
+          "OAuth activation could not be started.",
+          "OAuth activation could not start",
+        );
       }
     },
 
@@ -369,7 +378,6 @@ export function createOAuthLinkManagement() {
         return;
       }
       this.oauthBusy = true;
-      this.oauthError = "";
       try {
         const response = await fetch(
           "/api/security/authentication/host-recovery",
@@ -385,9 +393,11 @@ export function createOAuthLinkManagement() {
         await readJsonResponse(response, "Configure host authentication recovery");
         await this.loadOAuthLinks();
       } catch (error) {
-        this.oauthError = error instanceof Error
-          ? error.message
-          : "Host authentication recovery could not be configured.";
+        showOAuthError(
+          error,
+          "Host authentication recovery could not be configured.",
+          "Host recovery could not be changed",
+        );
       } finally {
         this.oauthBusy = false;
       }
@@ -408,7 +418,6 @@ export function createOAuthLinkManagement() {
         return;
       }
       this.oauthBusy = true;
-      this.oauthError = "";
       try {
         const response = await fetch(
           "/api/security/authentication/oauth/disable",
@@ -422,9 +431,11 @@ export function createOAuthLinkManagement() {
         await browserAuthentication.signOut();
       } catch (error) {
         this.oauthBusy = false;
-        this.oauthError = error instanceof Error
-          ? error.message
-          : "OAuth authentication could not be disabled.";
+        showOAuthError(
+          error,
+          "OAuth authentication could not be disabled.",
+          "OAuth could not be disabled",
+        );
       }
     },
 
@@ -437,7 +448,6 @@ export function createOAuthLinkManagement() {
         return;
       }
       this.oauthBusy = true;
-      this.oauthError = "";
       try {
         const response = await fetch(
           `/api/security/authentication/oauth/users/${encodeURIComponent(this.oauthUserId)}`,
@@ -454,9 +464,11 @@ export function createOAuthLinkManagement() {
           this.loadOrganizationUsers(),
         ]);
       } catch (error) {
-        this.oauthError = error instanceof Error
-          ? error.message
-          : "The OAuth user could not be linked.";
+        showOAuthError(
+          error,
+          "The OAuth user could not be linked.",
+          "The OAuth user could not be linked",
+        );
       } finally {
         this.oauthBusy = false;
       }
@@ -464,7 +476,6 @@ export function createOAuthLinkManagement() {
 
     async loadOAuthLinks() {
       this.oauthLoading = true;
-      this.oauthError = "";
       try {
         const response = await fetch("/api/security/authentication", {
           headers: { accept: "application/json" },
@@ -475,9 +486,11 @@ export function createOAuthLinkManagement() {
         );
         this.applyOAuthOverview(readAuthenticationOverview(value));
       } catch (error) {
-        this.oauthError = error instanceof Error
-          ? error.message
-          : "Authentication security settings could not be loaded.";
+        showOAuthError(
+          error,
+          "Authentication security settings could not be loaded.",
+          "Authentication settings could not load",
+        );
       } finally {
         this.oauthLoading = false;
       }
@@ -507,7 +520,6 @@ export function createOAuthLinkManagement() {
         return;
       }
       this.oauthBusy = true;
-      this.oauthError = "";
       try {
         const response = await fetch(
           `/api/security/authentication/oauth/users/${encodeURIComponent(link.userId)}`,
@@ -516,9 +528,11 @@ export function createOAuthLinkManagement() {
         await requireSuccessfulResponse(response, "Remove OAuth user mapping");
         await this.loadOAuthLinks();
       } catch (error) {
-        this.oauthError = error instanceof Error
-          ? error.message
-          : "The OAuth mapping could not be removed.";
+        showOAuthError(
+          error,
+          "The OAuth mapping could not be removed.",
+          "The OAuth mapping could not be removed",
+        );
       } finally {
         this.oauthBusy = false;
       }

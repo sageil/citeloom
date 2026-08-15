@@ -500,7 +500,10 @@
               </svg>
             </span>
             <div>
-              <p class="section-kicker">CiteLoom safeguard</p>
+              <p
+                class="section-kicker"
+                x-text="confirmationCancelLabel === null ? 'CiteLoom message' : 'CiteLoom safeguard'"
+              ></p>
               <h2 id="citeloom-confirmation-title" x-text="confirmationTitle"></h2>
             </div>
           </header>
@@ -514,6 +517,7 @@
               class="button secondary"
               type="button"
               x-ref="confirmationCancel"
+              x-show="confirmationCancelLabel !== null"
               x-text="confirmationCancelLabel"
               @click="cancelConfirmation()"
             ></button>
