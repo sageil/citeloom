@@ -101,6 +101,7 @@ import {
   McpApiKeyInsufficientScopeError,
   McpApiKeyRejectedError,
   McpApiKeyStore,
+  McpApiKeyTargetUnavailableError,
 } from "../src/mcp/api-key-store.js";
 
 const databaseUrl = process.env.CITELOOM_TEST_DATABASE_URL
@@ -964,7 +965,7 @@ describe("authentication persistence", () => {
       .resolves.toEqual([{ userId: account.userId }]);
   });
 
-  it("binds MCP API keys to the target user and selected workspace", async () => {
+  it("binds MCP API keys to a user and resolves each selected workspace", async () => {
     await applyDatabaseBootstrap(session.database, administratorEnvironment());
     const authentication = new AuthenticationStore(session.database);
     const administrator = await authenticateAdministrator(authentication);
@@ -986,6 +987,19 @@ describe("authentication persistence", () => {
       .update(users)
       .set({ state: "active" })
       .where(eq(users.id, account.userId));
+    const secondWorkspace = await authentication.createWorkspace(
+      administrator.principal,
+      {
+        configuration: { kind: "organization-defaults" },
+        name: "MCP Secondary",
+      },
+    );
+    await authentication.addWorkspaceMember(
+      administrator.principal,
+      secondWorkspace.id,
+      account.userId,
+      "member",
+    );
     const now = new Date("2026-08-13T19:00:00.000Z");
     const apiKeys = new McpApiKeyStore(session.database, () => now);
 
@@ -1003,7 +1017,6 @@ describe("authentication persistence", () => {
       label: "Codex",
       scopes: ["citeloom.search"],
       userId: account.userId,
-      workspaceId: administrator.principal.workspaceId,
     });
     expect(created.apiKey).toMatch(/^clm_mcp_/u);
     await expect(session.database
@@ -1021,6 +1034,7 @@ describe("authentication persistence", () => {
       }]);
     const access = await apiKeys.authenticate(
       `bEaReR ${created.apiKey}`,
+      administrator.principal.workspaceName,
       ["citeloom.search"],
     );
     expect(access.principal).toMatchObject({
@@ -1029,6 +1043,28 @@ describe("authentication persistence", () => {
     });
     await expect(apiKeys.authenticate(
       `Bearer ${created.apiKey}`,
+      secondWorkspace.name,
+      ["citeloom.search"],
+    )).resolves.toMatchObject({
+      principal: {
+        userId: account.userId,
+        workspaceId: secondWorkspace.id,
+      },
+    });
+    await authentication.changeWorkspaceMemberAccess(
+      administrator.principal,
+      secondWorkspace.id,
+      account.userId,
+      "disabled",
+    );
+    await expect(apiKeys.authenticate(
+      `Bearer ${created.apiKey}`,
+      secondWorkspace.name,
+      ["citeloom.search"],
+    )).rejects.toBeInstanceOf(McpApiKeyRejectedError);
+    await expect(apiKeys.authenticate(
+      `Bearer ${created.apiKey}`,
+      administrator.principal.workspaceName,
       ["citeloom.answer"],
     )).rejects.toBeInstanceOf(McpApiKeyInsufficientScopeError);
     await expect(apiKeys.list(
@@ -1045,8 +1081,69 @@ describe("authentication persistence", () => {
     );
     await expect(apiKeys.authenticate(
       `Bearer ${created.apiKey}`,
+      administrator.principal.workspaceName,
       ["citeloom.search"],
     )).rejects.toBeInstanceOf(McpApiKeyRejectedError);
+  });
+
+  it("allows workspace administrators to manage keys for their workspace users", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const authentication = new AuthenticationStore(session.database);
+    const administrator = await authenticateAdministrator(authentication);
+    const workspaceAdministratorAccount = await createActiveUser({
+      displayName: "Workspace Administrator",
+      username: "workspace-api-key-admin",
+    });
+    await authentication.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      workspaceAdministratorAccount.userId,
+      "admin",
+    );
+    const workspaceAdministrator = await authenticateTestUser(
+      authentication,
+      workspaceAdministratorAccount,
+    );
+    const otherAccount = await createActiveUser({
+      displayName: "Other MCP User",
+      username: "other-mcp-user",
+    });
+    await authentication.addWorkspaceMember(
+      administrator.principal,
+      administrator.principal.workspaceId,
+      otherAccount.userId,
+      "member",
+    );
+    const apiKeys = new McpApiKeyStore(session.database);
+    const input = {
+      expiresAt: new Date(Date.now() + 86_400_000),
+      label: null,
+      scopes: ["citeloom.search" as const],
+    };
+
+    await expect(apiKeys.create(
+      workspaceAdministrator.principal,
+      workspaceAdministrator.principal.userId,
+      input,
+    )).resolves.toMatchObject({
+      userId: workspaceAdministrator.principal.userId,
+    });
+    await expect(apiKeys.create(
+      workspaceAdministrator.principal,
+      otherAccount.userId,
+      input,
+    )).resolves.toMatchObject({
+      userId: otherAccount.userId,
+    });
+    const outsideAccount = await createActiveUser({
+      displayName: "Outside MCP User",
+      username: "outside-mcp-user",
+    });
+    await expect(apiKeys.create(
+      workspaceAdministrator.principal,
+      outsideAccount.userId,
+      input,
+    )).rejects.toBeInstanceOf(McpApiKeyTargetUnavailableError);
   });
 
   it("allows only administrators to add existing users to a workspace", async () => {

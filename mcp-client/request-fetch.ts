@@ -4,7 +4,7 @@ import { MCP_WORKSPACE_NAME_HEADER } from "../src/mcp/contract.js";
 
 export function createMcpRequestFetch(
   serverUrlValue: string,
-  workspaceName: string | null,
+  workspaceName: string,
   fetchImplementation: FetchLike = fetch,
 ): FetchLike {
   const serverUrl = new URL(serverUrlValue).toString();
@@ -13,9 +13,7 @@ export function createMcpRequestFetch(
       return fetchImplementation(input, init);
     }
     const headers = new Headers(init?.headers);
-    if (workspaceName !== null) {
-      headers.set(MCP_WORKSPACE_NAME_HEADER, workspaceName);
-    }
+    headers.set(MCP_WORKSPACE_NAME_HEADER, workspaceName);
     return fetchImplementation(input, { ...init, headers });
   };
 }

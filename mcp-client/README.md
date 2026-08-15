@@ -1,7 +1,7 @@
 # CiteLoom MCP smoke client
 
 This host-side client tests the deployed CiteLoom MCP endpoint through a separately registered native OAuth client.
-It can also test a workspace-bound MCP API key created by an administrator for a specific CiteLoom user.
+It can also test a user-bound MCP API key created for a specific CiteLoom user.
 It uses the official MCP TypeScript client for OAuth discovery, Authorization Code with PKCE, protocol negotiation, standard tools, and resources.
 The narrow local adapter handles only CiteLoom's draft Tasks extension because the 2026 SDK rejects the extension's `task` result before a custom schema can validate it.
 The adapter sends the required MCP request metadata and headers and validates every JSON-RPC task response against CiteLoom's shared task schemas.
@@ -16,7 +16,7 @@ For a private or local certificate authority, pass its public root certificate w
 
 In CiteLoom, open Security, select User accounts, open the target user's Actions menu, and choose Manage MCP API keys.
 Generate a key with both Search documents and Ask documents permissions for the complete smoke test.
-The key is already bound to the selected CiteLoom workspace, so the client does not need a workspace name or UUID.
+Provide the visible name of an active workspace where the key owner has enabled membership.
 Save it in a user-readable file so it does not appear in shell history or process arguments.
 Run the first two commands, paste the key at the hidden prompt, and press Enter.
 
@@ -28,6 +28,7 @@ unset CITELOOM_MCP_KEY
 pnpm mcp:client -- \
   --server-url https://citeloom.example/mcp \
   --api-key-file ./citeloom-mcp.key \
+  --workspace '<CiteLoom workspace name>' \
   --question 'What policy is documented in this workspace?'
 ```
 

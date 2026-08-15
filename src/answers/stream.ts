@@ -12,10 +12,16 @@ import type { ChatMessageResponse } from "../chat/types.js";
 import { evidenceVerificationStateSchema } from "./verification-state.js";
 
 export const matchedDocumentSchema = z.object({
-  documentId: contentIdSchema,
-  retrievedElementCount: z.number().int().positive(),
-  sourceFile: z.string().min(1),
-}).strict();
+  documentId: contentIdSchema.describe(
+    "Stable content identifier for a document used to produce the answer.",
+  ),
+  retrievedElementCount: z.number().int().positive().describe(
+    "Number of source elements retrieved from this document for the answer run.",
+  ),
+  sourceFile: z.string().min(1).describe(
+    "Workspace source-file name for the matched document.",
+  ),
+}).strict().describe("A workspace document retrieved for the answer run.");
 
 const claimVerificationResultSchema = z.object({
   citationNumbers: z.array(z.number().int().positive()),
@@ -62,13 +68,27 @@ export const streamedRunDetailsSchema = z.object({
 }).strict();
 
 export const streamedAnswerSchema = z.object({
-  answerDocument: publishedAnswerDocumentSchema,
-  claims: z.array(storedClaimCheckSchema),
-  matchedDocuments: z.array(matchedDocumentSchema),
-  runDetails: streamedRunDetailsSchema.nullable(),
-  turn: streamedResearchTurnSchema,
-  verificationState: evidenceVerificationStateSchema,
-}).strict();
+  answerDocument: publishedAnswerDocumentSchema.describe(
+    "The synthesized answer, statements, citations, and immutable citation evidence.",
+  ),
+  claims: z.array(storedClaimCheckSchema).describe(
+    "Evidence-verification results for claims in the answer.",
+  ),
+  matchedDocuments: z.array(matchedDocumentSchema).describe(
+    "Workspace documents retrieved while producing the answer.",
+  ),
+  runDetails: streamedRunDetailsSchema.nullable().describe(
+    "Model, token, source-count, and duration details when the answer run recorded them.",
+  ),
+  turn: streamedResearchTurnSchema.describe(
+    "Identifiers for the durable CiteLoom research thread, turn, and answer run.",
+  ),
+  verificationState: evidenceVerificationStateSchema.describe(
+    "Aggregate evidence-verification state for the answer.",
+  ),
+}).strict().describe(
+  "A completed durable CiteLoom answer with citations and run metadata.",
+);
 
 export type StreamedAnswer = z.output<typeof streamedAnswerSchema>;
 export type StreamedResearchTurn = z.output<typeof streamedResearchTurnSchema>;

@@ -22,7 +22,7 @@ describe("CiteLoom organization user accounts", () => {
     );
 
     expect(fragment).toContain("User accounts");
-    expect(fragment).toContain("Manage user access and workspace-bound MCP API keys");
+    expect(fragment).toContain("Manage user access and user-bound MCP API keys");
     expect(fragment).toContain("requestPasswordLink(user)");
     expect(fragment).toContain("without assigning workspace access");
     expect(fragment).toContain("Manage MCP API keys");

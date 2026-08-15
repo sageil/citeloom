@@ -147,7 +147,7 @@ export class McpTaskDispatcher {
     heartbeat.unref();
     try {
       const principal = task.issuer === MCP_API_KEY_TASK_ISSUER
-        ? await this.resolveApiKeyPrincipal(task.clientId)
+        ? await this.resolveApiKeyPrincipal(task.clientId, task.workspaceId)
         : await this.resolveOAuthPrincipal(task.issuer, task.subject, task.workspaceId);
       const result = await executeMcpAnswerTask(
         this.options.services,
@@ -178,9 +178,11 @@ export class McpTaskDispatcher {
 
   private async resolveApiKeyPrincipal(
     apiKeyId: string,
+    workspaceId: string,
   ): Promise<import("../../auth/model.js").AuthorizationPrincipal> {
     const access = await this.options.services.resolveMcpApiKeyPrincipal(
       apiKeyId,
+      workspaceId,
       [MCP_ANSWER_SCOPE],
     );
     return access.principal;

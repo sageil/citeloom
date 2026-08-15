@@ -10,10 +10,16 @@ import { queryScopeSchema } from "../../domain/query-scope.js";
 export const MCP_TASK_EXTENSION_ID = "io.modelcontextprotocol/tasks";
 
 export const mcpAnswerTaskRequestSchema = z.object({
-  question: z.string().trim().min(1).max(8_000),
+  question: z.string().trim().min(1).max(8_000).describe(
+    "Question CiteLoom should answer from authorized documents in the selected workspace.",
+  ),
   scope: queryScopeSchema,
-  threadTitle: z.string().trim().min(1).max(500),
-}).strict();
+  threadTitle: z.string().trim().min(1).max(500).describe(
+    "Title for the durable CiteLoom research thread that will store this cited answer.",
+  ),
+}).strict().describe(
+  "A durable cited-answer request executed through the MCP Tasks extension.",
+);
 
 export const mcpTaskStatusSchema = z.enum([
   "working",

@@ -9,6 +9,16 @@ import {
 } from "../src/web-server.js";
 import { OAuthInsufficientScopeError } from "../src/oauth/access-token.js";
 import {
+  MCP_ANSWER_PROMPT,
+  MCP_ANSWER_TOOL,
+  MCP_API_KEY_TASK_ISSUER,
+  MCP_SEARCH_PROMPT,
+  MCP_SEARCH_TOOL,
+  MCP_SERVER_DESCRIPTION,
+  MCP_SERVER_TITLE,
+  MCP_WORKSPACE_CONTEXT_RESOURCE,
+} from "../src/mcp/contract.js";
+import {
   buildAuthenticatedPrincipal,
   buildConfig,
   buildOAuthAuthenticationSettings,
@@ -20,6 +30,64 @@ import {
 } from "./web-server-fixture.js";
 
 describe("MCP server", () => {
+  it("advertises OAuth discovery for an unauthenticated MCP GET", async () => {
+    const settings = buildOAuthAuthenticationSettings();
+    const readAuthenticationSettings = vi.fn<
+      WebServices["readAuthenticationSettings"]
+    >(async () => settings);
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ readAuthenticationSettings }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: "/mcp",
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(response.headers["www-authenticate"]).toBe(
+        "Bearer resource_metadata=\"https://localhost:3443/.well-known/oauth-protected-resource/mcp\"",
+      );
+      expect(response.json()).toEqual({
+        error: "invalid_token",
+        error_description: "An MCP bearer credential is required.",
+      });
+      expect(readAuthenticationSettings).toHaveBeenCalledWith(
+        "https://localhost:3443",
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects authenticated MCP GET requests without restarting OAuth", async () => {
+    const readAuthenticationSettings = vi.fn<
+      WebServices["readAuthenticationSettings"]
+    >();
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ readAuthenticationSettings }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        headers: { authorization: "Bearer token" },
+        method: "GET",
+        url: "/mcp",
+      });
+
+      expect(response.statusCode).toBe(405);
+      expect(response.headers.allow).toBe("POST");
+      expect(response.headers["www-authenticate"]).toBeUndefined();
+      expect(readAuthenticationSettings).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
   it("requires an MCP credential while cookie authentication is active", async () => {
     const server = await buildProductionWebServer(buildConfig(), {
       logger: false,
@@ -48,7 +116,7 @@ describe("MCP server", () => {
     }
   });
 
-  it("serves a workspace-bound MCP API key without OAuth or a workspace header", async () => {
+  it("serves a user-bound MCP API key in the selected workspace", async () => {
     const principal = buildAuthenticatedPrincipal("member", "standard");
     const apiKeyId = "00000000-0000-4000-8000-000000000810";
     const authenticateMcpApiKey = vi.fn<WebServices["authenticateMcpApiKey"]>(
@@ -64,6 +132,16 @@ describe("MCP server", () => {
       services: buildServices({ authenticateMcpApiKey }),
       staticDirectory: null,
     });
+    const requestMetadata = {
+      "io.modelcontextprotocol/clientCapabilities": {
+        extensions: { "io.modelcontextprotocol/tasks": {} },
+      },
+      "io.modelcontextprotocol/clientInfo": {
+        name: "api-key-client",
+        version: "1.0.0",
+      },
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+    };
     try {
       const response = await server.inject({
         headers: {
@@ -71,6 +149,7 @@ describe("MCP server", () => {
           authorization: "bEaReR clm_mcp_test-key",
           "mcp-method": "server/discover",
           "mcp-protocol-version": "2026-07-28",
+          "x-citeloom-workspace-name": principal.workspaceName,
         },
         method: "POST",
         payload: {
@@ -78,16 +157,7 @@ describe("MCP server", () => {
           jsonrpc: "2.0",
           method: "server/discover",
           params: {
-            _meta: {
-              "io.modelcontextprotocol/clientCapabilities": {
-                extensions: { "io.modelcontextprotocol/tasks": {} },
-              },
-              "io.modelcontextprotocol/clientInfo": {
-                name: "api-key-client",
-                version: "1.0.0",
-              },
-              "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-            },
+            _meta: requestMetadata,
           },
         },
         url: "/mcp",
@@ -96,9 +166,239 @@ describe("MCP server", () => {
       expect(response.statusCode, response.body).toBe(200);
       expect(authenticateMcpApiKey).toHaveBeenCalledWith(
         "bEaReR clm_mcp_test-key",
+        principal.workspaceName,
         [],
       );
-      expect(response.body).toContain("io.modelcontextprotocol/tasks");
+      expect(response.json()).toMatchObject({
+        result: {
+          _meta: {
+            "io.modelcontextprotocol/serverInfo": {
+              description: MCP_SERVER_DESCRIPTION,
+              name: "citeloom",
+              title: MCP_SERVER_TITLE,
+              version: expect.any(String),
+              websiteUrl: "https://localhost:3443",
+            },
+          },
+          capabilities: {
+            extensions: { "io.modelcontextprotocol/tasks": {} },
+            prompts: expect.any(Object),
+            resources: expect.any(Object),
+            tools: expect.any(Object),
+          },
+          instructions: expect.stringContaining(MCP_SEARCH_TOOL),
+          supportedVersions: ["2026-07-28"],
+        },
+      });
+
+      const toolsResponse = await server.inject({
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer clm_mcp_test-key",
+          "mcp-method": "tools/list",
+          "mcp-protocol-version": "2026-07-28",
+          "x-citeloom-workspace-name": principal.workspaceName,
+        },
+        method: "POST",
+        payload: {
+          id: 2,
+          jsonrpc: "2.0",
+          method: "tools/list",
+          params: { _meta: requestMetadata },
+        },
+        url: "/mcp",
+      });
+      expect(toolsResponse.statusCode, toolsResponse.body).toBe(200);
+      expect(toolsResponse.json()).toMatchObject({
+        result: {
+          tools: expect.arrayContaining([
+            expect.objectContaining({
+              description: expect.stringContaining("exact keyword matches"),
+              inputSchema: expect.objectContaining({
+                properties: expect.objectContaining({
+                  query: expect.objectContaining({
+                    description: expect.stringContaining("query"),
+                  }),
+                  scope: expect.objectContaining({
+                    description: expect.stringContaining("document set"),
+                  }),
+                }),
+              }),
+              name: MCP_SEARCH_TOOL,
+              outputSchema: expect.objectContaining({
+                description: expect.stringContaining("evidence passages"),
+              }),
+              title: "Search CiteLoom sources",
+            }),
+            expect.objectContaining({
+              description: expect.stringContaining(
+                "io.modelcontextprotocol/tasks",
+              ),
+              name: MCP_ANSWER_TOOL,
+              title: "Ask CiteLoom documents",
+            }),
+          ]),
+        },
+      });
+
+      const promptsResponse = await server.inject({
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer clm_mcp_test-key",
+          "mcp-method": "prompts/list",
+          "mcp-protocol-version": "2026-07-28",
+          "x-citeloom-workspace-name": principal.workspaceName,
+        },
+        method: "POST",
+        payload: {
+          id: 3,
+          jsonrpc: "2.0",
+          method: "prompts/list",
+          params: { _meta: requestMetadata },
+        },
+        url: "/mcp",
+      });
+      expect(promptsResponse.statusCode, promptsResponse.body).toBe(200);
+      expect(promptsResponse.json()).toMatchObject({
+        result: {
+          prompts: expect.arrayContaining([
+            expect.objectContaining({
+              description: expect.stringContaining("source-grounded search"),
+              name: MCP_SEARCH_PROMPT,
+            }),
+            expect.objectContaining({
+              description: expect.stringContaining("cited document-answer"),
+              name: MCP_ANSWER_PROMPT,
+            }),
+          ]),
+        },
+      });
+
+      const promptResponse = await server.inject({
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer clm_mcp_test-key",
+          "mcp-method": "prompts/get",
+          "mcp-name": MCP_ANSWER_PROMPT,
+          "mcp-protocol-version": "2026-07-28",
+          "x-citeloom-workspace-name": principal.workspaceName,
+        },
+        method: "POST",
+        payload: {
+          id: 4,
+          jsonrpc: "2.0",
+          method: "prompts/get",
+          params: {
+            _meta: requestMetadata,
+            arguments: {
+              question: "What is the retention policy?",
+              threadTitle: "Retention policy",
+            },
+            name: MCP_ANSWER_PROMPT,
+          },
+        },
+        url: "/mcp",
+      });
+      expect(promptResponse.statusCode, promptResponse.body).toBe(200);
+      expect(promptResponse.body).toContain(MCP_ANSWER_TOOL);
+      expect(promptResponse.body).toContain(
+        "The MCP host resolves the asynchronous task",
+      );
+      expect(promptResponse.body).not.toContain("Poll the returned task");
+      expect(promptResponse.body).toContain("Retention policy");
+
+      const resourcesResponse = await server.inject({
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer clm_mcp_test-key",
+          "mcp-method": "resources/list",
+          "mcp-protocol-version": "2026-07-28",
+          "x-citeloom-workspace-name": principal.workspaceName,
+        },
+        method: "POST",
+        payload: {
+          id: 5,
+          jsonrpc: "2.0",
+          method: "resources/list",
+          params: { _meta: requestMetadata },
+        },
+        url: "/mcp",
+      });
+      expect(resourcesResponse.statusCode, resourcesResponse.body).toBe(200);
+      expect(resourcesResponse.json()).toMatchObject({
+        result: {
+          resources: [expect.objectContaining({
+            description: expect.stringContaining("selected"),
+            name: "workspace-context",
+            uri: MCP_WORKSPACE_CONTEXT_RESOURCE,
+          })],
+        },
+      });
+
+      const templatesResponse = await server.inject({
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer clm_mcp_test-key",
+          "mcp-method": "resources/templates/list",
+          "mcp-protocol-version": "2026-07-28",
+          "x-citeloom-workspace-name": principal.workspaceName,
+        },
+        method: "POST",
+        payload: {
+          id: 6,
+          jsonrpc: "2.0",
+          method: "resources/templates/list",
+          params: { _meta: requestMetadata },
+        },
+        url: "/mcp",
+      });
+      expect(templatesResponse.statusCode, templatesResponse.body).toBe(200);
+      expect(templatesResponse.json()).toMatchObject({
+        result: {
+          resourceTemplates: expect.arrayContaining([
+            expect.objectContaining({ name: "research-thread" }),
+            expect.objectContaining({ name: "research-citation" }),
+          ]),
+        },
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("requires a workspace selector for an MCP API key", async () => {
+    const authenticateMcpApiKey = vi.fn<WebServices["authenticateMcpApiKey"]>();
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ authenticateMcpApiKey }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer clm_mcp_test-key",
+          "mcp-method": "server/discover",
+          "mcp-protocol-version": "2026-07-28",
+        },
+        method: "POST",
+        payload: {
+          id: 1,
+          jsonrpc: "2.0",
+          method: "server/discover",
+          params: {},
+        },
+        url: "/mcp",
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({
+        error: "invalid_request",
+        error_description: expect.stringContaining(
+          "x-citeloom-workspace-name",
+        ),
+      });
+      expect(authenticateMcpApiKey).not.toHaveBeenCalled();
     } finally {
       await server.close();
     }
@@ -904,6 +1204,55 @@ describe("MCP server", () => {
     }
   });
 
+  it("revalidates an API key task in its stored workspace after restart", async () => {
+    const principal = buildAuthenticatedPrincipal("member", "standard");
+    const apiKeyId = "00000000-0000-4000-8000-000000000811";
+    const tasks = createInMemoryMcpTaskServices();
+    const owner = {
+      clientId: apiKeyId,
+      issuer: MCP_API_KEY_TASK_ISSUER,
+      subject: principal.userId,
+      userId: principal.userId,
+      workspaceId: principal.workspaceId,
+    };
+    const task = await tasks.create(owner, {
+      question: "How long are records retained?",
+      scope: { kind: "all" },
+      threadTitle: "Retention research",
+    });
+    const resolveMcpApiKeyPrincipal = vi.fn<
+      WebServices["resolveMcpApiKeyPrincipal"]
+    >(async () => ({
+      apiKeyId,
+      expiresAt: 1_800_000_000,
+      principal,
+      scopes: ["citeloom.answer"],
+    }));
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        mcpTasks: tasks,
+        resolveMcpApiKeyPrincipal,
+        streamAnswer: () => createAnswerStream("Seven years."),
+      }),
+      staticDirectory: null,
+    });
+    try {
+      await vi.waitFor(async () => {
+        await expect(tasks.readForOwner(owner, task.id)).resolves.toMatchObject({
+          status: "completed",
+        });
+      });
+      expect(resolveMcpApiKeyPrincipal).toHaveBeenCalledWith(
+        apiKeyId,
+        principal.workspaceId,
+        ["citeloom.answer"],
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
   it("limits MCP discovery and calls to the token's operation scopes", async () => {
     const settings = buildOAuthAuthenticationSettings();
     const principal = buildOAuthPrincipal();
@@ -944,6 +1293,42 @@ describe("MCP server", () => {
       staticDirectory: null,
     });
     try {
+      const discoveryResponse = await server.inject({
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer search-only-token",
+          "mcp-method": "server/discover",
+          "mcp-protocol-version": "2026-07-28",
+          "x-citeloom-workspace-name": principal.workspaceName,
+        },
+        method: "POST",
+        payload: {
+          id: 1,
+          jsonrpc: "2.0",
+          method: "server/discover",
+          params: {
+            _meta: {
+              "io.modelcontextprotocol/clientCapabilities": {},
+              "io.modelcontextprotocol/clientInfo": {
+                name: "search-only-client",
+                version: "1.0.0",
+              },
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            },
+          },
+        },
+        url: "/mcp",
+      });
+      expect(discoveryResponse.statusCode, discoveryResponse.body).toBe(200);
+      expect(discoveryResponse.json().result.capabilities.extensions)
+        .toBeUndefined();
+      expect(discoveryResponse.json().result.instructions).toContain(
+        MCP_SEARCH_TOOL,
+      );
+      expect(discoveryResponse.json().result.instructions).not.toContain(
+        MCP_ANSWER_TOOL,
+      );
+
       const listResponse = await server.inject({
         headers: {
           accept: "application/json, text/event-stream",
@@ -974,6 +1359,36 @@ describe("MCP server", () => {
       expect(listResponse.statusCode).toBe(200);
       expect(listResponse.body).toContain("citeloom.search_sources");
       expect(listResponse.body).not.toContain("citeloom.ask_documents");
+
+      const promptsResponse = await server.inject({
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer search-only-token",
+          "mcp-method": "prompts/list",
+          "mcp-protocol-version": "2026-07-28",
+          "x-citeloom-workspace-name": principal.workspaceName,
+        },
+        method: "POST",
+        payload: {
+          id: 2,
+          jsonrpc: "2.0",
+          method: "prompts/list",
+          params: {
+            _meta: {
+              "io.modelcontextprotocol/clientCapabilities": {},
+              "io.modelcontextprotocol/clientInfo": {
+                name: "search-only-client",
+                version: "1.0.0",
+              },
+              "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            },
+          },
+        },
+        url: "/mcp",
+      });
+      expect(promptsResponse.statusCode, promptsResponse.body).toBe(200);
+      expect(promptsResponse.body).toContain(MCP_SEARCH_PROMPT);
+      expect(promptsResponse.body).not.toContain(MCP_ANSWER_PROMPT);
 
       const answerResponse = await server.inject({
         headers: {

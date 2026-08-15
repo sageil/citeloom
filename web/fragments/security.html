@@ -29,7 +29,7 @@
 
   <section class="security-user-accounts access-users-panel access-card" x-cloak x-show="securitySection === 'users'" @keydown.escape.window="accountCreationOpen ? closeAccountCreation() : (mcpApiKeyDrawerOpen &amp;&amp; closeMcpApiKeyDrawer())">
     <header class="access-users-heading">
-      <div><h2>User accounts</h2><p>Manage user access and workspace-bound MCP API keys.</p></div>
+      <div><h2>User accounts</h2><p>Manage user access and user-bound MCP API keys.</p></div>
       <div class="compact-header-actions">
         <button class="button secondary" :disabled="accountLoading || userAccountBusy" type="button" @click="loadOrganizationUsers()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use></svg><span>Refresh</span></button>
         <button class="button primary" :disabled="accountLoading || userAccountBusy" type="button" x-show="currentGlobalRole === 'global_admin'" @click="openAccountCreation()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-user-plus"></use></svg><span>Create user</span></button>
@@ -63,7 +63,7 @@
               <button :disabled="userAccountBusy || !accountCanCreatePasswordLink(user)" type="button" x-show="currentGlobalRole === 'global_admin'" @click="$el.closest('details').removeAttribute('open'); requestPasswordLink(user)"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-link"></use></svg><span x-text="accountPasswordActionLabel(user)"></span></button>
               <button :disabled="mcpApiKeyBusy || !accountCanManageMcpApiKeys(user)" type="button" @click="$el.closest('details').removeAttribute('open'); openMcpApiKeyDrawer(user)"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><span>Manage MCP API keys</span></button>
               <small x-show="user.state !== 'active'">Activate this account before creating a key.</small>
-              <small x-show="user.state === 'active' &amp;&amp; !user.currentWorkspaceAccess">Add this account to the selected workspace first.</small>
+              <small x-show="user.state === 'active' &amp;&amp; !user.currentWorkspaceAccess &amp;&amp; currentGlobalRole !== 'global_admin'">Add this account to the selected workspace first.</small>
             </div>
           </details>
         </article>
@@ -84,7 +84,7 @@
 
     <div class="access-drawer-backdrop" x-cloak x-show="mcpApiKeyDrawerOpen" @click.self="closeMcpApiKeyDrawer()">
       <aside class="access-add-drawer security-mcp-key-drawer" role="dialog" aria-modal="true" aria-labelledby="mcp-api-key-title">
-        <header><div><h2 id="mcp-api-key-title">MCP API keys</h2><p x-text="mcpApiKeyUser === null ? '' : `Issue a workspace-bound key for ${mcpApiKeyUser.displayName}.`"></p></div><button class="button access-close-button" :disabled="mcpApiKeyBusy" type="button" aria-label="Close MCP API key management" @click="closeMcpApiKeyDrawer()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg></button></header>
+        <header><div><h2 id="mcp-api-key-title">MCP API keys</h2><p x-text="mcpApiKeyUser === null ? '' : `Issue a user-bound key for ${mcpApiKeyUser.displayName}.`"></p></div><button class="button access-close-button" :disabled="mcpApiKeyBusy" type="button" aria-label="Close MCP API key management" @click="closeMcpApiKeyDrawer()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg></button></header>
 
         <div class="security-mcp-key-secret" x-cloak x-show="mcpApiKeySecret !== ''">
           <strong>Copy this key now</strong>
@@ -102,7 +102,7 @@
 
         <section class="security-mcp-key-list" aria-labelledby="mcp-api-key-existing-title">
           <h3 id="mcp-api-key-existing-title">Existing keys</h3>
-          <p x-show="!mcpApiKeyBusy &amp;&amp; mcpApiKeys.length === 0">No keys have been created for this user in the selected workspace.</p>
+          <p x-show="!mcpApiKeyBusy &amp;&amp; mcpApiKeys.length === 0">No keys have been created for this user.</p>
           <template x-for="key in mcpApiKeys" :key="key.id">
             <article>
               <span><strong x-text="key.label ?? 'Unlabeled key'"></strong><small x-text="`${formatMcpApiKeyScopes(key)} · expires ${formatDate(key.expiresAt)}`"></small></span>

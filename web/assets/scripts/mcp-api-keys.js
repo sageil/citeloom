@@ -28,14 +28,6 @@ function readMcpApiKey(value, includeSecret = false) {
       : readTimestamp(key.revokedAt, "MCP API key revocation time"),
     scopes,
     userId: readNonEmptyString(key.userId, "MCP API key user identifier"),
-    workspaceId: readNonEmptyString(
-      key.workspaceId,
-      "MCP API key workspace identifier",
-    ),
-    workspaceName: readNonEmptyString(
-      key.workspaceName,
-      "MCP API key workspace name",
-    ),
   };
   if (!includeSecret) {
     return record;
@@ -60,7 +52,11 @@ export function createMcpApiKeyManagement() {
     mcpApiKeyUser: null,
 
     accountCanManageMcpApiKeys(user) {
-      return user.state === "active" && user.currentWorkspaceAccess;
+      if (user.state !== "active") {
+        return false;
+      }
+      return this.currentGlobalRole === "global_admin"
+        || user.currentWorkspaceAccess;
     },
 
     closeMcpApiKeyDrawer() {

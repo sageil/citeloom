@@ -242,6 +242,7 @@ export interface WebServices {
   authenticate: (input: LoginInput) => Promise<AuthenticationSession>;
   authenticateMcpApiKey: (
     authorizationHeader: string | string[] | undefined,
+    workspaceName: string,
     requiredScopes: readonly string[],
   ) => Promise<McpApiKeyAccess>;
   completePasswordSetup: (
@@ -363,6 +364,7 @@ export interface WebServices {
   ) => Promise<OAuthPrincipal>;
   resolveMcpApiKeyPrincipal: (
     apiKeyId: string,
+    workspaceId: string,
     requiredScopes: readonly string[],
   ) => Promise<McpApiKeyAccess>;
   readSettings: () => Promise<EffectiveApplicationSettings>;
@@ -883,10 +885,18 @@ export function createWebServices(
       const authentication = new AuthenticationStore(runtime.database);
       return authentication.authenticate(input);
     }),
-    authenticateMcpApiKey: async (authorizationHeader, requiredScopes) => {
+    authenticateMcpApiKey: async (
+      authorizationHeader,
+      workspaceName,
+      requiredScopes,
+    ) => {
       return manager.withRuntime(async (runtime) => {
         const apiKeys = new McpApiKeyStore(runtime.database);
-        return apiKeys.authenticate(authorizationHeader, requiredScopes);
+        return apiKeys.authenticate(
+          authorizationHeader,
+          workspaceName,
+          requiredScopes,
+        );
       });
     },
     completePasswordSetup: async (setupToken, password) => {
@@ -1279,10 +1289,14 @@ export function createWebServices(
         return principals.resolvePrincipalByWorkspaceName(token, workspaceName);
       });
     },
-    resolveMcpApiKeyPrincipal: async (apiKeyId, requiredScopes) => {
+    resolveMcpApiKeyPrincipal: async (
+      apiKeyId,
+      workspaceId,
+      requiredScopes,
+    ) => {
       return manager.withRuntime(async (runtime) => {
         const apiKeys = new McpApiKeyStore(runtime.database);
-        return apiKeys.resolveForTask(apiKeyId, requiredScopes);
+        return apiKeys.resolveForTask(apiKeyId, workspaceId, requiredScopes);
       });
     },
     switchWorkspace: async (principal, workspaceId) => {

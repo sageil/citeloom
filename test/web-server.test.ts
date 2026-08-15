@@ -337,11 +337,17 @@ describe("web server boundary", () => {
       expect(apiResponse.statusCode).toBe(200);
       expect(apiResponse.json()).toMatchObject({
         resource: "https://localhost:3443/api",
+        resource_documentation:
+          "https://sammyageil.com/citeloom/reference/oauth/",
+        resource_name: "CiteLoom API",
         scopes_supported: ["citeloom.app"],
       });
       expect(mcpResponse.statusCode).toBe(200);
       expect(mcpResponse.json()).toMatchObject({
         resource: "https://localhost:3443/mcp",
+        resource_documentation:
+          "https://sammyageil.com/citeloom/configuration/mcp/",
+        resource_name: "CiteLoom MCP",
         scopes_supported: ["citeloom.answer", "citeloom.search"],
       });
     } finally {
@@ -2821,7 +2827,7 @@ describe("web server boundary", () => {
     }
   });
 
-  it("allows a workspace administrator to issue and revoke a key for its target user", async () => {
+  it("allows a workspace administrator to issue and revoke a workspace user's key", async () => {
     const principal = buildAuthenticatedPrincipal("admin", "standard");
     const userId = "00000000-0000-4000-8000-000000000701";
     const apiKeyId = "00000000-0000-4000-8000-000000000702";
@@ -2833,8 +2839,6 @@ describe("web server boundary", () => {
       revokedAt: null,
       scopes: ["citeloom.search" as const],
       userId,
-      workspaceId: principal.workspaceId,
-      workspaceName: principal.workspaceName,
     };
     const createMcpApiKey = vi.fn<SecurityWebServices["createMcpApiKey"]>(
       async () => ({ ...record, apiKey: "clm_mcp_secret" }),

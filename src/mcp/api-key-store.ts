@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { and, desc, eq, gt, isNull, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
-import { requireWorkspaceAdministrator } from "../auth/authorization.js";
+import {
+  requireWorkspaceAdministrator,
+  WorkspaceAuthorizationError,
+} from "../auth/authorization.js";
 import type { AuthorizationPrincipal } from "../auth/model.js";
 import { createOpaqueToken, digestOpaqueToken } from "../auth/token.js";
 import type { CiteLoomDatabase } from "../database/client.js";
@@ -31,8 +34,6 @@ const mcpApiKeyRecordRowSchema = z.object({
   revokedAt: z.date().nullable(),
   scopes: z.array(mcpApiKeyScopeSchema).min(1),
   userId: z.uuid(),
-  workspaceId: z.uuid(),
-  workspaceName: z.string().min(1),
 }).strict();
 
 const mcpApiKeyAccessRowSchema = z.object({
@@ -64,7 +65,7 @@ export class McpApiKeyInsufficientScopeError extends Error {
 
 export class McpApiKeyTargetUnavailableError extends Error {
   public constructor() {
-    super("The user must be active in the selected workspace.");
+    super("The user must be active and available to this administrator.");
     this.name = "McpApiKeyTargetUnavailableError";
   }
 }
@@ -94,7 +95,7 @@ export class McpApiKeyStore {
     userId: string,
     input: CreateMcpApiKeyInput,
   ): Promise<CreatedMcpApiKey> {
-    requireWorkspaceAdministrator(principal, principal.workspaceId);
+    requireMcpApiKeyManager(principal);
     const now = this.now();
     if (input.expiresAt.getTime() <= now.getTime()) {
       throw new McpApiKeyExpiryInvalidError();
@@ -102,23 +103,39 @@ export class McpApiKeyStore {
     const id = randomUUID();
     const apiKey = `${MCP_API_KEY_PREFIX}${id}.${createOpaqueToken()}`;
     return this.database.transaction(async (transaction) => {
-      const targetRows = await transaction
-        .select({ userId: users.id })
-        .from(users)
-        .innerJoin(
-          workspaceMemberships,
-          eq(workspaceMemberships.userId, users.id),
-        )
-        .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
-        .where(and(
-          eq(users.id, userId),
-          eq(users.state, "active"),
-          eq(workspaceMemberships.access, "enabled"),
-          eq(workspaces.id, principal.workspaceId),
-          eq(workspaces.state, "active"),
-        ))
-        .for("update")
-        .limit(1);
+      let targetRows: { userId: string }[];
+      if (principal.globalRole === "global_admin") {
+        targetRows = await transaction
+          .select({ userId: users.id })
+          .from(users)
+          .where(and(
+            eq(users.id, userId),
+            eq(users.state, "active"),
+          ))
+          .for("update")
+          .limit(1);
+      } else {
+        targetRows = await transaction
+          .select({ userId: users.id })
+          .from(users)
+          .innerJoin(
+            workspaceMemberships,
+            eq(workspaceMemberships.userId, users.id),
+          )
+          .innerJoin(
+            workspaces,
+            eq(workspaces.id, workspaceMemberships.workspaceId),
+          )
+          .where(and(
+            eq(users.id, userId),
+            eq(users.state, "active"),
+            eq(workspaceMemberships.access, "enabled"),
+            eq(workspaces.id, principal.workspaceId),
+            eq(workspaces.state, "active"),
+          ))
+          .for("update")
+          .limit(1);
+      }
       if (targetRows[0] === undefined) {
         throw new McpApiKeyTargetUnavailableError();
       }
@@ -133,7 +150,6 @@ export class McpApiKeyStore {
           scopes: input.scopes,
           tokenDigest: digestOpaqueToken(apiKey),
           userId,
-          workspaceId: principal.workspaceId,
         })
         .returning({
           createdAt: mcpApiKeys.createdAt,
@@ -143,16 +159,12 @@ export class McpApiKeyStore {
           revokedAt: mcpApiKeys.revokedAt,
           scopes: mcpApiKeys.scopes,
           userId: mcpApiKeys.userId,
-          workspaceId: mcpApiKeys.workspaceId,
         });
       const row = rows[0];
       if (row === undefined) {
         throw new Error("The MCP API key was not stored.");
       }
-      return buildMcpApiKeyRecord({
-        ...row,
-        workspaceName: principal.workspaceName,
-      }, apiKey);
+      return buildMcpApiKeyRecord(row, apiKey);
     });
   }
 
@@ -160,7 +172,8 @@ export class McpApiKeyStore {
     principal: AuthorizationPrincipal,
     userId: string,
   ): Promise<McpApiKeyRecord[]> {
-    requireWorkspaceAdministrator(principal, principal.workspaceId);
+    requireMcpApiKeyManager(principal);
+    await this.assertCanManageTarget(principal, userId);
     const rows = await this.database
       .select({
         createdAt: mcpApiKeys.createdAt,
@@ -170,15 +183,9 @@ export class McpApiKeyStore {
         revokedAt: mcpApiKeys.revokedAt,
         scopes: mcpApiKeys.scopes,
         userId: mcpApiKeys.userId,
-        workspaceId: mcpApiKeys.workspaceId,
-        workspaceName: workspaces.name,
       })
       .from(mcpApiKeys)
-      .innerJoin(workspaces, eq(workspaces.id, mcpApiKeys.workspaceId))
-      .where(and(
-        eq(mcpApiKeys.userId, userId),
-        eq(mcpApiKeys.workspaceId, principal.workspaceId),
-      ))
+      .where(eq(mcpApiKeys.userId, userId))
       .orderBy(desc(mcpApiKeys.createdAt), desc(mcpApiKeys.id));
     const records: McpApiKeyRecord[] = [];
     for (const row of rows) {
@@ -192,7 +199,8 @@ export class McpApiKeyStore {
     userId: string,
     apiKeyId: string,
   ): Promise<void> {
-    requireWorkspaceAdministrator(principal, principal.workspaceId);
+    requireMcpApiKeyManager(principal);
+    await this.assertCanManageTarget(principal, userId);
     const rows = await this.database
       .update(mcpApiKeys)
       .set({
@@ -202,7 +210,6 @@ export class McpApiKeyStore {
       .where(and(
         eq(mcpApiKeys.id, apiKeyId),
         eq(mcpApiKeys.userId, userId),
-        eq(mcpApiKeys.workspaceId, principal.workspaceId),
         isNull(mcpApiKeys.revokedAt),
       ))
       .returning({ id: mcpApiKeys.id });
@@ -213,6 +220,7 @@ export class McpApiKeyStore {
 
   public async authenticate(
     authorizationHeader: string | string[] | undefined,
+    workspaceName: string,
     requiredScopes: readonly string[],
   ): Promise<McpApiKeyAccess> {
     let parsed: ReturnType<typeof parseMcpApiKeyAuthorization>;
@@ -223,6 +231,7 @@ export class McpApiKeyStore {
     }
     return this.readAccess(
       parsed.id,
+      { kind: "name", workspaceName },
       requiredScopes,
       eq(mcpApiKeys.tokenDigest, digestOpaqueToken(parsed.apiKey)),
     );
@@ -230,13 +239,19 @@ export class McpApiKeyStore {
 
   public async resolveForTask(
     apiKeyId: string,
+    workspaceId: string,
     requiredScopes: readonly string[],
   ): Promise<McpApiKeyAccess> {
-    return this.readAccess(apiKeyId, requiredScopes);
+    return this.readAccess(
+      apiKeyId,
+      { kind: "id", workspaceId },
+      requiredScopes,
+    );
   }
 
   private async readAccess(
     apiKeyId: string,
+    workspaceSelector: WorkspaceSelector,
     requiredScopes: readonly string[],
     secretCondition?: SQL,
   ): Promise<McpApiKeyAccess> {
@@ -248,6 +263,13 @@ export class McpApiKeyStore {
       eq(workspaceMemberships.access, "enabled"),
       eq(workspaces.state, "active"),
     ];
+    if (workspaceSelector.kind === "id") {
+      conditions.push(eq(workspaces.id, workspaceSelector.workspaceId));
+    } else {
+      conditions.push(
+        sql`lower(trim(${workspaces.name})) = lower(trim(${workspaceSelector.workspaceName}))`,
+      );
+    }
     if (secretCondition !== undefined) {
       conditions.push(secretCondition);
     }
@@ -268,12 +290,9 @@ export class McpApiKeyStore {
       .innerJoin(users, eq(users.id, mcpApiKeys.userId))
       .innerJoin(
         workspaceMemberships,
-        and(
-          eq(workspaceMemberships.userId, users.id),
-          eq(workspaceMemberships.workspaceId, mcpApiKeys.workspaceId),
-        ),
+        eq(workspaceMemberships.userId, users.id),
       )
-      .innerJoin(workspaces, eq(workspaces.id, mcpApiKeys.workspaceId))
+      .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
       .where(and(...conditions))
       .limit(1);
     const row = rows[0];
@@ -303,6 +322,28 @@ export class McpApiKeyStore {
       scopes: key.scopes,
     };
   }
+
+  private async assertCanManageTarget(
+    principal: AuthorizationPrincipal,
+    userId: string,
+  ): Promise<void> {
+    if (principal.globalRole === "global_admin") {
+      return;
+    }
+    const rows = await this.database
+      .select({ userId: workspaceMemberships.userId })
+      .from(workspaceMemberships)
+      .where(and(
+        eq(workspaceMemberships.userId, userId),
+        eq(workspaceMemberships.workspaceId, principal.workspaceId),
+      ))
+      .limit(1);
+    if (rows[0] === undefined) {
+      throw new WorkspaceAuthorizationError(
+        "The MCP API key owner must belong to the administered workspace.",
+      );
+    }
+  }
 }
 
 function buildMcpApiKeyRecord(value: unknown): McpApiKeyRecord;
@@ -323,11 +364,19 @@ function buildMcpApiKeyRecord(
     revokedAt: row.revokedAt?.toISOString() ?? null,
     scopes: row.scopes,
     userId: row.userId,
-    workspaceId: row.workspaceId,
-    workspaceName: row.workspaceName,
   };
   if (apiKey === undefined) {
     return record;
   }
   return { ...record, apiKey };
+}
+
+type WorkspaceSelector =
+  | { kind: "id"; workspaceId: string }
+  | { kind: "name"; workspaceName: string };
+
+function requireMcpApiKeyManager(
+  principal: AuthorizationPrincipal,
+): void {
+  requireWorkspaceAdministrator(principal, principal.workspaceId);
 }

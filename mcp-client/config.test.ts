@@ -35,7 +35,7 @@ describe("MCP client command boundary", () => {
     });
   });
 
-  it("reads an API key file without OAuth or workspace options", () => {
+  it("reads an API key file with its selected workspace", () => {
     const apiKey = "clm_mcp_00000000-0000-4000-8000-000000000001."
       + "a".repeat(43);
     const readSecretFile = (path: string) => {
@@ -47,6 +47,8 @@ describe("MCP client command boundary", () => {
       "https://citeloom.example/mcp",
       "--api-key-file",
       "/run/secrets/citeloom-mcp-key",
+      "--workspace",
+      "DefaultSpace",
       "--question",
       "What is the retention policy?",
     ], readSecretFile)).toEqual({
@@ -57,7 +59,7 @@ describe("MCP client command boundary", () => {
         question: "What is the retention policy?",
         serverUrl: "https://citeloom.example/mcp",
         timeoutMs: 600_000,
-        workspaceName: null,
+        workspaceName: "DefaultSpace",
       },
       kind: "run",
     });
@@ -69,10 +71,27 @@ describe("MCP client command boundary", () => {
       "https://citeloom.example/mcp",
       "--api-key-file",
       "/run/secrets/citeloom-mcp-key",
+      "--workspace",
+      "DefaultSpace",
       "--question",
       "What is the retention policy?",
     ], () => "not-a-key")).toThrow(
       "The MCP API key file does not contain a valid CiteLoom MCP key.",
+    );
+  });
+
+  it("requires a workspace with an API key", () => {
+    const apiKey = "clm_mcp_00000000-0000-4000-8000-000000000001."
+      + "a".repeat(43);
+    expect(() => readMcpClientCommand([
+      "--server-url",
+      "https://citeloom.example/mcp",
+      "--api-key-file",
+      "/run/secrets/citeloom-mcp-key",
+      "--question",
+      "What is the retention policy?",
+    ], () => apiKey)).toThrow(
+      "Missing required MCP client option --workspace.",
     );
   });
 

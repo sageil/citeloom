@@ -48,7 +48,7 @@ export interface McpApiKeyClientConfig extends McpClientBaseConfig {
     apiKey: string;
     kind: "api-key";
   };
-  workspaceName: null;
+  workspaceName: string;
 }
 
 export type McpClientConfig = McpOAuthClientConfig | McpApiKeyClientConfig;
@@ -88,13 +88,16 @@ export function readMcpClientCommand(
   };
   const apiKeyFile = values.get("--api-key-file");
   if (apiKeyFile !== undefined) {
-    rejectOptions(values, ["--callback-url", "--client-id", "--workspace"]);
+    rejectOptions(values, ["--callback-url", "--client-id"]);
     const normalizedApiKey = readMcpApiKeyFile(apiKeyFile, readSecretFile);
+    const workspaceName = z.string().trim().min(1).max(200).parse(
+      requireOption(values, "--workspace"),
+    );
     return {
       config: {
         ...commonConfig,
         authentication: { apiKey: normalizedApiKey, kind: "api-key" },
-        workspaceName: null,
+        workspaceName,
       },
       kind: "run",
     };
@@ -132,6 +135,7 @@ export function mcpClientUsage(): string {
     "  pnpm mcp:client -- \\",
     "    --server-url <https://host/mcp> \\",
     "    --api-key-file <file containing a CiteLoom MCP key> \\",
+    "    --workspace <CiteLoom workspace name> \\",
     "    --question <question covered by the workspace documents>",
     "",
     "Optional:",

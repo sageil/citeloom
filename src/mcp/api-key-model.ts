@@ -23,8 +23,6 @@ export interface McpApiKeyRecord {
   revokedAt: string | null;
   scopes: McpApiKeyScope[];
   userId: string;
-  workspaceId: string;
-  workspaceName: string;
 }
 
 export interface CreatedMcpApiKey extends McpApiKeyRecord {

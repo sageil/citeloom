@@ -5,6 +5,7 @@ import {
   ResourceNotFoundError,
   ResourceTemplate,
   type AuthInfo,
+  type ServerCapabilities,
 } from "@modelcontextprotocol/server";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
@@ -45,14 +46,24 @@ import type { WebServices } from "../api/services.js";
 import { applicationMetadata } from "../app/application-metadata.js";
 import {
   MCP_ANSWER_SCOPE,
+  MCP_ANSWER_PROMPT,
   MCP_API_KEY_TASK_ISSUER,
   MCP_ANSWER_TOOL,
   MCP_CITATION_RESOURCE_TEMPLATE,
+  MCP_SEARCH_PROMPT,
   MCP_SEARCH_SCOPE,
   MCP_SEARCH_TOOL,
+  MCP_SERVER_DESCRIPTION,
+  MCP_SERVER_TITLE,
   MCP_THREAD_RESOURCE_TEMPLATE,
+  MCP_WORKSPACE_CONTEXT_RESOURCE,
   MCP_WORKSPACE_NAME_HEADER,
 } from "./contract.js";
+import {
+  buildMcpAnswerPrompt,
+  buildMcpSearchPrompt,
+  buildMcpServerInstructions,
+} from "./guidance.js";
 import { McpTaskDispatcher } from "./tasks/dispatcher.js";
 import {
   MCP_TASK_EXTENSION_ID,
@@ -71,6 +82,19 @@ const mcpPrincipalSchema = z.object({
   workspaceId: z.uuid(),
   workspaceName: z.string().min(1),
 }).strict();
+
+const mcpSearchPromptArgumentsSchema = sourceDiscoveryRequestSchema.pick({
+  query: true,
+}).describe(
+  "Arguments for a source-search workflow in the selected CiteLoom workspace.",
+);
+
+const mcpAnswerPromptArgumentsSchema = mcpAnswerTaskRequestSchema.pick({
+  question: true,
+  threadTitle: true,
+}).describe(
+  "Arguments for a durable cited-answer workflow using the MCP Tasks extension.",
+);
 
 class McpWorkspaceSelectorError extends Error {
   public constructor(message: string) {
@@ -109,6 +133,7 @@ export function registerMcpRoutes(
       principal,
       context.authInfo?.scopes ?? [],
       options.services,
+      options.webConfig.publicOrigin,
     );
   }, {
     legacy: "reject",
@@ -121,6 +146,33 @@ export function registerMcpRoutes(
   server.addHook("onClose", async () => {
     await dispatcher.close();
     await handler.close();
+  });
+
+  server.get(OAUTH_MCP_RESOURCE_PATH, async (request, reply) => {
+    if (request.headers.authorization !== undefined) {
+      return reply
+        .header("Allow", "POST")
+        .status(405)
+        .send({
+          error: "method_not_allowed",
+          error_description: "Use POST for MCP protocol requests.",
+        });
+    }
+    const settings = await options.services.readAuthenticationSettings(
+      options.webConfig.publicOrigin,
+    );
+    const configuration = settings.activeOAuthConfiguration;
+    const challenge = settings.mode === "oauth" && configuration !== null
+      ? `Bearer resource_metadata="${buildMcpProtectedResourceMetadataUrl(options.webConfig.publicOrigin)}"`
+      : "Bearer";
+    return reply
+      .header("Cache-Control", "no-store")
+      .header("WWW-Authenticate", challenge)
+      .status(401)
+      .send({
+        error: "invalid_token",
+        error_description: "An MCP bearer credential is required.",
+      });
   });
 
   server.route({
@@ -212,8 +264,10 @@ async function authenticateMcpRequest(
   requiredScopes: readonly string[],
 ): Promise<McpRequestAccess> {
   if (hasMcpApiKeyPrefix(authorizationHeader)) {
+    const workspaceName = readMcpWorkspaceName(workspaceHeader);
     const access = await options.services.authenticateMcpApiKey(
       authorizationHeader,
+      workspaceName,
       requiredScopes,
     );
     return {
@@ -291,28 +345,36 @@ function createCiteLoomMcpServer(
   principal: AuthorizationPrincipal,
   grantedScopes: readonly string[],
   services: WebServices,
+  publicOrigin: string,
 ): McpServer {
-  const mcp = new McpServer({
-    name: applicationMetadata.name,
-    version: applicationMetadata.version,
-  }, {
-    capabilities: {
-      extensions: { [MCP_TASK_EXTENSION_ID]: {} },
-    },
-    instructions: "Search the selected CiteLoom workspace and preserve source identifiers in results.",
-  });
   const scopes = new Set(grantedScopes);
+  const mcp = new McpServer({
+    description: MCP_SERVER_DESCRIPTION,
+    name: applicationMetadata.name,
+    title: MCP_SERVER_TITLE,
+    version: applicationMetadata.version,
+    websiteUrl: publicOrigin,
+  }, {
+    capabilities: buildMcpServerCapabilities(scopes),
+    instructions: buildMcpServerInstructions(grantedScopes),
+  });
   if (scopes.has(MCP_SEARCH_SCOPE)) {
     registerSourceSearchTool(mcp, principal, services);
+    registerSourceSearchPrompt(mcp);
   }
   if (scopes.has(MCP_ANSWER_SCOPE)) {
     registerAnswerTool(mcp);
+    registerAnswerPrompt(mcp);
     registerResearchResources(mcp, principal, services);
   }
   mcp.registerResource(
     "workspace-context",
-    "citeloom://workspace/context",
+    MCP_WORKSPACE_CONTEXT_RESOURCE,
     {
+      annotations: {
+        audience: ["assistant", "user"],
+        priority: 1,
+      },
       description: "The CiteLoom user and local workspace selected for this authenticated request.",
       mimeType: "application/json",
       title: "CiteLoom workspace context",
@@ -338,6 +400,16 @@ function createCiteLoomMcpServer(
   return mcp;
 }
 
+function buildMcpServerCapabilities(
+  scopes: ReadonlySet<string>,
+): ServerCapabilities {
+  const capabilities: ServerCapabilities = {};
+  if (scopes.has(MCP_ANSWER_SCOPE)) {
+    capabilities.extensions = { [MCP_TASK_EXTENSION_ID]: {} };
+  }
+  return capabilities;
+}
+
 function registerSourceSearchTool(
   mcp: McpServer,
   principal: AuthorizationPrincipal,
@@ -352,7 +424,7 @@ function registerSourceSearchTool(
         openWorldHint: false,
         readOnlyHint: true,
       },
-      description: "Search documents in the selected CiteLoom workspace.",
+      description: "Search authorized documents in the selected CiteLoom workspace for exact keyword matches and, when requested, semantically related passages. This read-only operation does not create a saved research turn and returns source identifiers, files, page numbers, section paths, and source regions for evidence-aware use.",
       inputSchema: sourceDiscoveryRequestSchema,
       outputSchema: sourceDiscoveryResponseSchema,
       title: "Search CiteLoom sources",
@@ -389,6 +461,24 @@ function registerSourceSearchTool(
   );
 }
 
+function registerSourceSearchPrompt(mcp: McpServer): void {
+  mcp.registerPrompt(
+    MCP_SEARCH_PROMPT,
+    {
+      argsSchema: mcpSearchPromptArgumentsSchema,
+      description: "Prepare a source-grounded search of the selected CiteLoom workspace while preserving document and passage evidence metadata.",
+      title: "Search a CiteLoom workspace",
+    },
+    ({ query }) => ({
+      description: "Search the selected CiteLoom workspace and report evidence-bearing source passages.",
+      messages: [{
+        content: { text: buildMcpSearchPrompt(query), type: "text" },
+        role: "user",
+      }],
+    }),
+  );
+}
+
 function registerAnswerTool(
   mcp: McpServer,
 ): void {
@@ -401,7 +491,7 @@ function registerAnswerTool(
         openWorldHint: false,
         readOnlyHint: false,
       },
-      description: "Answer a question from documents in the selected CiteLoom workspace and save the cited research turn.",
+      description: "Create a synthesized answer from authorized documents in the selected CiteLoom workspace and save the cited result as a durable research turn. This operation requires host support for the io.modelcontextprotocol/tasks extension, returns a task handle for the host to resolve, and can expose resource links for the saved thread and immutable citation evidence when complete.",
       inputSchema: mcpAnswerTaskRequestSchema,
       outputSchema: streamedAnswerSchema,
       title: "Ask CiteLoom documents",
@@ -414,6 +504,27 @@ function registerAnswerTool(
   );
 }
 
+function registerAnswerPrompt(mcp: McpServer): void {
+  mcp.registerPrompt(
+    MCP_ANSWER_PROMPT,
+    {
+      argsSchema: mcpAnswerPromptArgumentsSchema,
+      description: "Prepare a cited document-answer workflow that saves its result as a CiteLoom research turn and uses the completed task result supplied by the MCP host.",
+      title: "Answer with CiteLoom citations",
+    },
+    ({ question, threadTitle }) => ({
+      description: "Create and follow a durable CiteLoom document-answer task.",
+      messages: [{
+        content: {
+          text: buildMcpAnswerPrompt(question, threadTitle),
+          type: "text",
+        },
+        role: "user",
+      }],
+    }),
+  );
+}
+
 function registerResearchResources(
   mcp: McpServer,
   principal: AuthorizationPrincipal,
@@ -423,6 +534,10 @@ function registerResearchResources(
     "research-thread",
     new ResourceTemplate(MCP_THREAD_RESOURCE_TEMPLATE, { list: undefined }),
     {
+      annotations: {
+        audience: ["assistant", "user"],
+        priority: 0.9,
+      },
       description: "A saved CiteLoom research thread in the selected workspace.",
       mimeType: "application/json",
       title: "CiteLoom research thread",
@@ -448,6 +563,10 @@ function registerResearchResources(
     "research-citation",
     new ResourceTemplate(MCP_CITATION_RESOURCE_TEMPLATE, { list: undefined }),
     {
+      annotations: {
+        audience: ["assistant", "user"],
+        priority: 1,
+      },
       description: "Immutable citation evidence from a saved CiteLoom answer.",
       mimeType: "application/json",
       title: "CiteLoom citation evidence",
@@ -508,7 +627,7 @@ function readMcpOperationScopes(
   }
   if (
     method === "resources/read"
-    && name !== "citeloom://workspace/context"
+    && name !== MCP_WORKSPACE_CONTEXT_RESOURCE
   ) {
     return [MCP_ANSWER_SCOPE];
   }
@@ -540,12 +659,7 @@ function sendMcpAuthenticationError(
   requiredScopes: readonly string[],
   publicOrigin: string,
 ): unknown {
-  const metadataUrl = new URL(
-    buildProtectedResourceMetadataPath(
-      new URL(OAUTH_MCP_RESOURCE_PATH, publicOrigin).toString(),
-    ),
-    publicOrigin,
-  ).toString();
+  const metadataUrl = buildMcpProtectedResourceMetadataUrl(publicOrigin);
   if (error instanceof McpWorkspaceSelectorError) {
     return reply.status(400).send({
       error: "invalid_request",
@@ -598,4 +712,13 @@ function sendMcpAuthenticationError(
     });
   }
   throw error;
+}
+
+function buildMcpProtectedResourceMetadataUrl(publicOrigin: string): string {
+  return new URL(
+    buildProtectedResourceMetadataPath(
+      new URL(OAUTH_MCP_RESOURCE_PATH, publicOrigin).toString(),
+    ),
+    publicOrigin,
+  ).toString();
 }

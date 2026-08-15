@@ -12,6 +12,13 @@ import {
   isOAuthProtectedResourceMetadataPath,
   OAUTH_PROTECTED_RESOURCE_METADATA_PATH,
 } from "../oauth/protected-resource.js";
+import {
+  MCP_DOCUMENTATION_URL,
+  MCP_SERVER_TITLE,
+} from "../mcp/contract.js";
+
+const OAUTH_DOCUMENTATION_URL =
+  "https://sammyageil.com/citeloom/reference/oauth/";
 
 export { isOAuthProtectedResourceMetadataPath };
 
@@ -43,11 +50,20 @@ export function registerOAuthProtectedResourceMetadata(
       authorization_servers: [configuration.issuer],
       bearer_methods_supported: ["header"],
       resource: resource.identifier,
+      resource_documentation: resource.documentationUrl,
+      resource_name: resource.name,
       scopes_supported: [...resource.scopes],
     };
   };
   server.get(OAUTH_PROTECTED_RESOURCE_METADATA_PATH, handler);
   server.get(`${OAUTH_PROTECTED_RESOURCE_METADATA_PATH}/*`, handler);
+}
+
+interface ProtectedResourceDescription {
+  documentationUrl: string;
+  identifier: string;
+  name: string;
+  scopes: string[];
 }
 
 function readProtectedResource(
@@ -57,14 +73,18 @@ function readProtectedResource(
     ]
   >,
   pathname: string,
-): { identifier: string; scopes: string[] } | null {
-  const resources = [
+): ProtectedResourceDescription | null {
+  const resources: ProtectedResourceDescription[] = [
     {
+      documentationUrl: OAUTH_DOCUMENTATION_URL,
       identifier: configuration.apiResource,
+      name: "CiteLoom API",
       scopes: configuration.apiScopes,
     },
     {
+      documentationUrl: MCP_DOCUMENTATION_URL,
       identifier: configuration.mcpResource,
+      name: `${MCP_SERVER_TITLE} MCP`,
       scopes: configuration.mcpScopes,
     },
   ];
@@ -73,7 +93,12 @@ function readProtectedResource(
       resource.identifier,
     );
     if (pathname === metadataPath) {
-      return { identifier: resource.identifier, scopes: [...resource.scopes] };
+      return {
+        documentationUrl: resource.documentationUrl,
+        identifier: resource.identifier,
+        name: resource.name,
+        scopes: [...resource.scopes],
+      };
     }
   }
   return null;

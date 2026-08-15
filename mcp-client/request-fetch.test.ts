@@ -50,21 +50,4 @@ describe("MCP request fetch adapter", () => {
       { method: "POST" },
     );
   });
-
-  it("omits a workspace selector for a workspace-bound API key", async () => {
-    let sentInit: RequestInit | undefined;
-    const request = createMcpRequestFetch(
-      MCP_URL,
-      null,
-      async (_input, init) => {
-        sentInit = init;
-        return Response.json({ ok: true });
-      },
-    );
-
-    await request(MCP_URL, { method: "POST" });
-
-    const headers = new Headers(sentInit?.headers);
-    expect(headers.has(MCP_WORKSPACE_NAME_HEADER)).toBe(false);
-  });
 });

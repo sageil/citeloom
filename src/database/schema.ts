@@ -465,15 +465,11 @@ export const mcpApiKeys = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    workspaceId: uuid("workspace_id")
-      .notNull()
-      .references(() => workspaces.id, { onDelete: "cascade" }),
   },
   (table) => [
     uniqueIndex("mcp_api_keys_token_digest_idx").on(table.tokenDigest),
-    index("mcp_api_keys_user_workspace_idx").on(
+    index("mcp_api_keys_user_created_idx").on(
       table.userId,
-      table.workspaceId,
       table.createdAt,
     ),
     check(

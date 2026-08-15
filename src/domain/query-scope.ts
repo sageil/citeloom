@@ -63,18 +63,34 @@ export function splitResolvedQueryScopeTargets(
 export const queryScopeSchema: z.ZodType<QueryScope> = z.discriminatedUnion(
   "kind",
   [
-    z.object({ kind: z.literal("all") }).strict(),
     z.object({
-      documentIds: z.array(contentIdSchema).min(1),
-      kind: z.literal("documentIds"),
-    }).strict(),
+      kind: z.literal("all").describe(
+        "Search every document authorized for the current user in the selected workspace.",
+      ),
+    }).strict().describe("Search all authorized workspace documents."),
     z.object({
-      kind: z.literal("sourceFiles"),
-      sourceFiles: z.array(z.string().trim().min(1)).min(1),
-    }).strict(),
+      documentIds: z.array(contentIdSchema).min(1).describe(
+        "Content-addressed document identifiers to search.",
+      ),
+      kind: z.literal("documentIds").describe(
+        "Restrict the operation to explicit document identifiers.",
+      ),
+    }).strict().describe("Search only the listed document identifiers."),
     z.object({
-      kind: z.literal("tags"),
-      tags: z.array(tagSchema).min(1),
-    }).strict(),
+      kind: z.literal("sourceFiles").describe(
+        "Restrict the operation to explicit source-file names.",
+      ),
+      sourceFiles: z.array(z.string().trim().min(1)).min(1).describe(
+        "Source-file names exactly as returned by CiteLoom discovery results.",
+      ),
+    }).strict().describe("Search only the listed source files."),
+    z.object({
+      kind: z.literal("tags").describe(
+        "Restrict the operation to documents matching explicit tags.",
+      ),
+      tags: z.array(tagSchema).min(1).describe(
+        "Workspace document tags to match.",
+      ),
+    }).strict().describe("Search only documents matching the listed tags."),
   ],
-);
+).describe("The authorized document set CiteLoom should search.");
