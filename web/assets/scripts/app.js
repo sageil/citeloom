@@ -34,7 +34,7 @@ import {
   readDashboardSnapshot,
   readDiagnostics,
   readIngestionCompleteEvent,
-} from "./dashboard-schema.js";
+} from "./dashboard-boundary.js";
 import {
   configureInitialFragment,
   initializePageRouting,

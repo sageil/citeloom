@@ -11,8 +11,8 @@ import {
 } from "drizzle-orm";
 import { z } from "zod";
 
-import { isPublishedAnsweredDocument } from "../../src/answers/published-schema.js";
-import { decodePublishedAnswerDocument } from "../../src/answers/published-schema.js";
+import { isPublishedAnsweredDocument } from "../../src/answers/published-model.js";
+import { decodePublishedAnswerDocument } from "../../src/answers/published-model.js";
 import { readPublishedDirectAnswerContent } from "../../src/answers/published.js";
 import { readStartupConfig } from "../../src/config/index.js";
 import { openDatabase, type CiteLoomDatabase } from "../../src/database/client.js";

@@ -29,7 +29,7 @@ import {
   readResearchThreadSummaries,
   readResearchThread,
   readStoredCitation,
-} from "./ask-schema.js";
+} from "./ask-boundary.js";
 import { createEvidenceSpeechControls } from "./evidence-speech.js";
 import {
   buildHighlightedSourceViewerUrl,

@@ -45,7 +45,7 @@ import {
   SettingsVersionConflictError,
   type EffectiveApplicationSettings,
   type NormalizedRuntimeSettingChange,
-} from "./settings-schema.js";
+} from "./settings-model.js";
 
 const SETTINGS_ID = "runtime";
 const workspaceProviderReferenceRowsSchema = z.array(z.object({

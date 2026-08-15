@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   registerPage,
 } from "../web/assets/scripts/documents.js";
-import { readDocumentCatalog } from "../web/assets/scripts/document-catalog-schema.js";
+import { readDocumentCatalog } from "../web/assets/scripts/document-catalog-boundary.js";
 import {
   findHtmlElementByAttribute,
   htmlElementHasClass,

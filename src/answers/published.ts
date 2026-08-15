@@ -20,7 +20,7 @@ import {
   type PublishedAnswerCitation,
   type PublishedAnswerDocument,
   type PublishedAnswerStatement,
-} from "./published-schema.js";
+} from "./published-model.js";
 import type {
   AnswerClaim,
   CitationEvidence,
@@ -38,7 +38,7 @@ export {
   type PublishedAnswerCitation,
   type PublishedAnswerDocument,
   type PublishedAnswerStatement,
-} from "./published-schema.js";
+} from "./published-model.js";
 
 export class AnswerDraftSourceError extends Error {
   public constructor(message: string) {

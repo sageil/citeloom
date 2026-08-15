@@ -1,7 +1,7 @@
 import type { UIMessage, UIMessageStreamWriter } from "ai";
 import { z } from "zod";
 
-import { publishedAnswerDocumentSchema } from "./published-schema.js";
+import { publishedAnswerDocumentSchema } from "./published-model.js";
 import {
   hasAnswerContent,
   type AnswerContentSnapshot,

@@ -35,7 +35,7 @@ import {
   thinkingModes,
   workspacesAreaName,
   workspaceManagementAreaName,
-} from "./settings-schema.js";
+} from "./settings-boundary.js";
 import { createSettingsTargetActions } from "./settings-target.js";
 import {
   createSourceContentStorageActions,

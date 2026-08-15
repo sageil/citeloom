@@ -17,7 +17,7 @@ import type {
   ProviderModelFeatureOverrides,
   ProviderSettings,
 } from "../providers/profiles.js";
-import { SettingsValidationError } from "./settings-schema.js";
+import { SettingsValidationError } from "./settings-model.js";
 
 export function applyProviderSettingsChanges(
   current: ProviderSettings,

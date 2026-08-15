@@ -1,6 +1,6 @@
 import {
   readDatabaseEnvironment,
-} from "./schemas.js";
+} from "./validation.js";
 import type {
   DatabaseConfig,
   StartupConfig,

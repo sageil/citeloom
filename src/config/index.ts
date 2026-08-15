@@ -7,7 +7,7 @@ export {
   parseRuntimeSettings,
   runtimeSettingsObjectSchema,
   runtimeSettingsSchema,
-} from "./schemas.js";
+} from "./validation.js";
 export {
   readDatabaseConfig,
   readStartupConfig,

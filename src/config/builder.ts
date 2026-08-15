@@ -1,4 +1,4 @@
-import { parseRuntimeSettings } from "./schemas.js";
+import { parseRuntimeSettings } from "./validation.js";
 import {
   parseProviderSettings,
   readProviderProfile,

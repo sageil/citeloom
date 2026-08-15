@@ -16,8 +16,8 @@ import {
   readChatMessageStream,
   readChatSummaries,
   readCreatedChat,
-} from "./chat-schema.js";
-import { readDocumentCatalog } from "./document-catalog-schema.js";
+} from "./chat-boundary.js";
+import { readDocumentCatalog } from "./document-catalog-boundary.js";
 import {
   buildHighlightedSourceViewerUrl,
   isTextSourceFile,

@@ -26,7 +26,7 @@ import { runtimeSettingKeys } from "./runtime-settings.js";
 import {
   SettingsValidationError,
   type EffectiveApplicationSettings,
-} from "./settings-schema.js";
+} from "./settings-model.js";
 
 const storedSettingsRowSchema = z.object({
   defaults: z.unknown(),
