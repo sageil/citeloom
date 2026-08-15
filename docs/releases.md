@@ -1,5 +1,22 @@
 # Release notes
 
+## v1.1.0
+
+V1.1.0 adds optional OAuth, MCP 2026 access, database-backed runtime settings, and a new documentation site.
+
+A global administrator can stage and verify an OAuth configuration before activation.
+Use OpenID Connect compatible providers, and the documentation includes a complete Logto example.
+OAuth identities use a verified issuer and subject link to an existing CiteLoom user.
+CiteLoom continues to control users, workspace memberships, roles, and source-library access.
+The Public origins setting now accepts more than one origin and uses the first origin as the canonical public address.
+
+MCP clients can use OAuth bearer tokens or user-bound API keys with separate Search and Ask permissions.
+The repository includes a browser-based MCP Inspector configuration and a smoke-test client.
+
+Most service configurations are now managed in the application settings.
+Administrators can manage public origins and service settings in CiteLoom instead of maintaining separate process values for each service.
+Work that is already in progress keeps the settings snapshot that it started with.
+
 ## v1.0.0
 
 CiteLoom 1.0.0 adds optional S3-compatible object storage for original source documents, including a bundled SeaweedFS deployment option.
