@@ -459,12 +459,6 @@ function buildStartupSettings(
       value: redactDatabaseUrl(config.database.url),
     },
     {
-      description: "How many database connections each CiteLoom process can keep open.",
-      key: "databasePoolMax",
-      label: "Maximum database connections",
-      value: String(config.database.poolMax),
-    },
-    {
       description: "The network address where the web app listens.",
       key: "webHost",
       label: "Web host",

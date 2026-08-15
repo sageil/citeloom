@@ -4,11 +4,11 @@
 
 name: citeloom
 
-x-citeloom-image: &citeloom-image sageil/citeloom:${CITELOOM_IMAGE_TAG:-1.0.0}
+x-citeloom-image: &citeloom-image sageil/citeloom:${CITELOOM_IMAGE_TAG:-1.1.0}
 
 services:
   postgres:
-    image: sageil/citeloom-postgres:${CITELOOM_IMAGE_TAG:-1.0.0}
+    image: sageil/citeloom-postgres:${CITELOOM_IMAGE_TAG:-1.1.0}
     command: ["postgres", "-c", "shared_preload_libraries=pg_textsearch"]
     restart: unless-stopped
     environment:
@@ -26,16 +26,14 @@ services:
       retries: 12
 
   docling:
-    image: sageil/citeloom-docling:${CITELOOM_IMAGE_TAG:-1.0.0}
+    image: sageil/citeloom-docling:${CITELOOM_IMAGE_TAG:-1.1.0}
     restart: unless-stopped
     environment:
       CITELOOM_DOCLING_CHECKPOINT_DIRECTORY: /app/docling-checkpoints
-      DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS: ${DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS:-false}
-      DOCLING_NUM_THREADS: ${DOCLING_NUM_THREADS:-4}
-      DOCLING_PERF_PAGE_BATCH_SIZE: ${DOCLING_PERF_PAGE_BATCH_SIZE:-4}
-      DOCLING_SERVE_ENG_LOC_NUM_WORKERS: 1
-      DOCLING_SERVE_ENG_LOC_SHARE_MODELS: "false"
-      DOCLING_SERVE_QUEUE_MAX_SIZE: ${DOCLING_SERVE_QUEUE_MAX_SIZE:-8}
+      DATABASE_URL: postgresql://citeloom:citeloom@postgres:5432/citeloom
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:5001:5001"
     volumes:
@@ -48,17 +46,15 @@ services:
       start_period: 60s
 
   docling-replica:
-    image: sageil/citeloom-docling:${CITELOOM_IMAGE_TAG:-1.0.0}
+    image: sageil/citeloom-docling:${CITELOOM_IMAGE_TAG:-1.1.0}
     profiles: ["docling-scale"]
     restart: unless-stopped
     environment:
       CITELOOM_DOCLING_CHECKPOINT_DIRECTORY: /app/docling-checkpoints
-      DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS: ${DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS:-false}
-      DOCLING_NUM_THREADS: ${DOCLING_NUM_THREADS:-4}
-      DOCLING_PERF_PAGE_BATCH_SIZE: ${DOCLING_PERF_PAGE_BATCH_SIZE:-4}
-      DOCLING_SERVE_ENG_LOC_NUM_WORKERS: 1
-      DOCLING_SERVE_ENG_LOC_SHARE_MODELS: "false"
-      DOCLING_SERVE_QUEUE_MAX_SIZE: ${DOCLING_SERVE_QUEUE_MAX_SIZE:-8}
+      DATABASE_URL: postgresql://citeloom:citeloom@postgres:5432/citeloom
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:5003:5001"
     volumes:
@@ -71,14 +67,14 @@ services:
       start_period: 60s
 
   hhem:
-    image: sageil/citeloom-hhem:${CITELOOM_IMAGE_TAG:-1.0.0}
+    image: sageil/citeloom-hhem:${CITELOOM_IMAGE_TAG:-1.1.0}
     restart: unless-stopped
     init: true
     environment:
-      HHEM_MAX_PADDED_TOKENS: ${HHEM_MAX_PADDED_TOKENS:-20000}
-      HHEM_MAX_ATTENTION_CELLS: ${HHEM_MAX_ATTENTION_CELLS:-20000000}
-      HHEM_MODEL_BATCH_SIZE: ${HHEM_MODEL_BATCH_SIZE:-20}
-      HHEM_TORCH_THREADS: ${HHEM_TORCH_THREADS:-4}
+      DATABASE_URL: postgresql://citeloom:citeloom@postgres:5432/citeloom
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:${HHEM_PORT:-8088}:8080"
     volumes:
@@ -97,7 +93,6 @@ services:
       CITELOOM_ADMIN_PASSWORD: ${CITELOOM_ADMIN_PASSWORD:?Set CITELOOM_ADMIN_PASSWORD in .env}
       CITELOOM_ADMIN_USERNAME: ${CITELOOM_ADMIN_USERNAME:?Set CITELOOM_ADMIN_USERNAME in .env}
       CITELOOM_SOURCE_CONTENT_DIRECTORY: /app/documents/blobs
-      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
       DATABASE_URL: postgresql://citeloom:citeloom@postgres:5432/citeloom
     depends_on:
       postgres:
@@ -110,15 +105,8 @@ services:
     image: *citeloom-image
     command: ["node", "dist/cli/index.js", "worker"]
     environment:
-      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-1.0.0}
-      CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS: ${CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS:-100000}
-      CITELOOM_APPLICATION_ERROR_RETENTION_DAYS: ${CITELOOM_APPLICATION_ERROR_RETENTION_DAYS:-30}
-      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-1.1.0}
       DATABASE_URL: postgresql://citeloom:citeloom@postgres:5432/citeloom
-      DOCLING_ADDITIONAL_SERVICE_INSTANCES: ${DOCLING_CONTAINER_ADDITIONAL_SERVICE_INSTANCES:-[]}
-      DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS: ${DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS:-false}
-      DOCLING_NUM_THREADS: ${DOCLING_NUM_THREADS:-4}
-      DOCLING_PERF_PAGE_BATCH_SIZE: ${DOCLING_PERF_PAGE_BATCH_SIZE:-4}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -143,22 +131,11 @@ services:
     image: *citeloom-image
     command: ["node", "dist/web-server.js"]
     environment:
-      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-1.0.0}
-      CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS: ${CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS:-100000}
-      CITELOOM_APPLICATION_ERROR_RETENTION_DAYS: ${CITELOOM_APPLICATION_ERROR_RETENTION_DAYS:-30}
-      CITELOOM_MAX_UPLOAD_REQUEST_MEGABYTES: ${CITELOOM_MAX_UPLOAD_REQUEST_MEGABYTES:-100}
-      CITELOOM_PUBLIC_ORIGIN: ${CITELOOM_PUBLIC_ORIGIN:-https://localhost:3443}
-      CITELOOM_SECURE_SESSION_COOKIE: ${CITELOOM_SECURE_SESSION_COOKIE:-true}
+      CITELOOM_RELEASE: ${CITELOOM_RELEASE:-1.1.0}
       CITELOOM_UPLOAD_DIRECTORY: /app/documents/uploads
-      CITELOOM_TRUST_PROXY: "true"
       CITELOOM_WEB_HOST: 0.0.0.0
       CITELOOM_WEB_PORT: "3000"
-      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
       DATABASE_URL: postgresql://citeloom:citeloom@postgres:5432/citeloom
-      DOCLING_ADDITIONAL_SERVICE_INSTANCES: ${DOCLING_CONTAINER_ADDITIONAL_SERVICE_INSTANCES:-[]}
-      DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS: ${DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS:-false}
-      DOCLING_NUM_THREADS: ${DOCLING_NUM_THREADS:-4}
-      DOCLING_PERF_PAGE_BATCH_SIZE: ${DOCLING_PERF_PAGE_BATCH_SIZE:-4}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     expose:

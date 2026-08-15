@@ -8,18 +8,15 @@ Use [Features](../docs/features.md) for product behavior and [Deployment](../doc
 Start the integrated application server from the repository root.
 
 ```bash
-CITELOOM_PUBLIC_ORIGIN=http://127.0.0.1:3000 \
-CITELOOM_SECURE_SESSION_COOKIE=false \
 pnpm dev:web
 ```
 
 Open `http://127.0.0.1:3000`.
+Set Public origin to `http://127.0.0.1:3000` and disable Secure session cookie on the Web server Settings page before using this HTTP development origin, then restart the backend.
 
 To run the browser interface separately from the API, start the backend with the standalone development server's origin.
 
 ```bash
-CITELOOM_PUBLIC_ORIGIN=http://127.0.0.1:5175 \
-CITELOOM_SECURE_SESSION_COOKIE=false \
 pnpm dev:web
 ```
 
@@ -30,6 +27,7 @@ node web/citeloom-server.mjs
 ```
 
 Open `http://127.0.0.1:5175/web/`.
+For this layout, save `http://127.0.0.1:5175` as Public origin on the Web server Settings page and restart the backend.
 The standalone server forwards `/api` requests to `http://127.0.0.1:3000` by default.
 Set `CITELOOM_WEB_DEV_HOST` and `CITELOOM_WEB_DEV_PORT` to change where the standalone server listens.
 Set `CITELOOM_API_ORIGIN` when the backend uses a different origin.
@@ -43,6 +41,6 @@ The API coordinates persistence, background workflows, document conversion, retr
 The browser does not connect directly to databases, workers, document processors, or model providers.
 
 The frontend does not require a separate package installation or production build step.
-An internet connection is currently required because the browser loads pinned HTMX and Alpine.js releases from jsDelivr.
+The web server serves pinned HTMX, Marked, DOMPurify, and Alpine.js releases from local dependencies, so the browser does not depend on a public CDN.
 
 See [Architecture](../docs/architecture.md) for the complete system boundaries.

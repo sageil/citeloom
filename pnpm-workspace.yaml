@@ -1,4 +1,5 @@
 allowBuilds:
+  '@modelcontextprotocol/inspector': true
   argon2: true
   esbuild@0.25.12: true
   esbuild@0.28.1: true

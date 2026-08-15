@@ -64,6 +64,14 @@ import type {
 } from "../domain/retrieval-descriptions.js";
 import type { DocumentTocArtifact } from "../domain/document-toc.js";
 import type { StoredRetrievalWindowPolicy } from "../retrieval/window-policy.js";
+import type {
+  StoredOAuthApplicationConfiguration,
+} from "../oauth/application-configuration.js";
+import type {
+  McpAnswerTaskRequest,
+  McpAnswerTaskResult,
+  McpTaskError,
+} from "../mcp/tasks/model.js";
 
 export const ingestionPhase = pgEnum("ingestion_phase", [
   "discovered",
@@ -235,6 +243,28 @@ export const userAccountState = pgEnum("user_account_state", [
 ]);
 
 export const globalRole = pgEnum("global_role", ["global_admin", "standard"]);
+export const authenticationMode = pgEnum("authentication_mode", [
+  "local",
+  "oauth",
+]);
+export const mcpTaskStatus = pgEnum("mcp_task_status", [
+  "working",
+  "input_required",
+  "completed",
+  "cancelled",
+  "failed",
+]);
+export const authenticationConfigurationEventType = pgEnum(
+  "authentication_configuration_event_type",
+  [
+    "staged",
+    "activated",
+    "disabled",
+    "host_recovery_enabled",
+    "host_recovery_disabled",
+    "recovered",
+  ],
+);
 export const workspaceMembershipAccess = pgEnum(
   "workspace_membership_access",
   ["enabled", "disabled"],
@@ -410,6 +440,357 @@ export const workspaceMemberships = pgTable(
   (table) => [
     primaryKey({ columns: [table.workspaceId, table.userId] }),
     index("workspace_memberships_user_idx").on(table.userId, table.workspaceId),
+  ],
+);
+
+export const mcpApiKeys = pgTable(
+  "mcp_api_keys",
+  {
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    expiresAt: timestamp("expires_at", { mode: "date", withTimezone: true })
+      .notNull(),
+    id: uuid("id").primaryKey(),
+    label: varchar("label", { length: 100 }),
+    revokedAt: timestamp("revoked_at", { mode: "date", withTimezone: true }),
+    revokedByUserId: uuid("revoked_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    scopes: text("scopes").array().notNull(),
+    tokenDigest: varchar("token_digest", { length: 64 }).notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    uniqueIndex("mcp_api_keys_token_digest_idx").on(table.tokenDigest),
+    index("mcp_api_keys_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    check(
+      "mcp_api_keys_expiry_check",
+      sql`${table.expiresAt} > ${table.createdAt}`,
+    ),
+    check(
+      "mcp_api_keys_label_check",
+      sql`${table.label} IS NULL OR length(trim(${table.label})) > 0`,
+    ),
+    check(
+      "mcp_api_keys_scopes_check",
+      sql`cardinality(${table.scopes}) > 0
+        AND ${table.scopes} <@ ARRAY['citeloom.search', 'citeloom.answer']::text[]`,
+    ),
+    check(
+      "mcp_api_keys_token_digest_check",
+      sql`${table.tokenDigest} ~ '^[0-9a-f]{64}$'`,
+    ),
+  ],
+);
+
+export const oauthResourceSettings = pgTable(
+  "oauth_resource_settings",
+  {
+    enabled: boolean("enabled").notNull().default(false),
+    id: varchar("id", { length: 32 }).primaryKey(),
+    issuer: text("issuer"),
+    resource: text("resource"),
+    scopes: text("scopes").array().notNull().default([]),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    version: integer("version").notNull().default(1),
+    workspaceClaim: text("workspace_claim"),
+  },
+  (table) => [
+    check(
+      "oauth_resource_settings_singleton_check",
+      sql`${table.id} = 'resource' AND ${table.version} > 0`,
+    ),
+    check(
+      "oauth_resource_settings_issuer_check",
+      sql`${table.issuer} IS NULL OR (
+        length(${table.issuer}) > 0
+        AND ${table.issuer} = trim(${table.issuer})
+      )`,
+    ),
+    check(
+      "oauth_resource_settings_resource_check",
+      sql`${table.resource} IS NULL OR (
+        length(${table.resource}) > 0
+        AND ${table.resource} = trim(${table.resource})
+      )`,
+    ),
+    check(
+      "oauth_resource_settings_workspace_claim_check",
+      sql`${table.workspaceClaim} IS NULL OR (
+        length(${table.workspaceClaim}) > 0
+        AND ${table.workspaceClaim} = trim(${table.workspaceClaim})
+      )`,
+    ),
+    check(
+      "oauth_resource_settings_enabled_values_check",
+      sql`(
+        NOT ${table.enabled}
+        AND ${table.issuer} IS NULL
+        AND ${table.resource} IS NULL
+        AND cardinality(${table.scopes}) = 0
+        AND ${table.workspaceClaim} IS NULL
+      ) OR (
+        ${table.issuer} IS NOT NULL
+        AND ${table.resource} IS NOT NULL
+        AND cardinality(${table.scopes}) > 0
+        AND ${table.workspaceClaim} IS NOT NULL
+      )`,
+    ),
+  ],
+);
+
+export const authenticationSettings = pgTable(
+  "authentication_settings",
+  {
+    activeOAuthConfiguration: jsonb("active_oauth_configuration")
+      .$type<StoredOAuthApplicationConfiguration>(),
+    activatedAt: timestamp("activated_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    activatedByUserId: uuid("activated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    id: varchar("id", { length: 32 }).primaryKey(),
+    hostRecoveryEnabled: boolean("host_recovery_enabled")
+      .notNull()
+      .default(false),
+    mode: authenticationMode("mode").notNull().default("local"),
+    stagedOAuthConfiguration: jsonb("staged_oauth_configuration")
+      .$type<StoredOAuthApplicationConfiguration>(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedByUserId: uuid("updated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    version: integer("version").notNull().default(1),
+  },
+  (table) => [
+    check(
+      "authentication_settings_singleton_check",
+      sql`${table.id} = 'application' AND ${table.version} > 0`,
+    ),
+    check(
+      "authentication_settings_active_configuration_check",
+      sql`(${table.mode} = 'local' AND ${table.activeOAuthConfiguration} IS NULL)
+        OR (${table.mode} = 'oauth' AND ${table.activeOAuthConfiguration} IS NOT NULL)`,
+    ),
+    check(
+      "authentication_settings_oauth_recovery_check",
+      sql`${table.mode} <> 'oauth' OR ${table.hostRecoveryEnabled}`,
+    ),
+    check(
+      "authentication_settings_staged_configuration_check",
+      sql`${table.stagedOAuthConfiguration} IS NULL OR (
+        jsonb_typeof(${table.stagedOAuthConfiguration}) = 'object'
+        AND ${table.stagedOAuthConfiguration}->>'schemaVersion' = '1'
+      )`,
+    ),
+    check(
+      "authentication_settings_active_oauth_document_check",
+      sql`${table.activeOAuthConfiguration} IS NULL OR (
+        jsonb_typeof(${table.activeOAuthConfiguration}) = 'object'
+        AND ${table.activeOAuthConfiguration}->>'schemaVersion' = '1'
+      )`,
+    ),
+  ],
+);
+
+export const authenticationConfigurationEvents = pgTable(
+  "authentication_configuration_events",
+  {
+    actorUserId: uuid("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    eventType: authenticationConfigurationEventType("event_type").notNull(),
+    fromMode: authenticationMode("from_mode").notNull(),
+    id: uuid("id").primaryKey(),
+    settingsVersion: integer("settings_version").notNull(),
+    toMode: authenticationMode("to_mode").notNull(),
+  },
+  (table) => [
+    index("authentication_configuration_events_created_idx").on(
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "authentication_configuration_events_version_check",
+      sql`${table.settingsVersion} > 0`,
+    ),
+  ],
+);
+
+export const oauthUserIdentityLinks = pgTable(
+  "oauth_user_identity_links",
+  {
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    issuer: text("issuer").notNull(),
+    subject: text("subject").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.issuer, table.subject] }),
+    uniqueIndex("oauth_user_identity_links_issuer_user_idx")
+      .on(table.issuer, table.userId),
+    check(
+      "oauth_user_identity_links_issuer_check",
+      sql`length(${table.issuer}) > 0 AND ${table.issuer} = trim(${table.issuer})`,
+    ),
+    check(
+      "oauth_user_identity_links_subject_check",
+      sql`length(${table.subject}) > 0 AND ${table.subject} = trim(${table.subject})`,
+    ),
+  ],
+);
+
+export const mcpTasks = pgTable(
+  "mcp_tasks",
+  {
+    cancellationRequestedAt: timestamp("cancellation_requested_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    clientId: text("client_id").notNull(),
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    error: jsonb("error").$type<McpTaskError>(),
+    expiresAt: timestamp("expires_at", { mode: "date", withTimezone: true })
+      .notNull(),
+    id: uuid("id").primaryKey(),
+    issuer: text("issuer").notNull(),
+    leaseExpiresAt: timestamp("lease_expires_at", {
+      mode: "date",
+      withTimezone: true,
+    }),
+    leaseOwner: uuid("lease_owner"),
+    request: jsonb("request").$type<McpAnswerTaskRequest>().notNull(),
+    result: jsonb("result").$type<McpAnswerTaskResult>(),
+    status: mcpTaskStatus("status").notNull().default("working"),
+    statusMessage: text("status_message"),
+    subject: text("subject").notNull(),
+    updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    index("mcp_tasks_dispatch_idx").on(
+      table.status,
+      table.leaseExpiresAt,
+      table.createdAt,
+    ),
+    index("mcp_tasks_owner_idx").on(
+      table.issuer,
+      table.subject,
+      table.clientId,
+      table.createdAt,
+    ),
+    index("mcp_tasks_retention_idx").on(
+      table.status,
+      table.expiresAt,
+      table.id,
+    ),
+    check(
+      "mcp_tasks_identity_check",
+      sql`length(${table.clientId}) > 0
+        AND length(${table.issuer}) > 0
+        AND ${table.issuer} = trim(${table.issuer})
+        AND length(${table.subject}) > 0
+        AND ${table.subject} = trim(${table.subject})`,
+    ),
+    check(
+      "mcp_tasks_expiry_check",
+      sql`${table.expiresAt} > ${table.createdAt}`,
+    ),
+    check(
+      "mcp_tasks_payload_check",
+      sql`(
+        ${table.status} = 'completed'
+        AND ${table.result} IS NOT NULL
+        AND ${table.error} IS NULL
+      ) OR (
+        ${table.status} = 'failed'
+        AND ${table.result} IS NULL
+        AND ${table.error} IS NOT NULL
+      ) OR (
+        ${table.status} NOT IN ('completed', 'failed')
+        AND ${table.result} IS NULL
+        AND ${table.error} IS NULL
+      )`,
+    ),
+    check(
+      "mcp_tasks_lease_check",
+      sql`(
+        ${table.leaseOwner} IS NULL
+        AND ${table.leaseExpiresAt} IS NULL
+      ) OR (
+        ${table.status} = 'working'
+        AND ${table.leaseOwner} IS NOT NULL
+        AND ${table.leaseExpiresAt} IS NOT NULL
+      )`,
+    ),
+    check(
+      "mcp_tasks_cancellation_check",
+      sql`${table.cancellationRequestedAt} IS NULL OR ${table.status} = 'working'`,
+    ),
+  ],
+);
+
+export const oauthWorkspaceLinks = pgTable(
+  "oauth_workspace_links",
+  {
+    createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    externalWorkspaceId: text("external_workspace_id").notNull(),
+    issuer: text("issuer").notNull(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.issuer, table.externalWorkspaceId] }),
+    uniqueIndex("oauth_workspace_links_issuer_workspace_idx")
+      .on(table.issuer, table.workspaceId),
+    check(
+      "oauth_workspace_links_external_id_check",
+      sql`length(${table.externalWorkspaceId}) > 0 AND ${table.externalWorkspaceId} = trim(${table.externalWorkspaceId})`,
+    ),
+    check(
+      "oauth_workspace_links_issuer_check",
+      sql`length(${table.issuer}) > 0 AND ${table.issuer} = trim(${table.issuer})`,
+    ),
   ],
 );
 

@@ -1,7 +1,6 @@
 import {
   readDatabaseEnvironment,
-  readDoclingServiceTopology,
-} from "./schemas.js";
+} from "./validation.js";
 import type {
   DatabaseConfig,
   StartupConfig,
@@ -12,7 +11,6 @@ export function readStartupConfig(
 ): StartupConfig {
   return {
     database: readDatabaseEnvironment(environment),
-    doclingTopology: readDoclingServiceTopology(environment),
   };
 }
 

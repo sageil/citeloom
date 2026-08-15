@@ -6,7 +6,17 @@ import {
   decodeOrganizationUserId,
   decodeWorkspaceSecurityPolicyUpdate,
 } from "../auth/boundary.js";
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import {
+  decodeCreateMcpApiKeyInput,
+  decodeMcpApiKeyRecordTarget,
+  decodeMcpApiKeyTarget,
+} from "../mcp/api-key-boundary.js";
+import {
+  McpApiKeyExpiryInvalidError,
+  McpApiKeyTargetUnavailableError,
+  McpApiKeyUnavailableError,
+} from "../mcp/api-key-store.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 import {
   SecurityPolicyVersionConflictError,
 } from "../auth/security-policy-store.js";
@@ -24,16 +34,19 @@ import { WebRequestError } from "./request-boundary.js";
 import type { SecurityWebServices, WebServices } from "./services.js";
 
 export interface SecurityRouteOptions {
-  requestPrincipals: WeakMap<object, AuthenticatedPrincipal>;
+  requestPrincipals: WeakMap<object, AuthorizationPrincipal>;
   services: SecurityWebServices;
 }
 
 const securityServiceMethods = [
+  "createMcpApiKey",
   "createOrganizationUser",
   "createOrganizationUserPasswordLink",
   "listOrganizationUsers",
+  "listMcpApiKeys",
   "readPasswordPolicy",
   "readWorkspaceSecurityOverview",
+  "revokeMcpApiKey",
   "updateWorkspaceSecurityPolicy",
 ] as const;
 
@@ -49,12 +62,94 @@ export function registerSecurityRoutes(
   });
 
   server.get("/api/security/users", async (request) => {
-    const principal = requireGlobalAdministratorPrincipal(
+    const principal = requireRequestPrincipal(requestPrincipals, request);
+    requireWorkspaceAdministratorPrincipal(
       requestPrincipals,
       request,
+      principal.workspaceId,
     );
     return services.listOrganizationUsers(principal);
   });
+
+  server.get("/api/security/users/:userId/mcp-api-keys", async (request) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
+    requireWorkspaceAdministratorPrincipal(
+      requestPrincipals,
+      request,
+      principal.workspaceId,
+    );
+    try {
+      const target = decodeMcpApiKeyTarget(request.params);
+      return services.listMcpApiKeys(principal, target.userId);
+    } catch (error: unknown) {
+      if (error instanceof ZodError) {
+        throw new WebRequestError(400, "The user identifier is invalid.");
+      }
+      throw error;
+    }
+  });
+
+  server.post(
+    "/api/security/users/:userId/mcp-api-keys",
+    async (request, reply) => {
+      const principal = requireRequestPrincipal(requestPrincipals, request);
+      requireWorkspaceAdministratorPrincipal(
+        requestPrincipals,
+        request,
+        principal.workspaceId,
+      );
+      try {
+        const target = decodeMcpApiKeyTarget(request.params);
+        const input = decodeCreateMcpApiKeyInput(request.body);
+        const apiKey = await services.createMcpApiKey(
+          principal,
+          target.userId,
+          input,
+        );
+        return reply.header("Cache-Control", "no-store").status(201).send(apiKey);
+      } catch (error: unknown) {
+        if (error instanceof ZodError) {
+          throw new WebRequestError(400, "The MCP API key values are invalid.");
+        }
+        if (error instanceof McpApiKeyExpiryInvalidError) {
+          throw new WebRequestError(400, error.message);
+        }
+        if (error instanceof McpApiKeyTargetUnavailableError) {
+          throw new WebRequestError(409, error.message);
+        }
+        throw error;
+      }
+    },
+  );
+
+  server.delete(
+    "/api/security/users/:userId/mcp-api-keys/:apiKeyId",
+    async (request, reply) => {
+      const principal = requireRequestPrincipal(requestPrincipals, request);
+      requireWorkspaceAdministratorPrincipal(
+        requestPrincipals,
+        request,
+        principal.workspaceId,
+      );
+      try {
+        const target = decodeMcpApiKeyRecordTarget(request.params);
+        await services.revokeMcpApiKey(
+          principal,
+          target.userId,
+          target.apiKeyId,
+        );
+        return reply.status(204).send();
+      } catch (error: unknown) {
+        if (error instanceof ZodError) {
+          throw new WebRequestError(400, "The MCP API key identifier is invalid.");
+        }
+        if (error instanceof McpApiKeyUnavailableError) {
+          throw new WebRequestError(404, error.message);
+        }
+        throw error;
+      }
+    },
+  );
 
   server.post("/api/security/users", async (request, reply) => {
     const principal = requireGlobalAdministratorPrincipal(

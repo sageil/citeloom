@@ -44,6 +44,7 @@ export const thinkingModes = Object.freeze(["auto", "disabled", "enabled"]);
 const providerAdapterConfigurations = Object.freeze(["catalog", "connection"]);
 const runtimeInputs = Object.freeze([
   "boolean",
+  "json",
   "number",
   "password",
   "select",
@@ -354,6 +355,7 @@ function readRuntimeSettingPanel(value) {
 
 function readRuntimeSettingField(value) {
   const field = readPlainObject(value, "application setting");
+  const key = readNonEmptyString(field.key, "setting key");
   const feature = field.feature === undefined || field.feature === null
     ? null
     : readEnum(field.feature, providerCapabilities, "setting feature");
@@ -369,12 +371,17 @@ function readRuntimeSettingField(value) {
       field.defaultConfigured,
       "setting default configured state",
     ),
-    defaultValue: readRuntimeSettingValue(field.defaultValue, "setting default"),
+    defaultValue: readRuntimeSettingValue(
+      field.defaultValue,
+      "setting default",
+      input,
+      key,
+    ),
     description: readNonEmptyString(field.description, "setting description"),
     feature,
     group: readNonEmptyString(field.group, "setting group"),
     input,
-    key: readNonEmptyString(field.key, "setting key"),
+    key,
     label: readNonEmptyString(field.label, "setting label"),
     max: readNullableFiniteNumber(field.max, "setting maximum"),
     min: readNullableFiniteNumber(field.min, "setting minimum"),
@@ -385,7 +392,7 @@ function readRuntimeSettingField(value) {
     source: readEnum(field.source, runtimeSources, "setting source"),
     step: readNullableFiniteNumber(field.step, "setting step"),
     unit: readNullableNonEmptyString(field.unit, "setting unit"),
-    value: readRuntimeSettingValue(field.value, "setting value"),
+    value: readRuntimeSettingValue(field.value, "setting value", input, key),
   };
 }
 
@@ -412,7 +419,16 @@ function readRuntimeSettingOptions(value) {
   return options;
 }
 
-function readRuntimeSettingValue(value, label) {
+function readRuntimeSettingValue(value, label, input, key) {
+  if (input === "json") {
+    if (key === "doclingAdditionalServiceInstances") {
+      return readDoclingServiceDeclarations(value, label);
+    }
+    if (key === "publicOrigins") {
+      return readStringList(value, label);
+    }
+    throw new Error(`The ${label} response uses an unknown JSON setting.`);
+  }
   if (value === null || typeof value === "string" || typeof value === "boolean") {
     return value;
   }
@@ -420,6 +436,23 @@ function readRuntimeSettingValue(value, label) {
     return value;
   }
   throw new Error(`The ${label} response is invalid.`);
+}
+
+function readStringList(value, label) {
+  const entries = readArray(value, label);
+  return entries.map((entry) => readNonEmptyString(entry, label));
+}
+
+function readDoclingServiceDeclarations(value, label) {
+  const declarations = readArray(value, label);
+  return declarations.map((entry) => {
+    const declaration = readPlainObject(entry, label);
+    return {
+      baseUrl: readNonEmptyString(declaration.baseUrl, `${label} base URL`),
+      capacity: readPositiveInteger(declaration.capacity, `${label} capacity`),
+      id: readNonEmptyString(declaration.id, `${label} identifier`),
+    };
+  });
 }
 
 function readProviderSettings(value) {

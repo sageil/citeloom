@@ -117,10 +117,7 @@ const startup = readStartupConfig();
 const session = await openDatabase(startup.database);
 try {
   const repository = new ApplicationSettingsRepository(session.database);
-  const settings = await repository.read(
-    startup.database,
-    startup.doclingTopology,
-  );
+  const settings = await repository.read(startup.database);
   await reportMigrationCandidates(
     session.database,
     settings.config.embeddingSpace.id,

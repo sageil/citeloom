@@ -20,7 +20,7 @@ import { createSourceContentBackend } from "./source-content-backend.js";
 import type {
   SourceContentBackend,
   SourceContentMetadata,
-} from "./source-content-backend-contract.js";
+} from "./source-content-backend-model.js";
 
 export const SOURCE_CONTENT_MIGRATION_BATCH_SIZE = 100;
 

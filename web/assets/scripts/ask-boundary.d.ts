@@ -1,7 +1,7 @@
 import type {
   PublishedAnswerCitation,
   PublishedAnswerDocument,
-} from "../../../src/answers/published-schema.js";
+} from "../../../src/answers/published-model.js";
 
 export type ClaimStatus =
   | "partially-supported"

@@ -19,5 +19,5 @@
     "target": "ES2024",
     "types": ["node", "vitest/globals"]
   },
-  "include": ["scripts/**/*.ts", "src/**/*.ts", "test/**/*.ts", "tools/**/*.ts"]
+  "include": ["mcp-client/**/*.ts", "scripts/**/*.ts", "src/**/*.ts", "test/**/*.ts", "tools/**/*.ts"]
 }

@@ -10,7 +10,7 @@ import {
   type KeywordDiscoveryMatch,
 } from "../src/retrieval/discovery/model.js";
 import type { RepresentationHit } from "../src/retrieval/ranking/rank-fusion.js";
-import type { SourceDiscoveryRequest } from "../src/retrieval/discovery/schema.js";
+import type { SourceDiscoveryRequest } from "../src/retrieval/discovery/boundary.js";
 import {
   buildRetrievedElementProvenance,
   buildSourceLocation,

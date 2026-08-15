@@ -10,7 +10,7 @@ import type {
   SourceDiscoveryPassage,
   SourceDiscoveryRequest,
   SourceDiscoveryResponse,
-} from "./schema.js";
+} from "./boundary.js";
 
 const MAX_EXCERPT_CHARACTERS = 360;
 export interface KeywordDiscoveryMatch {

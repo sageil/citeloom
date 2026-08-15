@@ -161,7 +161,6 @@ describe("provider profiles", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_EMBEDDING_INPUT_FORMAT,
     );
@@ -199,7 +198,6 @@ describe("provider profiles", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_EMBEDDING_INPUT_FORMAT,
     );
@@ -249,7 +247,6 @@ describe("provider profiles", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_EMBEDDING_INPUT_FORMAT,
     );
@@ -303,7 +300,6 @@ describe("provider profiles", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_EMBEDDING_INPUT_FORMAT,
     );
@@ -336,7 +332,6 @@ describe("provider profiles", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_EMBEDDING_INPUT_FORMAT,
     );
@@ -367,7 +362,6 @@ describe("provider profiles", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_EMBEDDING_INPUT_FORMAT,
     );
@@ -393,7 +387,6 @@ describe("provider profiles", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_EMBEDDING_INPUT_FORMAT,
     );
@@ -425,7 +418,6 @@ describe("provider profiles", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_EMBEDDING_INPUT_FORMAT,
     );
@@ -436,7 +428,6 @@ describe("provider profiles", () => {
       runtimeSettings,
       2,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_EMBEDDING_INPUT_FORMAT,
     );
@@ -481,7 +472,6 @@ function buildTextToSpeechConfig(
     runtimeSettings,
     1,
     providers,
-    startup.doclingServices,
     startup.sourceContent,
     TEST_EMBEDDING_INPUT_FORMAT,
   );

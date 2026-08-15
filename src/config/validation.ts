@@ -5,10 +5,8 @@ import { embeddingDimensionsSchema } from "../embedding/dimensions.js";
 import { RETRIEVAL_MODES } from "../retrieval/mode.js";
 
 import type {
-  ApplicationErrorRetentionConfig,
   DatabaseConfig,
-  DoclingProcessConfiguration,
-  DoclingServiceTopology,
+  PublicOrigins,
   RuntimeSettings,
 } from "./types.js";
 
@@ -16,19 +14,31 @@ const httpUrlSchema = z.url().refine((value) => {
   const protocol = new URL(value).protocol;
   return protocol === "http:" || protocol === "https:";
 }, "must use http or https");
+const publicOriginSchema = httpUrlSchema
+  .refine((value) => {
+    const url = new URL(value);
+    return url.username === ""
+      && url.password === ""
+      && url.pathname === "/"
+      && url.search === ""
+      && url.hash === "";
+  }, "must contain only a scheme, host, and optional port")
+  .transform((value) => new URL(value).origin);
+const publicOriginsSchema = z
+  .tuple([publicOriginSchema], publicOriginSchema)
+  .transform((origins): PublicOrigins => {
+    const [canonicalOrigin, ...additionalOrigins] = origins;
+    const uniqueAdditionalOrigins = additionalOrigins.filter(
+      (origin, index) => {
+        return origin !== canonicalOrigin
+          && additionalOrigins.indexOf(origin) === index;
+      },
+    );
+    return [canonicalOrigin, ...uniqueAdditionalOrigins];
+  });
 const runtimeNameSchema = z.string().trim().min(1).max(100);
 const databaseEnvironmentSchema = z.object({
-  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100),
   DATABASE_URL: z.url().refine(isPostgresUrl, "must use postgres or postgresql"),
-});
-const doclingProcessEnvironmentSchema = z.object({
-  DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS: z.enum(["true", "false"]),
-  DOCLING_NUM_THREADS: z.coerce.number().int().positive().max(1_024),
-  DOCLING_PERF_PAGE_BATCH_SIZE: z.coerce
-    .number()
-    .int()
-    .positive()
-    .max(1_024),
 });
 const doclingServiceIdSchema = z
   .string()
@@ -49,23 +59,45 @@ const additionalDoclingServiceSchema = z.object({
 }).strict();
 const additionalDoclingServicesSchema = z
   .array(additionalDoclingServiceSchema)
-  .max(15);
-const applicationErrorRetentionEnvironmentSchema = z.object({
-  CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(10_000_000)
-    .default(100_000),
-  CITELOOM_APPLICATION_ERROR_RETENTION_DAYS: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(3_650)
-    .default(30),
-});
+  .max(15)
+  .superRefine((services, context) => {
+    const identifiers = new Set<string>();
+    const baseUrls = new Set<string>();
+    for (let index = 0; index < services.length; index += 1) {
+      const service = services[index];
+      if (service === undefined) {
+        continue;
+      }
+      const baseUrl = removeTrailingSlash(service.baseUrl);
+      if (identifiers.has(service.id)) {
+        context.addIssue({
+          code: "custom",
+          message: `duplicate service ID ${service.id}`,
+          path: [index, "id"],
+        });
+      }
+      if (baseUrls.has(baseUrl)) {
+        context.addIssue({
+          code: "custom",
+          message: `duplicate service base URL ${baseUrl}`,
+          path: [index, "baseUrl"],
+        });
+      }
+      identifiers.add(service.id);
+      baseUrls.add(baseUrl);
+    }
+  })
+  .transform((services) => {
+    return services.map((service) => ({
+      ...service,
+      baseUrl: removeTrailingSlash(service.baseUrl),
+    }));
+  });
+export const BOOTSTRAP_DATABASE_POOL_MAX = 1;
 
 export const runtimeSettingsObjectSchema = z.object({
+  applicationErrorMaximumRows: z.number().int().min(1).max(10_000_000),
+  applicationErrorRetentionDays: z.number().int().min(1).max(3_650),
   answerMinimumOutputTokens: z.number().int().min(1),
   answerProviderSafetyMarginTokens: z.number().int().min(0),
   aiMetricsEnabled: z.boolean(),
@@ -77,9 +109,11 @@ export const runtimeSettingsObjectSchema = z.object({
   claimVerifierTimeoutSeconds: z.number().int().min(1).max(3_600),
   denseWeight: z.number().positive().max(100),
   doclingApiKey: z.string().trim().min(1).nullable(),
+  doclingAdditionalServiceInstances: additionalDoclingServicesSchema,
   doclingBaseUrl: httpUrlSchema,
   doclingMaxTimeoutSeconds: z.number().int().min(60).max(604_800),
   doclingMegabyteTimeoutSeconds: z.number().int().min(0).max(3_600),
+  doclingNumThreads: z.number().int().min(1).max(1_024),
   doclingOcrEnabled: z.boolean(),
   doclingPageTimeoutSeconds: z.number().int().min(0).max(3_600),
   doclingPdfBackend: z.enum([
@@ -90,7 +124,12 @@ export const runtimeSettingsObjectSchema = z.object({
   doclingPerformanceMetricsEnabled: z.boolean(),
   doclingPerformanceMetricsRetentionDays: z.number().int().min(1).max(3_650),
   doclingPipeline: z.enum(["standard", "vlm"]),
+  doclingPageBatchSize: z.number().int().min(1).max(1_024),
+  doclingProfilePipelineTimings: z.boolean(),
+  doclingQueueMaxSize: z.number().int().min(1).max(10_000),
   doclingSecondaryImageScale: z.number().min(0.1).max(8),
+  doclingServeEngineWorkers: z.number().int().min(1).max(64),
+  doclingServeShareModels: z.boolean(),
   doclingTableMode: z.enum(["accurate", "fast"]),
   doclingTableStructureEnabled: z.boolean(),
   doclingTocEnabled: z.boolean(),
@@ -109,9 +148,16 @@ export const runtimeSettingsObjectSchema = z.object({
   expansionQueryWeight: z.number().positive().max(100),
   findSourcesPassagesPerDocument: z.number().int().min(1),
   findSourcesResults: z.number().int().min(1),
+  databasePoolMax: z.number().int().min(1).max(100),
+  hhemMaxAttentionCells: z.number().int().min(1).max(100_000_000),
+  hhemMaxPaddedTokens: z.number().int().min(1).max(1_000_000),
+  hhemModelBatchSize: z.number().int().min(1).max(64),
+  hhemTorchThreads: z.number().int().min(1).max(256),
   lexicalWeight: z.number().positive().max(100),
   maxAttempts: z.number().int().min(1).max(20),
   maxDocumentMegabytes: z.number().int().min(1).max(100),
+  maxUploadRequestMegabytes: z.number().int().min(1).max(100),
+  mcpTaskRetentionDays: z.number().int().min(1).max(3_650),
   originalQueryWeight: z.number().positive().max(100),
   queryExpansions: z.number().int().min(0).max(4),
   queryExpansionTemperature: z.number().min(0).max(2),
@@ -124,7 +170,9 @@ export const runtimeSettingsObjectSchema = z.object({
   retrievalWindowPolicy: z.literal("structured-token-v3"),
   retryBaseMs: z.number().int().min(100).max(3_600_000),
   rrfK: z.number().int().min(1).max(1_000),
+  publicOrigins: publicOriginsSchema,
   searchMethod: z.enum(RETRIEVAL_MODES),
+  secureSessionCookie: z.boolean(),
   queryExpansionTimeoutSeconds: z.number().int().min(1).max(3_600),
   indexingTimeoutSeconds: z.number().int().min(1).max(86_400),
   sttLanguage: z.string().trim().min(1).max(100).nullable(),
@@ -135,6 +183,7 @@ export const runtimeSettingsObjectSchema = z.object({
   ttsPreloadEnabled: z.boolean(),
   ttsSpeed: z.number().min(0.25).max(5),
   ttsTimeoutSeconds: z.number().int().min(1).max(300),
+  trustProxy: z.boolean(),
   workerConcurrency: z.number().int().min(1).max(16),
   workerFallbackPollMs: z.number().int().min(1_000).max(300_000),
 }).strict();
@@ -167,51 +216,8 @@ export function readDatabaseEnvironment(
     throw new Error(`Invalid database configuration:\n${details}`);
   }
   return {
-    poolMax: result.data.DATABASE_POOL_MAX,
+    poolMax: BOOTSTRAP_DATABASE_POOL_MAX,
     url: result.data.DATABASE_URL,
-  };
-}
-
-export function readApplicationErrorRetentionConfig(
-  environment: NodeJS.ProcessEnv,
-): ApplicationErrorRetentionConfig {
-  const result = applicationErrorRetentionEnvironmentSchema.safeParse(environment);
-  if (!result.success) {
-    const details = result.error.issues.map(formatConfigIssue).join("\n");
-    throw new Error(`Invalid application error retention configuration:\n${details}`);
-  }
-  return {
-    maximumRows: result.data.CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS,
-    retentionDays: result.data.CITELOOM_APPLICATION_ERROR_RETENTION_DAYS,
-  };
-}
-
-export function readDoclingProcessConfiguration(
-  environment: NodeJS.ProcessEnv,
-): DoclingProcessConfiguration {
-  const result = doclingProcessEnvironmentSchema.safeParse(environment);
-  if (!result.success) {
-    const details = result.error.issues.map(formatConfigIssue).join("\n");
-    throw new Error(`Invalid Docling process configuration:\n${details}`);
-  }
-  return {
-    numThreads: result.data.DOCLING_NUM_THREADS,
-    pageBatchSize: result.data.DOCLING_PERF_PAGE_BATCH_SIZE,
-    profilePipelineTimings:
-      result.data.DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS === "true",
-  };
-}
-
-export function readDoclingServiceTopology(
-  environment: NodeJS.ProcessEnv,
-): DoclingServiceTopology {
-  const additionalServices = parseAdditionalDoclingServices(
-    environment.DOCLING_ADDITIONAL_SERVICE_INSTANCES,
-  );
-  validateDoclingServiceUniqueness(additionalServices);
-  return {
-    additionalServices,
-    process: readDoclingProcessConfiguration(environment),
   };
 }
 
@@ -227,52 +233,6 @@ export function parseRuntimeSettings(value: unknown): RuntimeSettings {
 function formatConfigIssue(issue: z.core.$ZodIssue): string {
   const path = issue.path.length === 0 ? "environment" : issue.path.join(".");
   return `- ${path}: ${issue.message}`;
-}
-
-function parseAdditionalDoclingServices(
-  value: string | undefined,
-): DoclingServiceTopology["additionalServices"] {
-  if (value === undefined) {
-    return [];
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Invalid Docling service configuration:\n- DOCLING_ADDITIONAL_SERVICE_INSTANCES must be valid JSON: ${message}`,
-    );
-  }
-  const result = additionalDoclingServicesSchema.safeParse(parsed);
-  if (!result.success) {
-    const details = result.error.issues.map(formatConfigIssue).join("\n");
-    throw new Error(`Invalid Docling service configuration:\n${details}`);
-  }
-  return result.data;
-}
-
-function validateDoclingServiceUniqueness(
-  services: DoclingServiceTopology["additionalServices"],
-): void {
-  const identifiers = new Set<string>();
-  const baseUrls = new Set<string>();
-  for (const service of services) {
-    const baseUrl = removeTrailingSlash(service.baseUrl);
-    if (identifiers.has(service.id)) {
-      throw new Error(
-        `Invalid Docling service configuration:\n- duplicate service ID ${service.id}.`,
-      );
-    }
-    if (baseUrls.has(baseUrl)) {
-      throw new Error(
-        `Invalid Docling service configuration:\n- duplicate service base URL ${baseUrl}.`,
-      );
-    }
-    service.baseUrl = baseUrl;
-    identifiers.add(service.id);
-    baseUrls.add(baseUrl);
-  }
 }
 
 function removeTrailingSlash(value: string): string {

@@ -36,7 +36,7 @@ import {
 import {
   decodeSourceDiscoveryRequest,
   type SourceDiscoveryRequest,
-} from "../retrieval/discovery/schema.js";
+} from "../retrieval/discovery/boundary.js";
 import type { SpeechRequest } from "../providers/text-to-speech.js";
 import type {
   NormalizedProviderSettingsChange,
@@ -231,12 +231,6 @@ const applicationErrorQuerySchema = z.object({
 }).strict();
 const multipartFieldSchema = z.string().max(2_000);
 const booleanFieldSchema = z.enum(["false", "true"]);
-const runtimeSettingPrimitiveSchema = z.union([
-  z.string(),
-  z.number(),
-  z.boolean(),
-  z.null(),
-]);
 const runtimeSettingChangeSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("reset"),
@@ -245,7 +239,7 @@ const runtimeSettingChangeSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("set"),
     key: z.string().min(1),
-    value: runtimeSettingPrimitiveSchema,
+    value: z.unknown(),
   }).strict(),
 ]);
 const providerSettingsChangeSchema = z.discriminatedUnion("action", [

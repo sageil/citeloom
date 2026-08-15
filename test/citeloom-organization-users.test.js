@@ -22,9 +22,11 @@ describe("CiteLoom organization user accounts", () => {
     );
 
     expect(fragment).toContain("User accounts");
-    expect(fragment).toContain("Create organization accounts");
+    expect(fragment).toContain("Manage user access and user-bound MCP API keys");
     expect(fragment).toContain("requestPasswordLink(user)");
     expect(fragment).toContain("without assigning workspace access");
+    expect(fragment).toContain("Manage MCP API keys");
+    expect(fragment).toContain("Copy this key now");
     expect(fragment).not.toContain('button secondary compact-header-control');
     expect(fragment).not.toContain('button primary compact-header-control');
     expect(fragment).not.toContain("Remove from workspace");
@@ -39,6 +41,7 @@ describe("CiteLoom organization user accounts", () => {
     page.accountUsername = "jdoe";
     page.loadOrganizationUsers = vi.fn(async () => undefined);
     const fetchRequest = vi.fn(async () => new Response(JSON.stringify({
+      currentWorkspaceAccess: false,
       displayName: "Jane Doe",
       globalRole: "standard",
       state: "pending",
@@ -68,6 +71,7 @@ describe("CiteLoom organization user accounts", () => {
   it("creates a setup or reset link only after workspace assignment", async () => {
     const page = createOrganizationUserManagement();
     const pendingUser = {
+      currentWorkspaceAccess: true,
       displayName: "Jane Doe",
       globalRole: "standard",
       state: "pending",

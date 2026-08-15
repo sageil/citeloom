@@ -4,18 +4,22 @@ import type {
 import type { ProviderCapability } from "../providers/profiles.js";
 
 export type RuntimeSettingGroup =
+  | "Database"
   | "Docling"
   | "Hughes Hallucination Evaluation Model"
+  | "MCP"
   | "Document processing"
   | "Search and answers"
   | "Embedding space"
   | "Search ranking"
   | "Speech input"
   | "Spoken answers"
+  | "Web server"
   | "Usage diagnostics";
 
 export type RuntimeSettingInput =
   | "boolean"
+  | "json"
   | "number"
   | "password"
   | "select"

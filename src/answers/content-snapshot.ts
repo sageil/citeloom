@@ -1,7 +1,7 @@
 import {
   isPublishedUncitedAnswerDocument,
   type PublishedAnswerDocument,
-} from "./published-schema.js";
+} from "./published-model.js";
 import {
   normalizeAnswerModelText,
   type AnswerPresentation,

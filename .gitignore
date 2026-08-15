@@ -19,3 +19,5 @@ certificates/
 evaluation.json
 *.log
 .DS_Store
+docsite/.astro/
+docsite/src/content/docs/reference/

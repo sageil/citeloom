@@ -6,8 +6,6 @@ import {
   parseRuntimeSettings,
   type AppConfig,
   type DatabaseConfig,
-  type DoclingServiceInstanceConfig,
-  type DoclingServiceTopology,
   type ProviderSettings,
   type RankFusionConfig,
   type RuntimeSettings,
@@ -68,6 +66,8 @@ export const TEST_PLAIN_EMBEDDING_INPUT_FORMAT = Object.freeze(
 );
 
 const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
+  applicationErrorMaximumRows: 100_000,
+  applicationErrorRetentionDays: 30,
   answerMinimumOutputTokens: 256,
   answerProviderSafetyMarginTokens: 2_048,
   answerTemperature: 0,
@@ -81,18 +81,25 @@ const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
   claimVerifierTimeoutSeconds: 120,
   denseWeight: 1,
   doclingApiKey: null,
+  doclingAdditionalServiceInstances: [],
   doclingBaseUrl: "http://127.0.0.1:5001",
   doclingDefaultServiceCapacity: 2,
   doclingMaxTimeoutSeconds: 43_200,
   doclingMegabyteTimeoutSeconds: 60,
+  doclingNumThreads: 4,
   doclingOcrEnabled: true,
   doclingPageTimeoutSeconds: 30,
   doclingPdfBackend: "docling_parse",
   doclingPerformanceMetricsEnabled: false,
   doclingPerformanceMetricsRetentionDays: 30,
   doclingPipeline: "standard",
+  doclingPageBatchSize: 4,
+  doclingProfilePipelineTimings: false,
+  doclingQueueMaxSize: 8,
   doclingRequestTimeoutSeconds: 300,
   doclingSecondaryImageScale: 2,
+  doclingServeEngineWorkers: 1,
+  doclingServeShareModels: false,
   doclingTableMode: "accurate",
   doclingTableStructureEnabled: true,
   doclingTocEnabled: true,
@@ -109,9 +116,16 @@ const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
   expansionQueryWeight: 1,
   findSourcesPassagesPerDocument: 3,
   findSourcesResults: 10,
+  databasePoolMax: 4,
+  hhemMaxAttentionCells: 20_000_000,
+  hhemMaxPaddedTokens: 20_000,
+  hhemModelBatchSize: 20,
+  hhemTorchThreads: 4,
   lexicalWeight: 1,
   maxAttempts: 3,
   maxDocumentMegabytes: 100,
+  maxUploadRequestMegabytes: 100,
+  mcpTaskRetentionDays: 30,
   originalQueryWeight: 1,
   queryExpansions: 2,
   queryExpansionTemperature: 0,
@@ -123,7 +137,9 @@ const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
   retrievalWindowPolicy: "structured-token-v3",
   retryBaseMs: 5_000,
   rrfK: 60,
+  publicOrigins: ["https://localhost:3443"] satisfies RuntimeSettings["publicOrigins"],
   searchMethod: "hybrid",
+  secureSessionCookie: true,
   sttLanguage: "English",
   sttMaxAudioMegabytes: 10,
   sttPrompt: null,
@@ -133,13 +149,13 @@ const TEST_RUNTIME_SETTINGS: Readonly<RuntimeSettings> = Object.freeze({
   ttsPreloadEnabled: false,
   ttsSpeed: 1,
   ttsTimeoutSeconds: 30,
+  trustProxy: false,
   workerConcurrency: 2,
   workerFallbackPollMs: 60_000,
 });
 
 export interface TestConfigOptions {
   database?: Partial<DatabaseConfig>;
-  doclingTopology?: DoclingServiceTopology;
   embeddingInputFormat?: EmbeddingInputFormatContract;
   providerOptions?: TestProviderSettingsOptions;
   providerSettings?: ProviderSettings;
@@ -157,17 +173,6 @@ export function createTestRuntimeSettings(
   });
 }
 
-export function createTestDoclingTopology(): DoclingServiceTopology {
-  return {
-    additionalServices: [],
-    process: {
-      numThreads: 4,
-      pageBatchSize: 4,
-      profilePipelineTimings: false,
-    },
-  };
-}
-
 export function readEqualWeightTestConfig(
   options: TestConfigOptions = {},
 ): AppConfig {
@@ -178,39 +183,12 @@ export function readEqualWeightTestConfig(
   const runtimeSettings = createTestRuntimeSettings(options.runtime);
   const providerSettings = options.providerSettings
     ?? createTestProviderSettings(options.providerOptions);
-  const doclingTopology = options.doclingTopology
-    ?? createTestDoclingTopology();
-  const doclingServices = buildTestDoclingServices(
-    runtimeSettings,
-    doclingTopology,
-  );
   return buildAppConfig(
     database,
     runtimeSettings,
     options.settingsVersion ?? 0,
     providerSettings,
-    doclingServices,
     options.sourceContent ?? TEST_SOURCE_CONTENT_CONFIG,
     options.embeddingInputFormat ?? TEST_EMBEDDING_INPUT_FORMAT,
   );
-}
-
-function buildTestDoclingServices(
-  runtimeSettings: RuntimeSettings,
-  topology: DoclingServiceTopology,
-): DoclingServiceInstanceConfig[] {
-  const defaultService: DoclingServiceInstanceConfig = {
-    baseUrl: runtimeSettings.doclingBaseUrl,
-    capacity: runtimeSettings.doclingDefaultServiceCapacity,
-    id: "default",
-    process: { ...topology.process },
-  };
-  const services = [defaultService];
-  for (const additionalService of topology.additionalServices) {
-    services.push({
-      ...additionalService,
-      process: { ...topology.process },
-    });
-  }
-  return services;
 }

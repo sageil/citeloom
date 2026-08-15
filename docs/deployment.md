@@ -24,8 +24,8 @@ Use the same semantic version for the images and application release.
 ```dotenv
 CITELOOM_ADMIN_USERNAME=Mayhem
 CITELOOM_ADMIN_PASSWORD='replace-with-a-private-passphrase'
-CITELOOM_IMAGE_TAG=1.0.0
-CITELOOM_RELEASE=1.0.0
+CITELOOM_IMAGE_TAG=1.1.0
+CITELOOM_RELEASE=1.1.0
 ```
 
 Pull and start the CiteLoom stack.
@@ -69,7 +69,9 @@ The `source-content migrate --apply` command remains available for planned offli
 
 The optional `compose.seaweedfs.yml` overlay runs a pinned single-node SeaweedFS service and configures CiteLoom through its S3-compatible endpoint.
 Set strong credentials in `.env` before the first start.
-Keep each CiteLoom database on an exclusive bucket and key prefix because orphan reconciliation treats objects outside that database as removable.
+If independent CiteLoom environments use the same S3 service, give each environment a different bucket or key prefix.
+All web and worker containers in one environment use the same storage location.
+During orphan cleanup, one environment can delete an object that only the other environment has in its database when both environments use the same bucket and prefix.
 
 For a fixed single-host example with two stateless S3 gateways behind Caddy, follow [Self-hosted SeaweedFS with Caddy](../deployments/examples/seaweedfs-caddy/README.md).
 That example runs exactly three SeaweedFS containers and preserves the same internal S3 endpoint and data directory as this overlay.
@@ -134,6 +136,22 @@ Correct the reported problem and start a new migration request when ready.
 After a completed migration, the previous filesystem content remains available for a reverse migration but does not receive new writes or deletions.
 Retain the old content and mount until the SeaweedFS deployment has been verified for the required recovery period.
 Cleanup is a separate explicit operator action because CiteLoom never deletes the previous backend automatically.
+
+#### Return to the local filesystem
+
+Keep SeaweedFS running and keep the S3 environment values available until the reverse migration is complete.
+The previous filesystem does not contain documents that CiteLoom added after the S3 cutover.
+
+1. Confirm that the web and worker services still mount the local source directory at `/app/documents/blobs`.
+2. Sign in as an administrator and open Settings > Object storage.
+3. Select Local filesystem and set Directory to `/app/documents/blobs`.
+4. Select Test connection and wait for the successful write and delete probe.
+5. Select Start migration and confirm the request.
+6. Wait until the migration status is Completed and Active storage reports Local filesystem.
+7. Open a representative source document and confirm that its content is unchanged.
+
+After this verification, stop the stack that includes `compose.seaweedfs.yml` and start the base stack without that overlay.
+Retain the SeaweedFS data directory for the required recovery period because CiteLoom does not delete the previous S3 objects.
 
 The durable migration and recovery details are documented in [Migrate source-content storage](operations.md#migrate-source-content-storage).
 
@@ -225,7 +243,9 @@ Existing exact-version deployments remain unchanged during a partial publication
 
 ## Configure a production proxy
 
-Set `CITELOOM_PUBLIC_ORIGIN`, `CITELOOM_SECURE_SESSION_COOKIE`, and `CITELOOM_TRUST_PROXY` for the deployed origin and proxy path.
+Set Public origins, Secure session cookie, and Trust reverse proxy on the Web server Settings page for the deployed origins and proxy path.
+Put the canonical public origin first in the list.
+Restart the web service after saving these values.
 Keep secure cookies enabled outside isolated automated tests.
 Enable trusted-proxy mode only when a trusted proxy replaces forwarded client headers, as the supplied Caddy service does.
 Internet-facing deployments need production TLS, network access controls, and an availability design beyond the supplied local setup.
@@ -244,7 +264,9 @@ Authentication stores session data in PostgreSQL and uses a host-only cookie wit
 Regular sessions expire after 2 hours of inactivity or 12 hours in total.
 Remembered sessions expire after 7 days of inactivity or 30 days in total.
 Administrator-created setup and password-reset links expire after 24 hours and are consumed when the user sets a password.
-`CITELOOM_PUBLIC_ORIGIN` is the required origin for state-changing browser requests.
+The database-owned Public origins list contains the origins that can make state-changing browser requests.
+The first entry is the canonical origin for OAuth and MCP URLs.
+When OAuth is active, the browser moves from another listed origin to the canonical origin before sign-in.
 
 Workspace members can use document, ingestion, reindexing, search, and research APIs.
 Workspace administrators can also manage membership, settings, and diagnostics.

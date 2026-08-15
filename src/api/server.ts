@@ -14,6 +14,10 @@ import { pipeUIMessageStreamToResponse } from "ai";
 
 import { APP_SECTION_ROUTES } from "./app-routes.js";
 import {
+  BROWSER_CONTENT_SECURITY_POLICY,
+  readBrowserVendorAssets,
+} from "./browser-security.js";
+import {
   registerAuthenticationRoutes,
   requireGlobalAdministratorPrincipal,
   requireRequestPrincipal,
@@ -61,7 +65,7 @@ import {
   SourceDiscoveryScopeError,
   SourceDiscoveryUnavailableError,
 } from "../retrieval/discovery/pipeline.js";
-import type { SourceDiscoveryResponse } from "../retrieval/discovery/schema.js";
+import type { SourceDiscoveryResponse } from "../retrieval/discovery/boundary.js";
 import {
   buildInlineContentDisposition,
   decodeApplicationErrorQuery,
@@ -106,8 +110,13 @@ import {
   startWebServices,
   type WebServices,
 } from "./services.js";
-import { readWebConfig, type WebConfig } from "./config.js";
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import {
+  buildWebConfig,
+  readWebStartupConfig,
+  type WebConfig,
+  type WebStartupConfig,
+} from "./config.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 import { canAdministerWorkspace } from "../auth/authorization.js";
 import { WorkspaceSourceLibraryUnavailableError } from "../workspaces/source-library-access.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
@@ -116,6 +125,17 @@ import {
   readSecurityWebServices,
   registerSecurityRoutes,
 } from "./security-routes.js";
+import {
+  readAuthenticationSecurityWebServices,
+  registerAuthenticationSecurityRoutes,
+} from "./authentication-security-routes.js";
+import { registerOAuthProtectedResourceMetadata } from "./oauth-authentication.js";
+import {
+  createApplicationOAuthRequestAuthenticator,
+  type ApplicationOAuthRequestAuthenticator,
+} from "./application-authentication.js";
+import { OAUTH_BROWSER_CALLBACK_PATH } from "../oauth/application-configuration.js";
+import { registerMcpRoutes } from "../mcp/server.js";
 
 export type {
   ApplicationStateRevisionSignal,
@@ -161,9 +181,11 @@ export interface BuildWebServerOptions {
   authentication?: "disabled" | "required";
   logger?: FastifyBaseLogger | boolean;
   maximumUploadRequestBytes?: number;
+  oauthAuthenticator?: ApplicationOAuthRequestAuthenticator;
   services?: WebServices;
   staticDirectory?: string | null;
   uploadDirectory?: string;
+  webConfig?: WebConfig;
 }
 
 const BACKGROUND_DELETION_RECONCILIATION_INTERVAL_MS = 2_000;
@@ -173,12 +195,15 @@ export async function buildWebServer(
   options: BuildWebServerOptions = {},
 ): Promise<FastifyInstance> {
   const logger = options.logger ?? true;
-  const webConfig = readWebConfig();
+  const webConfig = options.webConfig ?? buildWebConfig(config.web);
   const server = Fastify({ logger, trustProxy: webConfig.trustProxy });
+  server.addHook("onRequest", async (_request, reply) => {
+    reply.header("Content-Security-Policy", BROWSER_CONTENT_SECURITY_POLICY);
+  });
   const authentication = options.authentication ?? "required";
   const maximumUploadRequestBytes = options.maximumUploadRequestBytes
     ?? webConfig.maximumUploadRequestBytes;
-  const requestPrincipals = new WeakMap<object, AuthenticatedPrincipal>();
+  const requestPrincipals = new WeakMap<object, AuthorizationPrincipal>();
   let services = options.services;
   let closeOwnedServices: (() => Promise<void>) | null = null;
   if (services === undefined) {
@@ -308,12 +333,28 @@ export async function buildWebServer(
     throw error;
   }
 
+  const oauthAuthenticator = options.oauthAuthenticator
+    ?? createApplicationOAuthRequestAuthenticator(services);
   registerAuthenticationRoutes(server, {
     authentication,
+    oauthAuthenticator,
     requestPrincipals,
     services,
     webConfig,
   });
+
+  registerOAuthProtectedResourceMetadata(server, {
+    publicOrigin: webConfig.publicOrigin,
+    services,
+  });
+  await registerMcpRoutes(server, {
+    oauthAuthenticator,
+    services,
+    webConfig,
+  });
+  const authenticationSecurityServices = readAuthenticationSecurityWebServices(
+    services,
+  );
 
   server.get("/api/dashboard", async (request): Promise<DashboardResponse> => {
     const principal = requireRequestPrincipal(requestPrincipals, request);
@@ -365,6 +406,14 @@ export async function buildWebServer(
     registerSecurityRoutes(server, {
       requestPrincipals,
       services: securityServices,
+    });
+  }
+
+  if (authenticationSecurityServices !== null) {
+    registerAuthenticationSecurityRoutes(server, {
+      publicOrigin: webConfig.publicOrigin,
+      requestPrincipals,
+      services: authenticationSecurityServices,
     });
   }
 
@@ -960,6 +1009,15 @@ export async function buildWebServer(
 
   if (staticDirectory !== null) {
     try {
+      const vendorAssets = await readBrowserVendorAssets();
+      for (const asset of vendorAssets) {
+        server.get(asset.route, async (_request, reply) => {
+          return reply
+            .header("Cache-Control", "public, max-age=31536000, immutable")
+            .type("application/javascript; charset=utf-8")
+            .send(asset.content);
+        });
+      }
       await server.register(fastifyStatic, {
         index: false,
         root: staticDirectory,
@@ -969,6 +1027,9 @@ export async function buildWebServer(
       throw error;
     }
     server.get("/", async (_request, reply) => {
+      return reply.sendFile("index.html");
+    });
+    server.get(OAUTH_BROWSER_CALLBACK_PATH, async (_request, reply) => {
       return reply.sendFile("index.html");
     });
     for (const route of APP_SECTION_ROUTES) {
@@ -982,7 +1043,7 @@ export async function buildWebServer(
 }
 
 function buildIngestionControlActor(
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
 ): IngestionControlActor {
   return {
     isAdministrator: canAdministerWorkspace(principal, principal.workspaceId),
@@ -1060,24 +1121,23 @@ export function openApplicationStateRevisionEventStream(
 
 export async function startWebServer(
   startup = readStartupConfig(),
-  webConfig: WebConfig = readWebConfig(),
+  webStartup: WebStartupConfig = readWebStartupConfig(),
 ): Promise<FastifyInstance> {
   const session = await openDatabase(startup.database);
   let effectiveSettings: EffectiveApplicationSettings;
   try {
     const repository = new ApplicationSettingsRepository(session.database);
-    effectiveSettings = await repository.read(
-      startup.database,
-      startup.doclingTopology,
-    );
+    effectiveSettings = await repository.read(startup.database);
   } finally {
     await session.close();
   }
   const apiOnly = process.argv.includes("--api-only");
+  const webConfig = buildWebConfig(effectiveSettings.config.web, webStartup);
   const server = await buildWebServer(effectiveSettings.config, {
     maximumUploadRequestBytes: webConfig.maximumUploadRequestBytes,
     staticDirectory: apiOnly ? null : defaultStaticDirectory,
     uploadDirectory: webConfig.uploadDirectory,
+    webConfig,
   });
   try {
     await server.listen({ host: webConfig.host, port: webConfig.port });

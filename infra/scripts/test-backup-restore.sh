@@ -45,7 +45,6 @@ run_compose up -d --wait postgres-test
 cd "${repository_directory}"
 CITELOOM_ADMIN_PASSWORD="backup restore test password" \
 CITELOOM_ADMIN_USERNAME="BackupAdmin" \
-DATABASE_POOL_MAX="4" \
 DATABASE_URL="${database_url}" \
 node --import tsx src/database/migrate.ts
 

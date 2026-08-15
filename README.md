@@ -2,7 +2,7 @@
 
 > Private documents, woven into cited answers.
 
-![Version](https://img.shields.io/badge/version-1.0.0-0ea5e9)
+![Version](https://img.shields.io/badge/version-1.1.0-0ea5e9)
 ![Node.js](https://img.shields.io/badge/node-26.5.0-339933)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
@@ -29,6 +29,8 @@ It can use local or remote model providers, and it keeps saved answers tied to t
 - Route language, embedding, ranking, document-processing, and speech work to different providers.
 - Operate the workspace with accounts, roles, diagnostics, durable jobs, backups, and recovery tools.
 
+[![CiteLoom feature overview](assets/citeloom-feature-map-v2.png)](assets/citeloom-feature-map-v2.png)
+
 The [feature guide](docs/features.md) lists the supported formats, user features, administrator controls, and important limits.
 
 ## Install CiteLoom
@@ -51,6 +53,8 @@ Always inspect the linked evidence before relying on an important answer.
 
 ## Documentation
 
+Read the published [CiteLoom installation and configuration guides](https://sammyageil.com/citeloom/) or choose a repository guide below.
+
 Choose the guide that matches the work you need to do.
 
 | Goal | Guide |
@@ -59,6 +63,7 @@ Choose the guide that matches the work you need to do.
 | Learn the available workflows and product limits | [Features](docs/features.md) |
 | Install or deploy CiteLoom | [Deployment](docs/deployment.md) |
 | Configure providers, search, speech, and document processing | [Configuration](docs/configuration.md) |
+| Configure optional OAuth with a compatible authorization server | [OAuth](docs/oauth.md) |
 | Back up, restore, reindex, diagnose, or recover the service | [Operations](docs/operations.md) |
 | Look up a package command | [pnpm commands](docs/commands.md) |
 | Understand system boundaries and execution paths | [Architecture](docs/architecture.md) |

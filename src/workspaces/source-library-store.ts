@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 
 import { requireGlobalAdministrator } from "../auth/authorization.js";
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 import type { CiteLoomDatabase } from "../database/client.js";
 import {
   ingestionJobs,
@@ -49,7 +49,7 @@ export class SourceLibraryStore {
   ) {}
 
   public async listAccessible(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
   ): Promise<SourceLibrarySummary[]> {
     if (principal.dataScope === "all") {
       const rows = await this.database
@@ -129,7 +129,7 @@ export class SourceLibraryStore {
   }
 
   public async readAdministration(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
   ): Promise<SourceLibraryAdministration> {
     requireGlobalAdministrator(principal);
     return this.database.transaction(
@@ -142,7 +142,7 @@ export class SourceLibraryStore {
   }
 
   public async createShared(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     input: CreateSharedSourceLibraryInput,
   ): Promise<SourceLibrarySummary> {
     requireGlobalAdministrator(principal);
@@ -180,7 +180,7 @@ export class SourceLibraryStore {
   }
 
   public async renameShared(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     libraryId: string,
     input: RenameSharedSourceLibraryInput,
   ): Promise<void> {
@@ -200,7 +200,7 @@ export class SourceLibraryStore {
   }
 
   public async archiveShared(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     libraryId: string,
   ): Promise<void> {
     requireGlobalAdministrator(principal);
@@ -243,7 +243,7 @@ export class SourceLibraryStore {
   }
 
   public async restoreShared(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     libraryId: string,
   ): Promise<void> {
     requireGlobalAdministrator(principal);
@@ -273,7 +273,7 @@ export class SourceLibraryStore {
   }
 
   public async setGrant(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     libraryId: string,
     workspaceId: string,
     access: SourceLibraryAccess,
@@ -311,7 +311,7 @@ export class SourceLibraryStore {
   }
 
   public async revokeGrant(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     libraryId: string,
     workspaceId: string,
   ): Promise<void> {

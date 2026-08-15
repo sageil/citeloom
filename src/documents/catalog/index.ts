@@ -73,6 +73,25 @@ export interface DocumentCatalogOptions {
   leaseDurationMs?: number;
   newLeaseOwnerId?: () => string;
   workspaceId?: string | null;
+  workspaceIds?: readonly string[] | null;
+}
+
+function readDocumentCatalogWorkspaceIds(
+  options: DocumentCatalogOptions,
+): readonly string[] | null {
+  if (options.workspaceIds !== undefined) {
+    if (options.workspaceIds === null) {
+      return null;
+    }
+    if (options.workspaceIds.length === 0) {
+      throw new Error("Document catalog workspaceIds cannot be empty.");
+    }
+    return [...new Set(options.workspaceIds)];
+  }
+  if (options.workspaceId === undefined || options.workspaceId === null) {
+    return null;
+  }
+  return [options.workspaceId];
 }
 
 export class DocumentCatalog {
@@ -85,10 +104,14 @@ export class DocumentCatalog {
     database: CiteLoomDatabase,
     options: DocumentCatalogOptions = {},
   ) {
+    if (options.workspaceId !== undefined && options.workspaceIds !== undefined) {
+      throw new Error("Document catalog options cannot contain both workspaceId and workspaceIds.");
+    }
+    const workspaceIds = readDocumentCatalogWorkspaceIds(options);
     this.clock = options.clock ?? systemClock;
     this.documents = new CatalogDocumentStore(
       database,
-      options.workspaceId ?? null,
+      workspaceIds,
     );
     this.jobs = new CatalogJobStore(
       database,

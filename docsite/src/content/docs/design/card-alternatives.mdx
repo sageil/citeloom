@@ -1,0 +1,143 @@
+---
+title: Box design alternatives
+description: Compare three compact designs for the Why CiteLoom page.
+pagefind: false
+---
+
+import '../../../styles/card-alternatives.css';
+
+<div class="card-design-preview">
+  <p class="card-design-note"><strong>Temporary review page.</strong> Select one design for the model choices and the Why use CiteLoom section.</p>
+
+  <section class="design-option design-option--rows" aria-labelledby="option-one-title">
+    <div class="design-option__heading">
+      <span class="design-option__number">Option 1</span>
+      <div>
+        <h2 id="option-one-title">Compact rows</h2>
+        <p>Use one short row for each choice.</p>
+      </div>
+    </div>
+
+    <div class="choice-rows">
+      <article class="choice-row choice-row--local">
+        <span class="choice-row__icon" aria-hidden="true">⌂</span>
+        <div class="choice-row__copy">
+          <h3>Local models</h3>
+          <p>Run models on infrastructure that you control.</p>
+        </div>
+        <ul class="choice-tags" aria-label="Local model benefits">
+          <li>Private data</li>
+          <li>Offline use</li>
+        </ul>
+      </article>
+
+      <article class="choice-row choice-row--remote">
+        <span class="choice-row__icon" aria-hidden="true">☁</span>
+        <div class="choice-row__copy">
+          <h3>Remote providers</h3>
+          <p>Use managed models for more choice and capacity.</p>
+        </div>
+        <ul class="choice-tags" aria-label="Remote provider benefits">
+          <li>More models</li>
+          <li>Elastic capacity</li>
+        </ul>
+      </article>
+
+      <article class="choice-row choice-row--mix">
+        <span class="choice-row__icon" aria-hidden="true">⇄</span>
+        <div class="choice-row__copy">
+          <h3>Mixed routes</h3>
+          <p>Select a local or remote model for each feature.</p>
+        </div>
+        <ul class="choice-tags" aria-label="Mixed route benefits">
+          <li>Feature control</li>
+          <li>Flexible cost</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <section class="design-option design-option--panel" aria-labelledby="option-two-title">
+    <div class="design-option__heading">
+      <span class="design-option__number">Option 2</span>
+      <div>
+        <h2 id="option-two-title">One comparison panel</h2>
+        <p>Group the choices in one container with clear dividers.</p>
+      </div>
+    </div>
+
+    <div class="comparison-panel">
+      <article class="comparison-item comparison-item--local">
+        <div class="comparison-item__topline">
+          <span class="comparison-item__icon" aria-hidden="true">⌂</span>
+          <span class="comparison-item__label">Maximum control</span>
+        </div>
+        <h3>Local</h3>
+        <p>Keep data and inference on your infrastructure.</p>
+        <strong>Best for privacy and offline use.</strong>
+      </article>
+
+      <article class="comparison-item comparison-item--remote">
+        <div class="comparison-item__topline">
+          <span class="comparison-item__icon" aria-hidden="true">☁</span>
+          <span class="comparison-item__label">Maximum capacity</span>
+        </div>
+        <h3>Remote</h3>
+        <p>Send each request to a provider that you select.</p>
+        <strong>Best for model choice and scale.</strong>
+      </article>
+
+      <article class="comparison-item comparison-item--mix">
+        <div class="comparison-item__topline">
+          <span class="comparison-item__icon" aria-hidden="true">⇄</span>
+          <span class="comparison-item__label">Balanced control</span>
+        </div>
+        <h3>Mixed</h3>
+        <p>Set a separate model route for each feature.</p>
+        <strong>Best for flexible deployments.</strong>
+      </article>
+    </div>
+  </section>
+
+  <section class="design-option design-option--cards" aria-labelledby="option-three-title">
+    <div class="design-option__heading">
+      <span class="design-option__number">Option 3</span>
+      <div>
+        <h2 id="option-three-title">Smaller accent cards</h2>
+        <p>Keep separate cards, but reduce their size and add stronger visual cues.</p>
+      </div>
+    </div>
+
+    <div class="accent-cards">
+      <article class="accent-card accent-card--local">
+        <div class="accent-card__header">
+          <span class="accent-card__icon" aria-hidden="true">⌂</span>
+          <span class="accent-card__eyebrow">Local</span>
+        </div>
+        <h3>Your infrastructure</h3>
+        <p>Keep inference and document data under your control.</p>
+        <span class="accent-card__footer">Privacy · Offline use</span>
+      </article>
+
+      <article class="accent-card accent-card--remote">
+        <div class="accent-card__header">
+          <span class="accent-card__icon" aria-hidden="true">☁</span>
+          <span class="accent-card__eyebrow">Remote</span>
+        </div>
+        <h3>Managed providers</h3>
+        <p>Use the models and capacity that each feature needs.</p>
+        <span class="accent-card__footer">Choice · Scale</span>
+      </article>
+
+      <article class="accent-card accent-card--mix">
+        <div class="accent-card__header">
+          <span class="accent-card__icon" aria-hidden="true">⇄</span>
+          <span class="accent-card__eyebrow">Mixed</span>
+        </div>
+        <h3>Feature routes</h3>
+        <p>Choose local or remote models one feature at a time.</p>
+        <span class="accent-card__footer">Control · Flexibility</span>
+      </article>
+    </div>
+  </section>
+</div>

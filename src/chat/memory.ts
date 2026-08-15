@@ -1,4 +1,4 @@
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 import { countEmbeddingInputTokens } from "../embedding/token-counter.js";
 import { formatDocumentEmbeddingText } from "../embedding/input-format.js";
 import {
@@ -50,7 +50,7 @@ export interface SelectedChatMemory {
 export async function prepareChatMemory(
   runtime: ChatMemoryRuntime,
   store: ChatMemoryStore,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   conversationId: string,
   runId: string,
   queryMessageId: string,

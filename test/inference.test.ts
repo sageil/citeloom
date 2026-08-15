@@ -550,7 +550,6 @@ describe("createInferenceModelRegistry", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
@@ -708,7 +707,6 @@ describe("createInferenceModelRegistry", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
@@ -772,7 +770,6 @@ describe("createInferenceModelRegistry", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_EMBEDDING_INPUT_FORMAT,
     );
@@ -847,7 +844,6 @@ describe("createInferenceModelRegistry", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
@@ -918,7 +914,6 @@ describe("createInferenceModelRegistry", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
@@ -993,7 +988,6 @@ describe("createInferenceModelRegistry", () => {
         runtimeSettings,
         1,
         providers,
-        startup.doclingServices,
         startup.sourceContent,
         TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
       );
@@ -1041,7 +1035,6 @@ describe("createInferenceModelRegistry", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
@@ -1103,7 +1096,6 @@ describe("createInferenceModelRegistry", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
@@ -1174,7 +1166,6 @@ describe("createInferenceModelRegistry", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
@@ -1243,7 +1234,6 @@ describe("createInferenceModelRegistry", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
@@ -1304,7 +1294,6 @@ describe("createInferenceModelRegistry", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
@@ -1355,7 +1344,6 @@ describe("createInferenceModelRegistry", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );
@@ -1393,7 +1381,6 @@ describe("createInferenceModelRegistry", () => {
       runtimeSettings,
       1,
       providers,
-      startup.doclingServices,
       startup.sourceContent,
       TEST_PLAIN_EMBEDDING_INPUT_FORMAT,
     );

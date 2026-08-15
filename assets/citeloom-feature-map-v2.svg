@@ -1,0 +1,243 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title description">
+  <title id="title">CiteLoom feature map</title>
+  <desc id="description">A visual overview of CiteLoom's document library, Ask, Chat, Search, MCP connections, indexing, storage, authentication, and speech features.</desc>
+  <defs>
+    <linearGradient id="topFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#020817" stop-opacity="0.98"/>
+      <stop offset="0.72" stop-color="#020817" stop-opacity="0.48"/>
+      <stop offset="1" stop-color="#020817" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="bottomFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#020817" stop-opacity="0"/>
+      <stop offset="0.28" stop-color="#020817" stop-opacity="0.64"/>
+      <stop offset="1" stop-color="#020817" stop-opacity="0.98"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a1b36" stop-opacity="0.93"/>
+      <stop offset="1" stop-color="#041022" stop-opacity="0.88"/>
+    </linearGradient>
+    <linearGradient id="panelStrong" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b203f" stop-opacity="0.97"/>
+      <stop offset="1" stop-color="#061327" stop-opacity="0.94"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#08c9e8"/>
+      <stop offset="1" stop-color="#0d63ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000714" flood-opacity="0.62"/>
+    </filter>
+    <filter id="softGlow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <symbol id="icon-library" viewBox="0 0 48 48">
+      <path d="M13 7h19l7 7v27H13z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M32 7v8h7M19 23h14M19 29h14M19 35h9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M8 13v28h24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.55"/>
+    </symbol>
+    <symbol id="icon-ask" viewBox="0 0 48 48">
+      <path d="M7 9h34v25H22l-9 7v-7H7z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M20 18c0-3 2-5 5-5s5 2 5 5c0 4-5 4-5 8M25 31h.01" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-chat" viewBox="0 0 48 48">
+      <path d="M6 9h28v20H18l-7 6v-6H6z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M19 34h12l7 6v-6h4V17h-8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M14 19h12M14 24h8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-search" viewBox="0 0 48 48">
+      <circle cx="21" cy="21" r="12" fill="none" stroke="currentColor" stroke-width="2.8"/>
+      <path d="M30 30l11 11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <path d="M16 21h10M21 16v10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" opacity="0.7"/>
+    </symbol>
+    <symbol id="icon-mcp" viewBox="0 0 48 48">
+      <circle cx="24" cy="9" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/>
+      <circle cx="9" cy="37" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/>
+      <circle cx="39" cy="37" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/>
+      <path d="M21 13L12 33M27 13l9 20M14 37h20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-index" viewBox="0 0 48 48">
+      <path d="M5 15L24 5l19 10-19 10zM8 24l16 9 16-9M8 33l16 10 16-10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="icon-storage" viewBox="0 0 48 48">
+      <ellipse cx="18" cy="10" rx="12" ry="5" fill="none" stroke="currentColor" stroke-width="2.5"/>
+      <path d="M6 10v22c0 3 5 5 12 5s12-2 12-5V10M6 21c0 3 5 5 12 5s12-2 12-5" fill="none" stroke="currentColor" stroke-width="2.5"/>
+      <path d="M31 24c1-1 4-2 7-2 5 0 8 2 8 4v14c0 2-3 4-8 4s-8-2-8-4V27" fill="none" stroke="currentColor" stroke-width="2.5"/>
+    </symbol>
+    <symbol id="icon-access" viewBox="0 0 48 48">
+      <path d="M24 4l17 7v12c0 10-7 17-17 22C14 40 7 33 7 23V11z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+      <rect x="16" y="21" width="16" height="12" rx="3" fill="none" stroke="currentColor" stroke-width="2.5"/>
+      <path d="M19 21v-4a5 5 0 0110 0v4" fill="none" stroke="currentColor" stroke-width="2.5"/>
+    </symbol>
+    <symbol id="icon-voice" viewBox="0 0 48 48">
+      <rect x="10" y="5" width="12" height="25" rx="6" fill="none" stroke="currentColor" stroke-width="2.5"/>
+      <path d="M5 24c0 6 5 11 11 11s11-5 11-11M16 35v8M10 43h12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M34 16c4 4 4 12 0 16M39 11c7 7 7 19 0 26" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    </symbol>
+    <style>
+      .wordmark { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-weight: 700; fill: #f7fbff; }
+      .headline { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-weight: 700; fill: #f7fbff; }
+      .subhead { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-weight: 400; fill: #b7c7dc; }
+      .eyebrow { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-weight: 700; letter-spacing: 4px; fill: #58dcf3; }
+      .card-title { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-weight: 700; letter-spacing: 1.7px; fill: #f7fbff; }
+      .card-copy { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-weight: 400; fill: #c9d7e8; }
+      .chip { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-weight: 700; letter-spacing: 0.8px; fill: #dffbff; }
+      .footer { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-weight: 500; letter-spacing: 1px; fill: #aec1d9; }
+    </style>
+  </defs>
+
+  <image x="0" y="0" width="1920" height="1080" xlink:href="citeloom-feature-map-background-v2.png" preserveAspectRatio="xMidYMid slice"/>
+  <rect x="0" y="0" width="1920" height="250" fill="url(#topFade)"/>
+  <rect x="0" y="525" width="1920" height="555" fill="url(#bottomFade)"/>
+  <path d="M0 670C430 610 730 725 1055 670s530-35 865 30v380H0z" fill="#020817" fill-opacity="0.48"/>
+
+  <g aria-label="CiteLoom logo">
+    <image x="64" y="52" width="90" height="90" xlink:href="citeloom-feature-map-logo.png" preserveAspectRatio="xMidYMid meet"/>
+    <text x="174" y="118" class="wordmark" font-size="50">CiteLoom</text>
+  </g>
+  <text x="610" y="92" class="headline" font-size="48">Turn private documents into answers you can verify.</text>
+  <text x="612" y="137" class="subhead" font-size="21">Search, ask, chat, and connect your tools - with every insight linked back to the source.</text>
+
+  <g filter="url(#softGlow)" opacity="0.82">
+    <circle cx="958" cy="518" r="5" fill="#7ff1ff"/>
+    <path d="M470 428C665 367 748 505 958 518s326-116 547-54" fill="none" stroke="url(#accent)" stroke-width="2.5" stroke-opacity="0.55"/>
+  </g>
+
+  <text x="70" y="208" class="eyebrow" font-size="17">EXPLORE YOUR KNOWLEDGE</text>
+
+  <g filter="url(#shadow)">
+    <rect x="70" y="235" width="390" height="242" rx="26" fill="url(#panelStrong)" stroke="#19cae8" stroke-opacity="0.78"/>
+    <rect x="70" y="235" width="390" height="5" rx="3" fill="url(#accent)"/>
+    <circle cx="116" cy="286" r="25" fill="#0a2b50" stroke="#1bd5ef" stroke-opacity="0.68"/>
+    <g transform="translate(94 264)" color="#67e9fa"><use xlink:href="#icon-library" width="44" height="44"/></g>
+    <text x="158" y="283" class="card-title" font-size="22">YOUR LIBRARY</text>
+    <text x="99" y="338" class="card-copy" font-size="18">
+      <tspan x="99" dy="0">PDFs, web pages, Office files,</tspan>
+      <tspan x="99" dy="28">images, and readable text.</tspan>
+      <tspan x="99" dy="35">Inspect tables, images, page highlights,</tspan>
+      <tspan x="99" dy="28">and every saved version.</tspan>
+    </text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="492" y="225" width="318" height="208" rx="24" fill="url(#panel)" stroke="#2679d9" stroke-opacity="0.72"/>
+    <circle cx="536" cy="270" r="23" fill="#0a2b50" stroke="#27d6f0" stroke-opacity="0.65"/>
+    <g transform="translate(516 250)" color="#67e9fa"><use xlink:href="#icon-ask" width="40" height="40"/></g>
+    <text x="574" y="276" class="card-title" font-size="22">ASK</text>
+    <text x="520" y="326" class="card-copy" font-size="17.5">
+      <tspan x="520" dy="0">Get focused answers from</tspan>
+      <tspan x="520" dy="27">selected files or your whole library.</tspan>
+      <tspan x="520" dy="34">Every answer links to its evidence.</tspan>
+    </text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="837" y="206" width="318" height="220" rx="24" fill="url(#panel)" stroke="#4f68dc" stroke-opacity="0.72"/>
+    <circle cx="881" cy="251" r="23" fill="#102750" stroke="#6b79f4" stroke-opacity="0.7"/>
+    <g transform="translate(861 231)" color="#9aa4ff"><use xlink:href="#icon-chat" width="40" height="40"/></g>
+    <text x="919" y="257" class="card-title" font-size="22">CHAT</text>
+    <text x="865" y="307" class="card-copy" font-size="17.5">
+      <tspan x="865" dy="0">Explore follow-up questions</tspan>
+      <tspan x="865" dy="27">in a private conversation</tspan>
+      <tspan x="865" dy="27">grounded in your documents.</tspan>
+      <tspan x="865" dy="34">Earlier context stays useful.</tspan>
+    </text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="1182" y="226" width="318" height="208" rx="24" fill="url(#panel)" stroke="#2679d9" stroke-opacity="0.72"/>
+    <circle cx="1226" cy="271" r="23" fill="#0a2b50" stroke="#27d6f0" stroke-opacity="0.65"/>
+    <g transform="translate(1206 251)" color="#67e9fa"><use xlink:href="#icon-search" width="40" height="40"/></g>
+    <text x="1264" y="277" class="card-title" font-size="22">SEARCH</text>
+    <text x="1210" y="327" class="card-copy" font-size="17.5">
+      <tspan x="1210" dy="0">Find exact phrases, related ideas,</tspan>
+      <tspan x="1210" dy="27">or use both approaches together.</tspan>
+      <tspan x="1210" dy="34">Move useful sources into Ask.</tspan>
+    </text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="1527" y="244" width="323" height="224" rx="24" fill="url(#panelStrong)" stroke="#19cae8" stroke-opacity="0.78"/>
+    <circle cx="1571" cy="289" r="23" fill="#0a2b50" stroke="#27d6f0" stroke-opacity="0.65"/>
+    <g transform="translate(1551 269)" color="#67e9fa"><use xlink:href="#icon-mcp" width="40" height="40"/></g>
+    <text x="1609" y="295" class="card-title" font-size="22">MCP</text>
+    <text x="1555" y="345" class="card-copy" font-size="17.5">
+      <tspan x="1555" dy="0">Use CiteLoom from compatible</tspan>
+      <tspan x="1555" dy="27">AI assistants and workflows.</tspan>
+      <tspan x="1555" dy="34">Search and ask without leaving</tspan>
+      <tspan x="1555" dy="27">the tool you are using.</tspan>
+    </text>
+  </g>
+
+  <g>
+    <rect x="70" y="565" width="190" height="38" rx="19" fill="#081c37" stroke="#1ecce8" stroke-opacity="0.62"/>
+    <text x="91" y="591" class="eyebrow" font-size="15">THE FOUNDATION</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="70" y="625" width="410" height="294" rx="28" fill="url(#panelStrong)" stroke="#25bfdc" stroke-opacity="0.68"/>
+    <circle cx="118" cy="675" r="26" fill="#0a2b50" stroke="#27d6f0" stroke-opacity="0.65"/>
+    <g transform="translate(96 653)" color="#67e9fa"><use xlink:href="#icon-index" width="44" height="44"/></g>
+    <text x="160" y="682" class="card-title" font-size="22">SMART INDEXING</text>
+    <g>
+      <rect x="98" y="727" width="126" height="34" rx="17" fill="#0d3558" stroke="#1ccce8" stroke-opacity="0.72"/>
+      <text x="114" y="750" class="chip" font-size="13">EXACT MATCH</text>
+      <rect x="234" y="727" width="146" height="34" rx="17" fill="#102f5e" stroke="#5279f5" stroke-opacity="0.76"/>
+      <text x="249" y="750" class="chip" font-size="13">MEANING BASED</text>
+      <rect x="98" y="771" width="116" height="34" rx="17" fill="#162d5f" stroke="#796ef1" stroke-opacity="0.76"/>
+      <text x="119" y="794" class="chip" font-size="13">COMBINED</text>
+    </g>
+    <text x="98" y="846" class="card-copy" font-size="18">
+      <tspan x="98" dy="0">Choose the search style that fits</tspan>
+      <tspan x="98" dy="28">each question.</tspan>
+    </text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="527" y="625" width="410" height="294" rx="28" fill="url(#panelStrong)" stroke="#3a75dc" stroke-opacity="0.68"/>
+    <circle cx="575" cy="675" r="26" fill="#102750" stroke="#6c79f3" stroke-opacity="0.68"/>
+    <g transform="translate(553 653)" color="#a0a8ff"><use xlink:href="#icon-storage" width="44" height="44"/></g>
+    <text x="617" y="682" class="card-title" font-size="22">TWO-LAYER STORAGE</text>
+    <text x="555" y="742" class="card-copy" font-size="18">
+      <tspan x="555" dy="0">The database keeps your library,</tspan>
+      <tspan x="555" dy="28">history, settings, and saved research.</tspan>
+      <tspan x="555" dy="38">Original files stay unchanged and</tspan>
+      <tspan x="555" dy="28">are stored by a unique fingerprint.</tspan>
+      <tspan x="555" dy="38">Use local disk or object storage.</tspan>
+    </text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="984" y="625" width="410" height="294" rx="28" fill="url(#panelStrong)" stroke="#3a75dc" stroke-opacity="0.68"/>
+    <circle cx="1032" cy="675" r="26" fill="#102750" stroke="#6c79f3" stroke-opacity="0.68"/>
+    <g transform="translate(1010 653)" color="#a0a8ff"><use xlink:href="#icon-access" width="44" height="44"/></g>
+    <text x="1074" y="682" class="card-title" font-size="22">SECURE ACCESS</text>
+    <text x="1012" y="742" class="card-copy" font-size="18">
+      <tspan x="1012" dy="0">Use a CiteLoom username and password</tspan>
+      <tspan x="1012" dy="28">or your organization's sign-in service.</tspan>
+      <tspan x="1012" dy="38">Workspace roles protect content</tspan>
+      <tspan x="1012" dy="28">and settings.</tspan>
+      <tspan x="1012" dy="38">Trusted tools get only the permissions</tspan>
+      <tspan x="1012" dy="28">they need.</tspan>
+    </text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="1441" y="625" width="409" height="294" rx="28" fill="url(#panelStrong)" stroke="#25bfdc" stroke-opacity="0.68"/>
+    <circle cx="1489" cy="675" r="26" fill="#0a2b50" stroke="#27d6f0" stroke-opacity="0.65"/>
+    <g transform="translate(1467 653)" color="#67e9fa"><use xlink:href="#icon-voice" width="44" height="44"/></g>
+    <text x="1531" y="682" class="card-title" font-size="22">VOICE IN + VOICE OUT</text>
+    <text x="1469" y="742" class="card-copy" font-size="18">
+      <tspan x="1469" dy="0">Dictate Ask and Chat questions,</tspan>
+      <tspan x="1469" dy="28">then review the transcript.</tspan>
+      <tspan x="1469" dy="38">Listen to answers and supporting text.</tspan>
+      <tspan x="1469" dy="38">Enable each speech feature separately.</tspan>
+    </text>
+  </g>
+
+  <line x1="70" y1="978" x2="1850" y2="978" stroke="#2b598c" stroke-opacity="0.52"/>
+  <text x="960" y="1024" text-anchor="middle" class="footer" font-size="17">SAVED RESEARCH  •  DOCUMENT HISTORY  •  INSPECTABLE EVIDENCE  •  LOCAL OR CLOUD AI  •  RESUMABLE DOCUMENT PROCESSING</text>
+</svg>

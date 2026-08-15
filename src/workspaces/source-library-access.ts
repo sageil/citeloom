@@ -1,7 +1,7 @@
 import { and, asc, eq, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 
 import type { CiteLoomDatabase } from "../database/client.js";
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 import {
   indexedDocuments,
   documentVersions,
@@ -25,7 +25,7 @@ export type CatalogSourceAuthorization =
 
 export async function authorizeSourceLibraryForPrincipal(
   database: CiteLoomDatabase,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   libraryId: string,
   requiredAccess: "manage" | "use" = "use",
 ): Promise<CatalogSourceAuthorization> {
@@ -53,7 +53,7 @@ export async function authorizeSourceLibraryForPrincipal(
 
 export async function authorizeCatalogSourceForPrincipal(
   database: CiteLoomDatabase,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   sourceFile: string,
   requiredAccess: "manage" | "use" = "use",
 ): Promise<CatalogSourceAuthorization> {
@@ -74,7 +74,7 @@ export async function authorizeCatalogSourceForPrincipal(
 
 export async function authorizeDocumentVersionForPrincipal(
   database: CiteLoomDatabase,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   versionId: string,
   requiredAccess: "manage" | "use" = "use",
 ): Promise<CatalogSourceAuthorization> {
@@ -229,21 +229,41 @@ export function buildAccessibleSourceLibraryCondition(
   workspaceId: string,
   requiredAccess: "manage" | "use" = "use",
 ): SQL {
+  return buildAccessibleSourceLibraryConditionForWorkspaces(
+    libraryId,
+    [workspaceId],
+    requiredAccess,
+  );
+}
+
+export function buildAccessibleSourceLibraryConditionForWorkspaces(
+  libraryId: SQLWrapper,
+  workspaceIds: readonly string[],
+  requiredAccess: "manage" | "use" = "use",
+): SQL {
+  if (workspaceIds.length === 0) {
+    throw new Error("At least one workspace ID is needed for document access.");
+  }
+  const workspaceIdList = sql.join(
+    workspaceIds.map((workspaceId) => sql`${workspaceId}`),
+    sql`, `,
+  );
   return sql`EXISTS (
     SELECT 1
     FROM ${sourceLibraries} AS accessible_library
-    LEFT JOIN ${workspaceLibraryGrants} AS workspace_grant
-      ON workspace_grant.library_id = accessible_library.id
-      AND workspace_grant.workspace_id = ${workspaceId}
     WHERE accessible_library.id = ${libraryId}
       AND accessible_library.state = 'active'
       AND (
-        accessible_library.owner_workspace_id = ${workspaceId}
+        accessible_library.owner_workspace_id IN (${workspaceIdList})
         OR (
           accessible_library.kind = 'shared'
-          AND
-          workspace_grant.workspace_id IS NOT NULL
-          AND (${requiredAccess} = 'use' OR workspace_grant.access = 'manage')
+          AND EXISTS (
+            SELECT 1
+            FROM ${workspaceLibraryGrants} AS accessible_grant
+            WHERE accessible_grant.library_id = accessible_library.id
+              AND accessible_grant.workspace_id IN (${workspaceIdList})
+              AND (${requiredAccess} = 'use' OR accessible_grant.access = 'manage')
+          )
         )
       )
   )`;

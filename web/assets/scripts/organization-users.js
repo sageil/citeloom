@@ -1,5 +1,6 @@
 import {
   readArray,
+  readBoolean,
   readEnum,
   readJsonResponse,
   readNonEmptyString,
@@ -12,6 +13,10 @@ import { requestConfirmation } from "./confirmation.js";
 function readOrganizationUser(value) {
   const user = readPlainObject(value, "organization user");
   return {
+    currentWorkspaceAccess: readBoolean(
+      user.currentWorkspaceAccess,
+      "current workspace access",
+    ),
     displayName: readNonEmptyString(user.displayName, "user display name"),
     globalRole: readEnum(
       user.globalRole,
@@ -166,7 +171,10 @@ export function createOrganizationUserManagement() {
     },
 
     initializeOrganizationUserManagement() {
-      if (this.currentGlobalRole === "global_admin") {
+      if (
+        this.currentGlobalRole === "global_admin"
+        || this.currentRole === "admin"
+      ) {
         void this.loadOrganizationUsers();
       }
     },

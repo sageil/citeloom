@@ -25,8 +25,8 @@ import type {
   SourceContentMetadata,
   SourceContentOrphanReconciliationRequest,
   SourceContentWrite,
-} from "./source-content-backend-contract.js";
-import { SourceContentMissingError } from "./source-content-backend-contract.js";
+} from "./source-content-backend-model.js";
+import { SourceContentMissingError } from "./source-content-backend-model.js";
 
 const SOURCE_CONTENT_ALGORITHM = "sha256";
 const contentIdPattern = /^[0-9a-f]{64}$/u;

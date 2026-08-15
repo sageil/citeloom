@@ -7,7 +7,7 @@ import type {
 } from "../retrieval/document-retrieval.js";
 import type {
   PublishedAnswerDocument,
-} from "../answers/published-schema.js";
+} from "../answers/published-model.js";
 import type { EvidenceVerificationState } from "../answers/verification-state.js";
 import type { DocumentFormat } from "../documents/format.js";
 import type { QueryScope } from "../domain/query-scope.js";

@@ -2,7 +2,7 @@ import { isAbsolute } from "node:path";
 
 import { z } from "zod";
 
-import { runtimeSettingsSchema } from "../config/schemas.js";
+import { runtimeSettingsSchema } from "../config/validation.js";
 import type {
   RuntimeSettings,
   SourceContentConfig,

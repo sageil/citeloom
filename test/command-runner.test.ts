@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const events = vi.hoisted((): string[] => []);
 const askIndexedDocumentsMock = vi.hoisted(() => vi.fn());
+const readHostRecoveryStatusMock = vi.hoisted(() => vi.fn());
+const recoverLocalAuthenticationMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../src/app/settings.js", () => ({
   ApplicationSettingsRepository: class {
@@ -32,10 +34,16 @@ vi.mock("../src/app/settings.js", () => ({
 }));
 
 vi.mock("../src/config/index.js", () => ({
-  readStartupConfig: (): { database: object; doclingTopology: object } => ({
-    database: {},
-    doclingTopology: {},
-  }),
+  readDatabaseConfig: (): object => {
+    events.push("database-config-read");
+    return {};
+  },
+  readStartupConfig: (): { database: object } => {
+    events.push("startup-config-read");
+    return {
+      database: {},
+    };
+  },
 }));
 
 vi.mock("../src/database/client.js", () => ({
@@ -65,6 +73,13 @@ vi.mock("../src/retrieval/pipeline.js", () => ({
   askIndexedDocuments: askIndexedDocumentsMock,
 }));
 
+vi.mock("../src/oauth/application-store.js", () => ({
+  OAuthApplicationStore: class {
+    public readHostRecoveryStatus = readHostRecoveryStatusMock;
+    public recoverLocalAuthentication = recoverLocalAuthenticationMock;
+  },
+}));
+
 import { main } from "../src/cli/command-runner.js";
 
 describe("CLI database session lifetime", () => {
@@ -72,6 +87,20 @@ describe("CLI database session lifetime", () => {
     events.length = 0;
     askIndexedDocumentsMock.mockReset();
     askIndexedDocumentsMock.mockResolvedValue(buildValidatedCliAnswer());
+    readHostRecoveryStatusMock.mockReset();
+    readHostRecoveryStatusMock.mockResolvedValue({
+      changed: false,
+      hostRecoveryEnabled: true,
+      mode: "oauth",
+      version: 4,
+    });
+    recoverLocalAuthenticationMock.mockReset();
+    recoverLocalAuthenticationMock.mockResolvedValue({
+      changed: true,
+      hostRecoveryEnabled: true,
+      mode: "local",
+      version: 5,
+    });
   });
 
   it("waits for application settings before closing the database session", async () => {
@@ -83,6 +112,7 @@ describe("CLI database session lifetime", () => {
     }
 
     expect(events).toEqual([
+      "startup-config-read",
       "settings-read-started",
       "settings-read-completed",
       "database-closed",
@@ -107,6 +137,41 @@ describe("CLI database session lifetime", () => {
       "[1] text, pages 4, /tmp/contradicting-report.pdf",
     );
     expect(lines.join("\n")).not.toContain("/tmp/report.pdf");
+  });
+
+  it("runs host recovery using only startup database configuration", async () => {
+    const lines: string[] = [];
+    const consoleLog = vi.spyOn(console, "log").mockImplementation((...values) => {
+      lines.push(values.join(" "));
+    });
+    try {
+      await main(["auth", "recover-local"]);
+    } finally {
+      consoleLog.mockRestore();
+    }
+
+    expect(events).toEqual(["database-config-read", "database-closed"]);
+    expect(readHostRecoveryStatusMock).toHaveBeenCalledOnce();
+    expect(recoverLocalAuthenticationMock).not.toHaveBeenCalled();
+    expect(lines).toContain("Authentication mode: oauth");
+    expect(lines.at(-1)).toContain("Run with --apply");
+  });
+
+  it("applies host recovery through the same database-only path", async () => {
+    const lines: string[] = [];
+    const consoleLog = vi.spyOn(console, "log").mockImplementation((...values) => {
+      lines.push(values.join(" "));
+    });
+    try {
+      await main(["auth", "recover-local", "--apply"]);
+    } finally {
+      consoleLog.mockRestore();
+    }
+
+    expect(events).toEqual(["database-config-read", "database-closed"]);
+    expect(recoverLocalAuthenticationMock).toHaveBeenCalledOnce();
+    expect(readHostRecoveryStatusMock).not.toHaveBeenCalled();
+    expect(lines.at(-1)).toContain("Users can now sign in");
   });
 });
 

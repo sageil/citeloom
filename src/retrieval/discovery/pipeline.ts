@@ -27,7 +27,7 @@ import {
 import type {
   SourceDiscoveryRequest,
   SourceDiscoveryResponse,
-} from "./schema.js";
+} from "./boundary.js";
 import { SourceDocumentStore } from "../../documents/storage/source-document-store.js";
 import type { ResolvedQueryScopeTarget } from "../../domain/query-scope.js";
 import {
@@ -79,7 +79,7 @@ export async function searchIndexedSourcesWithRuntime(
   request: SourceDiscoveryRequest,
   reportProgress: (message: string) => void,
   abortSignal: AbortSignal = passiveAbortSignal,
-  workspaceId: string | null = null,
+  workspaceIds: readonly string[] | null = null,
 ): Promise<SourceDiscoveryResponse> {
   return searchIndexedSourcesWithSession(
     runtime.config,
@@ -88,7 +88,7 @@ export async function searchIndexedSourcesWithRuntime(
     reportProgress,
     abortSignal,
     runtime,
-    workspaceId,
+    workspaceIds,
   );
 }
 
@@ -99,7 +99,7 @@ async function searchIndexedSourcesWithSession(
   reportProgress: (message: string) => void,
   abortSignal: AbortSignal,
   runtime?: ApplicationRuntime,
-  workspaceId: string | null = null,
+  workspaceIds: readonly string[] | null = null,
 ): Promise<SourceDiscoveryResponse> {
   const telemetrySink = config.inferenceMetrics.enabled
     ? new DatabaseRunTelemetrySink(databaseSession.database)
@@ -114,7 +114,7 @@ async function searchIndexedSourcesWithSession(
     if (runtime === undefined) {
       await ensureEmbeddingSpace(databaseSession.database, config.embeddingSpace);
     }
-    const catalog = new DocumentCatalog(databaseSession.database, { workspaceId });
+    const catalog = new DocumentCatalog(databaseSession.database, { workspaceIds });
     const scopeStage = runTelemetry.startStage({
       model: null,
       name: "scope-resolution",
@@ -168,7 +168,7 @@ async function searchIndexedSourcesWithSession(
           abortSignal,
           runTelemetry,
           runtime,
-          workspaceId,
+          workspaceIds,
         );
         response = buildExactAndRelatedSourceDiscoveryResponse({
           keywordPage,
@@ -238,7 +238,7 @@ async function retrieveRelatedDiscoveryElements(
   abortSignal: AbortSignal,
   runTelemetry: RunTelemetry,
   runtime?: ApplicationRuntime,
-  workspaceId: string | null = null,
+  workspaceIds: readonly string[] | null = null,
 ): Promise<RelatedDiscoveryElements> {
   const retrieval = {
     ...config.retrieval,
@@ -270,7 +270,7 @@ async function retrieveRelatedDiscoveryElements(
       discoveryConfig,
       "interactive-search",
       { applyReranking: false },
-      workspaceId,
+      workspaceIds,
     );
   }
   if (prepared.retrieved.length === 0) {

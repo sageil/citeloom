@@ -11,7 +11,7 @@ import type { SystemStatus } from "../ingestion/worker.js";
 import type { DoctorCheck } from "../observability/doctor.js";
 import type { TelemetryDashboardSummary } from "../observability/store.js";
 import type { RuntimeWebServices } from "./services.js";
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 
 export interface DashboardResponse {
   catalog: BrowseDocumentCatalogResult;
@@ -82,7 +82,7 @@ export function buildDiagnosticResponseChecks(
 
 export async function buildDashboardResponse(
   runtime: RuntimeWebServices,
-  principal: AuthenticatedPrincipal,
+  principal: AuthorizationPrincipal,
   maximumUploadRequestBytes: number,
 ): Promise<DashboardResponse> {
   const effectiveConfig = runtime.config;

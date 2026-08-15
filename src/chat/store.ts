@@ -25,7 +25,7 @@ import {
   type PublishedAnswerCitation,
   type PublishedAnswerDocument,
 } from "../answers/published.js";
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 import type {
   AppConfig,
   EmbeddingDimensions,
@@ -324,7 +324,7 @@ export class ChatStore {
   ) {}
 
   public async createConversation(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     title: string,
     scope: QueryScope,
   ): Promise<ChatConversation> {
@@ -349,7 +349,7 @@ export class ChatStore {
   }
 
   public async listConversations(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
   ): Promise<ChatConversationSummary[]> {
     const rows = await this.database
       .select({
@@ -380,7 +380,7 @@ export class ChatStore {
   }
 
   public async readConversation(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ): Promise<ChatConversation | null> {
     const conversationRows = await this.database
@@ -442,7 +442,7 @@ export class ChatStore {
   }
 
   public async deleteConversation(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ): Promise<void> {
     await this.database.transaction(async (transaction) => {
@@ -509,7 +509,7 @@ export class ChatStore {
   }
 
   public async acceptUserMessage(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     conversationId: string,
     requestId: string,
     content: string,
@@ -724,7 +724,7 @@ export class ChatStore {
   }
 
   public async transitionRun(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     runId: string,
     attemptCount: number,
     expectedState: ChatRunState,
@@ -758,7 +758,7 @@ export class ChatStore {
   }
 
   public async failRun(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     runId: string,
     attemptCount: number,
     error: unknown,
@@ -785,7 +785,7 @@ export class ChatStore {
   }
 
   public async renewRunLease(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     runId: string,
     attemptCount: number,
   ): Promise<void> {
@@ -810,7 +810,7 @@ export class ChatStore {
   }
 
   public async readCompletedMemoryTurns(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     conversationId: string,
     excludeRunId: string,
   ): Promise<ChatMemoryTurnRecord[]> {
@@ -845,7 +845,7 @@ export class ChatStore {
   }
 
   public async readMessagesMissingEmbeddings(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     conversationId: string,
     embeddingSpaceId: string,
     dimensions: EmbeddingDimensions,
@@ -882,7 +882,7 @@ export class ChatStore {
   }
 
   public async searchSemanticMemory(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     conversationId: string,
     excludeRunId: string,
     embeddingSpaceId: string,
@@ -917,7 +917,7 @@ export class ChatStore {
   }
 
   public async publishAssistant(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     input: PublishChatAssistantInput,
     abortSignal: AbortSignal = passiveAbortSignal,
   ): Promise<ChatAssistantMessage> {
@@ -1156,7 +1156,7 @@ export class ChatStore {
   }
 
   public async readCitation(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ): Promise<ChatCitationEvidenceRecord | null> {
     const rows = await this.database
@@ -1233,7 +1233,7 @@ export class ChatStore {
   }
 
   public async readCitationFile(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     citationId: string,
   ): Promise<BufferedDocumentSource | null> {
     const rows = await this.database
@@ -1287,7 +1287,7 @@ export class ChatStore {
     };
   }
 
-  private ownedConversationCondition(principal: AuthenticatedPrincipal) {
+  private ownedConversationCondition(principal: AuthorizationPrincipal) {
     return and(
       eq(chatConversations.workspaceId, principal.workspaceId),
       eq(chatConversations.ownerUserId, principal.userId),
@@ -1295,7 +1295,7 @@ export class ChatStore {
   }
 
   private async requireOwnedConversation(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ): Promise<void> {
     const rows = await this.database
@@ -1312,7 +1312,7 @@ export class ChatStore {
   }
 
   private async requireOwnedRun(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     runId: string,
   ): Promise<void> {
     const rows = await this.database

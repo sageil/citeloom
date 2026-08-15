@@ -1,0 +1,41 @@
+name: ${LOGTO_COMPOSE_PROJECT_NAME:?Set LOGTO_COMPOSE_PROJECT_NAME in .env}
+
+services:
+  logto-postgres:
+    image: ${LOGTO_POSTGRES_IMAGE:?Set LOGTO_POSTGRES_IMAGE in .env}
+    environment:
+      POSTGRES_DB: ${LOGTO_POSTGRES_DATABASE:?Set LOGTO_POSTGRES_DATABASE in .env}
+      POSTGRES_PASSWORD: ${LOGTO_POSTGRES_PASSWORD:?Set LOGTO_POSTGRES_PASSWORD in .env}
+      POSTGRES_USER: ${LOGTO_POSTGRES_USER:?Set LOGTO_POSTGRES_USER in .env}
+    volumes:
+      - ${LOGTO_POSTGRES_DATA_DIRECTORY:?Set LOGTO_POSTGRES_DATA_DIRECTORY in .env}:${LOGTO_POSTGRES_DATA_TARGET:?Set LOGTO_POSTGRES_DATA_TARGET in .env}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: ${LOGTO_RESTART_POLICY:?Set LOGTO_RESTART_POLICY in .env}
+
+  logto:
+    image: ${LOGTO_IMAGE:?Set LOGTO_IMAGE in .env}
+    entrypoint: ["sh", "-c", "npm run cli db seed -- --swe && npm start"]
+    environment:
+      ADMIN_ENDPOINT: ${LOGTO_ADMIN_ENDPOINT:?Set LOGTO_ADMIN_ENDPOINT in .env}
+      DB_URL: ${LOGTO_DATABASE_URL:?Set LOGTO_DATABASE_URL in .env}
+      ENDPOINT: ${LOGTO_ENDPOINT:?Set LOGTO_ENDPOINT in .env}
+      ADMIN_PORT: ${LOGTO_ADMIN_CONTAINER_PORT:?Set LOGTO_ADMIN_CONTAINER_PORT in .env}
+      PORT: ${LOGTO_PUBLIC_CONTAINER_PORT:?Set LOGTO_PUBLIC_CONTAINER_PORT in .env}
+      TRUST_PROXY_HEADER: ${LOGTO_TRUST_PROXY_HEADER:?Set LOGTO_TRUST_PROXY_HEADER in .env}
+    depends_on:
+      logto-postgres:
+        condition: service_healthy
+    ports:
+      - "${LOGTO_BIND_ADDRESS:?Set LOGTO_BIND_ADDRESS in .env}:${LOGTO_PUBLIC_PORT:?Set LOGTO_PUBLIC_PORT in .env}:${LOGTO_PUBLIC_CONTAINER_PORT:?Set LOGTO_PUBLIC_CONTAINER_PORT in .env}"
+      - "${LOGTO_BIND_ADDRESS:?Set LOGTO_BIND_ADDRESS in .env}:${LOGTO_ADMIN_PORT:?Set LOGTO_ADMIN_PORT in .env}:${LOGTO_ADMIN_CONTAINER_PORT:?Set LOGTO_ADMIN_CONTAINER_PORT in .env}"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + process.env.PORT + '/oidc/.well-known/openid-configuration').then(response => { if (!response.ok) process.exit(1); })"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: ${LOGTO_RESTART_POLICY:?Set LOGTO_RESTART_POLICY in .env}

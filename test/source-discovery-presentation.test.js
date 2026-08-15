@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   registerPage,
 } from "../web/assets/scripts/ask.js";
-import { readDiscoveryResponse } from "../web/assets/scripts/ask-schema.js";
+import { readDiscoveryResponse } from "../web/assets/scripts/ask-boundary.js";
 
 describe("source discovery browser presentation", () => {
   it("presents exact and related lanes with passage-level provenance", () => {

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 import {
   sanitizeDiagnosticMessage,
 } from "../observability/application-errors.js";
@@ -22,7 +22,7 @@ import type { WebServices } from "./services.js";
 import { WebRequestError } from "./request-boundary.js";
 
 export interface SourceContentStorageRouteOptions {
-  requestPrincipals: WeakMap<object, AuthenticatedPrincipal>;
+  requestPrincipals: WeakMap<object, AuthorizationPrincipal>;
   services: WebServices;
 }
 

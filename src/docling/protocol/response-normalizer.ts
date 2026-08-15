@@ -23,7 +23,7 @@ import type {
   RawTableCell,
   RawTableItem,
   RawTextItem,
-} from "./response-schemas.js";
+} from "./response-boundary.js";
 
 const BASE64_CONTENT_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 const MAXIMUM_IMAGE_BYTES = 32 * 1_024 * 1_024;

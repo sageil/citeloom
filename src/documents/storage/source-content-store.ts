@@ -35,7 +35,7 @@ import {
 import {
   type SourceContentBackend,
   SourceContentMissingError,
-} from "./source-content-backend-contract.js";
+} from "./source-content-backend-model.js";
 
 const sourceDocumentMetadataSchema = z.object({
   byteLength: z.number().int().positive(),

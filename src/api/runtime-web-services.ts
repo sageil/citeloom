@@ -2,7 +2,7 @@ import type { InferUIMessageChunk } from "ai";
 
 import type { CiteLoomUIMessage } from "../answers/stream.js";
 import type { ApplicationStateRevisionSnapshot } from "../app/application-state-revisions.js";
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 import type { ChatMessageRequest } from "../chat/pipeline.js";
 import type {
   ChatConversation,
@@ -58,7 +58,7 @@ import type {
 import type {
   SourceDiscoveryRequest,
   SourceDiscoveryResponse,
-} from "../retrieval/discovery/schema.js";
+} from "../retrieval/discovery/boundary.js";
 import type {
   QuestionRequest,
 } from "./request-boundary.js";
@@ -69,65 +69,65 @@ import type {
 
 export interface RuntimeDocumentServices {
   browseDocuments: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     request: BrowseDocumentCatalogRequest,
   ) => Promise<BrowseDocumentCatalogResult>;
   compareDocumentVersions: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     previousVersionId: string,
     currentVersionId: string,
   ) => Promise<DocumentVersionDifference | null>;
   deleteIndexedDocument: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     request: ReindexDocumentRequest,
   ) => Promise<DeleteIndexedDocumentResult>;
   ingest: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     documents: readonly StagedIngestionDocument[],
     options: IngestOptions,
     duplicateSourceRoot: string,
     requestedSourceLibraryId: string | null,
   ) => Promise<BulkIngestResult>;
   listDocumentVersions: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     sourceFile: string,
   ) => Promise<DocumentVersionRecord[]>;
   readDocumentFile: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     request: ReadDocumentFileRequest,
   ) => Promise<IndexedDocumentFile | null>;
   readVersionedDocumentFile: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ) => Promise<IndexedDocumentFile | null>;
   reindexDocument: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     request: ReindexDocumentRequest,
     actor: IngestionControlActor,
   ) => Promise<ReindexDocumentResult>;
   requestIngestionControl: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     sourceFile: string,
     action: "pause" | "cancel",
     actor: IngestionControlActor,
   ) => ReturnType<typeof requestIngestionControlWithRuntime>;
   resumeIngestion: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     sourceFile: string,
     actor: IngestionControlActor,
   ) => ReturnType<typeof resumeIngestionWithRuntime>;
   retryFailedJob: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     sourceFile: string,
   ) => Promise<RetryFailedIngestionResult>;
   updateDocumentTags: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     request: UpdateIndexedDocumentTagsRequest,
   ) => Promise<UpdateIndexedDocumentTagsResult | null>;
 }
 
 export interface RuntimeResearchServices {
-  addResearchFeedback: (principal: AuthenticatedPrincipal, input: {
+  addResearchFeedback: (principal: AuthorizationPrincipal, input: {
     citationId: string | null;
     comment: string | null;
     dimension: FeedbackDimension;
@@ -135,99 +135,101 @@ export interface RuntimeResearchServices {
     turnId: string;
   }) => Promise<ResearchFeedbackSummary>;
   createResearchThread: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     title: string,
   ) => Promise<ResearchThread>;
   deleteResearchThread: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ) => Promise<void>;
   exportResearchThread: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
     format: ResearchExportFormat,
   ) => Promise<ResearchExport | null>;
   listResearchThreads: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
   ) => Promise<ResearchThreadSummary[]>;
   processNextResearchVerification: (
     abortSignal: AbortSignal,
   ) => Promise<boolean>;
   readCitationEvidence: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ) => Promise<StoredCitationRecord | null>;
   readCitationHighlightedFile: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ) => Promise<IndexedDocumentFile | null>;
-  readCitationImage: (principal: AuthenticatedPrincipal, id: string) => Promise<{
+  readCitationImage: (principal: AuthorizationPrincipal, id: string) => Promise<{
     content: Buffer;
     mediaType: string;
   } | null>;
   readResearchFeedback: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     turnId: string,
     dimension: FeedbackDimension,
     citationId: string | null,
   ) => Promise<ResearchFeedbackSummary>;
   readResearchThread: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ) => Promise<ResearchThread | null>;
   searchSources: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     request: SourceDiscoveryRequest,
     abortSignal: AbortSignal,
+    workspaceIds?: readonly string[] | null,
   ) => Promise<SourceDiscoveryResponse>;
   streamAnswer: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     request: QuestionRequest,
     abortSignal: AbortSignal,
+    workspaceIds?: readonly string[] | null,
   ) => ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>>;
 }
 
 export interface RuntimeChatServices {
   createChatConversation: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     title: string,
     scope: QueryScope,
   ) => Promise<ChatConversation>;
   deleteChatConversation: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ) => Promise<void>;
   listChatConversations: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
   ) => Promise<ChatConversationSummary[]>;
   processNextChatVerification: (
     abortSignal: AbortSignal,
   ) => Promise<boolean>;
   readChatCitationEvidence: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ) => Promise<StoredChatCitation | null>;
   readChatCitationFile: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ) => Promise<IndexedDocumentFile | null>;
   readChatCitationHighlightedFile: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ) => Promise<IndexedDocumentFile | null>;
   readChatCitationImage: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ) => Promise<{
     content: Buffer;
     mediaType: string;
   } | null>;
   readChatConversation: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     id: string,
   ) => Promise<ChatConversation | null>;
   streamChatMessage: (
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     request: ChatMessageRequest,
     abortSignal: AbortSignal,
   ) => ReadableStream<InferUIMessageChunk<CiteLoomUIMessage>>;
@@ -240,7 +242,7 @@ export interface RuntimeOperationalServices {
   ) => Promise<GeneratedSpeech>;
   readHealth: (liveChecks: DoctorLiveChecks) => Promise<DoctorCheck[]>;
   readRevisions: () => Promise<ApplicationStateRevisionSnapshot>;
-  readStatus: (principal: AuthenticatedPrincipal) => Promise<SystemStatus>;
+  readStatus: (principal: AuthorizationPrincipal) => Promise<SystemStatus>;
   readTelemetry: () => Promise<TelemetryDashboardSummary>;
   reconcileIngestionCancellations: () => Promise<void>;
   reconcileSourceLibraryDeletions: () => Promise<boolean>;

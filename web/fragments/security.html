@@ -12,21 +12,27 @@
     </div>
   </header>
 
+  <nav aria-label="Security settings" class="security-tabs" role="tablist">
+    <button :aria-selected="securitySection === 'users'" :class="{ active: securitySection === 'users' }" role="tab" type="button" @click="selectSecuritySection('users')">User accounts</button>
+    <button :aria-selected="securitySection === 'password'" :class="{ active: securitySection === 'password' }" role="tab" type="button" @click="selectSecuritySection('password')">Password &amp; recovery</button>
+    <button :aria-selected="securitySection === 'oauth'" :class="{ active: securitySection === 'oauth' }" role="tab" type="button" x-cloak x-show="currentGlobalRole === 'global_admin'" @click="selectSecuritySection('oauth')">Authentication</button>
+  </nav>
+
   <p class="field-error" role="alert" x-cloak x-show="errorMessage !== ''" x-text="errorMessage"></p>
 
-  <p class="security-loading" x-show="loading">Loading security settings…</p>
+  <p class="security-loading" x-show="loading &amp;&amp; securitySection === 'password'">Loading security settings…</p>
 
-  <div class="security-load-failed" x-cloak x-show="!loading &amp;&amp; loadFailed">
+  <div class="security-load-failed" x-cloak x-show="!loading &amp;&amp; loadFailed &amp;&amp; securitySection === 'password'">
     <span>Security settings are unavailable.</span>
     <button class="button secondary" type="button" @click="loadOverview()">Try again</button>
   </div>
 
-  <section class="security-user-accounts access-users-panel access-card" x-cloak x-show="currentGlobalRole === 'global_admin'" @keydown.escape.window="accountCreationOpen &amp;&amp; closeAccountCreation()">
+  <section class="security-user-accounts access-users-panel access-card" x-cloak x-show="securitySection === 'users'" @keydown.escape.window="accountCreationOpen ? closeAccountCreation() : (mcpApiKeyDrawerOpen &amp;&amp; closeMcpApiKeyDrawer())">
     <header class="access-users-heading">
-      <div><h2>User accounts</h2><p>Create organization accounts and manage password setup or reset links.</p></div>
+      <div><h2>User accounts</h2><p>Manage user access and user-bound MCP API keys.</p></div>
       <div class="compact-header-actions">
         <button class="button secondary" :disabled="accountLoading || userAccountBusy" type="button" @click="loadOrganizationUsers()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-refresh"></use></svg><span>Refresh</span></button>
-        <button class="button primary" :disabled="accountLoading || userAccountBusy" type="button" @click="openAccountCreation()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-user-plus"></use></svg><span>Create user</span></button>
+        <button class="button primary" :disabled="accountLoading || userAccountBusy" type="button" x-show="currentGlobalRole === 'global_admin'" @click="openAccountCreation()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-user-plus"></use></svg><span>Create user</span></button>
       </div>
     </header>
 
@@ -54,8 +60,10 @@
           <details class="access-user-actions" @click.outside="$el.open = false">
             <summary class="access-user-row-control" :aria-label="`Account actions for ${user.username}`"><span>Actions</span><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-settings"></use></svg></summary>
             <div>
-              <button :disabled="userAccountBusy || !accountCanCreatePasswordLink(user)" type="button" @click="$el.closest('details').removeAttribute('open'); requestPasswordLink(user)"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-link"></use></svg><span x-text="accountPasswordActionLabel(user)"></span></button>
-              <small x-show="user.workspaceCount === 0">Assign this account to a workspace first.</small>
+              <button :disabled="userAccountBusy || !accountCanCreatePasswordLink(user)" type="button" x-show="currentGlobalRole === 'global_admin'" @click="$el.closest('details').removeAttribute('open'); requestPasswordLink(user)"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-link"></use></svg><span x-text="accountPasswordActionLabel(user)"></span></button>
+              <button :disabled="mcpApiKeyBusy || !accountCanManageMcpApiKeys(user)" type="button" @click="$el.closest('details').removeAttribute('open'); openMcpApiKeyDrawer(user)"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg><span>Manage MCP API keys</span></button>
+              <small x-show="user.state !== 'active'">Activate this account before creating a key.</small>
+              <small x-show="user.state === 'active' &amp;&amp; !user.currentWorkspaceAccess &amp;&amp; currentGlobalRole !== 'global_admin'">Add this account to the selected workspace first.</small>
             </div>
           </details>
         </article>
@@ -73,9 +81,125 @@
         </form>
       </aside>
     </div>
+
+    <div class="access-drawer-backdrop" x-cloak x-show="mcpApiKeyDrawerOpen" @click.self="closeMcpApiKeyDrawer()">
+      <aside class="access-add-drawer security-mcp-key-drawer" role="dialog" aria-modal="true" aria-labelledby="mcp-api-key-title">
+        <header><div><h2 id="mcp-api-key-title">MCP API keys</h2><p x-text="mcpApiKeyUser === null ? '' : `Issue a user-bound key for ${mcpApiKeyUser.displayName}.`"></p></div><button class="button access-close-button" :disabled="mcpApiKeyBusy" type="button" aria-label="Close MCP API key management" @click="closeMcpApiKeyDrawer()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg></button></header>
+
+        <div class="security-mcp-key-secret" x-cloak x-show="mcpApiKeySecret !== ''">
+          <strong>Copy this key now</strong>
+          <small>It will not be shown again.</small>
+          <output x-text="mcpApiKeySecret"></output>
+          <button class="button secondary" type="button" @click="copyMcpApiKey()" x-text="mcpApiKeyCopied ? 'Copied' : 'Copy key'"></button>
+        </div>
+
+        <form class="security-mcp-key-form" @submit.prevent="createMcpApiKey()">
+          <label><span>Label</span><input autocomplete="off" maxlength="100" placeholder="e.g. Codex on my laptop" type="text" x-model.trim="mcpApiKeyLabel" /><small>Optional description to identify the client.</small></label>
+          <fieldset class="security-mcp-key-scopes"><legend>Permissions</legend><label><input type="checkbox" x-model="mcpApiKeySearchScope" /><span><strong>Search documents</strong><small>Grant citeloom.search.</small></span></label><label><input type="checkbox" x-model="mcpApiKeyAnswerScope" /><span><strong>Ask documents</strong><small>Grant citeloom.answer and asynchronous tasks.</small></span></label></fieldset>
+          <label><span>Expires after</span><select required x-model.number="mcpApiKeyExpirationDays"><option value="30">30 days</option><option value="90">90 days</option><option value="365">1 year</option></select><small>Expired keys stop working automatically.</small></label>
+          <button class="button primary security-mcp-key-create" :disabled="mcpApiKeyBusy || (!mcpApiKeySearchScope &amp;&amp; !mcpApiKeyAnswerScope)" type="submit" x-text="mcpApiKeyBusy ? 'Creating…' : 'Generate API key'"></button>
+        </form>
+
+        <section class="security-mcp-key-list" aria-labelledby="mcp-api-key-existing-title">
+          <h3 id="mcp-api-key-existing-title">Existing keys</h3>
+          <p x-show="!mcpApiKeyBusy &amp;&amp; mcpApiKeys.length === 0">No keys are available for this user.</p>
+          <template x-for="key in mcpApiKeys" :key="key.id">
+            <article>
+              <span><strong x-text="key.label ?? 'Unlabeled key'"></strong><small x-text="`${formatMcpApiKeyScopes(key)} · expires ${formatDate(key.expiresAt)}`"></small></span>
+              <span class="security-mcp-key-status" x-text="mcpApiKeyStatus(key)"></span>
+              <button class="button secondary" :disabled="mcpApiKeyBusy || mcpApiKeyStatus(key) !== 'Active'" type="button" @click="revokeMcpApiKey(key)">Revoke</button>
+            </article>
+          </template>
+        </section>
+      </aside>
+    </div>
   </section>
 
-  <div class="security-content" x-cloak x-show="!loading &amp;&amp; !loadFailed">
+  <section class="security-oauth" x-cloak x-show="currentGlobalRole === 'global_admin' &amp;&amp; securitySection === 'oauth'" @keydown.escape.window="closeOAuthDrawers()">
+    <header class="security-section-heading security-oauth-heading">
+      <h2>Application authentication</h2>
+      <p>Stage and verify OAuth before replacing CiteLoom cookie sign-in for the whole application.</p>
+    </header>
+
+    <p class="security-oauth-loading" x-show="oauthLoading">Loading authentication settings…</p>
+
+    <div class="security-oauth-content" x-cloak x-show="!oauthLoading">
+      <section class="security-oauth-status-card">
+        <div class="security-oauth-status-row">
+          <span class="security-oauth-status-icon" :class="oauthActive ? 'enabled' : 'disabled'">
+            <svg aria-hidden="true" class="citeloom-icon"><use :href="oauthActive ? './assets/images/citeloom-icons.svg#citeloom-check' : './assets/images/citeloom-icons.svg#citeloom-lock'"></use></svg>
+          </span>
+          <span class="security-oauth-status-copy">
+            <strong x-text="oauthActive ? 'OAuth is active' : (oauthStaged ? 'OAuth is staged' : 'Cookie authentication is active')"></strong>
+            <small x-text="oauthActive ? 'Bearer tokens replace CiteLoom session cookies across the browser API and MCP.' : (oauthStaged ? 'Cookie authentication remains active until a linked administrator verifies and activates OAuth.' : 'Configure OAuth without disrupting current cookie sessions.')"></small>
+          </span>
+          <div class="security-oauth-status-actions">
+            <button class="button secondary" :disabled="oauthBusy" type="button" @click="openOAuthConfiguration()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-settings"></use></svg><span x-text="oauthConfigured ? 'Edit staged settings' : 'Configure OAuth'"></span></button>
+            <button class="button security-danger-button" :disabled="oauthBusy || !oauthStaged || !oauthHostRecoveryEnabled" type="button" x-show="oauthStaged &amp;&amp; !oauthActive" @click="activateOAuthConfiguration()">Verify and activate</button>
+            <button class="button security-danger-button" :disabled="oauthBusy" type="button" x-show="oauthActive" @click="disableOAuthConfiguration()">Use cookie sign-in</button>
+          </div>
+        </div>
+        <dl class="security-oauth-summary">
+          <div><dt>Authorization server issuer</dt><dd :title="oauthManagedConfiguration?.issuer ?? ''" x-text="oauthManagedConfiguration?.issuer ?? 'Not configured'"></dd></div>
+          <div><dt>Browser API resource</dt><dd :title="oauthManagedConfiguration?.apiResource ?? ''" x-text="oauthManagedConfiguration?.apiResource ?? 'Derived from CiteLoom public origin'"></dd></div>
+          <div><dt>MCP resource</dt><dd :title="oauthManagedConfiguration?.mcpResource ?? ''" x-text="oauthManagedConfiguration?.mcpResource ?? 'Derived from CiteLoom public origin'"></dd></div>
+          <div><dt>Host recovery</dt><dd><span x-text="oauthHostRecoveryEnabled ? 'Enabled' : 'Disabled'"></span> <button class="button secondary" :disabled="oauthBusy || oauthActive" type="button" @click="toggleHostAuthenticationRecovery()" x-text="oauthHostRecoveryEnabled ? 'Disable' : 'Enable'"></button></dd></div>
+        </dl>
+      </section>
+
+      <p class="security-oauth-browser-note"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-shield-check"></use></svg><span x-text="oauthHostRecoveryEnabled ? 'Activation is atomic: every cookie session is revoked only after the staged issuer proves a linked global administrator identity.' : 'Enable host recovery before activating OAuth.'"></span></p>
+
+      <section class="security-oauth-mappings">
+        <header>
+          <div><h3>External identities → CiteLoom users</h3><p>Link immutable OAuth subjects to existing CiteLoom users. Workspace access continues to come only from CiteLoom memberships.</p></div>
+          <div class="security-oauth-mapping-actions">
+            <label class="security-oauth-search"><span class="visually-hidden">Search user mappings</span><input placeholder="Search by subject or user" type="search" x-model="oauthUserSearch" /><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-search"></use></svg></label>
+            <button class="button security-oauth-add-button" :disabled="!oauthConfigured || oauthBusy" type="button" @click="openOAuthMappingDrawer()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-link"></use></svg> Add mapping</button>
+          </div>
+        </header>
+        <div class="security-oauth-table">
+          <div class="security-oauth-table-heading" aria-hidden="true"><span>External subject</span><span>CiteLoom user</span><span>Status</span><span>Linked</span><span>Actions</span></div>
+          <p class="security-oauth-empty" x-show="oauthFilteredUserLinks().length === 0" x-text="oauthUserIdentityLinks.length === 0 ? 'No OAuth user identities are mapped.' : 'No user mappings match this search.'"></p>
+          <template x-for="link in oauthFilteredUserLinks()" :key="link.userId">
+            <article class="security-oauth-table-row">
+              <span class="security-oauth-external"><strong :title="link.subject" x-text="link.subject"></strong><small x-text="oauthIssuerHost()"></small></span>
+              <span class="security-oauth-local"><strong x-text="link.displayName"></strong><small x-text="`@${link.username}`"></small></span>
+              <span class="access-user-state"><i :class="`state-${link.userState}`"></i><span x-text="link.userState"></span></span>
+              <time :datetime="link.createdAt" x-text="formatDate(link.createdAt)"></time>
+              <button class="button secondary" :disabled="oauthLinkRemovalDisabled(link)" type="button" @click="unlinkOAuthUser(link)">Remove</button>
+            </article>
+          </template>
+        </div>
+      </section>
+    </div>
+
+    <div class="access-drawer-backdrop" x-cloak x-show="oauthConfigurationDrawerOpen" @click.self="closeOAuthConfiguration()">
+      <aside class="access-add-drawer security-oauth-drawer" role="dialog" aria-modal="true" aria-labelledby="configure-oauth-title">
+        <header><div><h2 id="configure-oauth-title">Stage OAuth</h2><p>CiteLoom verifies discovery and signing keys before saving these versioned settings. Cookie sign-in remains active.</p></div><button class="button access-close-button" :disabled="oauthBusy" type="button" aria-label="Close OAuth configuration" @click="closeOAuthConfiguration()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg></button></header>
+        <form @submit.prevent="saveOAuthConfiguration()">
+          <label><span>Authorization server issuer</span><input autocomplete="off" maxlength="2048" pattern="https://.*" placeholder="https://identity.example.com/oidc" required type="url" x-model.trim="oauthIssuer" /><small>Use the exact HTTPS issuer identifier published by the provider.</small></label>
+          <label><span>Browser public client ID</span><input autocomplete="off" maxlength="1024" required type="text" x-model.trim="oauthBrowserClientId" /><small>Configure the derived callback and post-logout URIs shown after staging.</small></label>
+          <label><span>Browser authorization scopes</span><input autocomplete="off" maxlength="10000" placeholder="openid profile citeloom.app" required type="text" x-model="oauthBrowserScopes" /><small>Must include openid and every required browser API scope.</small></label>
+          <label><span>Browser API scopes</span><input autocomplete="off" maxlength="10000" placeholder="citeloom.app" required type="text" x-model="oauthApiScopes" /><small>Every browser API access token must grant these scopes.</small></label>
+          <label><span>MCP scopes</span><input autocomplete="off" maxlength="10000" placeholder="citeloom.search" required type="text" x-model="oauthMcpScopes" /><small>The current MCP endpoint requires every configured scope.</small></label>
+          <footer><button class="button access-secondary-button" :disabled="oauthBusy" type="button" @click="closeOAuthConfiguration()">Cancel</button><button class="button primary" :disabled="oauthBusy || !oauthConfigurationComplete()" type="submit" x-text="oauthBusy ? 'Verifying…' : 'Verify and stage'"></button></footer>
+        </form>
+      </aside>
+    </div>
+
+    <div class="access-drawer-backdrop" x-cloak x-show="oauthMappingDrawer === 'user'" @click.self="closeOAuthMappingDrawer()">
+      <aside class="access-add-drawer security-oauth-link-drawer" role="dialog" aria-modal="true" aria-labelledby="link-oauth-user-title">
+        <header><div><h2 id="link-oauth-user-title">Add user mapping</h2><p>Map one immutable external subject to an existing CiteLoom account.</p></div><button class="button access-close-button" :disabled="oauthBusy" type="button" aria-label="Close OAuth mapping" @click="closeOAuthMappingDrawer()"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-close"></use></svg></button></header>
+        <form @submit.prevent="linkOAuthUser()">
+          <label><span>CiteLoom user</span><select required x-model="oauthUserId"><option value="">Select a user</option><template x-for="user in oauthAvailableUsers()" :key="user.userId"><option :value="user.userId" x-text="`${user.displayName} (@${user.username})`"></option></template></select><small>Suspended and already mapped accounts are unavailable.</small></label>
+          <label><span>External subject</span><input autocomplete="off" maxlength="1024" placeholder="Subject claim from the authorization server" required type="text" x-model="oauthSubject" /><small>Use the immutable subject claim, not an email or display name.</small></label>
+          <footer><button class="button access-secondary-button" :disabled="oauthBusy" type="button" @click="closeOAuthMappingDrawer()">Cancel</button><button class="button primary" :disabled="oauthBusy || oauthUserId === '' || oauthSubject.trim() === ''" type="submit" x-text="oauthBusy ? 'Adding…' : 'Add mapping'"></button></footer>
+        </form>
+      </aside>
+    </div>
+  </section>
+
+  <div class="security-content" x-cloak x-show="securitySection === 'password' &amp;&amp; !loading &amp;&amp; !loadFailed">
     <div class="security-policy-column">
       <form class="security-policy-panel" @submit.prevent="savePolicy()">
         <header class="security-section-heading">
@@ -87,83 +211,37 @@
           <label class="security-policy-field" for="security-minimum-length">
             <span class="security-field-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-lock"></use></svg></span>
             <span class="security-field-copy"><strong>Minimum password length</strong><small>Choose between 9 and 64 characters.</small></span>
-            <span class="security-number-control">
-              <input id="security-minimum-length" max="64" min="9" required type="number" x-model.number="minimumPasswordLength" />
-              <span>characters</span>
-            </span>
+            <span class="security-number-control"><input id="security-minimum-length" max="64" min="9" required type="number" x-model.number="minimumPasswordLength" /><span>characters</span></span>
           </label>
 
           <label class="security-policy-field" for="security-reset-lifetime">
             <span class="security-field-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use></svg></span>
             <span class="security-field-copy"><strong>Password reset link lifetime</strong><small>New setup and reset links use this lifetime.</small></span>
-            <select class="form-control compact-header-control access-user-row-control" id="security-reset-lifetime" x-model.number="resetLinkLifetimeSeconds">
-              <option value="900">15 minutes</option>
-              <option value="1800">30 minutes</option>
-              <option value="3600">1 hour</option>
-              <option value="14400">4 hours</option>
-              <option value="43200">12 hours</option>
-              <option value="86400">24 hours</option>
-              <option value="172800">2 days</option>
-              <option value="259200">3 days</option>
-              <option value="604800">7 days</option>
-            </select>
+            <select class="form-control compact-header-control access-user-row-control" id="security-reset-lifetime" x-model.number="resetLinkLifetimeSeconds"><option value="900">15 minutes</option><option value="1800">30 minutes</option><option value="3600">1 hour</option><option value="14400">4 hours</option><option value="43200">12 hours</option><option value="86400">24 hours</option><option value="172800">2 days</option><option value="259200">3 days</option><option value="604800">7 days</option></select>
           </label>
         </div>
 
         <fieldset class="security-rules">
           <legend>Password content requirements</legend>
-          <label>
-            <input type="checkbox" x-model="requireLetterAndNumber" />
-            <span><strong>Require letters and numbers</strong><small>Passwords must include at least one letter and one number.</small></span>
-          </label>
-          <label>
-            <input type="checkbox" x-model="requireSpecialCharacter" />
-            <span><strong>Require a special character</strong><small>Passwords must include punctuation or another symbol.</small></span>
-          </label>
+          <label><input type="checkbox" x-model="requireLetterAndNumber" /><span><strong>Require letters and numbers</strong><small>Passwords must include at least one letter and one number.</small></span></label>
+          <label><input type="checkbox" x-model="requireSpecialCharacter" /><span><strong>Require a special character</strong><small>Passwords must include punctuation or another symbol.</small></span></label>
         </fieldset>
 
-        <label class="security-revoke-on-save" :class="{ disabled: activeResetLinkCount === 0 }">
-          <input :disabled="activeResetLinkCount === 0" type="checkbox" x-model="invalidateOutstandingResetLinks" />
-          <span>
-            <strong>Invalidate outstanding reset links when this policy is saved</strong>
-            <small x-text="activeResetLinkCount === 0 ? 'There are no active links to revoke.' : `${activeResetLinkCount} active ${activeResetLinkCount === 1 ? 'link' : 'links'} will be revoked.`"></small>
-          </span>
-        </label>
+        <label class="security-revoke-on-save" :class="{ disabled: activeResetLinkCount === 0 }"><input :disabled="activeResetLinkCount === 0" type="checkbox" x-model="invalidateOutstandingResetLinks" /><span><strong>Invalidate outstanding reset links when this policy is saved</strong><small x-text="activeResetLinkCount === 0 ? 'There are no active links to revoke.' : `${activeResetLinkCount} active ${activeResetLinkCount === 1 ? 'link' : 'links'} will be revoked.`"></small></span></label>
 
-        <footer class="security-policy-actions">
-          <button class="button secondary" :disabled="busy || !policyChanged" type="button" @click="discardChanges()">Discard</button>
-          <button class="button primary" :disabled="busy || (!policyChanged &amp;&amp; !invalidateOutstandingResetLinks)" type="submit">
-            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg>
-            <span x-text="busy ? 'Saving…' : 'Save policy'"></span>
-          </button>
-        </footer>
+        <footer class="security-policy-actions"><button class="button secondary" :disabled="busy || !policyChanged" type="button" @click="discardChanges()">Discard</button><button class="button primary" :disabled="busy || (!policyChanged &amp;&amp; !invalidateOutstandingResetLinks)" type="submit"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-save"></use></svg><span x-text="busy ? 'Saving…' : 'Save policy'"></span></button></footer>
       </form>
 
       <section class="security-reset-links">
         <header class="security-section-heading"><h2>Outstanding reset links</h2></header>
-        <div class="security-reset-summary">
-          <span class="security-link-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-link"></use></svg></span>
-          <span><strong x-text="`${activeResetLinkCount} active`"></strong><small>Active password setup and reset links</small></span>
-          <button class="button secondary" :disabled="busy || activeResetLinkCount === 0" type="button" @click="revokeAllLinks()">
-            <svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-link"></use></svg>
-            <span>Revoke all links</span>
-          </button>
-        </div>
+        <div class="security-reset-summary"><span class="security-link-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-link"></use></svg></span><span><strong x-text="`${activeResetLinkCount} active`"></strong><small>Active password setup and reset links</small></span><button class="button secondary" :disabled="busy || activeResetLinkCount === 0" type="button" @click="revokeAllLinks()"><svg aria-hidden="true" class="citeloom-icon citeloom-small-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-link"></use></svg><span>Revoke all links</span></button></div>
       </section>
     </div>
   </div>
 
-  <section class="security-history" x-cloak x-show="!loading &amp;&amp; !loadFailed">
+  <section class="security-history" x-cloak x-show="securitySection === 'password' &amp;&amp; !loading &amp;&amp; !loadFailed">
     <header class="security-section-heading"><h2>Recent policy changes</h2></header>
     <p class="security-history-empty" x-show="recentChanges.length === 0">No policy changes have been recorded yet.</p>
-    <ol x-show="recentChanges.length &gt; 0">
-      <template x-for="change in recentChanges" :key="change.id">
-        <li>
-          <span class="security-history-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use></svg></span>
-          <span><strong x-text="change.changedByDisplayName ?? 'Former administrator'"></strong><small x-text="formatChange(change)"></small></span>
-          <time :datetime="change.changedAt" x-text="formatDate(change.changedAt)"></time>
-        </li>
-      </template>
-    </ol>
+    <ol x-show="recentChanges.length &gt; 0"><template x-for="change in recentChanges" :key="change.id"><li><span class="security-history-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-clock"></use></svg></span><span><strong x-text="change.changedByDisplayName ?? 'Former administrator'"></strong><small x-text="formatChange(change)"></small></span><time :datetime="change.changedAt" x-text="formatDate(change.changedAt)"></time></li></template></ol>
   </section>
 </section>

@@ -2,6 +2,7 @@ import {
   readBoolean,
   readEnum,
   readNonEmptyString,
+  readNullableNonEmptyString,
   readPlainObject,
 } from "./boundary-readers.js";
 
@@ -10,7 +11,7 @@ const CONFIRMATION_RESPONSE_EVENT = "citeloom:confirmation-response";
 const confirmationTones = Object.freeze(["danger", "default"]);
 let confirmationRequestSequence = 0;
 
-export function requestConfirmation(request) {
+function requestDialog(request) {
   confirmationRequestSequence += 1;
   const requestId = `confirmation-${confirmationRequestSequence}`;
   return new Promise((resolve) => {
@@ -39,6 +40,20 @@ export function requestConfirmation(request) {
   });
 }
 
+export function requestConfirmation(request) {
+  return requestDialog(request);
+}
+
+export async function showMessage(request) {
+  await requestDialog({
+    cancelLabel: null,
+    confirmLabel: request.actionLabel,
+    description: request.description,
+    title: request.title,
+    tone: request.tone,
+  });
+}
+
 export function readConfirmationRequestEvent(event) {
   if (!(event instanceof CustomEvent)) {
     return null;
@@ -46,7 +61,7 @@ export function readConfirmationRequestEvent(event) {
   try {
     const request = readPlainObject(event.detail, "confirmation request");
     return {
-      cancelLabel: readNonEmptyString(
+      cancelLabel: readNullableNonEmptyString(
         request.cancelLabel,
         "confirmation cancel label",
       ),

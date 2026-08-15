@@ -2,15 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildAppConfig,
+  BOOTSTRAP_DATABASE_POOL_MAX,
   parseRuntimeSettings,
-  readApplicationErrorRetentionConfig,
   readDatabaseConfig,
-  readDoclingProcessConfiguration,
-  readDoclingServiceTopology,
   readEmbeddingConfigurationWarnings,
 } from "../src/config/index.js";
 import {
-  createTestDoclingTopology,
   createTestRuntimeSettings,
   readEqualWeightTestConfig,
   TEST_EMBEDDING_INPUT_FORMAT,
@@ -26,10 +23,26 @@ describe("application configuration", () => {
         inferenceBaseUrl: "http://localhost:11434/v1/",
       },
       runtime: {
+        applicationErrorMaximumRows: 12_000,
+        applicationErrorRetentionDays: 14,
         aiMetricsEnabled: false,
+        databasePoolMax: 12,
         embeddingDimensions: 384,
+        hhemMaxAttentionCells: 5_000_000,
+        hhemMaxPaddedTokens: 10_000,
+        hhemModelBatchSize: 8,
+        hhemTorchThreads: 3,
         maxDocumentMegabytes: 100,
+        maxUploadRequestMegabytes: 64,
+        mcpTaskRetentionDays: 14,
+        publicOrigins: [
+          "https://localhost:4443/",
+          "https://citeloom.example/",
+          "https://citeloom.example",
+        ],
+        secureSessionCookie: false,
         topK: 7,
+        trustProxy: true,
       },
       settingsVersion: 4,
     });
@@ -50,21 +63,46 @@ describe("application configuration", () => {
       model: "embedding-model",
     });
     expect(config.inferenceMetrics.enabled).toBe(false);
+    expect(config.applicationErrorRetention).toEqual({
+      maximumRows: 12_000,
+      retentionDays: 14,
+    });
+    expect(config.database.poolMax).toBe(12);
     expect(config.maxDocumentBytes).toBe(100 * 1_024 * 1_024);
+    expect(config.mcp.taskRetentionMs).toBe(14 * 24 * 60 * 60 * 1_000);
     expect(config.retrieval.topK).toBe(7);
+    expect(config.verifierProcess).toEqual({
+      maxAttentionCells: 5_000_000,
+      maxPaddedTokens: 10_000,
+      modelBatchSize: 8,
+      torchThreads: 3,
+    });
+    expect(config.web).toEqual({
+      maximumUploadRequestBytes: 64 * 1_024 * 1_024,
+      publicOrigin: "https://localhost:4443",
+      publicOrigins: [
+        "https://localhost:4443",
+        "https://citeloom.example",
+      ],
+      secureSessionCookie: false,
+      trustProxy: true,
+    });
   });
 
   it("applies the database-owned default Docling capacity without changing replicas", () => {
-    const topology = createTestDoclingTopology();
-    topology.additionalServices.push({
-      baseUrl: "http://docling-b:5001",
-      capacity: 2,
-      id: "replica-b",
-    });
+    const process = {
+      numThreads: 4,
+      pageBatchSize: 4,
+      profilePipelineTimings: false,
+    };
 
     const config = readEqualWeightTestConfig({
-      doclingTopology: topology,
       runtime: {
+        doclingAdditionalServiceInstances: [{
+          baseUrl: "http://docling-b:5001",
+          capacity: 2,
+          id: "replica-b",
+        }],
         doclingBaseUrl: "http://docling-a:5001",
         doclingDefaultServiceCapacity: 5,
       },
@@ -75,13 +113,13 @@ describe("application configuration", () => {
         baseUrl: "http://docling-a:5001",
         capacity: 5,
         id: "default",
-        process: topology.process,
+        process,
       },
       {
         baseUrl: "http://docling-b:5001",
         capacity: 2,
         id: "replica-b",
-        process: topology.process,
+        process,
       },
     ]);
   });
@@ -109,12 +147,6 @@ describe("application configuration", () => {
     const runtimeSettings = createTestRuntimeSettings();
     const providers = createTestProviderSettings();
     providers.connections.lmstudio.maximumParallelRequests = 3;
-    const topology = createTestDoclingTopology();
-    const doclingServices = readEqualWeightTestConfig({
-      doclingTopology: topology,
-      runtime: runtimeSettings,
-    }).doclingServices;
-
     const config = buildAppConfig(
       {
         poolMax: 4,
@@ -123,7 +155,6 @@ describe("application configuration", () => {
       runtimeSettings,
       7,
       providers,
-      doclingServices,
       TEST_SOURCE_CONTENT_CONFIG,
       TEST_EMBEDDING_INPUT_FORMAT,
     );
@@ -146,8 +177,6 @@ describe("application configuration", () => {
   it("rejects invalid settings versions and cross-setting values", () => {
     const runtimeSettings = createTestRuntimeSettings();
     const providers = createTestProviderSettings();
-    const doclingServices = readEqualWeightTestConfig().doclingServices;
-
     expect(() => buildAppConfig(
       {
         poolMax: 4,
@@ -156,7 +185,6 @@ describe("application configuration", () => {
       runtimeSettings,
       -1,
       providers,
-      doclingServices,
       TEST_SOURCE_CONTENT_CONFIG,
       TEST_EMBEDDING_INPUT_FORMAT,
     )).toThrow("Settings version must be a nonnegative integer");
@@ -172,12 +200,40 @@ describe("application configuration", () => {
     })).toThrow("doclingMaxTimeoutSeconds");
     expect(() => parseRuntimeSettings({
       ...runtimeSettings,
+      mcpTaskRetentionDays: 0,
+    })).toThrow("mcpTaskRetentionDays");
+    expect(() => parseRuntimeSettings({
+      ...runtimeSettings,
       retrievalChunkTargetTokens: 0,
     })).toThrow("retrievalChunkTargetTokens");
     expect(() => parseRuntimeSettings({
       ...runtimeSettings,
       searchMethod: "automatic",
     })).toThrow("searchMethod");
+    expect(() => parseRuntimeSettings({
+      ...runtimeSettings,
+      publicOrigins: [],
+    })).toThrow("publicOrigins");
+    expect(() => parseRuntimeSettings({
+      ...runtimeSettings,
+      publicOrigins: ["https://citeloom.example/login"],
+    })).toThrow("publicOrigins");
+  });
+
+  it("normalizes and removes duplicate public origins", () => {
+    const settings = parseRuntimeSettings({
+      ...createTestRuntimeSettings(),
+      publicOrigins: [
+        "https://citeloom.example/",
+        "https://localhost:3443/",
+        "https://citeloom.example",
+      ],
+    });
+
+    expect(settings.publicOrigins).toEqual([
+      "https://citeloom.example",
+      "https://localhost:3443",
+    ]);
   });
 
   it("accepts retrieval counts above the former fixed limits", () => {
@@ -217,54 +273,32 @@ describe("application configuration", () => {
 });
 
 describe("startup configuration boundaries", () => {
-  it("reads bounded application error retention configuration", () => {
-    expect(readApplicationErrorRetentionConfig({})).toEqual({
-      maximumRows: 100_000,
-      retentionDays: 30,
-    });
-    expect(readApplicationErrorRetentionConfig({
-      CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS: "25000",
-      CITELOOM_APPLICATION_ERROR_RETENTION_DAYS: "14",
-    })).toEqual({
-      maximumRows: 25_000,
-      retentionDays: 14,
-    });
-    expect(() => readApplicationErrorRetentionConfig({
-      CITELOOM_APPLICATION_ERROR_MAXIMUM_ROWS: "0",
-    })).toThrow("Invalid application error retention configuration");
-  });
-
-  it("reads database-only configuration", () => {
+  it("uses a single bootstrap connection before database settings load", () => {
     expect(readDatabaseConfig({
       DATABASE_POOL_MAX: "4",
       DATABASE_URL: "postgresql://citeloom:citeloom@localhost:5432/citeloom",
     })).toEqual({
-      poolMax: 4,
+      poolMax: BOOTSTRAP_DATABASE_POOL_MAX,
       url: "postgresql://citeloom:citeloom@localhost:5432/citeloom",
     });
   });
 
-  it("reads Docling process and replica topology", () => {
-    const environment = {
-      DOCLING_ADDITIONAL_SERVICE_INSTANCES: JSON.stringify([
+  it("reads Docling process and replica topology from runtime settings", () => {
+    const settings = parseRuntimeSettings({
+      ...createTestRuntimeSettings(),
+      doclingAdditionalServiceInstances: [
         { baseUrl: "http://docling-b:5001/", capacity: 2, id: "replica-b" },
-      ]),
-      DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS: "true",
-      DOCLING_NUM_THREADS: "12",
-      DOCLING_PERF_PAGE_BATCH_SIZE: "8",
-    };
-
-    expect(readDoclingProcessConfiguration(environment)).toEqual({
-      numThreads: 12,
-      pageBatchSize: 8,
-      profilePipelineTimings: true,
+      ],
+      doclingNumThreads: 12,
+      doclingPageBatchSize: 8,
+      doclingProfilePipelineTimings: true,
     });
-    expect(readDoclingServiceTopology(environment)).toEqual({
-      additionalServices: [{
-        baseUrl: "http://docling-b:5001",
-        capacity: 2,
-        id: "replica-b",
-      }],
+    const config = readEqualWeightTestConfig({ runtime: settings });
+
+    expect(config.doclingServices[1]).toEqual({
+      baseUrl: "http://docling-b:5001",
+      capacity: 2,
+      id: "replica-b",
       process: {
         numThreads: 12,
         pageBatchSize: 8,
@@ -274,14 +308,12 @@ describe("startup configuration boundaries", () => {
   });
 
   it("rejects duplicate Docling replica addresses", () => {
-    expect(() => readDoclingServiceTopology({
-      DOCLING_ADDITIONAL_SERVICE_INSTANCES: JSON.stringify([
+    expect(() => parseRuntimeSettings({
+      ...createTestRuntimeSettings(),
+      doclingAdditionalServiceInstances: [
         { baseUrl: "http://docling-a:5001", capacity: 1, id: "replica-a" },
         { baseUrl: "http://docling-a:5001/", capacity: 1, id: "replica-b" },
-      ]),
-      DOCLING_DEBUG_PROFILE_PIPELINE_TIMINGS: "false",
-      DOCLING_NUM_THREADS: "4",
-      DOCLING_PERF_PAGE_BATCH_SIZE: "4",
+      ],
     })).toThrow("duplicate service base URL");
   });
 });

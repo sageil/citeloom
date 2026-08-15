@@ -23,7 +23,7 @@ import {
   readDocumentCatalog,
   readUniqueStringArray,
   readUuid,
-} from "./document-catalog-schema.js";
+} from "./document-catalog-boundary.js";
 import {
   buildCollections,
   buildPageNumbers,

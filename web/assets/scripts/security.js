@@ -11,6 +11,8 @@ import {
 } from "./boundary-readers.js";
 import { requestConfirmation } from "./confirmation.js";
 import { createOrganizationUserManagement } from "./organization-users.js";
+import { createOAuthLinkManagement } from "./oauth-links.js";
+import { createMcpApiKeyManagement } from "./mcp-api-keys.js";
 
 function readAdministrator(value) {
   const administrator = readPlainObject(value, "security administrator");
@@ -129,12 +131,18 @@ function copyEditablePolicy(policy) {
 }
 
 export function registerPage(alpine) {
-  alpine.data("citeloomSecurityPage", () => ({
+  alpine.data("citeloomSecurityPage", createSecurityPage);
+}
+
+function createSecurityPage() {
+  const page = {
     ...createOrganizationUserManagement(),
+    ...createMcpApiKeyManagement(),
     activeResetLinkCount: 0,
     administrators: [],
     busy: false,
     errorMessage: "",
+    administratorSectionsInitialized: false,
     invalidateOutstandingResetLinks: false,
     loadFailed: false,
     loading: true,
@@ -144,6 +152,7 @@ export function registerPage(alpine) {
     requireSpecialCharacter: null,
     resetLinkLifetimeSeconds: null,
     savedPolicy: null,
+    securitySection: "password",
     version: null,
 
     get policyChanged() {
@@ -157,8 +166,49 @@ export function registerPage(alpine) {
     },
 
     initialize() {
+      this.$watch("currentGlobalRole", () => {
+        this.initializeAdministratorSections();
+      });
+      this.$watch("currentRole", () => {
+        this.initializeAdministratorSections();
+      });
       void this.loadOverview();
+      this.initializeAdministratorSections();
+    },
+
+    initializeAdministratorSections() {
+      if (
+        (
+          this.currentGlobalRole !== "global_admin"
+          && this.currentRole !== "admin"
+        )
+        || this.administratorSectionsInitialized
+      ) {
+        return;
+      }
+      this.administratorSectionsInitialized = true;
+      this.securitySection = "users";
       this.initializeOrganizationUserManagement();
+      if (this.currentGlobalRole === "global_admin") {
+        this.initializeOAuthLinkManagement();
+      }
+    },
+
+    selectSecuritySection(section) {
+      if (
+        section !== "password"
+        && section !== "users"
+        && section !== "oauth"
+      ) {
+        return;
+      }
+      if (
+        section === "oauth"
+        && this.currentGlobalRole !== "global_admin"
+      ) {
+        return;
+      }
+      this.securitySection = section;
     },
 
     applyOverview(overview) {
@@ -364,5 +414,10 @@ export function registerPage(alpine) {
       }
       await this.persistPolicy(revokeLinks);
     },
-  }));
+  };
+  Object.defineProperties(
+    page,
+    Object.getOwnPropertyDescriptors(createOAuthLinkManagement()),
+  );
+  return page;
 }

@@ -14,8 +14,8 @@ import { normalizeDoclingDocument } from "./response-normalizer.js";
 import {
   conversionResponseSchema,
   versionResponseSchema,
-} from "./response-schemas.js";
-import type { RawConversionError } from "./response-schemas.js";
+} from "./response-boundary.js";
+import type { RawConversionError } from "./response-boundary.js";
 
 export class DoclingConversionResponseError extends Error {
   public constructor(

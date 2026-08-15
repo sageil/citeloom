@@ -14,7 +14,7 @@ import {
 } from "../database/schema.js";
 import type { UpdateWorkspaceSecurityPolicyInput } from "./boundary.js";
 import type {
-  AuthenticatedPrincipal,
+  AuthorizationPrincipal,
   WorkspacePasswordPolicy,
   WorkspaceSecurityAdministrator,
   WorkspaceSecurityOverview,
@@ -85,20 +85,20 @@ export class WorkspaceSecurityPolicyStore {
   }
 
   public async readOverview(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
   ): Promise<WorkspaceSecurityOverview> {
     requireWorkspaceAdministrator(principal, principal.workspaceId);
     return this.readOverviewForWorkspace(principal.workspaceId);
   }
 
   public async readPasswordPolicy(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
   ): Promise<WorkspacePasswordPolicy> {
     return this.readEffectivePasswordPolicy(principal.userId);
   }
 
   public async update(
-    principal: AuthenticatedPrincipal,
+    principal: AuthorizationPrincipal,
     input: UpdateWorkspaceSecurityPolicyInput,
   ): Promise<WorkspaceSecurityOverview> {
     requireWorkspaceAdministrator(principal, principal.workspaceId);

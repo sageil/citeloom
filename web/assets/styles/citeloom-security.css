@@ -44,6 +44,41 @@
   font-size: 17px;
 }
 
+.security-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 34px;
+  margin-top: -14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.security-tabs button {
+  min-height: 42px;
+  padding: 0 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.security-tabs button:hover,
+.security-tabs button:focus-visible,
+.security-tabs button.active {
+  color: var(--cyan-bright);
+}
+
+.security-tabs button:focus-visible {
+  outline: 1px solid var(--cyan);
+  outline-offset: 4px;
+}
+
+.security-tabs button.active {
+  border-bottom-color: var(--cyan);
+}
+
 .security-admin-badge {
   display: inline-flex;
   align-items: center;
@@ -132,6 +167,457 @@
 .access-user-actions button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.security-mcp-key-drawer.access-add-drawer {
+  width: min(540px, 100%);
+  overflow-y: auto;
+}
+
+.security-mcp-key-drawer .security-mcp-key-form {
+  flex: 0 0 auto;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.security-mcp-key-scopes {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+}
+
+.security-mcp-key-scopes legend {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.security-mcp-key-scopes label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.security-mcp-key-scopes label > span {
+  display: grid;
+  gap: 4px;
+}
+
+.security-mcp-key-scopes input {
+  width: auto;
+  margin-top: 2px;
+}
+
+.security-mcp-key-create {
+  align-self: flex-end;
+}
+
+.security-mcp-key-secret {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 22px;
+  padding: 14px;
+  border: 1px solid rgba(0, 211, 238, 0.42);
+  border-radius: 8px;
+  background: rgba(0, 211, 238, 0.08);
+}
+
+.security-mcp-key-secret small,
+.security-mcp-key-list p,
+.security-mcp-key-list article small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.security-mcp-key-secret output {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  user-select: all;
+}
+
+.security-mcp-key-secret .button {
+  justify-self: end;
+}
+
+.security-mcp-key-list {
+  display: grid;
+  gap: 10px;
+  padding-top: 24px;
+}
+
+.security-mcp-key-list h3,
+.security-mcp-key-list p {
+  margin: 0;
+}
+
+.security-mcp-key-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.security-mcp-key-list article > span:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.security-mcp-key-status {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.security-oauth {
+  display: grid;
+  overflow: visible;
+  gap: 14px;
+}
+
+.security-oauth h3,
+.security-oauth p,
+.security-oauth dl,
+.security-oauth dd {
+  margin: 0;
+}
+
+.security-oauth-heading {
+  margin-bottom: -2px;
+}
+
+.security-oauth-loading {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.security-oauth-content {
+  display: grid;
+  gap: 28px;
+}
+
+.security-oauth-status-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.security-oauth-status-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+}
+
+.security-oauth-status-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+  color: var(--muted);
+}
+
+.security-oauth-status-icon.enabled {
+  border-color: var(--success);
+  color: var(--success);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.security-oauth-status-icon .citeloom-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.security-oauth-status-copy,
+.security-oauth-external,
+.security-oauth-local,
+.security-oauth-verification > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.security-oauth-status-copy strong {
+  font-size: 14px;
+}
+
+.security-oauth-status-copy small,
+.security-oauth-browser-note,
+.security-oauth-mappings header p,
+.security-oauth-external small,
+.security-oauth-local small,
+.security-oauth-verification small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.security-oauth-status-actions,
+.security-oauth-mapping-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.security-oauth-status-actions .button {
+  min-width: 112px;
+}
+
+.security-danger-button {
+  border: 1px solid var(--danger);
+  background: transparent;
+  color: var(--danger);
+}
+
+.security-danger-button:hover:not(:disabled) {
+  background: var(--danger-subtle);
+}
+
+.security-oauth-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0 18px 18px 68px;
+}
+
+.security-oauth-summary > div {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  padding: 12px 20px 0 0;
+  border-top: 1px solid var(--border);
+}
+
+.security-oauth-summary > div + div {
+  padding-left: 20px;
+  border-left: 1px solid var(--border);
+}
+
+.security-oauth-summary dt {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.security-oauth-summary dd {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.security-oauth-browser-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: -16px;
+}
+
+.security-oauth-browser-note .citeloom-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--cyan);
+}
+
+.security-oauth-mappings {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.security-oauth-mappings > header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.security-oauth-mappings > header > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.security-oauth-mappings h3 {
+  font-size: 15px;
+}
+
+.security-oauth-search {
+  position: relative;
+  display: block;
+  width: min(290px, 28vw);
+}
+
+.security-oauth-search input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 38px 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--control-background);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+}
+
+.security-oauth-search .citeloom-icon {
+  position: absolute;
+  top: 11px;
+  right: 11px;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+.security-oauth-add-button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--cyan-bright);
+}
+
+.security-oauth-table {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.security-oauth-table-heading,
+.security-oauth-table-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.1fr) minmax(180px, 1fr) 100px 160px 84px;
+  align-items: center;
+  gap: 18px;
+  padding: 0 14px;
+}
+
+.security-oauth-table-heading {
+  min-height: 36px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.security-oauth-table-row {
+  min-height: 62px;
+  border-top: 1px solid var(--border);
+}
+
+.security-oauth-table-row strong,
+.security-oauth-table-row time {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.security-oauth-table-row time {
+  color: var(--muted);
+}
+
+.security-oauth-table-row .button {
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+
+.security-oauth-empty {
+  padding: 22px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.security-oauth-drawer.access-add-drawer {
+  width: min(510px, 100%);
+  overflow: auto;
+  background: var(--background);
+}
+
+.security-oauth-link-drawer.access-add-drawer {
+  background: var(--background);
+}
+
+.security-oauth-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: -10px;
+  color: var(--warning);
+  font-size: 10px;
+}
+
+.security-oauth-warning .citeloom-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+}
+
+.security-oauth-scope-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: -12px;
+}
+
+.security-oauth-scope-preview code {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface-soft);
+  color: var(--cyan-bright);
+  font-size: 10px;
+}
+
+.security-oauth-verification {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.45);
+}
+
+.security-oauth-verification.verified {
+  border-color: rgba(52, 211, 153, 0.45);
+}
+
+.security-oauth-verification-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--cyan);
+}
+
+.security-oauth-verification.verified .security-oauth-verification-icon {
+  background: var(--success);
+  color: var(--background);
+}
+
+.security-oauth-verification strong {
+  font-size: 11px;
+}
+
+.security-oauth-verification .button {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.security-oauth-link-drawer form[x-show] {
+  min-height: 0;
 }
 
 .security-load-failed {
@@ -425,6 +911,30 @@
   font-size: 11px;
 }
 
+@media (max-width: 1080px) {
+  .security-oauth-mappings > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .security-oauth-mapping-actions {
+    justify-content: space-between;
+  }
+
+  .security-oauth-search {
+    width: min(420px, 100%);
+  }
+
+  .security-oauth-table {
+    overflow-x: auto;
+  }
+
+  .security-oauth-table-heading,
+  .security-oauth-table-row {
+    min-width: 850px;
+  }
+}
+
 @media (max-width: 760px) {
   .security-page {
     gap: 28px;
@@ -486,6 +996,51 @@
 
   .security-password-link {
     grid-template-columns: 1fr;
+  }
+
+  .security-tabs {
+    gap: 22px;
+    overflow-x: auto;
+  }
+
+  .security-tabs button {
+    flex: 0 0 auto;
+  }
+
+  .security-oauth-status-row,
+  .security-oauth-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .security-oauth-status-icon {
+    display: none;
+  }
+
+  .security-oauth-status-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .security-oauth-summary {
+    padding: 0 18px 18px;
+  }
+
+  .security-oauth-summary > div + div {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .security-oauth-mapping-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .security-oauth-search {
+    width: 100%;
+  }
+
+  .security-oauth-add-button {
+    justify-content: flex-start;
   }
 
   .security-password-link .button {

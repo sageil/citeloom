@@ -17,7 +17,6 @@ import {
   buildAppConfig,
   parseRuntimeSettings,
   type DatabaseConfig,
-  type DoclingServiceTopology,
   type RuntimeSettingsOverrides,
 } from "../config/index.js";
 import type { CiteLoomDatabase } from "../database/client.js";
@@ -58,12 +57,10 @@ export class WorkspaceSettingsRepository {
   public async read(
     workspaceId: string,
     databaseConfig: DatabaseConfig,
-    doclingTopology: DoclingServiceTopology,
   ): Promise<EffectiveWorkspaceSettings> {
     const [organizationSettings, row] = await Promise.all([
       new ApplicationSettingsRepository(this.database).read(
         databaseConfig,
-        doclingTopology,
       ),
       this.readStored(workspaceId),
     ]);
@@ -73,12 +70,10 @@ export class WorkspaceSettingsRepository {
   public async readConfig(
     workspaceId: string,
     databaseConfig: DatabaseConfig,
-    doclingTopology: DoclingServiceTopology,
   ): Promise<EffectiveWorkspaceSettings["config"]> {
     const [organizationSettings, row] = await Promise.all([
       new ApplicationSettingsRepository(this.database).readForRuntime(
         databaseConfig,
-        doclingTopology,
       ),
       this.readStored(workspaceId),
     ]);
@@ -89,7 +84,6 @@ export class WorkspaceSettingsRepository {
     workspaceId: string,
     updatedByUserId: string,
     databaseConfig: DatabaseConfig,
-    doclingTopology: DoclingServiceTopology,
     expectedVersion: number,
     runtimeChanges: NormalizedRuntimeSettingChange[],
     providerChanges: NormalizedProviderSettingsChange[],
@@ -98,7 +92,6 @@ export class WorkspaceSettingsRepository {
       const organizationSettings = await readApplicationSettingsForRuntime(
         transaction,
         databaseConfig,
-        doclingTopology,
         true,
       );
       const rows = await transaction
@@ -339,7 +332,6 @@ function buildEffectiveWorkspaceSettings(
       runtimeSettings,
       organization.config.settingsVersion,
       providerSettings,
-      organization.config.doclingServices,
       organization.config.sourceContent,
       organization.config.embeddingSpace.inputFormat,
     );

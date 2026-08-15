@@ -19,16 +19,19 @@ export type WorkspaceMembershipAccess = z.output<
   typeof workspaceMembershipAccessSchema
 >;
 
-export interface AuthenticatedPrincipal {
+export interface AuthorizationPrincipal {
   dataScope: "all" | "workspace";
   displayName: string;
   globalRole: GlobalRole;
   role: WorkspaceRole;
-  sessionTokenDigest: string;
   userId: string;
   username: string;
   workspaceId: string;
   workspaceName: string;
+}
+
+export interface AuthenticatedPrincipal extends AuthorizationPrincipal {
+  sessionTokenDigest: string;
 }
 
 export interface WorkspaceSummary {
@@ -44,6 +47,7 @@ export interface AuthenticationSession {
 }
 
 export interface OrganizationUserAccount {
+  currentWorkspaceAccess: boolean;
   displayName: string;
   globalRole: GlobalRole;
   state: UserAccountState;

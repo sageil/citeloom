@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { Agent, fetch } from "undici";
 import { z } from "zod";
 
-import { readWebConfig } from "../../src/api/config.js";
+import { readStartupConfig } from "../../src/config/index.js";
 import {
   readAdministratorBootstrapConfig,
 } from "../../src/database/administrator-bootstrap.js";
@@ -13,6 +13,7 @@ import {
   buildApplicationProbeHeaders,
   requireSuccessfulApplicationResponse,
 } from "./application-http-client.js";
+import { readEffectiveEvaluationConfig } from "./runtime-config.js";
 
 const createdConversationSchema = z.object({
   id: z.uuid(),
@@ -44,7 +45,9 @@ export async function main(
 ): Promise<void> {
   const question = arguments_.join(" ").trim() || defaultQuestion;
   const administrator = readAdministratorBootstrapConfig(process.env);
-  const origin = readWebConfig(process.env).publicOrigin;
+  const startup = readStartupConfig(process.env);
+  const effective = await readEffectiveEvaluationConfig(startup.database);
+  const origin = effective.config.web.publicOrigin;
   const dispatcher = new Agent({ connect: { rejectUnauthorized: false } });
   try {
     const sessionCookie = await authenticateApplicationProbe(

@@ -1,9 +1,9 @@
 import type { SourceContentConfig } from "../../config/index.js";
 import { FilesystemSourceContentBackend } from "./filesystem-source-content-backend.js";
 import { S3SourceContentBackend } from "./s3-source-content-backend.js";
-import type { SourceContentBackend } from "./source-content-backend-contract.js";
+import type { SourceContentBackend } from "./source-content-backend-model.js";
 
-export * from "./source-content-backend-contract.js";
+export * from "./source-content-backend-model.js";
 
 export function createSourceContentBackend(
   config: SourceContentConfig,

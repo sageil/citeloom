@@ -3,10 +3,7 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 
 import { ApplicationSettingsRepository } from "../../src/app/settings.js";
-import {
-  readDatabaseConfig,
-  readStartupConfig,
-} from "../../src/config/index.js";
+import { readDatabaseConfig } from "../../src/config/index.js";
 import {
   readSourceContentBootstrapConfig,
 } from "../../src/database/administrator-bootstrap.js";
@@ -26,52 +23,52 @@ const argumentsSchema = z.object({
   runId: z.uuid().optional(),
 }).strict();
 const benchmarkProcessEnvironmentSchema = z.object({
-  DOCLING_NUM_THREADS: z.coerce.number().int().positive().max(1_024).default(4),
-  DOCLING_SERVE_BATCH_POLLING_INTERVAL_SECONDS: z.coerce
+  DOCLING_BENCHMARK_NUM_THREADS: z.coerce.number().int().positive().max(1_024).default(4),
+  DOCLING_BENCHMARK_BATCH_POLLING_INTERVAL_SECONDS: z.coerce
     .number()
     .positive()
     .max(60)
     .default(0.5),
-  DOCLING_SERVE_ENG_LOC_NUM_WORKERS: z.coerce
+  DOCLING_BENCHMARK_LOCAL_WORKER_COUNT: z.coerce
     .number()
     .int()
     .positive()
     .max(64)
     .default(1),
-  DOCLING_SERVE_ENG_LOC_SHARE_MODELS: z.enum(["true", "false"]).default("true"),
-  DOCLING_SERVE_LAYOUT_BATCH_SIZE: z.coerce
+  DOCLING_BENCHMARK_LOCAL_MODELS_SHARED: z.enum(["true", "false"]).default("true"),
+  DOCLING_BENCHMARK_LAYOUT_BATCH_SIZE: z.coerce
     .number()
     .int()
     .positive()
     .max(1_024)
     .default(4),
-  DOCLING_SERVE_LOAD_MODELS_AT_BOOT: z.enum(["true", "false"]).default("true"),
-  DOCLING_SERVE_OCR_BATCH_SIZE: z.coerce
+  DOCLING_BENCHMARK_LOAD_MODELS_AT_BOOT: z.enum(["true", "false"]).default("true"),
+  DOCLING_BENCHMARK_OCR_BATCH_SIZE: z.coerce
     .number()
     .int()
     .positive()
     .max(1_024)
     .default(4),
-  DOCLING_SERVE_OPTIONS_CACHE_SIZE: z.coerce
+  DOCLING_BENCHMARK_OPTIONS_CACHE_SIZE: z.coerce
     .number()
     .int()
     .positive()
     .max(64)
     .default(2),
-  DOCLING_SERVE_QUEUE_MAX_SIZE: z.coerce
+  DOCLING_BENCHMARK_QUEUE_MAX_SIZE: z.coerce
     .number()
     .int()
     .positive()
     .max(10_000)
     .default(8),
-  DOCLING_SERVE_RESULT_REMOVAL_DELAY: z.coerce
+  DOCLING_BENCHMARK_RESULT_REMOVAL_DELAY_SECONDS: z.coerce
     .number()
     .int()
     .nonnegative()
     .max(86_400)
     .default(300),
-  DOCLING_SERVE_SINGLE_USE_RESULTS: z.enum(["true", "false"]).default("true"),
-  DOCLING_SERVE_TABLE_BATCH_SIZE: z.coerce
+  DOCLING_BENCHMARK_SINGLE_USE_RESULTS: z.enum(["true", "false"]).default("true"),
+  DOCLING_BENCHMARK_TABLE_BATCH_SIZE: z.coerce
     .number()
     .int()
     .positive()
@@ -82,17 +79,13 @@ const benchmarkProcessEnvironmentSchema = z.object({
 export async function main(arguments_: string[] = process.argv.slice(2)): Promise<void> {
   const options = parseDoclingBenchmarkArguments(arguments_);
   const databaseConfig = readDatabaseConfig(process.env);
-  const startup = readStartupConfig(process.env);
   const session = await openDatabase(databaseConfig);
   try {
     await initializeDoclingBenchmarkSchema(session.database);
     const settingsRepository = new ApplicationSettingsRepository(
       session.database,
     );
-    const effectiveSettings = await settingsRepository.read(
-      databaseConfig,
-      startup.doclingTopology,
-    );
+    const effectiveSettings = await settingsRepository.read(databaseConfig);
     const declaredProcess =
       readDoclingBenchmarkProcessConfiguration(process.env);
     const sourceContent =
@@ -133,23 +126,23 @@ export function readDoclingBenchmarkProcessConfiguration(
   }
   return {
     batchPollingIntervalSeconds:
-      result.data.DOCLING_SERVE_BATCH_POLLING_INTERVAL_SECONDS,
-    layoutBatchSize: result.data.DOCLING_SERVE_LAYOUT_BATCH_SIZE,
+      result.data.DOCLING_BENCHMARK_BATCH_POLLING_INTERVAL_SECONDS,
+    layoutBatchSize: result.data.DOCLING_BENCHMARK_LAYOUT_BATCH_SIZE,
     loadModelsAtBoot:
-      result.data.DOCLING_SERVE_LOAD_MODELS_AT_BOOT === "true",
+      result.data.DOCLING_BENCHMARK_LOAD_MODELS_AT_BOOT === "true",
     localModelsShared:
-      result.data.DOCLING_SERVE_ENG_LOC_SHARE_MODELS === "true",
-    localWorkerCount: result.data.DOCLING_SERVE_ENG_LOC_NUM_WORKERS,
-    numThreads: result.data.DOCLING_NUM_THREADS,
-    ocrBatchSize: result.data.DOCLING_SERVE_OCR_BATCH_SIZE,
-    optionsCacheSize: result.data.DOCLING_SERVE_OPTIONS_CACHE_SIZE,
+      result.data.DOCLING_BENCHMARK_LOCAL_MODELS_SHARED === "true",
+    localWorkerCount: result.data.DOCLING_BENCHMARK_LOCAL_WORKER_COUNT,
+    numThreads: result.data.DOCLING_BENCHMARK_NUM_THREADS,
+    ocrBatchSize: result.data.DOCLING_BENCHMARK_OCR_BATCH_SIZE,
+    optionsCacheSize: result.data.DOCLING_BENCHMARK_OPTIONS_CACHE_SIZE,
     profilePipelineTimings: true,
-    queueMaxSize: result.data.DOCLING_SERVE_QUEUE_MAX_SIZE,
+    queueMaxSize: result.data.DOCLING_BENCHMARK_QUEUE_MAX_SIZE,
     resultRemovalDelaySeconds:
-      result.data.DOCLING_SERVE_RESULT_REMOVAL_DELAY,
+      result.data.DOCLING_BENCHMARK_RESULT_REMOVAL_DELAY_SECONDS,
     singleUseResults:
-      result.data.DOCLING_SERVE_SINGLE_USE_RESULTS === "true",
-    tableBatchSize: result.data.DOCLING_SERVE_TABLE_BATCH_SIZE,
+      result.data.DOCLING_BENCHMARK_SINGLE_USE_RESULTS === "true",
+    tableBatchSize: result.data.DOCLING_BENCHMARK_TABLE_BATCH_SIZE,
   };
 }
 

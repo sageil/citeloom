@@ -2,12 +2,12 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { publishedAnswerDocumentSchema } from "../src/answers/published-schema.js";
+import { publishedAnswerDocumentSchema } from "../src/answers/published-model.js";
 import {
   formatDocumentLocationLabel,
   readAskEvidencePanelPlacement,
 } from "../web/assets/scripts/ask.js";
-import { readAnswerPresentation } from "../web/assets/scripts/ask-schema.js";
+import { readAnswerPresentation } from "../web/assets/scripts/ask-boundary.js";
 import {
   buildSourceLocation,
   buildTableStructure,

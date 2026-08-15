@@ -17,7 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { FilesystemSourceContentBackend } from "../src/documents/storage/filesystem-source-content-backend.js";
 import { S3SourceContentBackend } from "../src/documents/storage/s3-source-content-backend.js";
-import { SourceContentMissingError } from "../src/documents/storage/source-content-backend-contract.js";
+import { SourceContentMissingError } from "../src/documents/storage/source-content-backend-model.js";
 
 const s3Config = {
   bucket: "citeloom",

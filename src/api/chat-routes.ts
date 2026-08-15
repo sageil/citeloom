@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { pipeUIMessageStreamToResponse } from "ai";
 
-import type { AuthenticatedPrincipal } from "../auth/model.js";
+import type { AuthorizationPrincipal } from "../auth/model.js";
 import { requireRequestPrincipal } from "./authentication-routes.js";
 import {
   applyHighlightedDocumentHeaders,
@@ -18,7 +18,7 @@ import {
 import type { WebServices } from "./services.js";
 
 export interface ChatRouteOptions {
-  requestPrincipals: WeakMap<object, AuthenticatedPrincipal>;
+  requestPrincipals: WeakMap<object, AuthorizationPrincipal>;
   services: WebServices;
 }
 
