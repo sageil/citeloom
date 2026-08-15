@@ -50,14 +50,33 @@ function readHttpsUrl(value, label) {
   return url;
 }
 
-function readApplicationUrl(value, label) {
-  const url = new URL(readNonEmptyString(value, label));
-  if (url.origin !== window.location.origin) {
+function readApplicationUrl(value, label, applicationOrigin) {
+  const url = readHttpsUrl(value, label);
+  if (url.origin !== applicationOrigin) {
     throw new Error(
-      `This page uses ${window.location.origin}, but the configured ${label} uses ${url.origin}. Open ${url.origin} and try again.`,
+      `The configured ${label} must use the CiteLoom application origin.`,
     );
   }
   return url;
+}
+
+function readApplicationOrigin(oauthConfiguration) {
+  return new URL(oauthConfiguration.apiResource).origin;
+}
+
+function requireCurrentApplicationOrigin(oauthConfiguration) {
+  const applicationOrigin = readApplicationOrigin(oauthConfiguration);
+  if (applicationOrigin === window.location.origin) {
+    return;
+  }
+  throw new Error(
+    `This page uses ${window.location.origin}, but OAuth uses ${applicationOrigin}. Open ${applicationOrigin} and try again.`,
+  );
+}
+
+function buildCanonicalApplicationUrl(oauthConfiguration) {
+  const applicationOrigin = readApplicationOrigin(oauthConfiguration);
+  return new URL(readCurrentReturnPath(), applicationOrigin).toString();
 }
 
 function readOAuthBootstrap(value) {
@@ -82,11 +101,17 @@ function readOAuthClientConfiguration(value) {
   for (const scope of readArray(oauth.browserScopes, "browser OAuth scopes")) {
     browserScopes.push(readNonEmptyString(scope, "browser OAuth scope"));
   }
+  const apiResource = readHttpsUrl(
+    oauth.apiResource,
+    "API resource",
+  );
+  const applicationOrigin = apiResource.origin;
   return {
-    apiResource: readApplicationUrl(oauth.apiResource, "API resource").toString(),
+    apiResource: apiResource.toString(),
     browserCallbackUri: readApplicationUrl(
       oauth.browserCallbackUri,
       "browser callback URI",
+      applicationOrigin,
     ).toString(),
     browserClientId: readNonEmptyString(
       oauth.browserClientId,
@@ -95,6 +120,7 @@ function readOAuthClientConfiguration(value) {
     browserPostLogoutRedirectUri: readApplicationUrl(
       oauth.browserPostLogoutRedirectUri,
       "browser post-logout redirect URI",
+      applicationOrigin,
     ).toString(),
     browserScopes,
     issuer: readHttpsUrl(oauth.issuer, "OAuth issuer").toString(),
@@ -184,10 +210,7 @@ function readStoredTokens(storage) {
       refreshToken: value.refreshToken === null
         ? null
         : readNonEmptyString(value.refreshToken, "stored refresh token"),
-      resource: readApplicationUrl(
-        value.resource,
-        "stored OAuth resource",
-      ).toString(),
+      resource: readHttpsUrl(value.resource, "stored OAuth resource").toString(),
       issuer: readHttpsUrl(value.issuer, "stored OAuth issuer").toString(),
     };
   } catch {
@@ -535,6 +558,10 @@ export function createBrowserAuthentication({
       clearTokens();
       return;
     }
+    if (readApplicationOrigin(bootstrap.oauth) !== window.location.origin) {
+      window.location.replace(buildCanonicalApplicationUrl(bootstrap.oauth));
+      await new Promise(() => {});
+    }
     if (tokens !== null && !tokensMatchConfiguration(tokens, bootstrap.oauth)) {
       clearTokens();
     }
@@ -609,6 +636,7 @@ export function createBrowserAuthentication({
     beginActivation: async (configuration, expectedVersion) => {
       await readyPromise;
       const oauthConfiguration = readOAuthClientConfiguration(configuration);
+      requireCurrentApplicationOrigin(oauthConfiguration);
       return beginAuthorization(
         oauthConfiguration,
         "/overview",

@@ -181,10 +181,33 @@ describe("browser OAuth authentication", () => {
     });
     const configuration = buildOAuthBootstrap().oauth;
     configuration.apiResource = "https://other-citeloom.example/api";
+    configuration.browserCallbackUri = "https://other-citeloom.example/oauth/callback";
+    configuration.browserPostLogoutRedirectUri = "https://other-citeloom.example/login";
 
     await expect(authentication.beginActivation(configuration, 7)).rejects.toThrow(
-      "This page uses https://citeloom.example, but the configured API resource uses https://other-citeloom.example. Open https://other-citeloom.example and try again.",
+      "This page uses https://citeloom.example, but OAuth uses https://other-citeloom.example. Open https://other-citeloom.example and try again.",
     );
+  });
+
+  it("moves an active OAuth browser to the configured application origin", async () => {
+    const module = await import(
+      "../web/assets/scripts/browser-authentication.js?canonical-origin"
+    );
+    await module.browserAuthentication.ready();
+    window.location.href = "https://localhost:3443/index.html?view=overview";
+    window.location.origin = "https://localhost:3443";
+    window.location.pathname = "/index.html";
+    window.location.search = "?view=overview";
+    module.createBrowserAuthentication({
+      fetchImplementation: vi.fn(async () => jsonResponse(buildOAuthBootstrap())),
+      sessionStorage: createStorage(),
+    });
+
+    await vi.waitFor(() => {
+      expect(window.location.replace).toHaveBeenCalledWith(
+        "https://citeloom.example/index.html?view=overview",
+      );
+    });
   });
 
   it("rejects an expired OAuth callback transaction", async () => {
