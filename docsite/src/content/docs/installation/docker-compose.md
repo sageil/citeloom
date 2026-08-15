@@ -1,16 +1,15 @@
 ---
-title: Required Docker Compose stack
+title: Minimum Installation
 description: Install the smallest complete CiteLoom stack from published container images.
 ---
 
-This guide installs only the components required by the supplied CiteLoom deployment.
-SeaweedFS and Logto are not part of this procedure.
+This guide installs the base CiteLoom services from published container images.
+SeaweedFS and an external authorization server are not part of this procedure.
 
 ## Prerequisites
 
 - Docker Engine or Docker Desktop with the Docker Compose plugin.
-- Persistent host storage for PostgreSQL and source documents.
-- A separately operated model endpoint that CiteLoom can reach after startup.
+- Local or remote LLM provider.
 
 ## 1. Prepare the repository
 
@@ -58,7 +57,7 @@ When Compose reports the services healthy, open `https://localhost:3443` and sig
 
 ## 4. Trust local HTTPS
 
-The supplied Caddy service creates a private certificate authority for local HTTPS.
+The included Caddy service creates a private certificate authority for local HTTPS.
 Its public root certificate is stored at `data/caddy/caddy/pki/authorities/local/root.crt`.
 Keep the rest of `data/caddy` private because it contains the local certificate-authority keys.
 
@@ -82,7 +81,7 @@ docker compose --env-file .env -f compose.dockerhub.yml ps
 Then verify these user-visible outcomes:
 
 - The administrator can sign in over HTTPS.
-- Settings can verify each required provider and exact model identifier.
+- Settings can verify each configured provider and exact model identifier.
 - A representative document reaches Ready state.
 - Find Sources returns evidence from that document.
 - Ask returns an answer whose citations open the expected evidence.
