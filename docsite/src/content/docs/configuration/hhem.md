@@ -24,7 +24,7 @@ Changing that host port does not change application behavior inside HHEM.
 
 ## Verify readiness
 
-The supplied Compose health check requires the service to report Ready with the pinned model and model revision.
+The Compose health check passes when the service reports Ready with the pinned model and model revision.
 
 ```bash
 docker compose ps hhem

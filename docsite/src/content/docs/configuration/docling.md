@@ -4,7 +4,7 @@ description: Configure document conversion, PDF processing, capacity, additional
 ---
 
 Docling converts source files into structured content that CiteLoom can index and cite.
-The supplied Docling service stages recoverable PDF checkpoints in its own persistent directory; it does not mount CiteLoom's active source-content store.
+The included Docling service stages recoverable PDF checkpoints in its own persistent directory; it does not mount CiteLoom's active source-content store.
 
 ## Configure in Settings > Docling
 
@@ -21,7 +21,7 @@ Restart each Docling service after changing those process settings.
 ## Standard and VLM modes
 
 Use Standard mode for Docling layout, OCR, and table extraction.
-Eligible PDFs can resume from completed page ranges with the supplied service.
+Eligible PDFs can resume from completed page ranges with the included service.
 
 Use VLM mode for PDFs that need visual interpretation by an image-capable OpenAI-compatible endpoint.
 VLM processing renders one page at a time in memory and sends it with the configured instructions.

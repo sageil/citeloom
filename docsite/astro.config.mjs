@@ -8,7 +8,7 @@ export default defineConfig({
     starlight({
       title: "CiteLoom",
       description: "Install, configure, integrate, and operate CiteLoom.",
-      customCss: ["./src/styles/custom.css"],
+      customCss: ["./src/styles/citeloom-dark.css"],
       editLink: {
         baseUrl: "https://github.com/sageil/citeloom/edit/main/docsite/",
       },
@@ -32,19 +32,26 @@ export default defineConfig({
           ],
         },
         {
+          label: "Features",
+          items: [
+            { label: "Ask", slug: "features/ask" },
+            { label: "Chat", slug: "features/chat" },
+            { label: "Find", slug: "features/find" },
+          ],
+        },
+        {
           label: "Install",
           items: [
-            { label: "Required Docker Compose stack", slug: "installation/docker-compose" },
-            { label: "Component map", slug: "installation/components" },
-            { label: "SeaweedFS object storage", slug: "installation/seaweedfs" },
-            { label: "OAuth with Logto", slug: "installation/oauth-logto" },
+            { label: "Minimum Installation", slug: "installation/docker-compose" },
+            { label: "Use object storage", slug: "installation/seaweedfs" },
+            { label: "Use OAuth", slug: "installation/oauth" },
           ],
         },
         {
           label: "Configure",
           items: [
-            { label: "Configuration overview", slug: "configuration" },
-            { label: "Local, remote, or hybrid models", slug: "configuration/providers" },
+            { label: "Overview", slug: "configuration" },
+            { label: "Models", slug: "configuration/providers" },
             { label: "Docling", slug: "configuration/docling" },
             { label: "HHEM", slug: "configuration/hhem" },
             { label: "MCP clients", slug: "configuration/mcp" },
@@ -53,7 +60,17 @@ export default defineConfig({
         {
           label: "Complete reference",
           collapsed: true,
-          items: [{ autogenerate: { directory: "reference" } }],
+          items: [
+            { label: "Architecture", slug: "reference/architecture" },
+            { label: "Features", slug: "reference/features" },
+            { label: "Security", slug: "reference/oauth" },
+            { label: "Configuration", slug: "reference/configuration" },
+            { label: "Deployment", slug: "reference/deployment" },
+            { label: "Evaluation", slug: "reference/evaluation" },
+            { label: "Operations", slug: "reference/operations" },
+            { label: "pnpm commands", slug: "reference/commands" },
+            { label: "Release notes", slug: "reference/releases" },
+          ],
         },
       ],
     }),
