@@ -330,7 +330,8 @@ Opening an existing turn reads the saved answer, citations, run settings, and re
 ## MCP task retention
 
 The application-wide Task retention setting controls how many days CiteLoom keeps asynchronous MCP task requests and results.
-New tasks capture the configured window when they are created and publish the corresponding finite `ttlMs` value to the MCP client.
+New tasks capture the configured window when they are created.
+Answer tools publish the finite `expiresAt` time.
 Changing the setting affects new tasks only.
 Active tasks are retained until they reach a terminal state, and expired completed, failed, or cancelled tasks are removed in bounded background batches.
 Saved research threads and citations have their own lifecycle and are not removed by MCP task cleanup.

@@ -96,23 +96,26 @@ CiteLoom does not link a user with these mutable values:
 
 CiteLoom does not use an external-to-local workspace mapping in the active authorization path.
 
-### Select a workspace
+### Resolve workspace access
 
-| Client | User identity | Workspace selector |
+| Client | User identity | Workspace access |
 | --- | --- | --- |
 | Browser with OAuth | Linked CiteLoom user | `X-CiteLoom-Workspace-Id` with the ID from the identity context |
-| MCP with OAuth | Linked CiteLoom user | `X-CiteLoom-Workspace-Name` with the visible workspace name |
-| MCP with an API key | CiteLoom user who owns the key | `X-CiteLoom-Workspace-Name` with the visible workspace name |
+| MCP with OAuth | Linked CiteLoom user | All active workspaces where the user has an enabled membership |
+| MCP with an API key | CiteLoom user who owns the key | All active workspaces where the owner has an enabled membership |
 
-The workspace header selects a workspace.
-It does not prove access.
+The MCP client uses one `${publicOrigin}/mcp` connection.
+It does not send a workspace selector.
+Search performs one retrieval over the combined document set available through all accessible workspaces.
+Ask performs one retrieval and creates one answer over the same combined document set.
+The document set includes shared libraries granted to at least one accessible workspace.
 
 For each protected request, CiteLoom checks:
 
 - The linked user or API-key owner is active.
-- The selected workspace is active.
-- The user has an enabled membership in the workspace.
-- The user has the applicable local authorization.
+- Each returned workspace is active.
+- The user has an enabled membership in each returned workspace.
+- The user has the applicable local authorization in each returned workspace.
 
 ## Browser flow
 
@@ -171,10 +174,10 @@ The endpoint rejects legacy initialization.
 
 ### Authentication choices
 
-| Method | Browser redirect | OAuth client registration | Workspace header |
+| Method | Browser redirect | OAuth client registration | Server URL |
 | --- | --- | --- | --- |
-| OAuth MCP bearer token | Yes | Yes | `X-CiteLoom-Workspace-Name` |
-| CiteLoom MCP API key | No | No | `X-CiteLoom-Workspace-Name` |
+| OAuth MCP bearer token | Yes | Yes | `${publicOrigin}/mcp` |
+| CiteLoom MCP API key | No | No | `${publicOrigin}/mcp` |
 
 CiteLoom validates OAuth tokens against the `${publicOrigin}/mcp` audience.
 Both methods create the same type of local principal and use the same retrieval services as the browser API.
@@ -183,7 +186,7 @@ MCP API-key authentication does not change the browser authentication mode.
 ### Manage MCP API keys
 
 - A global administrator can generate keys for any active user.
-- A workspace administrator can generate keys for active users in the selected workspace.
+- A workspace administrator can generate keys for active users in the workspace that the administrator manages.
 - The selected user owns the key.
 - CiteLoom records the administrator who generated or revoked the key for audit.
 - CiteLoom shows the cleartext key one time.
@@ -193,8 +196,8 @@ For each API-key request, CiteLoom checks:
 
 - The key is not expired or revoked.
 - The owner is active.
-- The selected workspace is active.
-- The owner has an enabled workspace membership.
+- Each returned workspace is active.
+- The owner has an enabled membership in each returned workspace.
 - The key grants the requested scope.
 
 ### Discover OAuth resources
@@ -209,10 +212,26 @@ CiteLoom publishes protected-resource metadata at these paths:
 | Scope | Access |
 | --- | --- |
 | `citeloom.search` | The read-only `citeloom.search_sources` tool |
-| `citeloom.answer` | The asynchronous `citeloom.ask_documents` tool, task methods, and saved thread and citation resources |
+| `citeloom.answer` | The `citeloom.ask_documents`, `citeloom.get_answer`, and `citeloom.cancel_answer` tools and saved thread and citation resources |
 
-CiteLoom filters tool, prompt, resource, and extension discovery by the scopes on the OAuth token or API key.
-It advertises the `io.modelcontextprotocol/tasks` extension only when the credential grants `citeloom.answer`.
+CiteLoom filters tool, prompt, and resource discovery by the scopes on the OAuth token or API key.
+
+### Answer workflow
+
+`citeloom.search_sources` performs one search over the combined authorized document set and returns one result.
+`citeloom.ask_documents` starts one durable answer task over the combined authorized document set and returns a `taskId`, `pollIntervalMs`, and `expiresAt`.
+The client waits for `pollIntervalMs`, then calls `citeloom.get_answer` until the status is `completed`, `failed`, or `cancelled`.
+A completed result contains one cited answer.
+`citeloom.cancel_answer` asks CiteLoom to stop active work.
+The client calls `citeloom.get_answer` after cancellation to confirm the final state.
+
+CiteLoom does not send a `requestState` object to the client.
+It stores answer-task state in PostgreSQL and returns an opaque `taskId`.
+The answer tools do not return `input_required` or pause for more client input.
+The client uses the `taskId` to read the stored state and final answer.
+The task owner includes the authenticated issuer, subject, client ID, and CiteLoom user.
+CiteLoom checks that owner before it reads or cancels a task.
+CiteLoom does not return a completed combined answer after the user loses access to one of the workspaces used for that answer.
 
 ## Host recovery
 
