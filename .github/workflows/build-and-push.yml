@@ -336,8 +336,8 @@ jobs:
 
           release_tag="v${VERSION}"
           tag_sha="$(
-            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${release_tag}" \
-              --jq '.object.sha' 2>/dev/null || true
+            gh api "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/${release_tag}" \
+              --jq ".[] | select(.ref == \"refs/tags/${release_tag}\") | .object.sha"
           )"
 
           if [ -n "$tag_sha" ] && [ "$tag_sha" != "$GITHUB_SHA" ]; then
