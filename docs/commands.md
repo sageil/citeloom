@@ -38,6 +38,17 @@ Run `pnpm dev --help` for the complete command syntax.
 
 Use [Operations](operations.md) for the document-heading backfill and embedding-space retention procedures.
 
+## MCP development
+
+| Script | Purpose |
+| --- | --- |
+| `mcp:client` | Test OAuth or API-key access, Search, asynchronous Ask polling, and linked resources. |
+| `mcp:inspect` | Open MCP Inspector `2.2.0` in its interactive terminal interface with `mcp-client/inspector.json`. |
+| `mcp:inspect:web` | Open MCP Inspector `2.2.0` in its browser interface with `mcp-client/inspector.json`. |
+| `mcp:inspect:tools` | Connect to the configured `citeloom` server and list its tools. |
+
+Use the [MCP client guide](https://sammyageil.com/citeloom/configuration/mcp/) for the complete Inspector, OAuth, API-key, Search, Ask, prompt, and resource walkthrough.
+
 ## Build and code quality
 
 | Script | Purpose |
