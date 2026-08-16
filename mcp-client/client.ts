@@ -7,6 +7,7 @@ import {
   UnauthorizedError,
 } from "@modelcontextprotocol/client";
 
+import { applicationMetadata } from "../src/app/application-metadata.js";
 import { sourceDiscoveryResponseSchema } from "../src/retrieval/discovery/boundary.js";
 import {
   MCP_ANSWER_CANCEL_TOOL,
@@ -32,7 +33,7 @@ import { configureTlsTrust } from "./tls-trust.js";
 
 const MCP_SMOKE_CLIENT_INFO = {
   name: "citeloom-mcp-smoke-client",
-  version: "1.1.0",
+  version: applicationMetadata.version,
 } as const;
 
 export interface McpSmokeReport {

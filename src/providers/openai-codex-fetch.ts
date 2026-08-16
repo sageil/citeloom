@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { applicationMetadata } from "../app/application-metadata.js";
 import type { CiteLoomDatabase } from "../database/client.js";
 import { OpenAICodexCredentialStore } from "./openai-codex-credentials.js";
 
@@ -175,5 +176,7 @@ function buildCredentialStoreOptions(
 
 function normalizeRelease(value: string | undefined): string {
   const normalized = value?.trim();
-  return normalized === undefined || normalized === "" ? "1.1.0" : normalized;
+  return normalized === undefined || normalized === ""
+    ? applicationMetadata.version
+    : normalized;
 }
