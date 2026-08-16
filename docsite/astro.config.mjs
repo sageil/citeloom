@@ -13,7 +13,13 @@ export default defineConfig({
     starlight({
       title: "CiteLoom",
       description: "Install, configure, integrate, and operate CiteLoom.",
-      customCss: ["./src/styles/citeloom-dark.css"],
+      components: {
+        Head: "./src/components/Head.astro",
+      },
+      customCss: [
+        "./src/styles/citeloom-dark.css",
+        "./src/styles/mermaid-controls.css",
+      ],
       editLink: {
         baseUrl: "https://github.com/sageil/citeloom/edit/main/docsite/",
       },
