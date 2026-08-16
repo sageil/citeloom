@@ -10,7 +10,7 @@ on:
       dry_run:
         description: "Validate the release configuration without publishing images"
         required: false
-        default: true
+        default: false
         type: boolean
 
 permissions:
@@ -31,6 +31,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Validate release version synchronization
+        run: node scripts/release-version.mjs --check
 
       - name: Resolve CiteLoom version
         id: version
@@ -59,11 +62,9 @@ jobs:
             exit 1
           fi
 
-          compose_default_references="$(grep --only-matching --extended-regexp 'CITELOOM_(IMAGE_TAG|RELEASE):-[0-9]+\.[0-9]+\.[0-9]+' compose.dockerhub.yml || true)"
-          compose_default_versions="$(printf '%s\n' "$compose_default_references" | sed 's/.*:-//' | sort --unique)"
-          if [ "$compose_default_versions" != "$normalized" ]; then
-            echo "compose.dockerhub.yml release defaults must all equal ${normalized}." >&2
-            echo "Found: ${compose_default_versions:-none}" >&2
+          release_tag="v${normalized}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${release_tag}" >/dev/null 2>&1; then
+            echo "Git tag ${release_tag} already exists and will not be overwritten." >&2
             exit 1
           fi
 
@@ -97,8 +98,10 @@ jobs:
             echo "- \`sageil/citeloom-postgres:${VERSION}\`"
             echo "- \`sageil/citeloom-docling:${VERSION}\`"
             echo "- \`sageil/citeloom-hhem:${VERSION}\`"
+            echo "- GitHub Release \`v${VERSION}\`"
             echo
             echo "After all four tags pass verification, the workflow will point each repository's \`latest\` tag to the same image."
+            echo "The Git tag and GitHub Release will be created only after image publication succeeds."
           } >> "$GITHUB_STEP_SUMMARY"
 
   preflight:
@@ -308,4 +311,75 @@ jobs:
             echo "- \`sageil/citeloom-hhem:${VERSION}\`"
             echo
             echo "Each repository's \`latest\` tag now points to the same verified image as its \`${VERSION}\` tag."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Publish GitHub release
+    if: ${{ !inputs.dry_run }}
+    needs:
+      - prepare
+      - verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+      - name: Create and verify GitHub release
+        shell: bash
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          release_tag="v${VERSION}"
+          tag_sha="$(
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${release_tag}" \
+              --jq '.object.sha' 2>/dev/null || true
+          )"
+
+          if [ -n "$tag_sha" ] && [ "$tag_sha" != "$GITHUB_SHA" ]; then
+            echo "Git tag ${release_tag} points to ${tag_sha}, not ${GITHUB_SHA}." >&2
+            exit 1
+          fi
+
+          if ! gh release view "$release_tag" >/dev/null 2>&1; then
+            if [ -n "$tag_sha" ]; then
+              gh release create "$release_tag" \
+                --generate-notes \
+                --latest \
+                --title "CiteLoom ${VERSION}" \
+                --verify-tag
+            else
+              gh release create "$release_tag" \
+                --generate-notes \
+                --latest \
+                --target "$GITHUB_SHA" \
+                --title "CiteLoom ${VERSION}"
+            fi
+          fi
+
+          tag_sha="$(
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${release_tag}" \
+              --jq '.object.sha'
+          )"
+          if [ "$tag_sha" != "$GITHUB_SHA" ]; then
+            echo "Git tag ${release_tag} does not point to ${GITHUB_SHA}." >&2
+            exit 1
+          fi
+
+          is_draft="$(gh release view "$release_tag" --json isDraft --jq '.isDraft')"
+          is_prerelease="$(gh release view "$release_tag" --json isPrerelease --jq '.isPrerelease')"
+          release_url="$(gh release view "$release_tag" --json url --jq '.url')"
+          if [ "$is_draft" != "false" ] || [ "$is_prerelease" != "false" ]; then
+            echo "GitHub Release ${release_tag} is not a published stable release." >&2
+            exit 1
+          fi
+
+          {
+            echo "## GitHub Release published"
+            echo
+            echo "Published [${release_tag}](${release_url}) from commit \`${GITHUB_SHA}\`."
           } >> "$GITHUB_STEP_SUMMARY"

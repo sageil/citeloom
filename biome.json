@@ -10,6 +10,7 @@
       "*.ts",
       "mcp-client/**/*.ts",
       "src/**/*.ts",
+      "scripts/**/*.mjs",
       "scripts/**/*.ts",
       "web/assets/scripts/**/*.js"
     ]

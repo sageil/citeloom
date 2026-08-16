@@ -24,8 +24,8 @@ Use the same semantic version for the images and application release.
 ```dotenv
 CITELOOM_ADMIN_USERNAME=Mayhem
 CITELOOM_ADMIN_PASSWORD='replace-with-a-private-passphrase'
-CITELOOM_IMAGE_TAG=1.1.0
-CITELOOM_RELEASE=1.1.0
+CITELOOM_IMAGE_TAG=1.1.1
+CITELOOM_RELEASE=1.1.1
 ```
 
 Pull and start the CiteLoom stack.
@@ -223,22 +223,26 @@ The workflow uses QEMU and Buildx to publish multi-platform images after validat
 Before the first publication:
 
 - Configure the `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` GitHub Actions repository secrets.
-- Set the same semantic version in `package.json` and every `CITELOOM_IMAGE_TAG` and `CITELOOM_RELEASE` default in `compose.dockerhub.yml`.
+- Run `pnpm release:version <version>` to update `package.json` and all derived release values.
+- Run `pnpm release:check` to confirm that all derived release values match `package.json`.
 - Commit the complete release source to the default branch.
 
 Run the workflow with `dry_run` enabled first.
-The dry run validates the source branch, semantic version, Compose release defaults, and Dockerfile paths without logging into Docker Hub, building images, or publishing tags.
+The dry run validates the source branch, synchronized semantic version, unused Git tag, and Dockerfile paths without logging into Docker Hub, building images, or publishing tags.
 
 For publication, disable `dry_run`.
 The workflow confirms that the requested semantic-version tags are unpublished, then builds and pushes each exact version tag for `linux/amd64` and `linux/arm64`.
 After every remote manifest confirms both required platforms, the workflow points each repository's `latest` tag to the same verified image without rebuilding it.
-Publication completes only after every `latest` tag resolves to the same image digest as its exact version tag.
+The workflow then creates the `v<version>` Git tag at the workflow commit and publishes a stable GitHub Release with generated release notes.
+Publication completes only after every `latest` tag resolves to the same image digest as its exact version tag and the GitHub Release is verified.
 
 Releases use exact semantic-version tags, with the same `CITELOOM_IMAGE_TAG` applied to all four images.
 The workflow treats those version tags as immutable and prevents them from being overwritten.
 The `latest` tags are mutable pointers for users who want the newest verified release, while the supplied Compose configuration remains pinned to an exact version by default.
 If a run stops after publishing only some version tags, fix the cause and use GitHub's **Re-run failed jobs** action on the original run so every retried build uses the original commit.
 If a run stops while updating `latest`, use the same action to safely finish pointing all four repositories to the verified release.
+If the release job stops after creating its Git tag or GitHub Release, use the same action to verify and finish the release from the original commit.
+The release job accepts an existing release only when its tag points to that commit.
 Existing exact-version deployments remain unchanged during a partial publication.
 
 ## Configure a production proxy

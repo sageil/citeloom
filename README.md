@@ -2,7 +2,7 @@
 
 > Private documents, woven into cited answers.
 
-![Version](https://img.shields.io/badge/version-1.1.0-0ea5e9)
+[![GitHub Release](https://img.shields.io/github/v/release/sageil/citeloom?sort=semver)](https://github.com/sageil/citeloom/releases/latest)
 ![Node.js](https://img.shields.io/badge/node-26.5.0-339933)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
