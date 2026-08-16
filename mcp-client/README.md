@@ -35,17 +35,22 @@ Open the Inspector in a browser:
 pnpm mcp:inspect:web
 ```
 
-For API-key access, select `citeloom-api-key` in the browser interface.
-If the same CiteLoom URL has a stored OAuth token, start the API-key session with a separate credential store:
+For API-key access, create an owner-only temporary configuration outside the repository:
 
 ```sh
-MCP_STORAGE_DIR=/tmp/citeloom-mcp-inspector-api-key pnpm mcp:inspect:web
+umask 077
+cp mcp-client/inspector.json /tmp/citeloom-inspector-api-key.json
+chmod 600 /tmp/citeloom-inspector-api-key.json
 ```
 
-Open the server settings and add an `Authorization` header with the value `Bearer YOUR_CITELOOM_MCP_KEY`.
-Do not put the API key in `mcp-client/inspector.json`.
+Add `"headers": { "Authorization": "Bearer YOUR_CITELOOM_MCP_KEY" }` to the `citeloom-api-key` entry in the temporary file.
+Start the session with `MCP_STORAGE_DIR=/tmp/citeloom-mcp-inspector-api-key pnpm exec mcp-inspector --web --config /tmp/citeloom-inspector-api-key.json`.
+Inspector `2.2.0` does not provide a header editor for a read-only `--config` session.
+Delete the temporary file when the session ends.
+Do not put the API key in the checked-in `mcp-client/inspector.json` file.
 
 The Inspector stores OAuth tokens under `~/.mcp-inspector/storage/`.
+The complete browser walkthrough is in the [MCP client guide](../docsite/src/content/docs/configuration/mcp.md#test-with-mcp-inspector).
 
 The client stores OAuth tokens only in process memory and starts an HTTP callback listener only on the configured loopback address.
 Publicly trusted HTTPS certificates require no TLS option.

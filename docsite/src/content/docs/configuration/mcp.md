@@ -149,6 +149,14 @@ CiteLoom resolves the token subject to an active local user and all active works
 The repository includes MCP Inspector `2.2.0`.
 Use its browser interface to inspect OAuth, tools, prompts, resources, requests, and responses.
 
+The repository provides these commands:
+
+| Command | Purpose |
+| --- | --- |
+| `pnpm mcp:inspect:tools` | Connect to the configured `citeloom` server and list its tools. |
+| `pnpm mcp:inspect` | Open the interactive terminal interface. |
+| `pnpm mcp:inspect:web` | Open the browser interface used in this walkthrough. |
+
 ### 1. Register the callback
 
 Add this exact redirect URI to the public Native application in your authorization server:
@@ -182,22 +190,8 @@ Set the server URL and public client ID for your installation:
 ```
 
 Keep `protocolEra` set to `modern` because CiteLoom accepts MCP `2026-07-28`.
-
-To test an MCP API key, add a second server entry without a credential:
-
-```json
-{
-  "mcpServers": {
-    "citeloom-api-key": {
-      "type": "http",
-      "url": "https://citeloom.example/mcp",
-      "protocolEra": "modern"
-    }
-  }
-}
-```
-
-Do not put an API key in this file.
+The checked-in `citeloom-api-key` entry has no credential.
+Do not put an API key in the checked-in file.
 
 ### 3. Start the browser interface
 
@@ -227,11 +221,15 @@ Do not disable certificate or host-name validation.
 ### 4. Connect through OAuth
 
 1. Select `citeloom` from the configured server list.
-2. Select **Connect**.
+2. Turn on the `citeloom` connection switch.
 3. Sign in through the authorization page that the Inspector opens.
 4. Approve the CiteLoom MCP scopes.
 5. Return to the Inspector.
 6. Confirm that the connection state is **Connected**.
+
+The API-key example below shows the same connected state with Streamable HTTP, MCP `2026-07-28`, and the configured `/mcp` URL:
+
+![MCP Inspector shows the CiteLoom API-key server connected through Streamable HTTP with MCP 2026-07-28.](/citeloom/images/mcp-inspector-connected.png)
 
 Open **Tools**.
 The complete scope set shows these tools:
@@ -241,64 +239,111 @@ The complete scope set shows these tools:
 - `citeloom.get_answer`
 - `citeloom.cancel_answer`
 
+![MCP Inspector lists the four CiteLoom search, ask, answer-status, and cancellation tools.](/citeloom/images/mcp-inspector-tools.png)
+
 ### Use an MCP API key
 
 Use these steps instead of the OAuth connection steps when you want to test an API key:
 
 1. Stop an Inspector session that used OAuth for the same CiteLoom URL.
-2. Start an API-key session with a separate credential store:
+2. Create an owner-only temporary configuration outside the repository:
 
 ```sh
-MCP_STORAGE_DIR=/tmp/citeloom-mcp-inspector-api-key pnpm mcp:inspect:web
+umask 077
+cp mcp-client/inspector.json /tmp/citeloom-inspector-api-key.json
+chmod 600 /tmp/citeloom-inspector-api-key.json
 ```
 
-3. Select `citeloom-api-key` from the configured server list.
-4. Open the server settings.
-5. Add a header named `Authorization`.
-6. Set its value to `Bearer YOUR_CITELOOM_MCP_KEY`.
-7. Select **Connect**.
-8. Confirm that the connection state is **Connected**.
-
-The checked-in configuration is read-only during the Inspector session.
-The separate credential store prevents Inspector from adding a saved OAuth token to the API-key request.
-Do not export or save a configuration that contains the API key.
-Remove the header from the browser interface when the test is complete.
-
-### 5. Test Search
-
-Select `citeloom.search_sources` and enter these values:
+3. Open `/tmp/citeloom-inspector-api-key.json` in your editor.
+4. Add the `headers` object to the `citeloom-api-key` entry:
 
 ```json
 {
-  "includeRelated": false,
-  "keywordPage": 1,
-  "query": "retention policy",
-  "scope": {
-    "kind": "all"
+  "mcpServers": {
+    "citeloom-api-key": {
+      "type": "http",
+      "url": "https://citeloom.example/mcp",
+      "protocolEra": "modern",
+      "headers": {
+        "Authorization": "Bearer YOUR_CITELOOM_MCP_KEY"
+      }
+    }
   }
 }
 ```
 
-Select **Run**.
-Confirm that `structuredContent` contains one result over the complete authorized document set.
-Confirm that each result includes its source file and evidence passage.
+5. Start the API-key session with the temporary configuration and a separate credential store:
 
-### 6. Test Ask
-
-Select `citeloom.ask_documents` and enter these values:
-
-```json
-{
-  "question": "What retention policy do these documents define?",
-  "scope": {
-    "kind": "all"
-  },
-  "threadTitle": "MCP Inspector test"
-}
+```sh
+MCP_STORAGE_DIR=/tmp/citeloom-mcp-inspector-api-key \
+  pnpm exec mcp-inspector --web \
+  --config /tmp/citeloom-inspector-api-key.json
 ```
 
-Select **Run** and copy the returned `taskId`.
-The first result normally has the status `working`.
+6. Add `NODE_EXTRA_CA_CERTS=/absolute/path/to/root.crt` before the command when CiteLoom uses a private certificate authority.
+7. Turn on the `citeloom-api-key` connection switch.
+8. Confirm that the connection state is **Connected**.
+
+Inspector `2.2.0` does not provide a header editor for a server loaded with `--config` because that session is read-only.
+The temporary file keeps the cleartext key out of the repository, shell history, and process arguments.
+Do not export this temporary configuration.
+
+### 5. Inspect prompts and resources
+
+Open **Prompts** to see these prompts:
+
+- **Search CiteLoom workspaces** for `citeloom.search_workspace`.
+- **Answer with CiteLoom citations** for `citeloom.answer_with_citations`.
+
+Select **Search CiteLoom workspaces**, enter `veterinary` in **query**, and select **Get Prompt**.
+The result is one user message that tells an MCP host how to use `citeloom.search_sources` and preserve evidence metadata.
+The prompt does not call a tool or a model by itself.
+An MCP host can send this returned message to its model as part of the model conversation.
+
+![MCP Inspector shows the resolved CiteLoom Search prompt as one user message for the MCP host.](/citeloom/images/mcp-inspector-prompt.png)
+
+Open **Resources** to see the workspace-context URI and the research-thread and citation-evidence templates:
+
+![MCP Inspector lists the CiteLoom workspace-context URI and two saved-research resource templates.](/citeloom/images/mcp-inspector-resources.png)
+
+Select **CiteLoom workspace access** to read `citeloom://workspace/context`.
+Confirm that the result identifies the expected user and all available workspaces.
+The research templates can read an existing workspace-scoped research record when you already have its workspace and record identifiers.
+
+### 6. Test Search
+
+Open **Tools**, select `citeloom.search_sources`, and enter these field values:
+
+| Field | Value |
+| --- | --- |
+| `includeRelated` | Selected |
+| `keywordPage` | `1` |
+| `query` | `veterinary` |
+| `scope` | `{"kind":"all"}` |
+
+Inspector `2.2.0` omits an unchecked required Boolean value.
+Keep `includeRelated` selected so CiteLoom receives the required field.
+
+Select **Execute Tool**.
+Confirm that the result contains exact and related matches over the complete authorized document set.
+Confirm that each result includes its source file and evidence passage.
+
+![MCP Inspector shows a successful CiteLoom Search result with document identifiers, evidence excerpts, source metadata, and match types.](/citeloom/images/mcp-inspector-search-result.png)
+
+### 7. Test Ask and inspect the completed answer
+
+Select `citeloom.ask_documents` and enter these field values:
+
+| Field | Value |
+| --- | --- |
+| `question` | `What safety controls are recommended for handling cytotoxic chemotherapy drugs in veterinary practice?` |
+| `scope` | `{"kind":"all"}` |
+| `threadTitle` | `MCP Inspector documentation walkthrough` |
+
+Select **Execute Tool** and copy the returned `taskId`.
+The first result has the status `working` and provides `pollIntervalMs`:
+
+![MCP Inspector shows a new CiteLoom answer task with working status, a polling interval, and an opaque task identifier.](/citeloom/images/mcp-inspector-answer-started.png)
 
 Select `citeloom.get_answer` and enter the task ID:
 
@@ -313,15 +358,27 @@ Repeat the call while the status is `working`.
 
 When the status is `completed`, confirm these fields:
 
-- `answer` contains the cited answer.
-- `matchedDocuments` contains the source files used for the answer.
+- `answer.answerDocument` contains the cited answer and immutable citation evidence.
+- `answer.matchedDocuments` contains the source files used for the answer.
+- `answer.turn` contains the saved thread and turn identifiers.
 - `workspaceIds` contains the workspaces used for retrieval.
-- `resources` contains links when the result exposes saved research resources.
+- `resources` contains any MCP resource links supplied with the answer.
 
-### 7. Stop the Inspector
+![MCP Inspector shows the completed CiteLoom answer with cited safety controls and structured output.](/citeloom/images/mcp-inspector-answer-completed.png)
+
+CiteLoom `1.1.0` returns an empty `resources` list for the combined multi-workspace MCP answer flow.
+Do not combine one returned `workspaceId` with `answer.turn.threadId` in the research-thread template because the combined thread is not owned by one workspace.
+
+### 8. Stop the Inspector
 
 Return to the terminal and press **Ctrl+C**.
 The Inspector keeps its OAuth tokens under `~/.mcp-inspector/storage/` so the next session can reuse them.
+
+If you used an API key, delete its temporary configuration:
+
+```sh
+rm -f /tmp/citeloom-inspector-api-key.json
+```
 
 ## Connect with an MCP API key
 
