@@ -1,9 +1,9 @@
 import type { PublishedAnswerDocument } from "../answers/published.js";
 import type { EvidenceVerificationState } from "../answers/verification-state.js";
+import type { CitationEvidence } from "../domain/citation-evidence.js";
 import type { QueryScope } from "../domain/query-scope.js";
 import type { SourceRegion } from "../domain/source-elements.js";
 import type {
-  CitationEvidence,
   ClaimVerificationResult,
   ResearchRunConfiguration,
 } from "../research/types.js";

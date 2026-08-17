@@ -53,11 +53,14 @@ import {
   type PublishedAnswerStatement,
 } from "../answers/published.js";
 import { queryScopeSchema, type QueryScope } from "../domain/query-scope.js";
+import {
+  citationEvidenceSchema,
+  type CitationEvidence,
+} from "../domain/citation-evidence.js";
 import { RETRIEVAL_MODES } from "../retrieval/mode.js";
 import { QUESTION_PROCESSING_POLICY_ID } from "../domain/question.js";
 import type {
   AnswerClaim,
-  CitationEvidence,
   ClaimVerificationResult,
   DocumentVersionDifference,
   DocumentVersionRecord,
@@ -200,35 +203,6 @@ const passiveAbortSignal = new AbortController().signal;
 type ResearchTransaction = Parameters<
   Parameters<CiteLoomDatabase["transaction"]>[0]
 >[0];
-const evidenceSchema = z.discriminatedUnion("kind", [
-  z.object({ excerpt: z.string().min(1), kind: z.literal("text") }).strict(),
-  z.object({
-    content: z.string().min(1),
-    kind: z.literal("table"),
-    table: z.object({
-      cells: z.array(z.object({
-        columnHeader: z.boolean(),
-        columnSpan: z.number().int().positive(),
-        endColumn: z.number().int().positive(),
-        endRow: z.number().int().positive(),
-        rowHeader: z.boolean(),
-        rowSection: z.boolean(),
-        rowSpan: z.number().int().positive(),
-        startColumn: z.number().int().nonnegative(),
-        startRow: z.number().int().nonnegative(),
-        text: z.string(),
-      }).strict()),
-      columnCount: z.number().int().positive(),
-      rowCount: z.number().int().positive(),
-      rowEnd: z.number().int().positive(),
-      rowStart: z.number().int().nonnegative(),
-    }).strict(),
-  }).strict(),
-  z.object({
-    kind: z.literal("image"),
-    mimeType: z.string().min(1),
-  }).strict(),
-]);
 const documentVersionRowSchema = z.object({
   createdAt: z.date(),
   documentId: contentIdSchema,
@@ -249,7 +223,7 @@ const citationRowSchema = z.object({
   documentVersionId: z.uuid(),
   elementSetId: contentIdSchema,
   elementId: contentIdSchema,
-  evidence: evidenceSchema,
+  evidence: citationEvidenceSchema,
   id: z.uuid(),
   pageNumbers: z.array(z.number().int().positive()),
   regions: z.array(sourceRegionSchema),

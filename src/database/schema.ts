@@ -38,8 +38,8 @@ import type { MatchedDocument } from "../retrieval/document-retrieval.js";
 import type { EmbeddingSpaceRowCounts } from "../embedding/space/types.js";
 import { EMBEDDING_DIMENSIONS } from "../embedding/dimensions.js";
 import type { QueryScope } from "../domain/query-scope.js";
+import type { CitationEvidence } from "../domain/citation-evidence.js";
 import type {
-  CitationEvidence,
   ResearchRetrievalTrace,
   StoredResearchRetrievalTrace,
   ResearchRunConfiguration,

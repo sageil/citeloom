@@ -13,6 +13,7 @@ import {
   renderAnswerDraftConflictScope,
 } from "./draft.js";
 import type { RetrievedElement } from "../retrieval/document-retrieval.js";
+import type { CitationEvidence } from "../domain/citation-evidence.js";
 import {
   createUncitedAnswerDocument,
   decodePublishedAnswerDocument,
@@ -23,7 +24,6 @@ import {
 } from "./published-model.js";
 import type {
   AnswerClaim,
-  CitationEvidence,
 } from "../research/types.js";
 import { renderAnswerMarkupSpeech } from "./markup.js";
 

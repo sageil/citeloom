@@ -7,8 +7,8 @@ import {
 } from "parse5";
 
 import type { DocumentMediaType } from "../documents/format.js";
+import type { CitationEvidence } from "../domain/citation-evidence.js";
 import { decodePlainTextDocument } from "../documents/plain-text.js";
-import type { CitationEvidence } from "./types.js";
 
 type HtmlChildNode = DefaultTreeAdapterTypes.ChildNode;
 type HtmlElement = DefaultTreeAdapterTypes.Element;
