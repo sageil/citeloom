@@ -30,10 +30,7 @@ import {
 } from "../oauth/boundary.js";
 import { requireGlobalAdministratorPrincipal } from "./authentication-routes.js";
 import { WebRequestError } from "./request-boundary.js";
-import type {
-  AuthenticationSecurityWebServices,
-  WebServices,
-} from "./services.js";
+import type { AuthenticationSecurityWebServices } from "./services.js";
 import { OAUTH_ACTIVATION_PROOF_HEADER } from "./application-authentication.js";
 
 export interface AuthenticationSecurityRouteOptions {
@@ -41,16 +38,6 @@ export interface AuthenticationSecurityRouteOptions {
   requestPrincipals: WeakMap<object, AuthorizationPrincipal>;
   services: AuthenticationSecurityWebServices;
 }
-
-const authenticationSecurityServiceMethods = [
-  "activateOAuthApplication",
-  "configureHostAuthenticationRecovery",
-  "disableOAuthApplication",
-  "linkOAuthApplicationUserIdentity",
-  "readAuthenticationSecurityOverview",
-  "stageOAuthApplicationConfiguration",
-  "unlinkOAuthApplicationUserIdentity",
-] as const;
 
 export function registerAuthenticationSecurityRoutes(
   server: FastifyInstance,
@@ -209,19 +196,6 @@ export function registerAuthenticationSecurityRoutes(
       }
     },
   );
-}
-
-export function readAuthenticationSecurityWebServices(
-  services: WebServices,
-): AuthenticationSecurityWebServices | null {
-  const candidate = services as WebServices
-    & Partial<AuthenticationSecurityWebServices>;
-  for (const method of authenticationSecurityServiceMethods) {
-    if (typeof candidate[method] !== "function") {
-      return null;
-    }
-  }
-  return candidate as WebServices & AuthenticationSecurityWebServices;
 }
 
 function mapAuthenticationAdministrationError(error: unknown): unknown {

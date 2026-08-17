@@ -1,28 +1,20 @@
 import { randomUUID } from "node:crypto";
-import type { ServerResponse } from "node:http";
 import { hostname } from "node:os";
-import { fileURLToPath } from "node:url";
 
 import multipart from "@fastify/multipart";
-import fastifyStatic from "@fastify/static";
 import fastifyCookie from "@fastify/cookie";
 import Fastify, {
   type FastifyBaseLogger,
   type FastifyInstance,
 } from "fastify";
-import { pipeUIMessageStreamToResponse } from "ai";
 
-import { APP_SECTION_ROUTES } from "./app-routes.js";
+import { registerAnswerRoutes } from "./answer-routes.js";
+import { registerAuthenticationRoutes } from "./authentication-routes.js";
 import {
-  BROWSER_CONTENT_SECURITY_POLICY,
-  readBrowserVendorAssets,
-} from "./browser-security.js";
-import {
-  registerAuthenticationRoutes,
-  requireGlobalAdministratorPrincipal,
-  requireRequestPrincipal,
-  requireWorkspaceAdministratorPrincipal,
-} from "./authentication-routes.js";
+  DEFAULT_BROWSER_STATIC_DIRECTORY,
+  registerBrowserApplicationRoutes,
+} from "./browser-application-routes.js";
+import { BROWSER_CONTENT_SECURITY_POLICY } from "./browser-security.js";
 import {
   isExpectedRequestCancellation,
   normalizeHttpFailureStatus,
@@ -30,30 +22,25 @@ import {
   readHttpErrorCode,
   readSafeHttpFailureMessage,
 } from "./http-failures.js";
-import {
-  buildDashboardResponse,
-  buildDiagnosticResponseChecks,
-  type DashboardResponse,
-  type HealthResponse,
-} from "./dashboard-response.js";
 import { registerChatRoutes } from "./chat-routes.js";
+import { registerCitationRoutes } from "./citation-routes.js";
+import { registerDocumentCatalogRoutes } from "./document-catalog-routes.js";
+import { registerDocumentVersionRoutes } from "./document-version-routes.js";
 import {
-  applyHighlightedDocumentHeaders,
-  applyInertDocumentHeaders,
-} from "./inert-document-response.js";
-import type {
-  ApplicationStateRevisionSnapshot,
-} from "../app/application-state-revisions.js";
+  registerEmbeddingInputFormatRoutes,
+} from "./embedding-input-format-routes.js";
+import { registerIngestionRoutes } from "./ingestion-routes.js";
+import { registerObservabilityRoutes } from "./observability-routes.js";
+import { registerOpenAICodexRoutes } from "./openai-codex-routes.js";
+import { registerResearchFeedbackRoutes } from "./research-feedback-routes.js";
+import { registerResearchThreadRoutes } from "./research-thread-routes.js";
+import { registerSourceDiscoveryRoutes } from "./source-discovery-routes.js";
+import { registerSpeechRoutes } from "./speech-routes.js";
 import {
   ApplicationSettingsRepository,
   type EffectiveApplicationSettings,
 } from "../app/settings.js";
 import { openDatabase } from "../database/client.js";
-import type {
-  IngestionControlActor,
-  IngestionPhase,
-} from "../documents/catalog/index.js";
-import type { BrowseDocumentCatalogResult } from "../documents/catalog/browser.js";
 import {
   readStartupConfig,
   type AppConfig,
@@ -62,52 +49,14 @@ import {
   sanitizeDiagnosticMessage,
 } from "../observability/application-errors.js";
 import {
-  SourceDiscoveryScopeError,
-  SourceDiscoveryUnavailableError,
-} from "../retrieval/discovery/pipeline.js";
-import type { SourceDiscoveryResponse } from "../retrieval/discovery/boundary.js";
-import {
-  buildInlineContentDisposition,
-  decodeApplicationErrorQuery,
-  decodeCreateResearchThreadRequest,
-  decodeDiagnosticRequest,
-  decodeDocumentVersionComparison,
-  decodeDocumentVersionList,
-  decodeDocumentCatalogQuery,
-  decodeDocumentFileRequest,
-  decodeIngestionControlRequest,
-  decodeQuestionRequest,
-  decodeResearchExportFormat,
-  decodeResearchFeedback,
-  decodeResearchFeedbackSummary,
-  decodeResearchThreadId,
-  decodeReindexDocumentRequest,
-  decodeResourceId,
-  decodeRetryIngestionRequest,
-  decodeSpeechRequest,
-  decodeUpdateDocumentTagsRequest,
-  readTranscriptionRequest,
   readErrorStatus,
   readServerErrorMessage,
-  readSourceDiscoveryRequest,
-  readUploadedDocuments,
-  removeUploadedDocumentStaging,
-  WebRequestError,
 } from "./request-boundary.js";
-import {
-  TextToSpeechProviderError,
-  TextToSpeechTimeoutError,
-  TextToSpeechUnavailableError,
-  type GeneratedSpeech,
-} from "../providers/text-to-speech.js";
-import {
-  SpeechToTextProviderError,
-  SpeechToTextTimeoutError,
-  SpeechToTextUnavailableError,
-} from "../providers/speech-to-text.js";
 import {
   createDiagnosticRunner,
   startWebServices,
+  type AuthenticationSecurityWebServices,
+  type SecurityWebServices,
   type WebServices,
 } from "./services.js";
 import {
@@ -117,24 +66,15 @@ import {
   type WebStartupConfig,
 } from "./config.js";
 import type { AuthorizationPrincipal } from "../auth/model.js";
-import { canAdministerWorkspace } from "../auth/authorization.js";
-import { WorkspaceSourceLibraryUnavailableError } from "../workspaces/source-library-access.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
 import { registerSourceContentStorageRoutes } from "./source-content-storage-routes.js";
-import {
-  readSecurityWebServices,
-  registerSecurityRoutes,
-} from "./security-routes.js";
-import {
-  readAuthenticationSecurityWebServices,
-  registerAuthenticationSecurityRoutes,
-} from "./authentication-security-routes.js";
+import { registerSecurityRoutes } from "./security-routes.js";
+import { registerAuthenticationSecurityRoutes } from "./authentication-security-routes.js";
 import { registerOAuthProtectedResourceMetadata } from "./oauth-authentication.js";
 import {
   createApplicationOAuthRequestAuthenticator,
   type ApplicationOAuthRequestAuthenticator,
 } from "./application-authentication.js";
-import { OAUTH_BROWSER_CALLBACK_PATH } from "../oauth/application-configuration.js";
 import { registerMcpRoutes } from "../mcp/server.js";
 
 export type {
@@ -151,7 +91,9 @@ export type {
   UpdateApplicationSettingsRequest,
 } from "./request-boundary.js";
 export type {
+  AuthenticationSecurityWebServices,
   RuntimeWebServices,
+  SecurityWebServices,
   WebServices,
 } from "./services.js";
 export type {
@@ -160,28 +102,24 @@ export type {
   RuntimeSettingFieldResponse,
   StartupSettingResponse,
 } from "./settings-response.js";
+export type {
+  ReindexDocumentResponse,
+  RetryIngestionResponse,
+} from "./ingestion-routes.js";
+export {
+  formatApplicationStateRevisionEvent,
+  openApplicationStateRevisionEventStream,
+} from "./observability-routes.js";
 
-const defaultStaticDirectory = fileURLToPath(new URL("../../web", import.meta.url));
 const maximumConfigurableDocumentBytes = 100 * 1_024 * 1_024;
-
-export interface RetryIngestionResponse {
-  phase: IngestionPhase;
-  sourceFile: string;
-  state: "pending";
-  updatedAt: string;
-}
-
-export interface ReindexDocumentResponse {
-  documentId: string;
-  sourceFile: string;
-  status: "queued";
-}
 
 export interface BuildWebServerOptions {
   authentication?: "disabled" | "required";
+  authenticationSecurityServices?: AuthenticationSecurityWebServices;
   logger?: FastifyBaseLogger | boolean;
   maximumUploadRequestBytes?: number;
   oauthAuthenticator?: ApplicationOAuthRequestAuthenticator;
+  securityServices?: SecurityWebServices;
   services?: WebServices;
   staticDirectory?: string | null;
   uploadDirectory?: string;
@@ -205,10 +143,15 @@ export async function buildWebServer(
     ?? webConfig.maximumUploadRequestBytes;
   const requestPrincipals = new WeakMap<object, AuthorizationPrincipal>();
   let services = options.services;
+  let authenticationSecurityServices =
+    options.authenticationSecurityServices ?? null;
+  let securityServices = options.securityServices ?? null;
   let closeOwnedServices: (() => Promise<void>) | null = null;
   if (services === undefined) {
     const ownedServices = await startWebServices(config);
     services = ownedServices.services;
+    authenticationSecurityServices ??= ownedServices.services;
+    securityServices ??= ownedServices.services;
     closeOwnedServices = ownedServices.close;
   }
   const runDiagnostics = createDiagnosticRunner(async (runtime, liveChecks) => {
@@ -312,7 +255,7 @@ export async function buildWebServer(
     server.addHook("onClose", closeOwnedServices);
   }
   const staticDirectory = options.staticDirectory === undefined
-    ? defaultStaticDirectory
+    ? DEFAULT_BROWSER_STATIC_DIRECTORY
     : options.staticDirectory;
 
   try {
@@ -352,42 +295,15 @@ export async function buildWebServer(
     services,
     webConfig,
   });
-  const authenticationSecurityServices = readAuthenticationSecurityWebServices(
+  registerObservabilityRoutes(server, {
+    maximumUploadRequestBytes,
+    requestPrincipals,
+    runDiagnostics: async (liveChecks) => {
+      return services.run((runtime) => {
+        return runDiagnostics(runtime, liveChecks);
+      });
+    },
     services,
-  );
-
-  server.get("/api/dashboard", async (request): Promise<DashboardResponse> => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    return services.run(async (runtime) => {
-      return buildDashboardResponse(runtime, principal, maximumUploadRequestBytes);
-    });
-  });
-
-  server.get("/api/errors", async (request) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    requireWorkspaceAdministratorPrincipal(
-      requestPrincipals,
-      request,
-      principal.workspaceId,
-    );
-    const errorRequest = decodeApplicationErrorQuery(request.query);
-    return services.readApplicationErrors(principal, errorRequest);
-  });
-
-  server.delete("/api/errors", async (request) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    requireWorkspaceAdministratorPrincipal(
-      requestPrincipals,
-      request,
-      principal.workspaceId,
-    );
-    return services.purgeApplicationErrors(principal);
-  });
-
-  server.get("/api/events", (_request, reply) => {
-    reply.hijack();
-    openApplicationStateRevisionEventStream(reply.raw, services);
-    return reply;
   });
 
   registerSettingsRoutes(server, {
@@ -396,12 +312,19 @@ export async function buildWebServer(
     services,
     webConfig,
   });
+  registerEmbeddingInputFormatRoutes(server, {
+    requestPrincipals,
+    services,
+  });
+  registerOpenAICodexRoutes(server, {
+    requestPrincipals,
+    services: services.openAICodex,
+  });
   registerSourceContentStorageRoutes(server, {
     requestPrincipals,
     services,
   });
 
-  const securityServices = readSecurityWebServices(services);
   if (securityServices !== null) {
     registerSecurityRoutes(server, {
       requestPrincipals,
@@ -417,538 +340,23 @@ export async function buildWebServer(
     });
   }
 
-  server.get("/api/documents", async (request): Promise<BrowseDocumentCatalogResult> => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const catalogRequest = decodeDocumentCatalogQuery(request.query);
-    return services.run(async (runtime) => {
-      return runtime.browseDocuments(principal, catalogRequest);
-    });
-  });
-
-  server.get("/api/documents/:documentId/file", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const documentRequest = decodeDocumentFileRequest(request.params, request.query);
-    const document = await services.run(async (runtime) => {
-      return runtime.readDocumentFile(principal, documentRequest);
-    });
-    if (document === null) {
-      throw new WebRequestError(404, "The requested document is no longer indexed.");
-    }
-    applyInertDocumentHeaders(reply);
-    reply.header("Content-Disposition", buildInlineContentDisposition(document.filename));
-    return reply.type(document.mediaType).send(document.content);
-  });
-
-  server.put("/api/documents/:documentId/tags", async (request) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const updateRequest = decodeUpdateDocumentTagsRequest(
-      request.params,
-      request.body,
-    );
-    const result = await services.run(async (runtime) => {
-      return runtime.updateDocumentTags(principal, updateRequest);
-    });
-    if (result === null) {
-      throw new WebRequestError(404, "The selected document is no longer indexed.");
-    }
-    return result;
-  });
-
+  registerDocumentCatalogRoutes(server, { requestPrincipals, services });
   registerChatRoutes(server, { requestPrincipals, services });
+  registerResearchThreadRoutes(server, { requestPrincipals, services });
+  registerCitationRoutes(server, { requestPrincipals, services });
+  registerDocumentVersionRoutes(server, { requestPrincipals, services });
+  registerResearchFeedbackRoutes(server, { requestPrincipals, services });
 
-  server.get("/api/research/threads", async (request) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    return services.run(async (runtime) => runtime.listResearchThreads(principal));
+  registerIngestionRoutes(server, {
+    maximumUploadRequestBytes,
+    requestPrincipals,
+    services,
+    uploadDirectory,
   });
 
-  server.post("/api/research/threads", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const title = decodeCreateResearchThreadRequest(request.body);
-    const thread = await services.run(async (runtime) => {
-      return runtime.createResearchThread(principal, title);
-    });
-    return reply.status(201).send(thread);
-  });
-
-  server.get("/api/research/threads/:threadId", async (request) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const threadId = decodeResearchThreadId(request.params);
-    const thread = await services.run(async (runtime) => {
-      return runtime.readResearchThread(principal, threadId);
-    });
-    if (thread === null) {
-      throw new WebRequestError(404, "The research thread was not found.");
-    }
-    return thread;
-  });
-
-  server.delete("/api/research/threads/:threadId", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const threadId = decodeResearchThreadId(request.params);
-    await services.run(async (runtime) => {
-      return runtime.deleteResearchThread(principal, threadId);
-    });
-    return reply.status(204).send();
-  });
-
-  server.get("/api/research/threads/:threadId/export", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const threadId = decodeResearchThreadId(request.params);
-    const format = decodeResearchExportFormat(request.query);
-    const exported = await services.run(async (runtime) => {
-      return runtime.exportResearchThread(principal, threadId, format);
-    });
-    if (exported === null) {
-      throw new WebRequestError(404, "The research thread was not found.");
-    }
-    reply.header("Cache-Control", "private, no-store");
-    reply.header(
-      "Content-Disposition",
-      `attachment; filename="${exported.filename}"`,
-    );
-    reply.type(exported.mediaType);
-    return exported.content;
-  });
-
-  server.get("/api/citations/:id", async (request) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const id = decodeResourceId(request.params);
-    const citation = await services.run(async (runtime) => {
-      return runtime.readCitationEvidence(principal, id);
-    });
-    if (citation === null) {
-      throw new WebRequestError(404, "The citation was not found.");
-    }
-    return citation;
-  });
-
-  server.get("/api/citations/:id/image", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const id = decodeResourceId(request.params);
-    const image = await services.run(async (runtime) => {
-      return runtime.readCitationImage(principal, id);
-    });
-    if (image === null) {
-      throw new WebRequestError(404, "The citation was not found.");
-    }
-    applyInertDocumentHeaders(reply);
-    reply.header("Content-Disposition", "inline");
-    return reply.type(image.mediaType).send(image.content);
-  });
-
-  server.get("/api/citations/:id/highlighted-file", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const id = decodeResourceId(request.params);
-    const document = await services.run(async (runtime) => {
-      return runtime.readCitationHighlightedFile(principal, id);
-    });
-    if (document === null) {
-      throw new WebRequestError(404, "The citation or document version was not found.");
-    }
-    applyHighlightedDocumentHeaders(reply, document.mediaType);
-    reply.header("Content-Disposition", buildInlineContentDisposition(document.filename));
-    return reply.type(document.mediaType).send(document.content);
-  });
-
-  server.get("/api/document-versions", async (request) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const sourceFile = decodeDocumentVersionList(request.query);
-    return services.run(async (runtime) => {
-      return runtime.listDocumentVersions(principal, sourceFile);
-    });
-  });
-
-  server.get("/api/document-versions/compare", async (request) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const comparison = decodeDocumentVersionComparison(request.query);
-    const result = await services.run(async (runtime) => {
-      return runtime.compareDocumentVersions(
-        principal,
-        comparison.previous,
-        comparison.current,
-      );
-    });
-    if (result === null) {
-      throw new WebRequestError(404, "One or both document versions were not found.");
-    }
-    return result;
-  });
-
-  server.get("/api/document-versions/:id/file", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const id = decodeResourceId(request.params);
-    const document = await services.run(async (runtime) => {
-      return runtime.readVersionedDocumentFile(principal, id);
-    });
-    if (document === null) {
-      throw new WebRequestError(404, "The document version was not found.");
-    }
-    applyInertDocumentHeaders(reply);
-    reply.header("Content-Disposition", buildInlineContentDisposition(document.filename));
-    return reply.type(document.mediaType).send(document.content);
-  });
-
-  server.post("/api/research/feedback", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const feedback = decodeResearchFeedback(request.body);
-    const summary = await services.run(async (runtime) => {
-      return runtime.addResearchFeedback(principal, feedback);
-    });
-    return reply.status(200).send(summary);
-  });
-
-  server.post("/api/research/feedback-summary", async (request) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const feedback = decodeResearchFeedbackSummary(request.body);
-    return services.run(async (runtime) => {
-      return runtime.readResearchFeedback(
-        principal,
-        feedback.turnId,
-        feedback.dimension,
-        feedback.citationId,
-      );
-    });
-  });
-
-  server.post("/api/diagnostics", async (request): Promise<HealthResponse> => {
-    requireGlobalAdministratorPrincipal(requestPrincipals, request);
-    const diagnostics = decodeDiagnosticRequest(request.body);
-    const checks = await services.run((runtime) => {
-      return runDiagnostics(runtime, diagnostics.liveChecks);
-    });
-    return {
-      checks: buildDiagnosticResponseChecks(checks),
-      generatedAt: new Date().toISOString(),
-    };
-  });
-
-  server.post("/api/ingestions", async (request) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    return services.run(async (runtime) => {
-      const upload = await readUploadedDocuments(
-        request,
-        uploadDirectory,
-        runtime.config.maxDocumentBytes,
-        maximumUploadRequestBytes,
-      );
-      try {
-        return await runtime.ingest(
-          principal,
-          upload.documents,
-          upload.options,
-          uploadDirectory,
-          upload.sourceLibraryId,
-        );
-      } catch (error: unknown) {
-        if (error instanceof WorkspaceSourceLibraryUnavailableError) {
-          throw new WebRequestError(404, error.message);
-        }
-        throw error;
-      } finally {
-        await removeUploadedDocumentStaging(upload);
-      }
-    });
-  });
-
-  server.post("/api/ingestion-jobs/retry", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const retryRequest = decodeRetryIngestionRequest(request.body);
-    const result = await services.run(async (runtime) => {
-      return runtime.retryFailedJob(principal, retryRequest.sourceFile);
-    });
-    if (result.kind === "not-found") {
-      throw new WebRequestError(
-        404,
-        `No ingestion job is registered for ${retryRequest.sourceFile}.`,
-      );
-    }
-    if (result.kind === "not-failed") {
-      throw new WebRequestError(
-        409,
-        `Ingestion job is ${result.state}, not failed: ${retryRequest.sourceFile}.`,
-      );
-    }
-    if (result.kind === "restart-rejected") {
-      throw new WebRequestError(409, result.error);
-    }
-    const response: RetryIngestionResponse = {
-      phase: result.job.phase,
-      sourceFile: result.job.sourceFile,
-      state: result.job.state,
-      updatedAt: result.job.updatedAt,
-    };
-    return reply.status(202).send(response);
-  });
-
-  server.post("/api/ingestion-jobs/pause", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const controlRequest = decodeIngestionControlRequest(request.body);
-    const result = await services.run(async (runtime) => {
-      return runtime.requestIngestionControl(
-        principal,
-        controlRequest.sourceFile,
-        "pause",
-        buildIngestionControlActor(principal),
-      );
-    });
-    if (result.kind === "not-found") {
-      throw new WebRequestError(404, "The ingestion job was not found.");
-    }
-    if (result.kind === "forbidden") {
-      throw new WebRequestError(403, "Only the uploader or an administrator can pause this ingestion.");
-    }
-    if (result.kind === "invalid") {
-      throw new WebRequestError(409, `This ingestion cannot be paused from ${result.controlState}.`);
-    }
-    if (result.kind === "cleanup-failed" || result.kind === "canceled") {
-      throw new Error("Pause returned an impossible cancellation result.");
-    }
-    return reply.status(202).send({
-      action: "pause",
-      sourceFile: result.job.sourceFile,
-      state: result.job.state,
-    });
-  });
-
-  server.post("/api/ingestion-jobs/resume", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const controlRequest = decodeIngestionControlRequest(request.body);
-    const result = await services.run(async (runtime) => {
-      return runtime.resumeIngestion(
-        principal,
-        controlRequest.sourceFile,
-        buildIngestionControlActor(principal),
-      );
-    });
-    if (result.kind === "not-found") {
-      throw new WebRequestError(404, "The ingestion job was not found.");
-    }
-    if (result.kind === "not-paused") {
-      throw new WebRequestError(409, "The ingestion job is not paused.");
-    }
-    if (result.kind === "forbidden") {
-      throw new WebRequestError(403, "Only the uploader or an administrator can resume this ingestion.");
-    }
-    return reply.status(202).send({
-      action: "resume",
-      sourceFile: result.job.sourceFile,
-      state: result.job.state,
-    });
-  });
-
-  server.post("/api/ingestion-jobs/cancel", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const controlRequest = decodeIngestionControlRequest(request.body);
-    const result = await services.run(async (runtime) => {
-      return runtime.requestIngestionControl(
-        principal,
-        controlRequest.sourceFile,
-        "cancel",
-        buildIngestionControlActor(principal),
-      );
-    });
-    if (result.kind === "not-found") {
-      throw new WebRequestError(404, "The ingestion job was not found.");
-    }
-    if (result.kind === "forbidden") {
-      throw new WebRequestError(403, "Only the uploader or an administrator can cancel this ingestion.");
-    }
-    if (result.kind === "invalid") {
-      throw new WebRequestError(409, `This ingestion cannot be canceled from ${result.controlState}.`);
-    }
-    if (result.kind === "cleanup-failed") {
-      throw new WebRequestError(500, result.error);
-    }
-    if (result.kind === "canceled") {
-      return reply.status(200).send({
-        action: "cancel",
-        sourceFile: result.sourceFile,
-        state: "canceled",
-      });
-    }
-    return reply.status(202).send({
-      action: "cancel",
-      sourceFile: result.job.sourceFile,
-      state: result.job.controlState,
-    });
-  });
-
-  server.delete("/api/documents/:documentId", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const deletionRequest = decodeReindexDocumentRequest(request.params, request.body);
-    const result = await services.run(async (runtime) => {
-      return runtime.deleteIndexedDocument(principal, deletionRequest);
-    });
-    if (result.kind === "not-found") {
-      throw new WebRequestError(404, "The indexed document was not found.");
-    }
-    if (result.kind === "active") {
-      throw new WebRequestError(
-        409,
-        "The document cannot be deleted while ingestion or reindexing is active.",
-      );
-    }
-    return reply.status(200).send(result);
-  });
-
-  server.post("/api/documents/:documentId/reindex", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const reindexRequest = decodeReindexDocumentRequest(
-      request.params,
-      request.body,
-    );
-    const result = await services.run(async (runtime) => {
-      return runtime.reindexDocument(
-        principal,
-        reindexRequest,
-        buildIngestionControlActor(principal),
-      );
-    });
-    if (result.kind === "not-found") {
-      throw new WebRequestError(404, "The selected document is no longer indexed.");
-    }
-    if (result.kind === "rejected") {
-      throw new WebRequestError(409, result.error);
-    }
-    const response: ReindexDocumentResponse = {
-      documentId: result.documentId,
-      sourceFile: result.sourceFile,
-      status: "queued",
-    };
-    return reply.status(202).send(response);
-  });
-
-  server.post("/api/search", async (request, reply): Promise<SourceDiscoveryResponse> => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const searchRequest = readSourceDiscoveryRequest(request.body);
-    const abortController = new AbortController();
-    const abort = (): void => abortController.abort();
-    request.raw.once("aborted", abort);
-    reply.raw.once("close", abort);
-    try {
-      return await services.runInWorkspace(principal, async (runtime) => {
-        return runtime.searchSources(
-          principal,
-          searchRequest,
-          abortController.signal,
-        );
-      });
-    } catch (error: unknown) {
-      if (error instanceof SourceDiscoveryUnavailableError) {
-        throw new WebRequestError(503, error.message);
-      }
-      if (error instanceof SourceDiscoveryScopeError) {
-        throw new WebRequestError(409, error.message);
-      }
-      throw error;
-    } finally {
-      request.raw.off("aborted", abort);
-      reply.raw.off("close", abort);
-    }
-  });
-
-  server.post("/api/questions", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const question = decodeQuestionRequest(request.body);
-    const abortController = new AbortController();
-    const abort = (): void => abortController.abort();
-    request.raw.once("aborted", abort);
-    reply.raw.once("close", abort);
-    const stream = services.streamInWorkspace(principal, (runtime) => {
-      return runtime.streamAnswer(principal, question, abortController.signal);
-    });
-    reply.hijack();
-    pipeUIMessageStreamToResponse({ response: reply.raw, stream });
-    return reply;
-  });
-
-  server.post("/api/speech", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    const speechRequest = decodeSpeechRequest(request.body);
-    const abortController = new AbortController();
-    const abort = (): void => abortController.abort();
-    const cleanup = (): void => {
-      request.raw.off("aborted", abort);
-      reply.raw.off("close", abort);
-    };
-    request.raw.once("aborted", abort);
-    reply.raw.once("close", abort);
-    let speech: GeneratedSpeech | null = null;
-    let streaming = false;
-    try {
-      speech = await services.runManagedInWorkspace(
-        principal,
-        async (runtime) => {
-          const generated = await runtime.generateSpeech(
-            speechRequest,
-            abortController.signal,
-          );
-          return {
-            completion: generated.completion,
-            value: generated,
-          };
-        },
-      );
-      speech.audio.once("close", cleanup);
-      speech.audio.once("end", cleanup);
-      reply.header("Cache-Control", "private, no-store");
-      reply.header("Content-Disposition", "inline");
-      reply.header("Content-Type", speech.contentType);
-      reply.header("Cross-Origin-Resource-Policy", "same-origin");
-      reply.header("X-Content-Type-Options", "nosniff");
-      const response = reply.send(speech.audio);
-      streaming = true;
-      return response;
-    } catch (error: unknown) {
-      if (error instanceof TextToSpeechUnavailableError) {
-        throw new WebRequestError(503, error.message);
-      }
-      if (error instanceof TextToSpeechTimeoutError) {
-        throw new WebRequestError(504, error.message);
-      }
-      if (error instanceof TextToSpeechProviderError) {
-        throw new WebRequestError(502, error.message);
-      }
-      throw error;
-    } finally {
-      if (!streaming) {
-        abort();
-        speech?.audio.destroy();
-        cleanup();
-      }
-    }
-  });
-
-  server.post("/api/transcriptions", async (request, reply) => {
-    const principal = requireRequestPrincipal(requestPrincipals, request);
-    reply.header("Cache-Control", "private, no-store");
-    reply.header("Cross-Origin-Resource-Policy", "same-origin");
-    reply.header("X-Content-Type-Options", "nosniff");
-    try {
-      return await services.runInWorkspace(principal, async (runtime) => {
-        const config = runtime.config.speechToText;
-        if (config === null) {
-          throw new WebRequestError(503, "Speech-to-text is disabled.");
-        }
-        const audio = await readTranscriptionRequest(
-          request,
-          config.maxAudioBytes,
-        );
-        return runtime.transcribeAudio(audio, request.signal);
-      });
-    } catch (error: unknown) {
-      if (error instanceof SpeechToTextUnavailableError) {
-        throw new WebRequestError(503, error.message);
-      }
-      if (error instanceof SpeechToTextTimeoutError) {
-        throw new WebRequestError(504, error.message);
-      }
-      if (error instanceof SpeechToTextProviderError) {
-        throw new WebRequestError(502, error.message);
-      }
-      throw error;
-    }
-  });
+  registerSourceDiscoveryRoutes(server, { requestPrincipals, services });
+  registerAnswerRoutes(server, { requestPrincipals, services });
+  registerSpeechRoutes(server, { requestPrincipals, services });
 
   server.setErrorHandler(async (error, request, reply) => {
     const statusCode = normalizeHttpFailureStatus(readErrorStatus(error));
@@ -1009,114 +417,14 @@ export async function buildWebServer(
 
   if (staticDirectory !== null) {
     try {
-      const vendorAssets = await readBrowserVendorAssets();
-      for (const asset of vendorAssets) {
-        server.get(asset.route, async (_request, reply) => {
-          return reply
-            .header("Cache-Control", "public, max-age=31536000, immutable")
-            .type("application/javascript; charset=utf-8")
-            .send(asset.content);
-        });
-      }
-      await server.register(fastifyStatic, {
-        index: false,
-        root: staticDirectory,
-      });
+      await registerBrowserApplicationRoutes(server, staticDirectory);
     } catch (error: unknown) {
       await server.close();
       throw error;
     }
-    server.get("/", async (_request, reply) => {
-      return reply.sendFile("index.html");
-    });
-    server.get(OAUTH_BROWSER_CALLBACK_PATH, async (_request, reply) => {
-      return reply.sendFile("index.html");
-    });
-    for (const route of APP_SECTION_ROUTES) {
-      server.get(route, async (_request, reply) => {
-        return reply.sendFile("index.html");
-      });
-    }
   }
 
   return server;
-}
-
-function buildIngestionControlActor(
-  principal: AuthorizationPrincipal,
-): IngestionControlActor {
-  return {
-    isAdministrator: canAdministerWorkspace(principal, principal.workspaceId),
-    userId: principal.userId,
-  };
-}
-
-export function formatApplicationStateRevisionEvent(
-  revisions: ApplicationStateRevisionSnapshot,
-): string {
-  const id = `${revisions.catalog}.${revisions.jobs}.${revisions.settings}`;
-  return `id: ${id}\nevent: revision\ndata: ${JSON.stringify(revisions)}\n\n`;
-}
-
-export function openApplicationStateRevisionEventStream(
-  response: ServerResponse,
-  services: WebServices,
-): () => void {
-  response.writeHead(200, {
-    "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
-    "Content-Type": "text/event-stream; charset=utf-8",
-    "X-Accel-Buffering": "no",
-  });
-  response.write("retry: 1000\n\n");
-  let closed = false;
-  let reading = false;
-  let refreshQueued = false;
-  const publish = (): void => {
-    refreshQueued = true;
-    if (reading || closed) {
-      return;
-    }
-    reading = true;
-    void publishQueuedRevisions();
-  };
-  const publishQueuedRevisions = async (): Promise<void> => {
-    try {
-      while (refreshQueued && !closed) {
-        refreshQueued = false;
-        const revisions = await services.readRevisions();
-        if (!closed) {
-          response.write(formatApplicationStateRevisionEvent(revisions));
-        }
-      }
-    } catch {
-      close();
-    } finally {
-      reading = false;
-      if (refreshQueued && !closed) {
-        publish();
-      }
-    }
-  };
-  const unsubscribe = services.subscribeRevisions(publish);
-  const heartbeat = setInterval(() => {
-    if (!closed) {
-      response.write(": keep-alive\n\n");
-    }
-  }, 15_000);
-  heartbeat.unref();
-  const close = (): void => {
-    if (closed) {
-      return;
-    }
-    closed = true;
-    clearInterval(heartbeat);
-    unsubscribe();
-    response.end();
-  };
-  response.once("close", close);
-  publish();
-  return close;
 }
 
 export async function startWebServer(
@@ -1135,7 +443,7 @@ export async function startWebServer(
   const webConfig = buildWebConfig(effectiveSettings.config.web, webStartup);
   const server = await buildWebServer(effectiveSettings.config, {
     maximumUploadRequestBytes: webConfig.maximumUploadRequestBytes,
-    staticDirectory: apiOnly ? null : defaultStaticDirectory,
+    staticDirectory: apiOnly ? null : DEFAULT_BROWSER_STATIC_DIRECTORY,
     uploadDirectory: webConfig.uploadDirectory,
     webConfig,
   });

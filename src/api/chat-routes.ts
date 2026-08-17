@@ -15,11 +15,21 @@ import {
   decodeResourceId,
   WebRequestError,
 } from "./request-boundary.js";
-import type { WebServices } from "./services.js";
+import type { RuntimeChatServices } from "./runtime-web-services.js";
+
+export interface ChatRouteServices {
+  run: <T>(
+    operation: (runtime: RuntimeChatServices) => Promise<T>,
+  ) => Promise<T>;
+  streamInWorkspace: <T>(
+    principal: AuthorizationPrincipal,
+    operation: (runtime: RuntimeChatServices) => ReadableStream<T>,
+  ) => ReadableStream<T>;
+}
 
 export interface ChatRouteOptions {
   requestPrincipals: WeakMap<object, AuthorizationPrincipal>;
-  services: WebServices;
+  services: ChatRouteServices;
 }
 
 export function registerChatRoutes(
