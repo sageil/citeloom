@@ -26,6 +26,11 @@ import {
   type RunningIngestionJob,
 } from "../documents/catalog/index.js";
 import type { TaskScheduler } from "../shared/concurrency.js";
+import {
+  startLeaseHeartbeat as startSharedLeaseHeartbeat,
+  type LeaseConfirmation,
+  type LeaseHeartbeat,
+} from "../shared/lease-heartbeat.js";
 import type { AppConfig } from "../config/index.js";
 import type { CiteLoomDatabase } from "../database/client.js";
 import {
@@ -1623,115 +1628,51 @@ function formatFailureProgress(
   return `${basename(sourceFile)} failed and will retry at ${retryAt}: ${message}`;
 }
 
-interface IngestionLeaseHeartbeat {
-  signal: AbortSignal;
-  stop: () => Promise<void>;
-}
-
 async function startLeaseHeartbeat(
   catalog: DocumentCatalog,
   job: RunningIngestionJob,
   reportProgress: (message: string) => void,
   requestControl: (state: "pause_requested" | "cancel_requested") => void,
-): Promise<IngestionLeaseHeartbeat> {
-  const leaseController = new AbortController();
-  let stopped = false;
-  let renewal: Promise<void> | null = null;
-  let renewalTimer: ReturnType<typeof setTimeout> | null = null;
-  let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
-  let confirmedDeadline = 0;
+): Promise<LeaseHeartbeat> {
   let controlCheck: Promise<void> | null = null;
-
-  const clearLeaseTimers = (): void => {
-    if (renewalTimer !== null) {
-      clearTimeout(renewalTimer);
-      renewalTimer = null;
-    }
-    if (deadlineTimer !== null) {
-      clearTimeout(deadlineTimer);
-      deadlineTimer = null;
-    }
-  };
-  const loseLease = (cause?: unknown): void => {
-    if (leaseController.signal.aborted) {
-      return;
-    }
-    clearLeaseTimers();
-    leaseController.abort(new IngestionLeaseLostError(job.sourceFile, cause));
-  };
-  const scheduleRenewal = (delayMs: number): void => {
-    if (stopped || leaseController.signal.aborted) {
-      return;
-    }
-    renewalTimer = setTimeout(() => {
-      renewalTimer = null;
-      renewal = renew(false).finally(() => {
-        renewal = null;
-      });
-    }, Math.max(1, Math.floor(delayMs)));
-    renewalTimer.unref();
-  };
-  const scheduleConfirmedLease = (
-    databaseNow: string,
-    leaseExpiresAt: string,
-  ): void => {
-    if (stopped) {
-      return;
-    }
-    const remainingMs =
-      new Date(leaseExpiresAt).getTime() - new Date(databaseNow).getTime();
-    if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
-      loseLease();
-      return;
-    }
-    confirmedDeadline = performance.now() + remainingMs;
-    if (deadlineTimer !== null) {
-      clearTimeout(deadlineTimer);
-    }
-    deadlineTimer = setTimeout(() => {
-      deadlineTimer = null;
-      loseLease();
-    }, remainingMs);
-    deadlineTimer.unref();
-    scheduleRenewal(remainingMs / 3);
-  };
-  const renew = async (initial: boolean): Promise<void> => {
-    try {
-      const result = await catalog.renewJobLease(job.sourceFile, job.ownerId);
-      if (result === null) {
-        loseLease();
-        return;
+  const heartbeat = await startSharedLeaseHeartbeat({
+    confirmedLease: null,
+    createLeaseLostError: (cause) => new IngestionLeaseLostError(
+      job.sourceFile,
+      cause,
+    ),
+    onLeaseConfirmed: (controlState) => {
+      if (isRequestedControlState(controlState)) {
+        requestControl(controlState);
       }
-      scheduleConfirmedLease(result.databaseNow, result.leaseExpiresAt);
-      if (isRequestedControlState(result.controlState)) {
-        requestControl(result.controlState);
-      }
-    } catch (error: unknown) {
+    },
+    onRenewalError: (error, initial) => {
       if (initial) {
         reportProgress(
           `Could not establish the ingestion lease for ${basename(job.sourceFile)}: ${readErrorMessage(error)}`,
         );
-        loseLease(error);
         return;
       }
       reportProgress(
         `Warning: could not renew the ingestion lease for ${basename(job.sourceFile)}: ${readErrorMessage(error)}`,
       );
-      const remainingMs = confirmedDeadline - performance.now();
-      if (remainingMs <= 0) {
-        loseLease(error);
-        return;
+    },
+    renew: async (): Promise<LeaseConfirmation<IngestionControlState> | null> => {
+      const result = await catalog.renewJobLease(job.sourceFile, job.ownerId);
+      if (result === null) {
+        return null;
       }
-      scheduleRenewal(Math.min(1_000, remainingMs / 6));
-    }
-  };
-
-  await renew(true);
+      return {
+        databaseNowMs: new Date(result.databaseNow).getTime(),
+        details: result.controlState,
+        leaseExpiresAtMs: new Date(result.leaseExpiresAt).getTime(),
+      };
+    },
+  });
 
   const controlTimer = setInterval(() => {
     if (
-      stopped
-      || leaseController.signal.aborted
+      heartbeat.signal.aborted
       || controlCheck !== null
     ) {
       return;
@@ -1744,7 +1685,7 @@ async function startLeaseHeartbeat(
           || currentJob.state !== "running"
           || currentJob.ownerId !== job.ownerId
         ) {
-          loseLease();
+          heartbeat.loseLease();
           return;
         }
         if (isRequestedControlState(currentJob.controlState)) {
@@ -1763,14 +1704,11 @@ async function startLeaseHeartbeat(
   controlTimer.unref();
 
   return {
-    signal: leaseController.signal,
+    loseLease: heartbeat.loseLease,
+    signal: heartbeat.signal,
     stop: async (): Promise<void> => {
-      stopped = true;
-      clearLeaseTimers();
       clearInterval(controlTimer);
-      if (renewal !== null) {
-        await renewal;
-      }
+      await heartbeat.stop();
       if (controlCheck !== null) {
         await controlCheck;
       }

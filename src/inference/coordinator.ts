@@ -21,6 +21,11 @@ import {
   type TaskScheduler,
   type TaskTimingObserver,
 } from "../shared/concurrency.js";
+import {
+  startLeaseHeartbeat,
+  type LeaseConfirmation,
+  type LeaseHeartbeat,
+} from "../shared/lease-heartbeat.js";
 import type {
   ProviderConcurrencyConfig,
   SchedulingConfig,
@@ -144,11 +149,6 @@ const taskNotRun = Symbol("task-not-run");
 const passiveAbortSignal = new AbortController().signal;
 const QUEUE_RENEWAL_RETRY_MAX_MS = 1_000;
 
-interface InferenceLeaseHeartbeat {
-  signal: AbortSignal;
-  stop: () => Promise<void>;
-}
-
 interface MonotonicLeaseSchedule {
   deadline: number;
   renewalAt: number;
@@ -258,7 +258,7 @@ export class InferenceCoordinator {
       throw error;
     }
 
-    const heartbeat = this.startHeartbeat(slot);
+    const heartbeat = await this.startHeartbeat(slot);
     const executionSignal = AbortSignal.any([
       abortSignal ?? passiveAbortSignal,
       heartbeat.signal,
@@ -627,100 +627,22 @@ export class InferenceCoordinator {
     return rows.length === 1;
   }
 
-  private startHeartbeat(slot: AcquiredSlot): InferenceLeaseHeartbeat {
-    const leaseController = new AbortController();
-    let stopped = false;
-    let renewal: Promise<void> | null = null;
-    let renewalTimer: ReturnType<typeof setTimeout> | null = null;
-    let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
-    let confirmedDeadline = 0;
-
-    const clearLeaseTimers = (): void => {
-      if (renewalTimer !== null) {
-        clearTimeout(renewalTimer);
-        renewalTimer = null;
-      }
-      if (deadlineTimer !== null) {
-        clearTimeout(deadlineTimer);
-        deadlineTimer = null;
-      }
-    };
-    const loseLease = (cause?: unknown): void => {
-      if (leaseController.signal.aborted) {
-        return;
-      }
-      clearLeaseTimers();
-      leaseController.abort(
-        new InferenceLeaseLostError(
-          slot.resourceGroup,
-          slot.slotNumber,
-          cause,
-        ),
-      );
-    };
-    const scheduleRenewal = (delayMs: number): void => {
-      if (stopped || leaseController.signal.aborted) {
-        return;
-      }
-      renewalTimer = setTimeout(() => {
-        renewalTimer = null;
-        renewal = renew().finally(() => {
-          renewal = null;
-        });
-      }, Math.max(1, Math.floor(delayMs)));
-      renewalTimer.unref();
-    };
-    const scheduleConfirmedLease = (lease: InferenceLeaseRenewal): void => {
-      if (stopped) {
-        return;
-      }
-      const remainingMs =
-        lease.leaseExpiresAt.getTime() - lease.databaseNow.getTime();
-      if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
-        loseLease();
-        return;
-      }
-      confirmedDeadline = performance.now() + remainingMs;
-      if (deadlineTimer !== null) {
-        clearTimeout(deadlineTimer);
-      }
-      deadlineTimer = setTimeout(() => {
-        deadlineTimer = null;
-        loseLease();
-      }, remainingMs);
-      deadlineTimer.unref();
-      scheduleRenewal(remainingMs / 3);
-    };
-    const renew = async (): Promise<void> => {
-      try {
+  private startHeartbeat(slot: AcquiredSlot): Promise<LeaseHeartbeat> {
+    return startLeaseHeartbeat({
+      confirmedLease: buildInferenceLeaseConfirmation(slot),
+      createLeaseLostError: (cause) => new InferenceLeaseLostError(
+        slot.resourceGroup,
+        slot.slotNumber,
+        cause,
+      ),
+      renew: async () => {
         const lease = await this.renew(slot);
         if (lease === null) {
-          loseLease();
-          return;
+          return null;
         }
-        scheduleConfirmedLease(lease);
-      } catch (error: unknown) {
-        const remainingMs = confirmedDeadline - performance.now();
-        if (remainingMs <= 0) {
-          loseLease(error);
-          return;
-        }
-        scheduleRenewal(Math.min(1_000, remainingMs / 6));
-      }
-    };
-
-    scheduleConfirmedLease(slot);
-
-    return {
-      signal: leaseController.signal,
-      stop: async (): Promise<void> => {
-        stopped = true;
-        clearLeaseTimers();
-        if (renewal !== null) {
-          await renewal;
-        }
+        return buildInferenceLeaseConfirmation(lease);
       },
-    };
+    });
   }
 
   private async recordSchedulingEvent(
@@ -1157,6 +1079,16 @@ function readMonotonicLeaseSchedule(
 
 function elapsedWallMilliseconds(startedAt: Date, completedAt: Date): number {
   return Math.max(0, completedAt.getTime() - startedAt.getTime());
+}
+
+function buildInferenceLeaseConfirmation(
+  lease: InferenceLeaseRenewal,
+): LeaseConfirmation<null> {
+  return {
+    databaseNowMs: lease.databaseNow.getTime(),
+    details: null,
+    leaseExpiresAtMs: lease.leaseExpiresAt.getTime(),
+  };
 }
 
 function databaseClock() {
