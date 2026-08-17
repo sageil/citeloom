@@ -34,9 +34,11 @@ For an interactive MCP connection, use one of these registration paths:
 - Register a public client when the MCP host lets you enter a client ID.
 - Use a registration method that both the MCP host and authorization server support.
 
+:::caution[Use the callback URI from the MCP host]
 The MCP host owns its callback URI.
 Register that exact URI with the authorization server.
 Do not use a callback URI from this guide unless the MCP host gives you the same URI.
+:::
 
 ## Values that you need
 
@@ -119,8 +121,10 @@ LOGTO_POSTGRES_DATA_TARGET=/var/lib/postgresql/data
 LOGTO_RESTART_POLICY=unless-stopped
 ```
 
+:::danger[Keep deployment secrets out of Git]
 Use a URL-encoded database password in `LOGTO_DATABASE_URL`.
 Do not commit the deployment `.env` file.
+:::
 
 Start the independent Logto stack:
 
@@ -232,9 +236,11 @@ Select `profile` and `citeloom.app` on the **Permissions** tab:
 
 ![The Logto CiteLoom application has the profile and citeloom.app permissions.](/citeloom/images/oauth-logto-browser-app-permissions.png)
 
+:::caution[This browser application is a public client]
 Do not create or use a client secret for this application.
 Copy the Logto **Application ID**.
 CiteLoom uses this value as the browser public client ID.
+:::
 
 Logto requires an exact redirect URI.
 The [Logto application reference](https://docs.logto.io/integrate-logto/application-data-structure) describes public clients, PKCE, and redirect URIs.
@@ -271,11 +277,13 @@ The screen capture shows three exact callback URIs in one application:
 
 ![The shared Logto CiteLoom MCP Native application has three exact loopback callback URIs.](/citeloom/images/oauth-logto-mcp-app.png)
 
+:::caution[Register exact callback URIs]
 The callback URI comes from the MCP host.
 Do not copy a callback URI from the screen capture unless your host gives you the same URI.
 Do not use a wildcard callback URI.
 Logto can show a consistency warning when callback URIs use both `localhost` and `127.0.0.1`.
 Keep the exact host name that each MCP host gives you.
+:::
 
 The repository MCP test client uses this callback:
 
@@ -292,9 +300,11 @@ The result is one browser application and one shared MCP application:
 
 ![The Logto third-party application list contains the CiteLoom Single Page App and the shared CiteLoom MCP Native App.](/citeloom/images/oauth-logto-applications.png)
 
+:::caution[This Native application is a public client]
 Do not add a client secret to a Native application.
 Copy the Logto **Application ID**.
 Enter this ID in each compatible MCP host that uses this shared application.
+:::
 
 The unauthenticated `GET /mcp` challenge lets a host discover the Logto issuer and CiteLoom MCP scopes.
 It does not register an OAuth client in Logto.
@@ -425,8 +435,10 @@ pnpm mcp:client -- \
   --question 'What policy is documented in my workspaces?'
 ```
 
+:::danger[Keep TLS verification enabled]
 If the deployment uses a private certificate authority, add `--ca-file` with the public root certificate path.
 Do not disable certificate or host-name verification.
+:::
 
 For a browser interface, follow [Test with MCP Inspector](../../configuration/mcp/#test-with-mcp-inspector).
 

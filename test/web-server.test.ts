@@ -28,8 +28,33 @@ import {
 } from "../src/retrieval/discovery/pipeline.js";
 import type {
   AuthenticationSecurityWebServices,
+  RuntimeChatServices,
   SecurityWebServices,
 } from "../src/api/services.js";
+import type {
+  EmbeddingInputFormatRouteServices,
+} from "../src/api/embedding-input-format-routes.js";
+import type {
+  CitationRuntimeServices,
+} from "../src/api/citation-routes.js";
+import type {
+  DocumentCatalogRuntimeServices,
+} from "../src/api/document-catalog-routes.js";
+import type {
+  DocumentVersionRuntimeServices,
+} from "../src/api/document-version-routes.js";
+import type {
+  OpenAICodexRouteServices,
+} from "../src/api/openai-codex-routes.js";
+import type {
+  ResearchFeedbackRuntimeServices,
+} from "../src/api/research-feedback-routes.js";
+import type {
+  ResearchThreadRuntimeServices,
+} from "../src/api/research-thread-routes.js";
+import type {
+  SourceContentStorageServices,
+} from "../src/api/source-content-storage-routes.js";
 import { TextToSpeechUnavailableError } from "../src/providers/text-to-speech.js";
 import {
   SpeechToTextProviderError,
@@ -51,6 +76,7 @@ import {
   buildBrowserDocument,
   buildCatalogResult,
   buildConfig,
+  buildEmbeddingInputFormatRecord,
   buildEffectiveSettings,
   buildOAuthAuthenticationSettings,
   buildOAuthPrincipal,
@@ -74,7 +100,12 @@ import {
 import type { DoctorLiveChecks } from "../src/observability/doctor.js";
 import { SourceLibraryArchiveConflictError } from "../src/workspaces/source-library-store.js";
 import { SourceLibraryDeletionConflictError } from "../src/workspaces/source-library-deletion.js";
+import { WorkspaceSourceLibraryUnavailableError } from "../src/workspaces/source-library-access.js";
 import { OAuthIdentityLinkRemovalRejectedError } from "../src/oauth/identity-link-store.js";
+import {
+  EmbeddingInputFormatInUseError,
+  EmbeddingInputFormatNotFoundError,
+} from "../src/embedding/input-format-store.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -361,12 +392,14 @@ describe("web server boundary", () => {
     const stageOAuthApplicationConfiguration = vi.fn<
       AuthenticationSecurityWebServices["stageOAuthApplicationConfiguration"]
     >(async () => buildOAuthAuthenticationSettings());
+    const services = buildServices({
+      readSession: async () => principal,
+      stageOAuthApplicationConfiguration,
+    });
     const server = await buildProductionWebServer(buildConfig(), {
+      authenticationSecurityServices: services,
       logger: false,
-      services: buildServices({
-        readSession: async () => principal,
-        stageOAuthApplicationConfiguration,
-      }),
+      services,
       staticDirectory: null,
     });
     try {
@@ -412,12 +445,14 @@ describe("web server boundary", () => {
       ...buildOAuthAuthenticationSettings(),
       hostRecoveryEnabled: true,
     }));
+    const services = buildServices({
+      configureHostAuthenticationRecovery,
+      readSession: async () => principal,
+    });
     const server = await buildProductionWebServer(buildConfig(), {
+      authenticationSecurityServices: services,
       logger: false,
-      services: buildServices({
-        configureHostAuthenticationRecovery,
-        readSession: async () => principal,
-      }),
+      services,
       staticDirectory: null,
     });
     try {
@@ -446,12 +481,14 @@ describe("web server boundary", () => {
     const activateOAuthApplication = vi.fn<
       AuthenticationSecurityWebServices["activateOAuthApplication"]
     >(async () => buildOAuthAuthenticationSettings());
+    const services = buildServices({
+      activateOAuthApplication,
+      readSession: async () => principal,
+    });
     const server = await buildProductionWebServer(buildConfig(), {
+      authenticationSecurityServices: services,
       logger: false,
-      services: buildServices({
-        activateOAuthApplication,
-        readSession: async () => principal,
-      }),
+      services,
       staticDirectory: null,
     });
     try {
@@ -487,12 +524,14 @@ describe("web server boundary", () => {
         "You cannot remove your own identity mapping while OAuth is active.",
       );
     });
+    const services = buildServices({
+      readSession: async () => principal,
+      unlinkOAuthApplicationUserIdentity,
+    });
     const server = await buildProductionWebServer(buildConfig(), {
+      authenticationSecurityServices: services,
       logger: false,
-      services: buildServices({
-        readSession: async () => principal,
-        unlinkOAuthApplicationUserIdentity,
-      }),
+      services,
       staticDirectory: null,
     });
     try {
@@ -510,6 +549,34 @@ describe("web server boundary", () => {
           message: "You cannot remove your own identity mapping while OAuth is active.",
         },
       });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("does not register optional security routes without explicit services", async () => {
+    const server = await buildProductionWebServer(buildConfig(), {
+      authentication: "disabled",
+      logger: false,
+      services: buildServices(),
+      staticDirectory: null,
+    });
+    try {
+      const responses = await Promise.all([
+        server.inject({
+          method: "GET",
+          url: "/api/auth/password-policy",
+        }),
+        server.inject({
+          method: "GET",
+          url: "/api/security/authentication",
+        }),
+      ]);
+
+      expect(responses.map((response) => response.statusCode)).toEqual([
+        404,
+        404,
+      ]);
     } finally {
       await server.close();
     }
@@ -1509,6 +1576,86 @@ describe("web server boundary", () => {
     }
   });
 
+  it("rejects invalid document deletion requests before calling the service", async () => {
+    const principal = buildAuthenticatedPrincipal("member", "standard");
+    const documentId = "d".repeat(64);
+    const deleteIndexedDocument = vi.fn<
+      NonNullable<RuntimeWebServices["deleteIndexedDocument"]>
+    >();
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        deleteIndexedDocument,
+        readSession: async () => principal,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "DELETE",
+        payload: {},
+        url: `/api/documents/${documentId}`,
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(deleteIndexedDocument).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("maps document deletion state conflicts to HTTP errors", async () => {
+    const principal = buildAuthenticatedPrincipal("member", "standard");
+    const documentId = "d".repeat(64);
+    const sourceFile = "/documents/shared-handbook.pdf";
+    const deleteIndexedDocument = vi.fn<
+      NonNullable<RuntimeWebServices["deleteIndexedDocument"]>
+    >();
+    deleteIndexedDocument.mockResolvedValueOnce({ kind: "not-found" });
+    deleteIndexedDocument.mockResolvedValueOnce({ kind: "active" });
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        deleteIndexedDocument,
+        readSession: async () => principal,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const request = {
+        cookies: { "__Host-citeloom_session": "private-session-token" },
+        headers: { origin: "https://localhost:3443" },
+        method: "DELETE" as const,
+        payload: { sourceFile },
+        url: `/api/documents/${documentId}`,
+      };
+      const missingResponse = await server.inject(request);
+      const activeResponse = await server.inject(request);
+
+      expect(missingResponse.statusCode).toBe(404);
+      expect(missingResponse.json()).toEqual({
+        error: {
+          code: "invalid_request",
+          message: "The indexed document was not found.",
+        },
+      });
+      expect(activeResponse.statusCode).toBe(409);
+      expect(activeResponse.json()).toEqual({
+        error: {
+          code: "invalid_request",
+          message:
+            "The document cannot be deleted while ingestion or reindexing is active.",
+        },
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("serves canonical application routes that survive browser refresh", async () => {
     const staticDirectory = await mkdtemp(join(tmpdir(), "citeloom-web-routes-"));
     temporaryDirectories.push(staticDirectory);
@@ -2184,13 +2331,13 @@ describe("web server boundary", () => {
     const migrationId = "00000000-0000-4000-8000-000000000401";
     const migration = buildSourceContentMigrationRecord(migrationId, target);
     const testSourceContentStorage = vi.fn<
-      WebServices["testSourceContentStorage"]
+      SourceContentStorageServices["testSourceContentStorage"]
     >(async () => undefined);
     const queueSourceContentMigration = vi.fn<
-      WebServices["queueSourceContentMigration"]
+      SourceContentStorageServices["queueSourceContentMigration"]
     >(async () => migration);
     const cancelSourceContentMigration = vi.fn<
-      WebServices["cancelSourceContentMigration"]
+      SourceContentStorageServices["cancelSourceContentMigration"]
     >(async () => ({ ...migration, activeSlot: null, state: "cancelled" }));
     const server = await buildWebServer(buildConfig(), {
       logger: false,
@@ -2271,10 +2418,10 @@ describe("web server boundary", () => {
 
   it("rejects invalid source-content storage requests at the API boundary", async () => {
     const testSourceContentStorage = vi.fn<
-      WebServices["testSourceContentStorage"]
+      SourceContentStorageServices["testSourceContentStorage"]
     >(async () => undefined);
     const queueSourceContentMigration = vi.fn<
-      WebServices["queueSourceContentMigration"]
+      SourceContentStorageServices["queueSourceContentMigration"]
     >();
     const server = await buildWebServer(buildConfig(), {
       logger: false,
@@ -2331,7 +2478,7 @@ describe("web server boundary", () => {
       providerOverrideCapabilities: ["answer"],
     }));
     const readSourceContentStorage = vi.fn<
-      WebServices["readSourceContentStorage"]
+      SourceContentStorageServices["readSourceContentStorage"]
     >();
     const server = await buildProductionWebServer(buildConfig(), {
       logger: false,
@@ -2629,6 +2776,7 @@ describe("web server boundary", () => {
     };
     const server = await buildProductionWebServer(buildConfig(), {
       logger: false,
+      securityServices: services,
       services,
       staticDirectory: null,
     });
@@ -2820,6 +2968,7 @@ describe("web server boundary", () => {
     };
     const server = await buildProductionWebServer(buildConfig(), {
       logger: false,
+      securityServices: services,
       services,
       staticDirectory: null,
     });
@@ -2915,6 +3064,7 @@ describe("web server boundary", () => {
     };
     const server = await buildProductionWebServer(buildConfig(), {
       logger: false,
+      securityServices: services,
       services,
       staticDirectory: null,
     });
@@ -3018,29 +3168,161 @@ describe("web server boundary", () => {
     }
   });
 
+  it("creates, copies, revises, and retires embedding input formats", async () => {
+    const sourceId = "00000000-0000-4000-8000-000000000501";
+    const createdId = "00000000-0000-4000-8000-000000000502";
+    const copiedId = "00000000-0000-4000-8000-000000000503";
+    const revisedId = "00000000-0000-4000-8000-000000000504";
+    const baseRecord = buildEmbeddingInputFormatRecord();
+    const createEmbeddingInputFormat = vi.fn<
+      EmbeddingInputFormatRouteServices["createEmbeddingInputFormat"]
+    >(async () => ({ ...baseRecord, id: createdId }));
+    const copyEmbeddingInputFormat = vi.fn<
+      EmbeddingInputFormatRouteServices["copyEmbeddingInputFormat"]
+    >(async () => ({ ...baseRecord, id: copiedId }));
+    const reviseEmbeddingInputFormat = vi.fn<
+      EmbeddingInputFormatRouteServices["reviseEmbeddingInputFormat"]
+    >(async () => ({ ...baseRecord, id: revisedId }));
+    const retireEmbeddingInputFormat = vi.fn<
+      EmbeddingInputFormatRouteServices["retireEmbeddingInputFormat"]
+    >(async () => ({ ...baseRecord, id: sourceId, retiredAt: new Date() }));
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        copyEmbeddingInputFormat,
+        createEmbeddingInputFormat,
+        retireEmbeddingInputFormat,
+        reviseEmbeddingInputFormat,
+      }),
+      staticDirectory: null,
+    });
+    const definition = {
+      documentTemplate: "document: {{text}}",
+      name: "Search input",
+      queryTemplate: "query: {{text}}",
+      schemaVersion: 1,
+    };
+    const revisedDefinition = {
+      ...definition,
+      name: "Search input v2",
+      queryTemplate: "search query: {{text}}",
+    };
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        payload: { ...definition, name: "  Search input  " },
+        url: "/api/embedding-input-formats",
+      });
+      const copied = await server.inject({
+        method: "POST",
+        payload: { name: "  Search input copy  " },
+        url: `/api/embedding-input-formats/${sourceId}/copies`,
+      });
+      const revised = await server.inject({
+        method: "POST",
+        payload: revisedDefinition,
+        url: `/api/embedding-input-formats/${sourceId}/revisions`,
+      });
+      const retired = await server.inject({
+        method: "DELETE",
+        url: `/api/embedding-input-formats/${sourceId}`,
+      });
+
+      expect(created.statusCode).toBe(201);
+      expect(created.json()).toEqual({ id: createdId });
+      expect(createEmbeddingInputFormat).toHaveBeenCalledWith(definition);
+      expect(copied.statusCode).toBe(201);
+      expect(copied.json()).toEqual({ id: copiedId });
+      expect(copyEmbeddingInputFormat).toHaveBeenCalledWith(
+        sourceId,
+        "Search input copy",
+      );
+      expect(revised.statusCode).toBe(201);
+      expect(revised.json()).toEqual({ id: revisedId });
+      expect(reviseEmbeddingInputFormat).toHaveBeenCalledWith(
+        sourceId,
+        revisedDefinition,
+      );
+      expect(retired.statusCode).toBe(200);
+      expect(retired.json()).toEqual({ id: sourceId });
+      expect(retireEmbeddingInputFormat).toHaveBeenCalledWith(sourceId);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("maps embedding input format availability errors", async () => {
+    const sourceId = "00000000-0000-4000-8000-000000000505";
+    const copyEmbeddingInputFormat = vi.fn<
+      EmbeddingInputFormatRouteServices["copyEmbeddingInputFormat"]
+    >(async () => {
+      throw new EmbeddingInputFormatNotFoundError();
+    });
+    const retireEmbeddingInputFormat = vi.fn<
+      EmbeddingInputFormatRouteServices["retireEmbeddingInputFormat"]
+    >(async () => {
+      throw new EmbeddingInputFormatInUseError(["the active embedding space"]);
+    });
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        copyEmbeddingInputFormat,
+        retireEmbeddingInputFormat,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const missing = await server.inject({
+        method: "POST",
+        payload: { name: "Copy" },
+        url: `/api/embedding-input-formats/${sourceId}/copies`,
+      });
+      const inUse = await server.inject({
+        method: "DELETE",
+        url: `/api/embedding-input-formats/${sourceId}`,
+      });
+
+      expect(missing.statusCode).toBe(404);
+      expect(missing.json()).toMatchObject({
+        error: { message: "The embedding input format does not exist." },
+      });
+      expect(inUse.statusCode).toBe(409);
+      expect(inUse.json()).toMatchObject({
+        error: {
+          message: "The embedding input format is still in use by the active embedding space.",
+        },
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
   it("exposes administrator-only OpenAI Codex connection and model state", async () => {
-    const disconnect = vi.fn(async () => undefined);
-    const readModels = vi.fn(async () => [{
+    const disconnect = vi.fn<OpenAICodexRouteServices["disconnect"]>(
+      async () => undefined,
+    );
+    const readModels = vi.fn<OpenAICodexRouteServices["readModels"]>(async () => [{
       defaultReasoningLevel: "medium",
       id: "gpt-5.6-terra",
       name: "GPT-5.6 Terra",
       reasoning: true,
       supportedReasoningLevels: ["low", "medium", "high"],
     }]);
+    const openAICodex: OpenAICodexRouteServices = {
+      disconnect,
+      readConnectionState: async () => ({
+        expiresAt: "2026-07-27T13:00:00.000Z",
+        state: "connected",
+        updatedAt: "2026-07-27T12:00:00.000Z",
+      }),
+      readModels,
+      replaceCredentials: async () => undefined,
+    };
     const server = await buildWebServer(buildConfig(), {
       logger: false,
-      services: buildServices({
-        openAICodex: {
-          disconnect,
-          readConnectionState: async () => ({
-            expiresAt: "2026-07-27T13:00:00.000Z",
-            state: "connected",
-            updatedAt: "2026-07-27T12:00:00.000Z",
-          }),
-          readModels,
-          replaceCredentials: async () => undefined,
-        },
-      }),
+      services: buildServices({ openAICodex }),
       staticDirectory: null,
     });
 
@@ -3417,9 +3699,9 @@ describe("web server boundary", () => {
   });
 
   it("rejects invalid document catalog filters before calling the catalog", async () => {
-    const browseDocuments = vi.fn<RuntimeWebServices["browseDocuments"]>(async () => {
-      return buildCatalogResult();
-    });
+    const browseDocuments = vi.fn<
+      DocumentCatalogRuntimeServices["browseDocuments"]
+    >(async () => buildCatalogResult());
     const server = await buildWebServer(buildConfig(), {
       logger: false,
       services: buildServices({ browseDocuments }),
@@ -3443,7 +3725,9 @@ describe("web server boundary", () => {
     const documentId = "a".repeat(64);
     const sourceFile = "/app/documents/uploads/group/handbook.pdf";
     const content = Buffer.from("%PDF-test-document");
-    const readDocumentFile = vi.fn<RuntimeWebServices["readDocumentFile"]>(async () => ({
+    const readDocumentFile = vi.fn<
+      DocumentCatalogRuntimeServices["readDocumentFile"]
+    >(async () => ({
       content,
       documentId,
       filename: "handbook.pdf",
@@ -3510,7 +3794,9 @@ describe("web server boundary", () => {
   });
 
   it("does not serve a document when the catalog ID and source path do not match", async () => {
-    const readDocumentFile = vi.fn<RuntimeWebServices["readDocumentFile"]>(async () => null);
+    const readDocumentFile = vi.fn<
+      DocumentCatalogRuntimeServices["readDocumentFile"]
+    >(async () => null);
     const server = await buildWebServer(buildConfig(), {
       logger: false,
       services: buildServices({ readDocumentFile }),
@@ -3539,7 +3825,9 @@ describe("web server boundary", () => {
   });
 
   it("rejects invalid document links before reading stored content", async () => {
-    const readDocumentFile = vi.fn<RuntimeWebServices["readDocumentFile"]>(async () => null);
+    const readDocumentFile = vi.fn<
+      DocumentCatalogRuntimeServices["readDocumentFile"]
+    >(async () => null);
     const server = await buildWebServer(buildConfig(), {
       logger: false,
       services: buildServices({ readDocumentFile }),
@@ -3559,6 +3847,117 @@ describe("web server boundary", () => {
       expect(missingSourceResponse.statusCode).toBe(400);
       expect(invalidIdResponse.statusCode).toBe(400);
       expect(readDocumentFile).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("normalizes document tags before updating the catalog", async () => {
+    const documentId = "a".repeat(64);
+    const sourceFile = "/documents/handbook.pdf";
+    const updateDocumentTags = vi.fn<
+      DocumentCatalogRuntimeServices["updateDocumentTags"]
+    >(async (_principal, request) => ({
+      sourceFile: request.sourceFile,
+      tags: request.tags,
+    }));
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ updateDocumentTags }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        method: "PUT",
+        payload: {
+          sourceFile,
+          tags: ["Statute", "legal", "statute"],
+        },
+        url: `/api/documents/${documentId}/tags`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        sourceFile,
+        tags: ["legal", "statute"],
+      });
+      expect(updateDocumentTags).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        {
+          documentId,
+          sourceFile,
+          tags: ["legal", "statute"],
+        },
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("rejects invalid document tag updates before calling the catalog", async () => {
+    const documentId = "a".repeat(64);
+    const sourceFile = "/documents/handbook.pdf";
+    const updateDocumentTags = vi.fn<
+      DocumentCatalogRuntimeServices["updateDocumentTags"]
+    >(async () => null);
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ updateDocumentTags }),
+      staticDirectory: null,
+    });
+
+    try {
+      const invalidId = await server.inject({
+        method: "PUT",
+        payload: { sourceFile, tags: ["legal"] },
+        url: "/api/documents/not-a-document-id/tags",
+      });
+      const invalidTag = await server.inject({
+        method: "PUT",
+        payload: { sourceFile, tags: ["not a valid tag"] },
+        url: `/api/documents/${documentId}/tags`,
+      });
+
+      expect(invalidId.statusCode).toBe(400);
+      expect(invalidTag.statusCode).toBe(400);
+      expect(updateDocumentTags).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("returns not found when the selected document cannot be tagged", async () => {
+    const documentId = "a".repeat(64);
+    const sourceFile = "/documents/handbook.pdf";
+    const updateDocumentTags = vi.fn<
+      DocumentCatalogRuntimeServices["updateDocumentTags"]
+    >(async () => null);
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ updateDocumentTags }),
+      staticDirectory: null,
+    });
+
+    try {
+      const response = await server.inject({
+        method: "PUT",
+        payload: { sourceFile, tags: ["legal"] },
+        url: `/api/documents/${documentId}/tags`,
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({
+        error: { message: "The selected document is no longer indexed." },
+      });
+      expect(updateDocumentTags).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        {
+          documentId,
+          sourceFile,
+          tags: ["legal"],
+        },
+      );
     } finally {
       await server.close();
     }
@@ -4140,6 +4539,44 @@ describe("web server boundary", () => {
     }
   });
 
+  it("maps an unavailable ingestion source library and removes staging", async () => {
+    const uploadDirectory = await createTemporaryDirectory();
+    const ingest = vi.fn<RuntimeWebServices["ingest"]>(async () => {
+      throw new WorkspaceSourceLibraryUnavailableError();
+    });
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ ingest }),
+      staticDirectory: null,
+      uploadDirectory,
+    });
+
+    try {
+      const form = new FormData();
+      form.append(
+        "documents",
+        new Blob(["document contents"], { type: "text/plain" }),
+        "document.txt",
+      );
+      const request = await buildMultipartRequest(form);
+      const response = await server.inject({
+        headers: request.headers,
+        method: "POST",
+        payload: request.payload,
+        url: "/api/ingestions",
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({
+        error: { message: "The workspace source library is unavailable." },
+      });
+      expect(ingest).toHaveBeenCalledOnce();
+      await expect(readDirectoryEntries(uploadDirectory)).resolves.toEqual([]);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("rejects oversized uploads and removes the incomplete upload group", async () => {
     const uploadDirectory = await createTemporaryDirectory();
     const ingest = vi.fn<RuntimeWebServices["ingest"]>(async () => ({ documents: [], failures: [] }));
@@ -4525,8 +4962,108 @@ describe("web server boundary", () => {
   });
 });
 
+describe("chat API boundary", () => {
+  it("creates, lists, reopens, deletes, and streams chat conversations", async () => {
+    const conversationId = "00000000-0000-4000-8000-000000000301";
+    const requestId = "00000000-0000-4000-8000-000000000302";
+    const conversation = {
+      createdAt: "2026-07-15T12:00:00.000Z",
+      id: conversationId,
+      ownerUserId: "00000000-0000-4000-8000-000000000000",
+      runs: [],
+      scope: { kind: "all" as const },
+      title: "Evidence chat",
+      updatedAt: "2026-07-15T12:00:00.000Z",
+      workspaceId: "00000000-0000-4000-8000-000000000000",
+    };
+    const createChatConversation = vi.fn<
+      RuntimeChatServices["createChatConversation"]
+    >(async () => conversation);
+    const deleteChatConversation = vi.fn<
+      RuntimeChatServices["deleteChatConversation"]
+    >(async () => undefined);
+    const streamChatMessage = vi.fn<
+      RuntimeChatServices["streamChatMessage"]
+    >(() => createAnswerStream("The evidence is available."));
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        createChatConversation,
+        deleteChatConversation,
+        listChatConversations: async () => [{
+          createdAt: conversation.createdAt,
+          id: conversation.id,
+          messageCount: 0,
+          title: conversation.title,
+          updatedAt: conversation.updatedAt,
+        }],
+        readChatConversation: async () => conversation,
+        streamChatMessage,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const created = await server.inject({
+        method: "POST",
+        payload: { scope: { kind: "all" }, title: "  Evidence chat  " },
+        url: "/api/chat/conversations",
+      });
+      const listed = await server.inject({
+        method: "GET",
+        url: "/api/chat/conversations",
+      });
+      const reopened = await server.inject({
+        method: "GET",
+        url: `/api/chat/conversations/${conversationId}`,
+      });
+      const streamed = await server.inject({
+        method: "POST",
+        payload: { content: "  Summarize the evidence.  ", requestId },
+        url: `/api/chat/conversations/${conversationId}/messages`,
+      });
+      const deleted = await server.inject({
+        method: "DELETE",
+        url: `/api/chat/conversations/${conversationId}`,
+      });
+
+      expect(created.statusCode).toBe(201);
+      expect(created.json()).toMatchObject({ id: conversationId });
+      expect(createChatConversation).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        "Evidence chat",
+        { kind: "all" },
+      );
+      expect(listed.json()).toEqual([
+        expect.objectContaining({ id: conversationId, messageCount: 0 }),
+      ]);
+      expect(reopened.json()).toMatchObject({ id: conversationId });
+      expect(streamed.statusCode).toBe(200);
+      expect(streamed.headers["content-type"]).toContain("text/event-stream");
+      expect(streamed.body).toContain("data-answer");
+      expect(streamed.body).toContain("The evidence is available.");
+      expect(streamChatMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        {
+          content: "Summarize the evidence.",
+          conversationId,
+          requestId,
+        },
+        expect.any(AbortSignal),
+      );
+      expect(deleted.statusCode).toBe(204);
+      expect(deleteChatConversation).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        conversationId,
+      );
+    } finally {
+      await server.close();
+    }
+  });
+});
+
 describe("research API boundary", () => {
-  it("creates, lists, reopens, and exports explicit research threads", async () => {
+  it("creates and lists research threads", async () => {
     const thread = {
       createdAt: "2026-07-15T12:00:00.000Z",
       id: "00000000-0000-4000-8000-000000000201",
@@ -4534,30 +5071,27 @@ describe("research API boundary", () => {
       turns: [],
       updatedAt: "2026-07-15T12:00:00.000Z",
     };
-    const createResearchThread = vi.fn<RuntimeWebServices["createResearchThread"]>(
+    const createResearchThread = vi.fn<
+      ResearchThreadRuntimeServices["createResearchThread"]
+    >(
       async () => thread,
     );
-    const deleteResearchThread = vi.fn<RuntimeWebServices["deleteResearchThread"]>(
-      async () => undefined,
+    const listResearchThreads = vi.fn<
+      ResearchThreadRuntimeServices["listResearchThreads"]
+    >(
+      async () => [{
+        createdAt: thread.createdAt,
+        id: thread.id,
+        title: thread.title,
+        turnCount: 0,
+        updatedAt: thread.updatedAt,
+      }],
     );
     const server = await buildWebServer(buildConfig(), {
       logger: false,
       services: buildServices({
         createResearchThread,
-        deleteResearchThread,
-        exportResearchThread: async () => ({
-          content: "# Quarterly evidence\n",
-          filename: "thread.md",
-          mediaType: "text/markdown; charset=utf-8",
-        }),
-        listResearchThreads: async () => [{
-          createdAt: thread.createdAt,
-          id: thread.id,
-          title: thread.title,
-          turnCount: 0,
-          updatedAt: thread.updatedAt,
-        }],
-        readResearchThread: async () => thread,
+        listResearchThreads,
       }),
       staticDirectory: null,
     });
@@ -4571,6 +5105,54 @@ describe("research API boundary", () => {
         method: "GET",
         url: "/api/research/threads",
       });
+
+      expect(created.statusCode).toBe(201);
+      expect(created.json()).toEqual(thread);
+      expect(createResearchThread).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        "Quarterly evidence",
+      );
+      expect(listed.statusCode).toBe(200);
+      expect(listed.json()).toEqual([expect.objectContaining({ id: thread.id })]);
+      expect(listResearchThreads).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reads, exports, and deletes a research thread", async () => {
+    const thread = {
+      createdAt: "2026-07-15T12:00:00.000Z",
+      id: "00000000-0000-4000-8000-000000000201",
+      title: "Quarterly evidence",
+      turns: [],
+      updatedAt: "2026-07-15T12:00:00.000Z",
+    };
+    const deleteResearchThread = vi.fn<
+      ResearchThreadRuntimeServices["deleteResearchThread"]
+    >(async () => undefined);
+    const exportResearchThread = vi.fn<
+      ResearchThreadRuntimeServices["exportResearchThread"]
+    >(async () => ({
+      content: "# Quarterly evidence\n",
+      filename: "thread.md",
+      mediaType: "text/markdown; charset=utf-8",
+    }));
+    const readResearchThread = vi.fn<
+      ResearchThreadRuntimeServices["readResearchThread"]
+    >(async () => thread);
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        deleteResearchThread,
+        exportResearchThread,
+        readResearchThread,
+      }),
+      staticDirectory: null,
+    });
+    try {
       const reopened = await server.inject({
         method: "GET",
         url: `/api/research/threads/${thread.id}`,
@@ -4584,19 +5166,77 @@ describe("research API boundary", () => {
         url: `/api/research/threads/${thread.id}`,
       });
 
-      expect(created.statusCode).toBe(201);
-      expect(createResearchThread).toHaveBeenCalledWith(
+      expect(reopened.statusCode).toBe(200);
+      expect(reopened.json()).toEqual(thread);
+      expect(readResearchThread).toHaveBeenCalledWith(
         expect.objectContaining({ username: "disabled-authentication" }),
-        "Quarterly evidence",
+        thread.id,
       );
-      expect(listed.json()).toEqual([expect.objectContaining({ id: thread.id })]);
-      expect(reopened.json()).toMatchObject({ id: thread.id });
+      expect(exported.statusCode).toBe(200);
+      expect(exported.body).toBe("# Quarterly evidence\n");
+      expect(exported.headers["cache-control"]).toBe("private, no-store");
       expect(exported.headers["content-type"]).toContain("text/markdown");
-      expect(exported.headers["content-disposition"]).toContain("thread.md");
+      expect(exported.headers["content-disposition"]).toBe(
+        'attachment; filename="thread.md"',
+      );
+      expect(exportResearchThread).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        thread.id,
+        "markdown",
+      );
       expect(deleted.statusCode).toBe(204);
+      expect(deleted.body).toBe("");
       expect(deleteResearchThread).toHaveBeenCalledWith(
         expect.objectContaining({ username: "disabled-authentication" }),
         thread.id,
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("returns not found when a research thread cannot be read or exported", async () => {
+    const threadId = "00000000-0000-4000-8000-000000000201";
+    const readResearchThread = vi.fn<
+      ResearchThreadRuntimeServices["readResearchThread"]
+    >(async () => null);
+    const exportResearchThread = vi.fn<
+      ResearchThreadRuntimeServices["exportResearchThread"]
+    >(async () => null);
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        exportResearchThread,
+        readResearchThread,
+      }),
+      staticDirectory: null,
+    });
+    try {
+      const reopened = await server.inject({
+        method: "GET",
+        url: `/api/research/threads/${threadId}`,
+      });
+      const exported = await server.inject({
+        method: "GET",
+        url: `/api/research/threads/${threadId}/export?format=json`,
+      });
+
+      expect(reopened.statusCode).toBe(404);
+      expect(reopened.json()).toMatchObject({
+        error: { message: "The research thread was not found." },
+      });
+      expect(exported.statusCode).toBe(404);
+      expect(exported.json()).toMatchObject({
+        error: { message: "The research thread was not found." },
+      });
+      expect(readResearchThread).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        threadId,
+      );
+      expect(exportResearchThread).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        threadId,
+        "json",
       );
     } finally {
       await server.close();
@@ -4621,7 +5261,7 @@ describe("research API boundary", () => {
       version: 1,
     };
     const listDocumentVersions = vi.fn<
-      RuntimeWebServices["listDocumentVersions"]
+      DocumentVersionRuntimeServices["listDocumentVersions"]
     >(async () => [version]);
     const server = await buildWebServer(buildConfig(), {
       logger: false,
@@ -4646,31 +5286,274 @@ describe("research API boundary", () => {
     }
   });
 
-  it("returns immutable citation evidence and validates dimension-specific feedback", async () => {
-    const citationId = "00000000-0000-4000-8000-000000000202";
-    const turnId = "00000000-0000-4000-8000-000000000203";
-    const addResearchFeedback = vi.fn<RuntimeWebServices["addResearchFeedback"]>(
-      async () => ({ negativeCount: 1, positiveCount: 0, rating: -1 }),
-    );
+  it("compares document versions", async () => {
+    const previousVersionId = "00000000-0000-4000-8000-000000000101";
+    const currentVersionId = "00000000-0000-4000-8000-000000000102";
+    const difference = {
+      addedElementIds: ["c".repeat(64)],
+      currentVersionId,
+      modified: [{
+        currentElementId: "d".repeat(64),
+        previousElementId: "e".repeat(64),
+      }],
+      previousVersionId,
+      removedElementIds: ["f".repeat(64)],
+    };
+    const compareDocumentVersions = vi.fn<
+      DocumentVersionRuntimeServices["compareDocumentVersions"]
+    >(async () => difference);
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ compareDocumentVersions }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/document-versions/compare?previous=${previousVersionId}&current=${currentVersionId}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(difference);
+      expect(compareDocumentVersions).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        previousVersionId,
+        currentVersionId,
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("serves versioned document files with safe headers", async () => {
+    const versionId = "00000000-0000-4000-8000-000000000101";
+    const content = Buffer.from("%PDF-versioned-document");
+    const readVersionedDocumentFile = vi.fn<
+      DocumentVersionRuntimeServices["readVersionedDocumentFile"]
+    >(async () => ({
+      content,
+      documentId: "a".repeat(64),
+      filename: "evidence.pdf",
+      mediaType: "application/pdf",
+      sourceFile: "/documents/evidence.pdf",
+    }));
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ readVersionedDocumentFile }),
+      staticDirectory: null,
+    });
+    try {
+      const response = await server.inject({
+        method: "GET",
+        url: `/api/document-versions/${versionId}/file`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.rawPayload).toEqual(content);
+      expect(response.headers["cache-control"]).toBe("private, no-store");
+      expect(response.headers["content-disposition"]).toContain(
+        'inline; filename="evidence.pdf"',
+      );
+      expect(response.headers["content-security-policy"]).toContain("sandbox");
+      expect(response.headers["content-type"]).toContain("application/pdf");
+      expect(response.headers["cross-origin-resource-policy"]).toBe("same-origin");
+      expect(response.headers["x-content-type-options"]).toBe("nosniff");
+      expect(readVersionedDocumentFile).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        versionId,
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("returns not found for unavailable document versions", async () => {
+    const previousVersionId = "00000000-0000-4000-8000-000000000101";
+    const currentVersionId = "00000000-0000-4000-8000-000000000102";
+    const compareDocumentVersions = vi.fn<
+      DocumentVersionRuntimeServices["compareDocumentVersions"]
+    >(async () => null);
+    const readVersionedDocumentFile = vi.fn<
+      DocumentVersionRuntimeServices["readVersionedDocumentFile"]
+    >(async () => null);
     const server = await buildWebServer(buildConfig(), {
       logger: false,
       services: buildServices({
-        addResearchFeedback,
-        readCitationEvidence: async () => ({
-          citationNumber: 1,
-          createdAt: "2026-07-15T12:00:00.000Z",
-          documentId: "a".repeat(64),
-          documentVersionId: "00000000-0000-4000-8000-000000000205",
-          elementId: "b".repeat(64),
-          evidence: { excerpt: "Exact evidence.", kind: "text" },
-          id: citationId,
-          pageNumbers: [1],
-          regions: [],
-          sectionPath: [],
-          sourceFile: "/documents/evidence.txt",
-          stale: false,
-          turnId,
-        }),
+        compareDocumentVersions,
+        readVersionedDocumentFile,
+      }),
+      staticDirectory: null,
+    });
+    try {
+      const comparison = await server.inject({
+        method: "GET",
+        url: `/api/document-versions/compare?previous=${previousVersionId}&current=${currentVersionId}`,
+      });
+      const file = await server.inject({
+        method: "GET",
+        url: `/api/document-versions/${previousVersionId}/file`,
+      });
+
+      expect(comparison.statusCode).toBe(404);
+      expect(comparison.json()).toMatchObject({
+        error: {
+          message: "One or both document versions were not found.",
+        },
+      });
+      expect(file.statusCode).toBe(404);
+      expect(file.json()).toMatchObject({
+        error: { message: "The document version was not found." },
+      });
+      expect(compareDocumentVersions).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        previousVersionId,
+        currentVersionId,
+      );
+      expect(readVersionedDocumentFile).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        previousVersionId,
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("returns immutable citation evidence", async () => {
+    const citationId = "00000000-0000-4000-8000-000000000202";
+    const turnId = "00000000-0000-4000-8000-000000000203";
+    const readCitationEvidence = vi.fn<
+      CitationRuntimeServices["readCitationEvidence"]
+    >(
+      async () => ({
+        citationNumber: 1,
+        createdAt: "2026-07-15T12:00:00.000Z",
+        documentId: "a".repeat(64),
+        documentVersionId: "00000000-0000-4000-8000-000000000205",
+        elementId: "b".repeat(64),
+        evidence: { excerpt: "Exact evidence.", kind: "text" },
+        id: citationId,
+        pageNumbers: [1],
+        regions: [],
+        sectionPath: [],
+        sourceFile: "/documents/evidence.txt",
+        stale: false,
+        turnId,
+      }),
+    );
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ readCitationEvidence }),
+      staticDirectory: null,
+    });
+    try {
+      const evidence = await server.inject({
+        method: "GET",
+        url: `/api/citations/${citationId}`,
+      });
+
+      expect(evidence.statusCode).toBe(200);
+      expect(evidence.json()).toMatchObject({
+        documentVersionId: "00000000-0000-4000-8000-000000000205",
+        evidence: { excerpt: "Exact evidence.", kind: "text" },
+      });
+      expect(readCitationEvidence).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        citationId,
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("serves citation images and highlighted files with safe headers", async () => {
+    const citationId = "00000000-0000-4000-8000-000000000202";
+    const imageContent = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    const highlightedContent = Buffer.from("<mark>Exact evidence.</mark>");
+    const readCitationImage = vi.fn<
+      CitationRuntimeServices["readCitationImage"]
+    >(async () => ({
+      content: imageContent,
+      mediaType: "image/png",
+    }));
+    const readCitationHighlightedFile = vi.fn<
+      CitationRuntimeServices["readCitationHighlightedFile"]
+    >(async () => ({
+      content: highlightedContent,
+      documentId: "a".repeat(64),
+      filename: "evidence.html",
+      mediaType: "text/html",
+      sourceFile: "/documents/evidence.html",
+    }));
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readCitationHighlightedFile,
+        readCitationImage,
+      }),
+      staticDirectory: null,
+    });
+    try {
+      const image = await server.inject({
+        method: "GET",
+        url: `/api/citations/${citationId}/image`,
+      });
+      const highlighted = await server.inject({
+        method: "GET",
+        url: `/api/citations/${citationId}/highlighted-file`,
+      });
+
+      expect(image.statusCode).toBe(200);
+      expect(image.rawPayload).toEqual(imageContent);
+      expect(image.headers["cache-control"]).toBe("private, no-store");
+      expect(image.headers["content-disposition"]).toBe("inline");
+      expect(image.headers["content-security-policy"]).toContain("sandbox");
+      expect(image.headers["content-type"]).toContain("image/png");
+      expect(image.headers["cross-origin-resource-policy"]).toBe("same-origin");
+      expect(image.headers["x-content-type-options"]).toBe("nosniff");
+      expect(readCitationImage).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        citationId,
+      );
+      expect(highlighted.statusCode).toBe(200);
+      expect(highlighted.rawPayload).toEqual(highlightedContent);
+      expect(highlighted.headers["cache-control"]).toBe("private, no-store");
+      expect(highlighted.headers["content-disposition"]).toContain(
+        'inline; filename="evidence.html"',
+      );
+      expect(highlighted.headers["content-security-policy"]).toContain(
+        "sandbox allow-same-origin",
+      );
+      expect(highlighted.headers["content-type"]).toContain("text/html");
+      expect(highlighted.headers["cross-origin-resource-policy"]).toBe(
+        "same-origin",
+      );
+      expect(highlighted.headers["x-content-type-options"]).toBe("nosniff");
+      expect(readCitationHighlightedFile).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        citationId,
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("returns not found for unavailable citation resources", async () => {
+    const citationId = "00000000-0000-4000-8000-000000000202";
+    const readCitationEvidence = vi.fn<
+      CitationRuntimeServices["readCitationEvidence"]
+    >(async () => null);
+    const readCitationHighlightedFile = vi.fn<
+      CitationRuntimeServices["readCitationHighlightedFile"]
+    >(async () => null);
+    const readCitationImage = vi.fn<
+      CitationRuntimeServices["readCitationImage"]
+    >(async () => null);
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readCitationEvidence,
+        readCitationHighlightedFile,
+        readCitationImage,
       }),
       staticDirectory: null,
     });
@@ -4679,6 +5562,59 @@ describe("research API boundary", () => {
         method: "GET",
         url: `/api/citations/${citationId}`,
       });
+      const image = await server.inject({
+        method: "GET",
+        url: `/api/citations/${citationId}/image`,
+      });
+      const highlighted = await server.inject({
+        method: "GET",
+        url: `/api/citations/${citationId}/highlighted-file`,
+      });
+
+      expect(evidence.statusCode).toBe(404);
+      expect(evidence.json()).toMatchObject({
+        error: { message: "The citation was not found." },
+      });
+      expect(image.statusCode).toBe(404);
+      expect(image.json()).toMatchObject({
+        error: { message: "The citation was not found." },
+      });
+      expect(highlighted.statusCode).toBe(404);
+      expect(highlighted.json()).toMatchObject({
+        error: {
+          message: "The citation or document version was not found.",
+        },
+      });
+      expect(readCitationEvidence).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        citationId,
+      );
+      expect(readCitationImage).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        citationId,
+      );
+      expect(readCitationHighlightedFile).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        citationId,
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("records and validates dimension-specific research feedback", async () => {
+    const citationId = "00000000-0000-4000-8000-000000000202";
+    const turnId = "00000000-0000-4000-8000-000000000203";
+    const summary = { negativeCount: 1, positiveCount: 0, rating: -1 as const };
+    const addResearchFeedback = vi.fn<
+      ResearchFeedbackRuntimeServices["addResearchFeedback"]
+    >(async () => summary);
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ addResearchFeedback }),
+      staticDirectory: null,
+    });
+    try {
       const invalidFeedback = await server.inject({
         method: "POST",
         payload: {
@@ -4702,13 +5638,10 @@ describe("research API boundary", () => {
         url: "/api/research/feedback",
       });
 
-      expect(evidence.statusCode).toBe(200);
-      expect(evidence.json()).toMatchObject({
-        documentVersionId: "00000000-0000-4000-8000-000000000205",
-        evidence: { excerpt: "Exact evidence.", kind: "text" },
-      });
       expect(invalidFeedback.statusCode).toBe(400);
       expect(validFeedback.statusCode).toBe(200);
+      expect(validFeedback.json()).toEqual(summary);
+      expect(addResearchFeedback).toHaveBeenCalledTimes(1);
       expect(addResearchFeedback).toHaveBeenCalledWith(
         expect.objectContaining({ username: "disabled-authentication" }),
         {
@@ -4718,6 +5651,52 @@ describe("research API boundary", () => {
           rating: -1,
           turnId,
         },
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reads and validates research feedback summaries", async () => {
+    const turnId = "00000000-0000-4000-8000-000000000203";
+    const summary = { negativeCount: 1, positiveCount: 2, rating: 1 as const };
+    const readResearchFeedback = vi.fn<
+      ResearchFeedbackRuntimeServices["readResearchFeedback"]
+    >(async () => summary);
+    const server = await buildWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({ readResearchFeedback }),
+      staticDirectory: null,
+    });
+    try {
+      const invalidSummary = await server.inject({
+        method: "POST",
+        payload: {
+          citationId: null,
+          dimension: "unknown",
+          turnId,
+        },
+        url: "/api/research/feedback-summary",
+      });
+      const validSummary = await server.inject({
+        method: "POST",
+        payload: {
+          citationId: null,
+          dimension: "answer-usefulness",
+          turnId,
+        },
+        url: "/api/research/feedback-summary",
+      });
+
+      expect(invalidSummary.statusCode).toBe(400);
+      expect(validSummary.statusCode).toBe(200);
+      expect(validSummary.json()).toEqual(summary);
+      expect(readResearchFeedback).toHaveBeenCalledTimes(1);
+      expect(readResearchFeedback).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        turnId,
+        "answer-usefulness",
+        null,
       );
     } finally {
       await server.close();

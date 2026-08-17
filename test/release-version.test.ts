@@ -158,9 +158,5 @@ function releaseFixtureFiles(): Array<{ contents: string; path: string }> {
         '{\n  "name": "citeloom-docs",\n  "version": "1.1.0"\n}\n',
       path: "docsite/package.json",
     },
-    {
-      contents: "CITELOOM_IMAGE_TAG=1.1.0\nCITELOOM_RELEASE=1.1.0\n",
-      path: "docsite/src/content/docs/installation/docker-compose.md",
-    },
   ];
 }

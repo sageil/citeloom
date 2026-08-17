@@ -8,7 +8,10 @@ import {
   type AnswerPresentation,
   type AnswerSection,
 } from "./draft.js";
-import type { CitationEvidence } from "../research/types.js";
+import {
+  citationEvidenceSchema,
+  type CitationEvidence,
+} from "../domain/citation-evidence.js";
 import type { SourceElement, SourceRegion } from "../domain/source-elements.js";
 import {
   contentIdSchema,
@@ -56,42 +59,12 @@ export type PublishedAnswerDocument =
   | PublishedAnsweredDocument
   | PublishedUncitedAnswerDocument;
 
-const evidenceSchema = z.discriminatedUnion("kind", [
-  z.object({ excerpt: z.string().min(1), kind: z.literal("text") }).strict(),
-  z.object({
-    content: z.string().min(1),
-    kind: z.literal("table"),
-    table: z.object({
-      cells: z.array(z.object({
-        columnHeader: z.boolean(),
-        columnSpan: z.number().int().positive(),
-        endColumn: z.number().int().positive(),
-        endRow: z.number().int().positive(),
-        rowHeader: z.boolean(),
-        rowSection: z.boolean(),
-        rowSpan: z.number().int().positive(),
-        startColumn: z.number().int().nonnegative(),
-        startRow: z.number().int().nonnegative(),
-        text: z.string(),
-      }).strict()),
-      columnCount: z.number().int().positive(),
-      rowCount: z.number().int().positive(),
-      rowEnd: z.number().int().positive(),
-      rowStart: z.number().int().nonnegative(),
-    }).strict(),
-  }).strict(),
-  z.object({
-    kind: z.literal("image"),
-    mimeType: z.string().min(1),
-  }).strict(),
-]);
-
 export const publishedAnswerCitationSchema: z.ZodType<PublishedAnswerCitation> = z.object({
   citationNumber: z.number().int().positive(),
   documentId: contentIdSchema,
   documentVersionId: z.uuid(),
   elementId: contentIdSchema,
-  evidence: evidenceSchema,
+  evidence: citationEvidenceSchema,
   id: z.uuid(),
   kind: z.enum(["text", "table", "image"]),
   pageNumbers: z.array(z.number().int().positive()),

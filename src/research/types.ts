@@ -10,32 +10,15 @@ import type {
 } from "../answers/published-model.js";
 import type { EvidenceVerificationState } from "../answers/verification-state.js";
 import type { DocumentFormat } from "../documents/format.js";
+import type { CitationEvidence } from "../domain/citation-evidence.js";
 import type { QueryScope } from "../domain/query-scope.js";
-import type {
-  SourceRegion,
-  TableStructure,
-} from "../domain/source-elements.js";
+import type { SourceRegion } from "../domain/source-elements.js";
 import type {
   QUESTION_PROCESSING_POLICY_ID,
 } from "../domain/question.js";
 import type {
   RepresentationHit,
 } from "../retrieval/ranking/rank-fusion.js";
-
-export type CitationEvidence =
-  | {
-    excerpt: string;
-    kind: "text";
-  }
-  | {
-    content: string;
-    kind: "table";
-    table: TableStructure;
-  }
-  | {
-    kind: "image";
-    mimeType: string;
-  };
 
 export interface StoredCitationRecord {
   citationNumber: number;

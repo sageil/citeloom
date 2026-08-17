@@ -1,8 +1,10 @@
 import type {
   ApplicationStateRevisionSnapshot,
 } from "../app/application-state-revisions.js";
+import type { AppConfig } from "../config/index.js";
 import {
   DEFAULT_DOCUMENT_CATALOG_REQUEST,
+  type BrowseDocumentCatalogRequest,
   type BrowseDocumentCatalogResult,
   type DocumentCatalogFacets,
 } from "../documents/catalog/browser.js";
@@ -10,8 +12,18 @@ import { SUPPORTED_DOCUMENT_EXTENSIONS } from "../documents/format.js";
 import type { SystemStatus } from "../ingestion/worker.js";
 import type { DoctorCheck } from "../observability/doctor.js";
 import type { TelemetryDashboardSummary } from "../observability/store.js";
-import type { RuntimeWebServices } from "./services.js";
 import type { AuthorizationPrincipal } from "../auth/model.js";
+
+export interface DashboardRuntimeServices {
+  browseDocuments: (
+    principal: AuthorizationPrincipal,
+    request: BrowseDocumentCatalogRequest,
+  ) => Promise<BrowseDocumentCatalogResult>;
+  readonly config: AppConfig;
+  readRevisions: () => Promise<ApplicationStateRevisionSnapshot>;
+  readStatus: (principal: AuthorizationPrincipal) => Promise<SystemStatus>;
+  readTelemetry: () => Promise<TelemetryDashboardSummary>;
+}
 
 export interface DashboardResponse {
   catalog: BrowseDocumentCatalogResult;
@@ -81,7 +93,7 @@ export function buildDiagnosticResponseChecks(
 }
 
 export async function buildDashboardResponse(
-  runtime: RuntimeWebServices,
+  runtime: DashboardRuntimeServices,
   principal: AuthorizationPrincipal,
   maximumUploadRequestBytes: number,
 ): Promise<DashboardResponse> {

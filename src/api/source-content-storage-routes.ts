@@ -1,29 +1,46 @@
 import type { FastifyInstance } from "fastify";
 
 import type { AuthorizationPrincipal } from "../auth/model.js";
+import type { SourceContentConfig } from "../config/index.js";
 import {
   sanitizeDiagnosticMessage,
 } from "../observability/application-errors.js";
 import {
   SourceContentMigrationConflictError,
   SourceContentMigrationNotFoundError,
+  type SourceContentMigrationRecord,
+  type SourceContentStorageOverview,
 } from "../documents/storage/source-content-migration-store.js";
 import { requireGlobalAdministratorPrincipal } from "./authentication-routes.js";
 import {
   decodeSourceContentMigrationId,
   decodeSourceContentMigrationRequest,
   decodeSourceContentStorageProbe,
+  type SourceContentMigrationRequest,
 } from "./source-content-storage-boundary.js";
 import {
   buildSourceContentStorageResponse,
   presentSourceContentMigration,
 } from "./source-content-storage-response.js";
-import type { WebServices } from "./services.js";
 import { WebRequestError } from "./request-boundary.js";
+
+export interface SourceContentStorageServices {
+  cancelSourceContentMigration: (
+    id: string,
+  ) => Promise<SourceContentMigrationRecord>;
+  queueSourceContentMigration: (
+    requestedByUserId: string,
+    request: SourceContentMigrationRequest,
+  ) => Promise<SourceContentMigrationRecord>;
+  readSourceContentStorage: () => Promise<SourceContentStorageOverview>;
+  testSourceContentStorage: (
+    targetConfig: SourceContentConfig,
+  ) => Promise<void>;
+}
 
 export interface SourceContentStorageRouteOptions {
   requestPrincipals: WeakMap<object, AuthorizationPrincipal>;
-  services: WebServices;
+  services: SourceContentStorageServices;
 }
 
 export function registerSourceContentStorageRoutes(

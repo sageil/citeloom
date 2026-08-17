@@ -15,6 +15,7 @@ export default defineConfig({
       description: "Install, configure, integrate, and operate CiteLoom.",
       components: {
         Head: "./src/components/Head.astro",
+        SocialIcons: "./src/components/SocialIcons.astro",
       },
       customCss: [
         "./src/styles/citeloom-dark.css",

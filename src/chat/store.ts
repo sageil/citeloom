@@ -60,6 +60,7 @@ import {
   queryScopeSchema,
   type QueryScope,
 } from "../domain/query-scope.js";
+import { citationEvidenceSchema } from "../domain/citation-evidence.js";
 import {
   contentIdSchema,
   sourceRegionSchema,
@@ -161,38 +162,6 @@ const messageRowSchema = z.object({
   role: z.enum(["assistant", "user"]),
   runId: z.uuid(),
 });
-const evidenceSchema = z.discriminatedUnion("kind", [
-  z.object({
-    excerpt: z.string().min(1),
-    kind: z.literal("text"),
-  }).strict(),
-  z.object({
-    content: z.string().min(1),
-    kind: z.literal("table"),
-    table: z.object({
-      cells: z.array(z.object({
-        columnHeader: z.boolean(),
-        columnSpan: z.number().int().positive(),
-        endColumn: z.number().int().positive(),
-        endRow: z.number().int().positive(),
-        rowHeader: z.boolean(),
-        rowSection: z.boolean(),
-        rowSpan: z.number().int().positive(),
-        startColumn: z.number().int().nonnegative(),
-        startRow: z.number().int().nonnegative(),
-        text: z.string(),
-      }).strict()),
-      columnCount: z.number().int().positive(),
-      rowCount: z.number().int().positive(),
-      rowEnd: z.number().int().positive(),
-      rowStart: z.number().int().nonnegative(),
-    }).strict(),
-  }).strict(),
-  z.object({
-    kind: z.literal("image"),
-    mimeType: z.string().min(1),
-  }).strict(),
-]);
 const citationRowSchema = z.object({
   assistantMessageId: z.uuid(),
   citationNumber: z.number().int().positive(),
@@ -201,7 +170,7 @@ const citationRowSchema = z.object({
   documentId: contentIdSchema,
   documentVersionId: z.uuid(),
   elementId: contentIdSchema,
-  evidence: evidenceSchema,
+  evidence: citationEvidenceSchema,
   id: z.uuid(),
   imageContent: z.instanceof(Buffer).nullable(),
   mediaType: z.string().trim().min(1),

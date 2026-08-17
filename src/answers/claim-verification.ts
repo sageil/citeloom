@@ -6,6 +6,7 @@ import {
   type PublishedAnswerDocument,
 } from "./published.js";
 import type { TaskScheduler } from "../shared/concurrency.js";
+import type { CitationEvidence } from "../domain/citation-evidence.js";
 import {
   HhemClientError,
   readHhemScoreItemLimitFailure,
@@ -15,7 +16,6 @@ import {
 import type { InferenceModelRegistry } from "../inference/registry.js";
 import type {
   AnswerClaim,
-  CitationEvidence,
   ClaimVerificationResult,
 } from "../research/types.js";
 import {

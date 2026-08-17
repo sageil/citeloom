@@ -36,6 +36,9 @@ docker compose --profile docling-scale up -d --wait
 ```
 
 Add the replica under Additional Docling services with a unique ID, its stable URL, and an independent capacity.
+
+:::caution[Use named replicas]
 Do not use anonymous `docker compose --scale docling=N` replicas behind one round-robin URL because only the instance that accepted a remote task can resume it.
+:::
 
 The [complete configuration reference](../../reference/configuration/#document-conversion) covers file-type behavior, VLM defaults, time limits, recovery, and multi-instance coordination.

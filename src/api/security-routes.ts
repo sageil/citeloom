@@ -31,24 +31,12 @@ import {
   requireWorkspaceAdministratorPrincipal,
 } from "./authentication-routes.js";
 import { WebRequestError } from "./request-boundary.js";
-import type { SecurityWebServices, WebServices } from "./services.js";
+import type { SecurityWebServices } from "./services.js";
 
 export interface SecurityRouteOptions {
   requestPrincipals: WeakMap<object, AuthorizationPrincipal>;
   services: SecurityWebServices;
 }
-
-const securityServiceMethods = [
-  "createMcpApiKey",
-  "createOrganizationUser",
-  "createOrganizationUserPasswordLink",
-  "listOrganizationUsers",
-  "listMcpApiKeys",
-  "readPasswordPolicy",
-  "readWorkspaceSecurityOverview",
-  "revokeMcpApiKey",
-  "updateWorkspaceSecurityPolicy",
-] as const;
 
 export function registerSecurityRoutes(
   server: FastifyInstance,
@@ -230,16 +218,4 @@ export function registerSecurityRoutes(
       throw error;
     }
   });
-}
-
-export function readSecurityWebServices(
-  services: WebServices,
-): SecurityWebServices | null {
-  const candidate = services as WebServices & Partial<SecurityWebServices>;
-  for (const method of securityServiceMethods) {
-    if (typeof candidate[method] !== "function") {
-      return null;
-    }
-  }
-  return candidate as SecurityWebServices;
 }
