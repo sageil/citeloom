@@ -1,0 +1,37 @@
+---
+import Default from "@astrojs/starlight/components/SocialIcons.astro";
+
+import {
+  citeloomLicense,
+  citeloomVersion,
+} from "../lib/citeloom-metadata.mjs";
+
+const displayLicense = citeloomLicense.replace(/-only$/, "");
+---
+
+<div class="project-details" aria-label="Project details">
+  <span class="project-badge language" title="Primary implementation language">
+    <span class="badge-marker" aria-hidden="true"></span>
+    TypeScript
+  </span>
+  <span class="project-badge htmx" title="Hypermedia interface library">
+    <span class="badge-marker" aria-hidden="true"></span>
+    HTMX
+  </span>
+  <span class="project-badge python" title="Document processing language">
+    <span class="badge-marker" aria-hidden="true"></span>
+    Python
+  </span>
+  <span class="project-badge alpine" title="Client interface library">
+    <span class="badge-marker" aria-hidden="true"></span>
+    Alpine
+  </span>
+  <span class="project-badge license" title="Software license">
+    <span class="badge-marker" aria-hidden="true"></span>
+    {displayLicense}
+  </span>
+  <span class="project-badge version" title="Current CiteLoom release">
+    v{citeloomVersion}
+  </span>
+</div>
+<Default />

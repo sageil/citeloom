@@ -3,3 +3,64 @@
   --sl-color-gray-6: #0b1020;
   --sl-color-gray-5: #111827;
 }
+
+header .project-details {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+header .project-details .project-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  min-height: 1.65rem;
+  border: 1px solid color-mix(in srgb, var(--sl-color-gray-4) 45%, transparent);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--sl-color-gray-6) 35%, transparent);
+  padding: 0.2rem 0.55rem;
+  color: var(--sl-color-gray-1);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+header .project-details .badge-marker {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+header .project-details .language .badge-marker {
+  color: #38bdf8;
+}
+
+header .project-details .htmx .badge-marker {
+  color: #4f8cff;
+}
+
+header .project-details .python .badge-marker {
+  color: #ffd343;
+}
+
+header .project-details .alpine .badge-marker {
+  color: #77c1d2;
+}
+
+header .project-details .license .badge-marker {
+  color: #4ade80;
+}
+
+header .project-details .version {
+  border-color: color-mix(in srgb, #c4a7e7 35%, transparent);
+  color: #d8b4fe;
+}
+
+@media (max-width: 68rem) {
+  header .project-details {
+    display: none;
+  }
+}

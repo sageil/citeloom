@@ -1,0 +1,14 @@
+---
+import { Code } from "@astrojs/starlight/components";
+
+import { citeloomVersion } from "../lib/citeloom-metadata.mjs";
+
+const environment = [
+  "CITELOOM_ADMIN_USERNAME=admin",
+  "CITELOOM_ADMIN_PASSWORD='replace-with-a-private-passphrase'",
+  `CITELOOM_IMAGE_TAG=${citeloomVersion}`,
+  `CITELOOM_RELEASE=${citeloomVersion}`,
+].join("\n");
+---
+
+<Code code={environment} lang="dotenv" />

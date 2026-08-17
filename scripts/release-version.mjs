@@ -44,13 +44,6 @@ const derivedFileSpecifications = [
       ),
     ],
   },
-  {
-    path: "docsite/src/content/docs/installation/docker-compose.md",
-    occurrences: [
-      versionOccurrence("^(?<prefix>CITELOOM_IMAGE_TAG=)(?<version>\\d+\\.\\d+\\.\\d+)$", "gmu", 1),
-      versionOccurrence("^(?<prefix>CITELOOM_RELEASE=)(?<version>\\d+\\.\\d+\\.\\d+)$", "gmu", 1),
-    ],
-  },
 ];
 
 const command = readReleaseVersionCommand(process.argv.slice(2));

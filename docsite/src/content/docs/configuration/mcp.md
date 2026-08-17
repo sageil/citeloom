@@ -165,8 +165,10 @@ Add this exact redirect URI to the public Native application in your authorizati
 http://127.0.0.1:6276/oauth/callback
 ```
 
+:::caution[Use a public client]
 Grant `citeloom.search`, `citeloom.answer`, or both to the application.
 Do not add a client secret.
+:::
 
 ### 2. Configure the Inspector
 
@@ -190,8 +192,11 @@ Set the server URL and public client ID for your installation:
 ```
 
 Keep `protocolEra` set to `modern` because CiteLoom accepts MCP `2026-07-28`.
+
+:::danger[Keep API keys out of Git]
 The checked-in `citeloom-api-key` entry has no credential.
 Do not put an API key in the checked-in file.
+:::
 
 ### 3. Start the browser interface
 
@@ -208,8 +213,12 @@ pnpm mcp:inspect:web
 ```
 
 The command starts a local Inspector at `http://localhost:6274` and opens the correct local session in your browser.
-Do not copy or publish the local Inspector access token from the browser URL.
 
+:::danger[Keep the Inspector token private]
+Do not copy or publish the local Inspector access token from the browser URL.
+:::
+
+:::danger[Keep TLS verification enabled]
 If CiteLoom uses a private certificate authority, give Node the public root certificate:
 
 ```sh
@@ -217,6 +226,7 @@ NODE_EXTRA_CA_CERTS=/absolute/path/to/root.crt pnpm mcp:inspect:web
 ```
 
 Do not disable certificate or host-name validation.
+:::
 
 ### 4. Connect through OAuth
 
@@ -285,8 +295,11 @@ MCP_STORAGE_DIR=/tmp/citeloom-mcp-inspector-api-key \
 8. Confirm that the connection state is **Connected**.
 
 Inspector `2.2.0` does not provide a header editor for a server loaded with `--config` because that session is read-only.
+
+:::danger[Keep the temporary API key private]
 The temporary file keeps the cleartext key out of the repository, shell history, and process arguments.
 Do not export this temporary configuration.
+:::
 
 ### 5. Inspect prompts and resources
 
@@ -366,8 +379,10 @@ When the status is `completed`, confirm these fields:
 
 ![MCP Inspector shows the completed CiteLoom answer with cited safety controls and structured output.](/citeloom/images/mcp-inspector-answer-completed.png)
 
-CiteLoom `1.1.0` returns an empty `resources` list for the combined multi-workspace MCP answer flow.
+:::caution[Do not create a research-thread URI for a combined answer]
+The combined multi-workspace MCP answer flow returns an empty `resources` list.
 Do not combine one returned `workspaceId` with `answer.turn.threadId` in the research-thread template because the combined thread is not owned by one workspace.
+:::
 
 ### 8. Stop the Inspector
 

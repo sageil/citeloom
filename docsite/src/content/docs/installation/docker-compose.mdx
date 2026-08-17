@@ -3,6 +3,8 @@ title: Minimum Installation
 description: Install the smallest complete CiteLoom stack from published container images.
 ---
 
+import CiteLoomReleaseEnvironment from "../../../components/CiteLoomReleaseEnvironment.astro";
+
 This guide installs the base CiteLoom services from published container images.
 SeaweedFS and an external authorization server are not part of this procedure.
 
@@ -23,12 +25,7 @@ chmod 600 .env
 Choose the first administrator credentials and one exact published CiteLoom release.
 The image tag and release identifier should be the same semantic version.
 
-```dotenv
-CITELOOM_ADMIN_USERNAME=admin
-CITELOOM_ADMIN_PASSWORD='replace-with-a-private-passphrase'
-CITELOOM_IMAGE_TAG=1.1.2
-CITELOOM_RELEASE=1.1.2
-```
+<CiteLoomReleaseEnvironment />
 
 The initial password must contain between 15 and 1,024 characters.
 Migration runs continue to require both administrator variables, but an existing database keeps its stored users and password hashes unchanged.

@@ -31,8 +31,10 @@ Production: bucket citeloom, prefix production
 Test:       bucket citeloom, prefix test
 ```
 
+:::danger[Keep storage locations separate]
 Do not configure both environments with the same bucket and prefix on the same S3 service.
 During orphan cleanup, one environment can delete an object that only the other environment has in its database.
+:::
 
 ## New installation with SeaweedFS
 
@@ -100,8 +102,10 @@ The production form uses the same SeaweedFS values as this guide:
 
 ## Existing filesystem installation
 
+:::danger[Use the storage migration]
 Do not change the active storage by editing PostgreSQL or replacing filesystem paths in Compose.
 Use the storage migration in CiteLoom.
+:::
 
 ### 1. Back up the current data
 
@@ -203,8 +207,10 @@ The migration reads and verifies every copied source object.
 
 ### 2. Keep the SeaweedFS deployment active
 
+:::danger[Keep SeaweedFS available]
 Do not remove `compose.seaweedfs.yml` or stop SeaweedFS before cutover.
 CiteLoom must read from SeaweedFS while it copies documents to AWS S3.
+:::
 
 The bundled overlay uses `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` for the active SeaweedFS connection.
 Those environment variables cannot also contain different AWS credentials during the same migration.
@@ -231,13 +237,17 @@ Enter these target values:
 Replace `<region>` with the bucket region.
 For example, use `https://s3.ca-central-1.amazonaws.com` for `ca-central-1`.
 
+:::caution[Protect database backups]
 Static credentials entered in Settings are write-only through the API.
 CiteLoom stores them in PostgreSQL, so database backups contain them.
+:::
 
 ### 4. Test the AWS connection
 
+:::caution[Test the destination first]
 Select **Test connection**.
 Do not start the migration unless CiteLoom reports that the destination is ready.
+:::
 
 If the test fails, confirm the endpoint, region, bucket, credentials, IAM permissions, and path-style setting.
 The active SeaweedFS backend remains unchanged after a failed test.
@@ -269,7 +279,9 @@ After the recovery period, remove the SeaweedFS overlay from the deployment and 
 
 ## Use another S3-compatible service
 
+:::caution[Use only one S3 service]
 Do not start the SeaweedFS overlay when you use another S3-compatible service.
+:::
 
 In **Settings > Object storage**:
 
