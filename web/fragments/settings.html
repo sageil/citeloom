@@ -1112,7 +1112,11 @@
                 <small>Credentials are write-only and are never returned by the API or included in migration status.</small>
               </div>
               </template>
-              <label class="toggle-control settings-toggle-control settings-storage-path-style"><input type="checkbox" :checked="sourceContentStorageDraft.forcePathStyle" :disabled="sourceContentMigrationActive() || sourceContentStorageBusy" @change="writeSourceContentStorageDraft('forcePathStyle', $event.target.checked)" /><span><strong>Use path-style URLs</strong><small>Required by bundled SeaweedFS and many self-hosted S3 services.</small></span></label>
+              <label class="toggle-control settings-toggle-control settings-storage-path-style">
+                <input type="checkbox" :checked="sourceContentStorageDraft.forcePathStyle" :disabled="sourceContentMigrationActive() || sourceContentStorageBusy" @change="writeSourceContentStorageDraft('forcePathStyle', $event.target.checked)" />
+                <span class="toggle-track" aria-hidden="true"><span></span></span>
+                <span><strong>Use path-style URLs</strong><small x-text="sourceContentStorageDraft.forcePathStyle ? 'On. Required by bundled SeaweedFS and many self-hosted S3 services.' : 'Off. Recommended for AWS S3.'"></small></span>
+              </label>
             </div>
             </template>
 

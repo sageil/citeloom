@@ -539,6 +539,10 @@ describe("CiteLoom source-content storage settings", () => {
     expect(fragment).toContain('@click="startSourceContentMigration()"');
     expect(fragment).toContain('@click="cancelSourceContentMigration()"');
     expect(fragment).toContain("Credentials are write-only");
+    expect(fragment).toMatch(
+      /@change="writeSourceContentStorageDraft\('forcePathStyle', \$event\.target\.checked\)" \/>\s*<span class="toggle-track" aria-hidden="true"><span><\/span><\/span>/u,
+    );
+    expect(fragment).toContain("'Off. Recommended for AWS S3.'");
     expect(fragment).toContain(
       '<select class="form-control compact-header-control" :aria-label="`${workspace.name} access to ${library.name}`"',
     );
