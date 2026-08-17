@@ -220,6 +220,7 @@ describe("Docling document conversion", () => {
     );
 
     expect(requests).toHaveLength(1);
+    expect(requests[0]?.recoveryMode).toBe("restart-task");
     const body = readDoclingRequestBody(requests[0]);
     expect(body.options.from_formats).toEqual(["image"]);
     expect(body.options.ocr_preset).toBe("rapidocr");
@@ -344,11 +345,43 @@ describe("Docling document conversion", () => {
     expect(body.options.include_page_images).toBe(false);
     expect(body.options.abort_on_error).toBe(true);
     expect(body.options.document_timeout).toBe(43_195);
+    expect(request?.recoveryMode).toBe("resume-ranges");
     expect(body.task_id).toBe(request?.task.id);
     expect(
       Date.parse(request?.task.deadlineAt ?? "")
       - Date.parse(request?.task.submittedAt ?? ""),
     ).toBe(43_200_000);
+  });
+
+  it("marks VLM PDF conversion as restart-only", async () => {
+    const source = await buildPdfDocumentSource();
+    const requests: DoclingConvertRequest[] = [];
+    const requester: DoclingConvertRequester = async (request) => {
+      requests.push(request);
+      return request.decodeResponse(buildDoclingResponse());
+    };
+    const config = buildDoclingConfig();
+    config.pipeline = "vlm";
+    config.vlm = {
+      apiToken: "vlm-secret",
+      endpointUrl: "http://vlm.test/v1/chat/completions",
+      engineType: "api_openai",
+      maxOutputTokens: 8_192,
+      model: "vlm-model",
+      prompt: "Convert this page.",
+      providerId: "openai",
+      runtimeName: "Test VLM",
+    };
+
+    await partitionDocumentContents(
+      source,
+      config,
+      decodeDoclingVersion(buildVersionResponse()),
+      requester,
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.recoveryMode).toBe("restart-task");
   });
 
   it("retains known element kind, label, page, and source reference", async () => {
@@ -726,7 +759,7 @@ describe("Docling document conversion", () => {
       control,
       "task-ws-failure",
     );
-    request.retainTaskAfterTerminalFailure = false;
+    request.recoveryMode = "restart-task";
     await expect(completeDoclingAsyncConversion(
       request,
       requester,
@@ -1231,6 +1264,79 @@ describe("Docling document conversion", () => {
     expect(clear).not.toHaveBeenCalled();
   });
 
+  it("polls a resumed restart-only task without posting its request again", async () => {
+    const clear = vi.fn(async () => undefined);
+    const taskControl: DoclingTaskControl = {
+      clear,
+      current: {
+        deadlineAt: new Date(Date.now() + 120_000).toISOString(),
+        id: "task-restart-only",
+        submittedAt: new Date().toISOString(),
+      },
+      kind: "durable",
+      record: vi.fn(async () => undefined),
+    };
+    const requests: DoclingHttpRequest[] = [];
+    const requester = vi.fn<DoclingHttpRequester>(async (request) => {
+      requests.push(request);
+      if (requests.length === 1) {
+        return {
+          task_id: "task-restart-only",
+          task_status: "success",
+          task_type: "convert",
+        };
+      }
+      return buildDoclingResponse();
+    });
+    const request = buildAsyncConversionRequest(
+      new AbortController().signal,
+      taskControl,
+    );
+    request.recoveryMode = "restart-task";
+
+    await expect(completeDoclingAsyncConversion(
+      request,
+      requester,
+    )).resolves.toEqual(
+      decodeDoclingConversionResponse(buildDoclingResponse()),
+    );
+    expect(requests.map((candidate) => candidate.method)).toEqual(["GET", "GET"]);
+    expect(requests.map((candidate) => candidate.url)).toEqual([
+      "http://docling.test/v1/status/poll/task-restart-only?wait=0",
+      "http://docling.test/v1/result/task-restart-only",
+    ]);
+    expect(clear).not.toHaveBeenCalled();
+  });
+
+  it("clears a missing restart-only task without resubmitting it", async () => {
+    const clear = vi.fn(async () => undefined);
+    const taskControl: DoclingTaskControl = {
+      clear,
+      current: {
+        deadlineAt: new Date(Date.now() + 120_000).toISOString(),
+        id: "task-missing-restart-only",
+        submittedAt: new Date().toISOString(),
+      },
+      kind: "durable",
+      record: vi.fn(async () => undefined),
+    };
+    const requester = vi.fn<DoclingHttpRequester>(async () => {
+      throw new DoclingTaskNotFoundError("Docling task is unavailable.");
+    });
+    const request = buildAsyncConversionRequest(
+      new AbortController().signal,
+      taskControl,
+    );
+    request.recoveryMode = "restart-task";
+
+    await expect(completeDoclingAsyncConversion(
+      request,
+      requester,
+    )).rejects.toThrow("unavailable");
+    expect(requester).toHaveBeenCalledOnce();
+    expect(clear).toHaveBeenCalledExactlyOnceWith("task-missing-restart-only");
+  });
+
   it("resubmits a missing durable task with the same identity", async () => {
     const clear = vi.fn(async () => undefined);
     const record = vi.fn(async (_task: DoclingTaskReference) => undefined);
@@ -1649,9 +1755,9 @@ function buildAsyncConversionRequest(
     },
     decodeResponse: decodeDoclingConversionResponse,
     observer: buildRequestObserver(),
+    recoveryMode: "resume-ranges",
     requestTimeoutMs: 30_000,
-    retainTaskAfterTerminalFailure: true,
-    resumedSubmission: (
+    resumedTask: (
       taskControl.kind === "durable"
       && taskControl.current !== null
     ),

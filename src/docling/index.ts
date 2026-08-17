@@ -59,6 +59,7 @@ export {
   type DoclingSubmissionPreparer,
   type DoclingTaskTerminationRequest,
   type DoclingTaskPauseResult,
+  type DoclingTaskRecoveryMode,
   type DoclingWebSocketConnection,
   type DoclingWebSocketConnector,
   type DoclingWebSocketReceiveResult,

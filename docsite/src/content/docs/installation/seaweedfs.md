@@ -15,7 +15,7 @@ The included Compose overlay uses SeaweedFS.
 | --- | --- |
 | New installation with SeaweedFS | Configure `.env`, then start CiteLoom with the SeaweedFS overlay. |
 | Existing filesystem installation | Start SeaweedFS, then migrate from **Settings > Object storage**. |
-| Another S3-compatible service | Start with filesystem storage, then use **Settings > Object storage** to test and migrate. |
+| AWS S3 or another S3-compatible service | Keep the current backend running, then use **Settings > Object storage** to test and migrate. |
 
 ## Keep storage locations separate
 
@@ -182,6 +182,90 @@ The previous filesystem does not contain documents that CiteLoom added after the
 
 After this verification, start CiteLoom without the SeaweedFS overlay.
 Keep the SeaweedFS data directory until your recovery period ends because CiteLoom does not delete the previous S3 objects.
+
+## Migrate from SeaweedFS to AWS S3
+
+Use this workflow when **S3-compatible storage** is active and the endpoint is the bundled SeaweedFS service.
+Keep SeaweedFS running until the AWS migration completes and your recovery period ends.
+
+### 1. Prepare the AWS bucket and credentials
+
+Create the destination bucket in the AWS region that you want to use.
+Choose a key prefix that no other CiteLoom environment uses.
+
+The AWS identity needs these permissions:
+
+- `s3:ListBucket` for the destination bucket.
+- `s3:GetObject`, `s3:PutObject`, and `s3:DeleteObject` for objects below the selected key prefix.
+
+The connection test lists the bucket and creates, reads, and deletes a temporary probe object.
+The migration reads and verifies every copied source object.
+
+### 2. Keep the SeaweedFS deployment active
+
+Do not remove `compose.seaweedfs.yml` or stop SeaweedFS before cutover.
+CiteLoom must read from SeaweedFS while it copies documents to AWS S3.
+
+The bundled overlay uses `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` for the active SeaweedFS connection.
+Those environment variables cannot also contain different AWS credentials during the same migration.
+
+### 3. Configure AWS S3 as the migration target
+
+Sign in as a global administrator and open **Settings > Object storage**.
+Confirm that the active endpoint is `http://seaweedfs:8333` before you continue.
+
+Enter these target values:
+
+| Field | AWS S3 value |
+| --- | --- |
+| Backend | **S3-compatible object storage** |
+| Endpoint URL | `https://s3.<region>.amazonaws.com` |
+| Bucket | The destination AWS bucket name. |
+| Object key prefix | A prefix reserved for this CiteLoom environment. |
+| Signing region | The AWS region that contains the bucket. |
+| Credential source | **Enter static credentials** |
+| Access key ID | The AWS access key ID. |
+| Secret access key | The AWS secret access key. |
+| Use path-style URLs | Disabled. |
+
+Replace `<region>` with the bucket region.
+For example, use `https://s3.ca-central-1.amazonaws.com` for `ca-central-1`.
+
+Static credentials entered in Settings are write-only through the API.
+CiteLoom stores them in PostgreSQL, so database backups contain them.
+
+### 4. Test the AWS connection
+
+Select **Test connection**.
+Do not start the migration unless CiteLoom reports that the destination is ready.
+
+If the test fails, confirm the endpoint, region, bucket, credentials, IAM permissions, and path-style setting.
+The active SeaweedFS backend remains unchanged after a failed test.
+
+### 5. Start and monitor the migration
+
+1. Select **Start migration**.
+2. Confirm the document count.
+3. Keep the worker and SeaweedFS services running.
+4. Wait until the migration status is **Completed**.
+5. Confirm that **Active storage** shows the AWS endpoint, bucket, and prefix.
+
+CiteLoom keeps SeaweedFS active while it copies and hash-verifies documents.
+The active configuration changes to AWS S3 only after final verification and cutover complete.
+
+If the migration fails or is cancelled before cutover, SeaweedFS stays active.
+Correct the reported problem and start a new migration.
+
+### 6. Verify AWS storage and keep rollback available
+
+Upload a representative document after cutover and confirm that CiteLoom can open and process it.
+Confirm that AWS S3 contains objects below the configured prefix.
+
+Keep the SeaweedFS service, its credentials, and its data directory for the recovery period that your policy defines.
+New writes and deletions are not copied back to SeaweedFS after cutover.
+
+To roll back during that period, configure SeaweedFS as the migration target with its original values, enable path-style URLs, test the connection, and complete the reverse migration.
+After the recovery period, remove the SeaweedFS overlay from the deployment and recreate the application services with all other required overlays.
 
 ## Use another S3-compatible service
 

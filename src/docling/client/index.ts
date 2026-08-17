@@ -123,13 +123,15 @@ export interface DoclingConvertRequest {
   };
   decodeResponse: (value: unknown) => DoclingConversionResult;
   observer: DoclingRequestObserver;
+  recoveryMode: DoclingTaskRecoveryMode;
   requestTimeoutMs: number;
-  retainTaskAfterTerminalFailure: boolean;
-  resumedSubmission: boolean;
+  resumedTask: boolean;
   task: DoclingTaskReference;
   taskControl: DoclingTaskControl;
   url: string;
 }
+
+export type DoclingTaskRecoveryMode = "restart-task" | "resume-ranges";
 
 export type DoclingConvertRequester = (
   request: DoclingConvertRequest,
@@ -299,7 +301,8 @@ export async function completeDoclingAsyncConversion(
   const requestId = request.observer.identity.id;
   const requestSequence = request.observer.identity.sequence;
   const task = request.task;
-  let shouldSubmit = true;
+  let shouldSubmit = !request.resumedTask
+    || request.recoveryMode === "resume-ranges";
   let recoveredMissingTask = false;
   while (true) {
     let taskDeadlineAtMs: number | null = readTaskDeadline(task);
@@ -327,7 +330,7 @@ export async function completeDoclingAsyncConversion(
         const acceptedAtMs = Date.now();
         status = decodeTaskStatus(submittedValue);
         shouldSubmit = false;
-        if (request.resumedSubmission) {
+        if (request.resumedTask) {
           await request.observer.observe({
             at: new Date(acceptedAtMs),
             kind: "resumed",
@@ -471,6 +474,7 @@ export async function completeDoclingAsyncConversion(
         failure instanceof DoclingTaskNotFoundError
         && !recoveredMissingTask
         && !request.abortSignal.aborted
+        && request.recoveryMode === "resume-ranges"
       ) {
         recoveredMissingTask = true;
         shouldSubmit = true;
@@ -480,7 +484,7 @@ export async function completeDoclingAsyncConversion(
         !taskCleared
         && shouldClearTask(
           failure,
-          request.retainTaskAfterTerminalFailure,
+          request.recoveryMode,
         )
       ) {
         await clearTask(request.taskControl, task.id);
@@ -1090,13 +1094,13 @@ function isTerminalStatus(status: DoclingTaskStatus["task_status"]): boolean {
 
 function shouldClearTask(
   error: unknown,
-  retainTaskAfterTerminalFailure: boolean,
+  recoveryMode: DoclingTaskRecoveryMode,
 ): boolean {
   return error instanceof DoclingTaskDeadlineError
     || error instanceof DoclingTaskNotFoundError
     || (
       error instanceof DoclingTaskTerminalError
-      && !retainTaskAfterTerminalFailure
+      && recoveryMode === "restart-task"
     );
 }
 

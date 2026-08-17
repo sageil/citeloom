@@ -51,7 +51,11 @@ import {
   DoclingTaskDeadlineError,
   type DoclingJsonRequester,
 } from "../src/docling/client/index.js";
-import { DoclingMetricsStore } from "../src/docling/observability/metrics-store.js";
+import {
+  DoclingMetricsStore,
+  type DoclingMetricsRecorder,
+} from "../src/docling/observability/metrics-store.js";
+import type { DoclingRequestObserver } from "../src/docling/client/observer.js";
 import { ApplicationErrorReporter } from "../src/observability/application-errors.js";
 import {
   purgeApplicationErrors,
@@ -351,6 +355,150 @@ async function expireTestIngestionLease(sourceFile: string): Promise<void> {
       leaseExpiresAt: sql`clock_timestamp() - interval '1 millisecond'`,
     })
     .where(eq(ingestionJobs.sourceFile, sourceFile));
+}
+
+interface PrepareVlmControlMetricsFixtureInput {
+  documentId: string;
+  ownerId: string;
+  settingsVersion: number;
+  sourceFile: string;
+  taskId: string;
+  username: string;
+}
+
+interface VlmControlMetricsFixture {
+  catalog: DocumentCatalog;
+  config: AppConfig;
+  metrics: DoclingMetricsStore;
+  recorder: DoclingMetricsRecorder;
+  requestObserver: DoclingRequestObserver;
+  warnings: string[];
+}
+
+async function prepareVlmControlMetricsFixture(
+  input: PrepareVlmControlMetricsFixtureInput,
+): Promise<VlmControlMetricsFixture> {
+  const config = buildTestConfig();
+  config.docling.performanceMetricsEnabled = true;
+  config.docling.pipeline = "vlm";
+  config.docling.vlm = {
+    apiToken: "vlm-secret",
+    endpointUrl: "http://vlm.test/v1/chat/completions",
+    engineType: "api_openai",
+    maxOutputTokens: 8_192,
+    model: "vlm-model",
+    prompt: "Convert this page.",
+    providerId: "openai",
+    runtimeName: "Test VLM",
+  };
+  const service = config.doclingServices[0];
+  if (service === undefined) {
+    throw new Error("Missing default Docling test service.");
+  }
+  await session.database.insert(users).values({
+    displayName: "VLM Control Uploader",
+    id: input.ownerId,
+    state: "active",
+    username: input.username,
+    usernameNormalized: input.username,
+  });
+  const catalog = new DocumentCatalog(session.database, {
+    newLeaseOwnerId: () => input.ownerId,
+  });
+  await prepareTestIngestion(
+    catalog,
+    input.sourceFile,
+    input.documentId,
+    space768.id,
+    [],
+    false,
+    3,
+    null,
+    input.ownerId,
+  );
+  await claimTestJob(catalog, input.sourceFile, "discovered");
+  const services = new DoclingServiceStore(session.database);
+  await services.synchronize([
+    buildAvailableDoclingServiceVerification(service),
+  ]);
+  await services.ensureAssignment(input.ownerId, input.sourceFile);
+  const attemptConfig = createDoclingAttemptConfigSnapshot(
+    config.docling,
+    input.settingsVersion,
+  );
+  await catalog.ensureDoclingAttemptConfig(
+    input.sourceFile,
+    input.ownerId,
+    attemptConfig,
+  );
+  const metrics = new DoclingMetricsStore(session.database);
+  const warnings: string[] = [];
+  const recorder = await metrics.startOrResumeRun({
+    attemptConfig,
+    byteLength: 1,
+    documentId: input.documentId,
+    fileExtension: ".pdf",
+    ingestionAttempt: 1,
+    processConfig: {
+      numThreads: 4,
+      pageBatchSize: 4,
+      profilePipelineTimings: false,
+    },
+    serviceIdentity: buildDoclingServiceIdentity(),
+    sourceFile: input.sourceFile,
+    startedAt: new Date("2020-01-01T00:00:00.000Z"),
+  }, (warning) => warnings.push(warning));
+  if (recorder === null) {
+    throw new Error("Expected enabled Docling metrics recorder.");
+  }
+  const metricsSource = {
+    byteLength: 1,
+    documentId: input.documentId,
+    extension: ".pdf",
+    kind: "file",
+    mediaType: "application/pdf",
+    openContent: async () => {
+      throw new Error("Control metrics tests do not open source content.");
+    },
+    sourceFile: input.sourceFile,
+  } as const;
+  const requestObserver = await recorder.openRequest({
+    kind: "content",
+    options: readDoclingEffectiveRequestOptions(
+      metricsSource,
+      buildDoclingConversionOptions(config.docling, metricsSource),
+    ),
+    requestKey: "structure",
+  });
+  await requestObserver.observe({
+    at: new Date("2020-01-02T00:00:00.000Z"),
+    kind: "submitted",
+    task: {
+      deadlineAt: "2020-01-04T00:00:00.000Z",
+      id: input.taskId,
+      submittedAt: "2020-01-02T00:00:00.000Z",
+    },
+    uploadMs: 100,
+  });
+  expect(await catalog.recordDoclingTaskCheckpoint(
+    input.sourceFile,
+    input.ownerId,
+    "structure",
+    {
+      deadlineAt: "2020-01-04T00:00:00.000Z",
+      id: input.taskId,
+      submittedAt: "2020-01-02T00:00:00.000Z",
+    },
+    service.id,
+  )).toBe(true);
+  return {
+    catalog,
+    config,
+    metrics,
+    recorder,
+    requestObserver,
+    warnings,
+  };
 }
 
 function buildTestDocumentFormatRow(sourceFile: string) {
@@ -714,6 +862,8 @@ describe("PostgreSQL ingestion controls", () => {
       buildAvailableDoclingServiceVerification(service),
     ]);
     await services.ensureAssignment(ownerId, sourceFile);
+    const attemptConfig = createDoclingAttemptConfigSnapshot(config.docling, 21);
+    await catalog.ensureDoclingAttemptConfig(sourceFile, ownerId, attemptConfig);
     expect(await catalog.recordDoclingTaskCheckpoint(
       sourceFile,
       ownerId,
@@ -769,6 +919,7 @@ describe("PostgreSQL ingestion controls", () => {
     await expect(catalog.getJob(sourceFile)).resolves.toMatchObject({
       controlError: null,
       controlState: "paused",
+      doclingAttemptConfig: attemptConfig,
       state: "pending",
     });
     const pausedJobRows = await session.database
@@ -815,6 +966,235 @@ describe("PostgreSQL ingestion controls", () => {
       "structure",
       service.id,
     )).resolves.toMatchObject({ id: taskId });
+  });
+
+  it("closes VLM metrics when a lost worker task is terminated", async () => {
+    const ownerId = "00000000-0000-4000-8000-000000000294";
+    const taskId = "00000000-0000-4000-8000-000000000295";
+    const sourceFile = "/documents/control-docling-vlm-pause.pdf";
+    const {
+      catalog,
+      config,
+      metrics,
+      recorder,
+      warnings,
+    } = await prepareVlmControlMetricsFixture({
+      documentId: "5".repeat(64),
+      ownerId,
+      settingsVersion: 22,
+      sourceFile,
+      taskId,
+      username: "vlm-pause-control-uploader",
+    });
+    const control = await catalog.requestIngestionControl(
+      sourceFile,
+      "pause",
+      { isAdministrator: true, userId: ownerId },
+    );
+    expect(control.kind).toBe("accepted");
+    await expireTestIngestionLease(sourceFile);
+
+    const pauseTask = vi.fn(async () => ({ kind: "terminated" as const }));
+    await expect(reconcileIngestionControlExecutions(
+      session.database,
+      config,
+      sourceFile,
+      { pauseTask },
+    )).resolves.toEqual({ failed: 0, terminated: 1 });
+    await expect(catalog.getJob(sourceFile)).resolves.toMatchObject({
+      controlState: "paused",
+      doclingAttemptConfig: null,
+      doclingRunId: null,
+      state: "pending",
+    });
+    const checkpoints = await session.database
+      .select({ taskId: doclingTaskCheckpoints.taskId })
+      .from(doclingTaskCheckpoints)
+      .where(eq(doclingTaskCheckpoints.sourceFile, sourceFile));
+    expect(checkpoints).toEqual([]);
+    const runRows = await session.database
+      .select({
+        completedAt: doclingConversionRuns.completedAt,
+        errorCategory: doclingConversionRuns.errorCategory,
+        outcome: doclingConversionRuns.outcome,
+      })
+      .from(doclingConversionRuns)
+      .where(eq(doclingConversionRuns.id, recorder.runId));
+    expect(runRows).toEqual([{
+      completedAt: expect.any(Date),
+      errorCategory: "IngestionControlInterruption",
+      outcome: "abort",
+    }]);
+    const abortedAt = runRows[0]?.completedAt;
+    if (abortedAt === null || abortedAt === undefined) {
+      throw new Error("The controlled Docling run has no completion time.");
+    }
+    const requestRows = await session.database
+      .select({
+        completedAt: doclingConversionRequests.completedAt,
+        errorCategory: doclingConversionRequests.errorCategory,
+        outcome: doclingConversionRequests.outcome,
+      })
+      .from(doclingConversionRequests)
+      .where(eq(doclingConversionRequests.runId, recorder.runId));
+    expect(requestRows).toEqual([{
+      completedAt: abortedAt,
+      errorCategory: "abort",
+      outcome: "abort",
+    }]);
+    expect(warnings).toEqual([]);
+    await session.database
+      .update(doclingConversionRuns)
+      .set({ completedAt: new Date("2020-01-03T00:00:00.000Z") })
+      .where(eq(doclingConversionRuns.id, recorder.runId));
+    expect(await metrics.deleteExpiredRuns(1, 1)).toBe(1);
+    expect(await session.database
+      .select({ id: doclingConversionRuns.id })
+      .from(doclingConversionRuns)
+      .where(eq(doclingConversionRuns.id, recorder.runId)))
+      .toEqual([]);
+    expect(await session.database
+      .select({ id: doclingConversionRequests.id })
+      .from(doclingConversionRequests)
+      .where(eq(doclingConversionRequests.runId, recorder.runId)))
+      .toEqual([]);
+  });
+
+  it("serializes VLM control settlement with metrics completion", async () => {
+    const ownerId = "00000000-0000-4000-8000-000000000298";
+    const taskId = "00000000-0000-4000-8000-000000000299";
+    const sourceFile = "/documents/control-docling-vlm-concurrent-pause.pdf";
+    const {
+      catalog,
+      config,
+      recorder,
+      requestObserver,
+      warnings,
+    } = await prepareVlmControlMetricsFixture({
+      documentId: "6".repeat(64),
+      ownerId,
+      settingsVersion: 23,
+      sourceFile,
+      taskId,
+      username: "vlm-concurrent-pause-control-uploader",
+    });
+    await requestObserver.observe({
+      at: new Date("2020-01-02T00:00:01.000Z"),
+      kind: "transport-failed",
+      outcome: "abort",
+      totalMs: 1_000,
+    });
+    const control = await catalog.requestIngestionControl(
+      sourceFile,
+      "pause",
+      { isAdministrator: true, userId: ownerId },
+    );
+    expect(control.kind).toBe("accepted");
+
+    const withDatabase = session.query.withDatabase;
+    if (withDatabase === undefined) {
+      throw new Error("The PostgreSQL query executor cannot run database operations.");
+    }
+    const gateLocked = createDeferred<void>();
+    const releaseGate = createDeferred<void>();
+    let gateHolder: Promise<void> | null = null;
+    let metricsCompletion: Promise<void> | null = null;
+    let controlCompletion: Promise<{
+      failed: number;
+      terminated: number;
+    }> | null = null;
+
+    try {
+      await session.database.execute(sql`
+        CREATE TABLE test_docling_metrics_lock_gate (
+          id integer PRIMARY KEY
+        )
+      `);
+      await session.database.execute(sql`
+        CREATE FUNCTION test_wait_for_docling_metrics_gate() RETURNS trigger AS $$
+        BEGIN
+          PERFORM count(*) FROM test_docling_metrics_lock_gate;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+      `);
+      await session.database.execute(sql`
+        CREATE TRIGGER test_wait_for_docling_metrics_gate
+        BEFORE UPDATE ON docling_conversion_runs
+        FOR EACH ROW EXECUTE FUNCTION test_wait_for_docling_metrics_gate()
+      `);
+      gateHolder = withDatabase(async (database) => {
+        await database.transaction(async (transaction) => {
+          await transaction.execute(sql`
+            LOCK TABLE test_docling_metrics_lock_gate IN ACCESS EXCLUSIVE MODE
+          `);
+          gateLocked.resolve();
+          await releaseGate.promise;
+        });
+      });
+      await gateLocked.promise;
+
+      metricsCompletion = recorder.completeFailure(
+        "abort",
+        "IngestionControlInterruption",
+        1_000,
+      );
+      await waitForTableLockWaiters("test_docling_metrics_lock_gate", 1);
+      const pauseTask = vi.fn(async () => ({ kind: "terminated" as const }));
+      controlCompletion = reconcileIngestionControlExecutions(
+        session.database,
+        config,
+        sourceFile,
+        { pauseTask },
+      );
+      await waitForDatabaseLockWaiters(2);
+      releaseGate.resolve();
+
+      await gateHolder;
+      await metricsCompletion;
+      await expect(controlCompletion).resolves.toEqual({
+        failed: 0,
+        terminated: 1,
+      });
+      expect(warnings).toEqual([]);
+      await expect(catalog.settleOwnedIngestionControl(
+        sourceFile,
+        ownerId,
+      )).resolves.toMatchObject({
+        controlState: "paused",
+        state: "pending",
+      });
+      await expect(catalog.getJob(sourceFile)).resolves.toMatchObject({
+        controlError: null,
+        controlState: "paused",
+        doclingAttemptConfig: null,
+        doclingRunId: null,
+        state: "pending",
+      });
+    } finally {
+      releaseGate.resolve();
+      const pendingOperations: Promise<unknown>[] = [];
+      if (gateHolder !== null) {
+        pendingOperations.push(gateHolder);
+      }
+      if (metricsCompletion !== null) {
+        pendingOperations.push(metricsCompletion);
+      }
+      if (controlCompletion !== null) {
+        pendingOperations.push(controlCompletion);
+      }
+      await Promise.allSettled(pendingOperations);
+      await session.database.execute(sql`
+        DROP TRIGGER IF EXISTS test_wait_for_docling_metrics_gate
+        ON docling_conversion_runs
+      `);
+      await session.database.execute(sql`
+        DROP FUNCTION IF EXISTS test_wait_for_docling_metrics_gate()
+      `);
+      await session.database.execute(sql`
+        DROP TABLE IF EXISTS test_docling_metrics_lock_gate
+      `);
+    }
   });
 
   it("does not delete a cancellation while a Docling checkpoint remains", async () => {
@@ -9579,5 +9959,31 @@ async function waitForTableLockWaiters(
   }
   throw new Error(
     `Timed out waiting for ${minimumWaiters} ${tableName} lock waiters.`,
+  );
+}
+
+async function waitForDatabaseLockWaiters(
+  minimumWaiters: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const result = await session.database.execute(sql`
+      SELECT count(*)::integer AS "value"
+      FROM "pg_locks"
+      WHERE NOT "granted"
+    `);
+    const row = result.rows[0];
+    if (
+      typeof row === "object"
+      && row !== null
+      && "value" in row
+      && typeof row.value === "number"
+      && row.value >= minimumWaiters
+    ) {
+      return;
+    }
+    await wait(10);
+  }
+  throw new Error(
+    `Timed out waiting for ${minimumWaiters} database lock waiters.`,
   );
 }

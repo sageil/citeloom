@@ -1,22 +1,112 @@
 # Citeloom
 
+## Engineering OS
+
 Use installed Engineering OS skills when their activation conditions apply.
 
-## Mandatory baseline
+## Command use
 
-- Inspect reality before consequential changes.
-- Distinguish observed, derived, documented, assumed, and unknown.
-- Do not implement from material unverified assumptions when verification is reasonably available.
-- Treat the first explanation and first solution as hypotheses. Compare credible alternatives, including deletion, deferral, rollback, and doing nothing.
-- Plan proportionally before risky or ambiguous execution.
-- Choose the smallest justified solution and account for ownership cost and second-order effects.
-- Limit checks to the change scope.
-- Never claim checks ran unless they ran successfully.
-- Attempt to falsify material claims before delivery.
-- Communicate in direct, clear, human language.
-- Promote reusable learning into the strongest appropriate artifact.
-- When writing or substantially editing long Markdown files, put each full sentence on its own physical line.
-  Do not hard-wrap prose at a fixed column width.
-  A sentence must not be split across multiple lines unless the Markdown structure requires it.
-  Preserve normal Markdown structure for headings, lists, tables, blockquotes, and code fences.
-  Before finalizing Markdown edits, review the diff and fix any newly added sentence-wrapped prose.
+Run commands from the repository root unless a command uses `--dir docsite`.
+Use the narrowest command that verifies the changed behavior.
+Use `pnpm check` for broad changes or final repository verification.
+
+## Release version
+
+Pass the semantic version directly to the release script.
+Do not put `--` before the version.
+
+```bash
+pnpm release:version <next-semantic-version>
+pnpm release:check
+```
+
+The release command synchronizes `package.json`, Compose defaults, and deployment documentation.
+
+## Install and run locally
+
+```bash
+pnpm install
+pnpm services:up
+pnpm db:migrate
+pnpm run doctor:docker
+```
+
+Run the worker and web application in separate terminals.
+
+```bash
+pnpm worker
+pnpm dev:web
+```
+
+Inspect or stop the supporting services.
+
+```bash
+pnpm services:logs
+pnpm services:down
+```
+
+## Focused verification
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+Run one test file.
+
+```bash
+pnpm exec vitest run <test-file>
+```
+
+Apply automatic lint fixes only after reviewing the affected files.
+
+```bash
+pnpm lint:fix
+```
+
+Run broader verification when the change scope requires it.
+
+```bash
+pnpm test:coverage
+pnpm test:all
+pnpm check
+```
+
+## Database integration tests
+
+```bash
+pnpm services:test:up
+pnpm test:integration
+pnpm services:test:stop
+```
+
+## Database changes
+
+```bash
+pnpm db:generate
+pnpm db:migrate
+pnpm db:migrate:production
+```
+
+`pnpm db:reset:development` deletes and recreates development data.
+Run it only when the task explicitly requires a development database reset.
+
+## Application diagnostics
+
+```bash
+pnpm doctor:source
+pnpm status
+pnpm jobs
+pnpm documents
+```
+
+## Documentation site
+
+```bash
+pnpm --dir docsite install
+pnpm --dir docsite check
+pnpm --dir docsite build
+pnpm --dir docsite dev
+```

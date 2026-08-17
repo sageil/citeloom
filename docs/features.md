@@ -158,6 +158,8 @@ Eligible Standard PDFs use page-range checkpoints so interrupted work can contin
 
 Visual language model (VLM) processing sends each rendered PDF page to an image-capable model through an existing provider connection.
 It does not persist a separate PNG copy of every page, and it does not use Standard PDF page-range checkpoints.
+After a worker interruption, CiteLoom polls an existing VLM task without submitting it again.
+A retry after a failed, missing, or terminated VLM task starts a new conversion attempt.
 Document pages and provider credentials leave the Docling container for the configured endpoint, so VLM processing stays local only when that endpoint is local and trusted.
 
 ## Administer and recover the workspace

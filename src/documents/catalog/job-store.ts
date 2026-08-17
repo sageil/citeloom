@@ -47,6 +47,7 @@ import {
 } from "../../docling/protocol/run-metadata.js";
 import type { CiteLoomDatabase } from "../../database/client.js";
 import {
+  doclingConversionRequests,
   doclingConversionRuns,
   doclingTaskCheckpoints,
   ingestionJobs,
@@ -59,6 +60,7 @@ import {
 } from "../../observability/application-errors.js";
 
 const MAX_RETRY_DELAY_MS = 3_600_000;
+const POSTGRES_INTEGER_MAX = 2_147_483_647;
 const doclingTaskCheckpointRowSchema = z.object({
   deadlineAt: z.date(),
   serviceInstanceId: z.string().trim().min(1).max(100),
@@ -598,6 +600,7 @@ export class CatalogJobStore {
       const jobs = await transaction
         .select({
           controlState: ingestionJobs.controlState,
+          doclingRunId: ingestionJobs.doclingRunId,
         })
         .from(ingestionJobs)
         .where(eq(ingestionJobs.sourceFile, sourceFile))
@@ -672,6 +675,12 @@ export class CatalogJobStore {
         return paused.length === 1;
       }
 
+      await completeAbortedDoclingMetrics(
+        transaction,
+        job.doclingRunId,
+        currentTime,
+      );
+
       const settled = await transaction
         .update(ingestionJobs)
         .set({
@@ -681,6 +690,8 @@ export class CatalogJobStore {
               ? "paused"
               : "cancel_requested"
           ),
+          doclingAttemptConfig: null,
+          doclingRunId: null,
           doclingServiceInstanceId: null,
           doclingServiceSlot: null,
           leaseExpiresAt: null,
@@ -1031,22 +1042,15 @@ export class CatalogJobStore {
     ownerId: string,
   ): Promise<IngestionJob | null> {
     const currentTime = this.clock.now();
-    const rows = await this.database
-      .update(ingestionJobs)
-      .set({
-        doclingServiceInstanceId: null,
-        doclingServiceSlot: null,
-        leaseExpiresAt: null,
-        ownerId: null,
-        state: "pending",
-        controlState: sql`CASE WHEN ${ingestionJobs.controlState} = 'pause_requested' THEN 'paused'::ingestion_control_state ELSE ${ingestionJobs.controlState} END`,
-        updatedAt: currentTime,
-      })
-      .where(and(
+    return this.database.transaction(async (transaction) => {
+      const controlledJobCondition = and(
         buildOwnedRunningJobCondition(ownerId, sourceFile),
-        inArray(ingestionJobs.controlState, ["pause_requested", "cancel_requested"]),
+        inArray(
+          ingestionJobs.controlState,
+          ["pause_requested", "cancel_requested"],
+        ),
         notExists(
-          this.database
+          transaction
             .select({ taskId: doclingTaskCheckpoints.taskId })
             .from(doclingTaskCheckpoints)
             .where(
@@ -1056,10 +1060,43 @@ export class CatalogJobStore {
               ),
             ),
         ),
-      ))
-      .returning();
-    const row = rows[0];
-    return row === undefined ? null : decodeIngestionJob(row);
+      );
+      if (controlledJobCondition === undefined) {
+        throw new Error("Could not build the owned ingestion control condition.");
+      }
+      const jobs = await transaction
+        .select({ doclingRunId: ingestionJobs.doclingRunId })
+        .from(ingestionJobs)
+        .where(controlledJobCondition)
+        .limit(1)
+        .for("update");
+      const job = jobs[0];
+      if (job === undefined) {
+        return null;
+      }
+      await completeAbortedDoclingMetrics(
+        transaction,
+        job.doclingRunId,
+        currentTime,
+      );
+      const rows = await transaction
+        .update(ingestionJobs)
+        .set({
+          doclingAttemptConfig: null,
+          doclingRunId: null,
+          doclingServiceInstanceId: null,
+          doclingServiceSlot: null,
+          leaseExpiresAt: null,
+          ownerId: null,
+          state: "pending",
+          controlState: sql`CASE WHEN ${ingestionJobs.controlState} = 'pause_requested' THEN 'paused'::ingestion_control_state ELSE ${ingestionJobs.controlState} END`,
+          updatedAt: currentTime,
+        })
+        .where(controlledJobCondition)
+        .returning();
+      const row = rows[0];
+      return row === undefined ? null : decodeIngestionJob(row);
+    });
   }
 
   public async settleExpiredControls(): Promise<IngestionJob[]> {
@@ -1090,10 +1127,17 @@ export class CatalogJobStore {
         .for("update", { skipLocked: true });
       const settledJobs: IngestionJob[] = [];
       for (const row of rows) {
+        await completeAbortedDoclingMetrics(
+          transaction,
+          row.doclingRunId,
+          currentTime,
+        );
         const settledRows = await transaction
           .update(ingestionJobs)
           .set({
             controlState: row.controlState === "pause_requested" ? "paused" : "cancel_requested",
+            doclingAttemptConfig: null,
+            doclingRunId: null,
             doclingServiceInstanceId: null,
             doclingServiceSlot: null,
             leaseExpiresAt: null,
@@ -1240,6 +1284,59 @@ export class CatalogJobStore {
 type CatalogJobTransaction = Parameters<
   Parameters<CiteLoomDatabase["transaction"]>[0]
 >[0];
+
+async function completeAbortedDoclingMetrics(
+  transaction: CatalogJobTransaction,
+  runId: string | null,
+  completedAt: Date,
+): Promise<void> {
+  if (runId === null) {
+    return;
+  }
+  const completedRuns = await transaction
+    .update(doclingConversionRuns)
+    .set({
+      completedAt,
+      errorCategory: "IngestionControlInterruption",
+      outcome: "abort",
+      totalWallMs: buildBoundedElapsedMilliseconds(
+        completedAt,
+        doclingConversionRuns.startedAt,
+      ),
+    })
+    .where(and(
+      eq(doclingConversionRuns.id, runId),
+      isNull(doclingConversionRuns.completedAt),
+    ))
+    .returning({ id: doclingConversionRuns.id });
+  if (completedRuns.length === 0) {
+    return;
+  }
+  await transaction
+    .update(doclingConversionRequests)
+    .set({
+      completedAt,
+      errorCategory: "abort",
+      outcome: "abort",
+      totalMs: buildBoundedElapsedMilliseconds(
+        completedAt,
+        doclingConversionRequests.startedAt,
+      ),
+    })
+    .where(and(
+      eq(doclingConversionRequests.runId, runId),
+      isNull(doclingConversionRequests.completedAt),
+    ));
+}
+
+function buildBoundedElapsedMilliseconds(
+  completedAt: Date,
+  startedAt:
+    | typeof doclingConversionRequests.startedAt
+    | typeof doclingConversionRuns.startedAt,
+): SQL<number> {
+  return sql<number>`least(${POSTGRES_INTEGER_MAX}, greatest(0, floor(extract(epoch from (${completedAt}::timestamptz - ${startedAt})) * 1000)))::integer`;
+}
 
 function buildDueJobCondition(currentTime: Date): SQL {
   const condition = or(
