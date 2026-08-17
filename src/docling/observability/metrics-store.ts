@@ -15,7 +15,10 @@ import {
 } from "drizzle-orm";
 import { z } from "zod";
 
-import type { CiteLoomDatabase } from "../../database/client.js";
+import type {
+  CiteLoomDatabase,
+  CiteLoomTransaction,
+} from "../../database/client.js";
 import {
   doclingConversionRequests,
   doclingConversionRuns,
@@ -271,6 +274,7 @@ export class DoclingMetricsStore {
     input: RepairCompletedPartitionRunInput,
   ): Promise<boolean> {
     const repaired = await this.database.transaction(async (transaction) => {
+      await lockIngestionJobForMetrics(transaction, input.sourceFile);
       const run = await readConversionRunForRepair(transaction, input.runId);
       if (run.completedAt === null) {
         await completeRepairedConversionRun(transaction, input);
@@ -283,6 +287,18 @@ export class DoclingMetricsStore {
     });
     return repaired;
   }
+}
+
+async function lockIngestionJobForMetrics(
+  transaction: CiteLoomTransaction,
+  sourceFile: string,
+): Promise<void> {
+  await transaction
+    .select({ sourceFile: ingestionJobs.sourceFile })
+    .from(ingestionJobs)
+    .where(eq(ingestionJobs.sourceFile, sourceFile))
+    .limit(1)
+    .for("update");
 }
 
 async function readConversionRunForRepair(
@@ -530,6 +546,7 @@ export class DoclingMetricsRecorder implements DoclingConversionObserver {
         ? null
         : Math.max(0, this.schedulerStartedAtMs - startedAt.getTime());
       await this.database.transaction(async (transaction) => {
+        await lockIngestionJobForMetrics(transaction, this.sourceFile);
         const existingRows = await transaction
           .select({
             completedAt: doclingConversionRuns.completedAt,
@@ -629,6 +646,13 @@ class PersistedDoclingRequestObserver implements DoclingRequestObserver {
       if (event.kind === "submitted") {
         await this.database.transaction(async (transaction) => {
           await transaction
+            .update(doclingConversionRuns)
+            .set({ firstSubmittedAt: new Date(event.task.submittedAt) })
+            .where(and(
+              eq(doclingConversionRuns.id, this.runId),
+              isNull(doclingConversionRuns.firstSubmittedAt),
+            ));
+          await transaction
             .update(doclingConversionRequests)
             .set({
               submittedAt: new Date(event.task.submittedAt),
@@ -636,13 +660,6 @@ class PersistedDoclingRequestObserver implements DoclingRequestObserver {
               uploadMs: event.uploadMs,
             })
             .where(eq(doclingConversionRequests.id, this.identity.id));
-          await transaction
-            .update(doclingConversionRuns)
-            .set({ firstSubmittedAt: new Date(event.task.submittedAt) })
-            .where(and(
-              eq(doclingConversionRuns.id, this.runId),
-              isNull(doclingConversionRuns.firstSubmittedAt),
-            ));
         });
         return;
       }
@@ -660,18 +677,18 @@ class PersistedDoclingRequestObserver implements DoclingRequestObserver {
       if (event.kind === "first-started") {
         await this.database.transaction(async (transaction) => {
           await transaction
-            .update(doclingConversionRequests)
-            .set({ firstObservedStartedAt: event.at })
-            .where(and(
-              eq(doclingConversionRequests.id, this.identity.id),
-              isNull(doclingConversionRequests.firstObservedStartedAt),
-            ));
-          await transaction
             .update(doclingConversionRuns)
             .set({ firstObservedStartedAt: event.at })
             .where(and(
               eq(doclingConversionRuns.id, this.runId),
               isNull(doclingConversionRuns.firstObservedStartedAt),
+            ));
+          await transaction
+            .update(doclingConversionRequests)
+            .set({ firstObservedStartedAt: event.at })
+            .where(and(
+              eq(doclingConversionRequests.id, this.identity.id),
+              isNull(doclingConversionRequests.firstObservedStartedAt),
             ));
         });
         return;

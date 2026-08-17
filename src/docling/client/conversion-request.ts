@@ -1,6 +1,9 @@
 import { basename } from "node:path";
 
-import type { DoclingConvertRequester } from "./index.js";
+import type {
+  DoclingConvertRequester,
+  DoclingTaskRecoveryMode,
+} from "./index.js";
 import type {
   DoclingConfig,
   DoclingPdfBackend,
@@ -187,6 +190,7 @@ export async function requestDoclingConversion(
     serverTimeoutMs,
     preparedTask.task.id,
   );
+  const recoveryMode = readDoclingTaskRecoveryMode(input.source, input.options);
   const conversion = await input.requester({
     abortSignal: input.abortSignal,
     apiKey: input.config.apiKey,
@@ -199,9 +203,9 @@ export async function requestDoclingConversion(
     },
     decodeResponse: decodeDoclingConversionResponse,
     observer: requestObserver,
+    recoveryMode,
     requestTimeoutMs: input.config.requestTimeoutMs,
-    retainTaskAfterTerminalFailure: input.source.extension === ".pdf",
-    resumedSubmission: preparedTask.kind === "resumed",
+    resumedTask: preparedTask.kind === "resumed",
     task: preparedTask.task,
     taskControl: input.taskControl,
     url: `${input.config.baseUrl}/v1/convert/content/async`,
@@ -211,6 +215,20 @@ export async function requestDoclingConversion(
     pageCount: deadline.pageCount,
     requestObserver,
   };
+}
+
+export function readDoclingTaskRecoveryMode(
+  source: FileDocumentSource,
+  options: DoclingConversionRequestOptions,
+): DoclingTaskRecoveryMode {
+  if (
+    source.extension === ".pdf"
+    && options.pipeline === "standard"
+    && !options.includePageImages
+  ) {
+    return "resume-ranges";
+  }
+  return "restart-task";
 }
 
 export function buildDoclingContentRequest(
