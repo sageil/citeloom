@@ -21,7 +21,7 @@ import {
   vector,
   varchar,
 } from "drizzle-orm/pg-core";
-import type { ExtraConfigColumn } from "drizzle-orm/pg-core";
+import type { AnyPgColumn, ExtraConfigColumn } from "drizzle-orm/pg-core";
 
 import { DEFAULT_WORKSPACE_SECURITY_POLICY } from "../domain/security-policy-defaults.js";
 import type { StoredDoclingArtifact } from "../docling/protocol/index.js";
@@ -291,6 +291,10 @@ export const users = pgTable(
     createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
       .notNull()
       .defaultNow(),
+    defaultWorkspaceId: uuid("default_workspace_id").references(
+      (): AnyPgColumn => workspaces.id,
+      { onDelete: "set null" },
+    ),
     displayName: text("display_name").notNull(),
     globalRole: globalRole("global_role").notNull().default("standard"),
     id: uuid("id").primaryKey(),

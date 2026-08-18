@@ -11,6 +11,7 @@ import {
 const oauthTokenStorageKey = "citeloom.oauth.tokens.v1";
 const oauthTransactionStorageKey = "citeloom.oauth.transaction.v1";
 const oauthWorkspaceStorageKey = "citeloom.oauth.workspace.v1";
+const oauthWorkspaceTransitionStorageKey = "citeloom.oauth.workspace-transition.v1";
 const oauthActivationProofHeaderName = "x-citeloom-oauth-activation-proof";
 const objectUrlRetentionMs = 60_000;
 const tokenRefreshWindowMs = 30_000;
@@ -279,7 +280,15 @@ function readIdentityContext(value) {
   if (workspaces.length === 0) {
     throw new Error("The OAuth identity has no accessible CiteLoom workspace.");
   }
+  const defaultWorkspaceId = readNonEmptyString(
+    context.defaultWorkspaceId,
+    "default workspace ID",
+  );
+  if (!workspaces.some((workspace) => workspace.id === defaultWorkspaceId)) {
+    throw new Error("The OAuth default workspace is unavailable.");
+  }
   return {
+    defaultWorkspaceId,
     displayName: readNonEmptyString(context.displayName, "display name"),
     globalRole: readEnum(
       context.globalRole,
@@ -418,10 +427,27 @@ export function createBrowserAuthentication({
     });
     const value = await readJsonResponse(response, "OAuth identity context");
     context = readIdentityContext(value);
+    const pendingWorkspaceId = sessionStorage.getItem(
+      oauthWorkspaceTransitionStorageKey,
+    );
     const storedWorkspaceId = sessionStorage.getItem(oauthWorkspaceStorageKey);
-    const selected = context.workspaces.find((workspace) => {
+    let selected = context.workspaces.find((workspace) => {
       return workspace.id === storedWorkspaceId;
-    }) ?? context.workspaces[0];
+    });
+    if (pendingWorkspaceId !== null) {
+      if (pendingWorkspaceId === context.defaultWorkspaceId) {
+        selected = context.workspaces.find((workspace) => {
+          return workspace.id === pendingWorkspaceId;
+        });
+      }
+      sessionStorage.removeItem(oauthWorkspaceTransitionStorageKey);
+    }
+    selected ??= context.workspaces.find((workspace) => {
+      return workspace.id === context.defaultWorkspaceId;
+    });
+    if (selected === undefined) {
+      throw new Error("The OAuth default workspace is unavailable.");
+    }
     sessionStorage.setItem(oauthWorkspaceStorageKey, selected.id);
     return context;
   };
@@ -540,6 +566,8 @@ export function createBrowserAuthentication({
       window.location.replace("/overview");
       return;
     }
+    sessionStorage.removeItem(oauthWorkspaceStorageKey);
+    sessionStorage.removeItem(oauthWorkspaceTransitionStorageKey);
     window.location.replace(transaction.returnTo);
   };
 
@@ -648,6 +676,33 @@ export function createBrowserAuthentication({
       await readyPromise;
       return beginSignIn(returnTo);
     },
+    beginDefaultWorkspaceTransition: async (workspaceId) => {
+      await readyPromise;
+      if (bootstrap.mode !== "oauth") {
+        return false;
+      }
+      const identity = await loadContext();
+      if (!identity.workspaces.some((workspace) => workspace.id === workspaceId)) {
+        throw new Error("The selected workspace is unavailable.");
+      }
+      sessionStorage.setItem(oauthWorkspaceTransitionStorageKey, workspaceId);
+      return true;
+    },
+    cancelDefaultWorkspaceTransition: () => {
+      sessionStorage.removeItem(oauthWorkspaceTransitionStorageKey);
+    },
+    completeDefaultWorkspaceTransition: async (workspaceId) => {
+      await readyPromise;
+      if (bootstrap.mode !== "oauth") {
+        return;
+      }
+      const identity = await loadContext();
+      if (!identity.workspaces.some((workspace) => workspace.id === workspaceId)) {
+        throw new Error("The selected workspace is unavailable.");
+      }
+      sessionStorage.setItem(oauthWorkspaceStorageKey, workspaceId);
+      sessionStorage.removeItem(oauthWorkspaceTransitionStorageKey);
+    },
     identityContext: async () => {
       await readyPromise;
       if (bootstrap.mode !== "oauth") {
@@ -687,6 +742,7 @@ export function createBrowserAuthentication({
       clearTokens();
       sessionStorage.removeItem(oauthTransactionStorageKey);
       sessionStorage.removeItem(oauthWorkspaceStorageKey);
+      sessionStorage.removeItem(oauthWorkspaceTransitionStorageKey);
       if (
         bootstrap.mode === "oauth"
         && server?.endSessionEndpoint !== null
@@ -831,6 +887,9 @@ function readContentDispositionFilename(value) {
 
 function createUnavailableBrowserAuthentication() {
   return {
+    beginDefaultWorkspaceTransition: async () => false,
+    cancelDefaultWorkspaceTransition: () => {},
+    completeDefaultWorkspaceTransition: async () => {},
     identityContext: async () => null,
     isOAuthEnabled: async () => false,
     isOAuthEnabledNow: () => false,

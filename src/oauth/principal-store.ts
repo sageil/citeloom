@@ -38,6 +38,7 @@ export interface OAuthAuthorizationPrincipal extends AuthorizationPrincipal {
 }
 
 export interface OAuthIdentityContext {
+  defaultWorkspaceId: string;
   displayName: string;
   globalRole: GlobalRole;
   userId: string;
@@ -53,6 +54,7 @@ export class OAuthIdentityUnavailableError extends Error {
 }
 
 interface AccessibleIdentityRow {
+  defaultWorkspaceId: string | null;
   displayName: string;
   globalRole: GlobalRole;
   role: WorkspaceRole;
@@ -103,7 +105,12 @@ export class OAuthPrincipalStore {
         role: row.role,
       });
     }
+    workspaces.sort(compareWorkspaceSummaries);
+    const preferred = rows.find((candidate) => {
+      return candidate.workspaceId === candidate.defaultWorkspaceId;
+    }) ?? row;
     return {
+      defaultWorkspaceId: preferred.workspaceId,
       displayName: row.displayName,
       globalRole: row.globalRole,
       userId: row.userId,
@@ -128,6 +135,7 @@ export class OAuthPrincipalStore {
     }
     return this.database
       .select({
+        defaultWorkspaceId: users.defaultWorkspaceId,
         displayName: users.displayName,
         globalRole: users.globalRole,
         role: workspaceMemberships.role,
@@ -144,8 +152,19 @@ export class OAuthPrincipalStore {
       )
       .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
       .where(and(...conditions))
-      .orderBy(asc(workspaces.name), asc(workspaces.id));
+      .orderBy(asc(workspaces.createdAt), asc(workspaces.id));
   }
+}
+
+function compareWorkspaceSummaries(
+  left: WorkspaceSummary,
+  right: WorkspaceSummary,
+): number {
+  const nameComparison = left.name.localeCompare(right.name);
+  if (nameComparison !== 0) {
+    return nameComparison;
+  }
+  return left.id.localeCompare(right.id);
 }
 
 function buildOAuthAuthorizationPrincipal(

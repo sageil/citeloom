@@ -277,6 +277,7 @@ describe("web server boundary", () => {
     const settings = buildOAuthAuthenticationSettings();
     const principal = buildOAuthPrincipal();
     const context = {
+      defaultWorkspaceId: principal.workspaceId,
       displayName: principal.displayName,
       globalRole: principal.globalRole,
       userId: principal.userId,
@@ -1040,6 +1041,81 @@ describe("web server boundary", () => {
       expect(switchWorkspace).toHaveBeenCalledWith(
         principal,
         createdWorkspace.id,
+      );
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reads the default workspace and switches the current session when it changes", async () => {
+    const principal = buildAuthenticatedPrincipal("member");
+    const targetWorkspace = {
+      id: "00000000-0000-4000-8000-000000000402",
+      name: "Research Operations",
+      role: "member" as const,
+    };
+    const preference = {
+      currentWorkspaceId: principal.workspaceId,
+      defaultWorkspaceId: principal.workspaceId,
+      workspaces: [
+        {
+          id: principal.workspaceId,
+          name: principal.workspaceName,
+          role: principal.role,
+        },
+        targetWorkspace,
+      ],
+    };
+    const readWorkspacePreference = vi.fn<
+      WebServices["readWorkspacePreference"]
+    >(async () => preference);
+    const setDefaultWorkspace = vi.fn<WebServices["setDefaultWorkspace"]>(
+      async (current, workspaceId) => ({
+        defaultWorkspaceId: workspaceId,
+        principal: {
+          ...current,
+          workspaceId,
+          workspaceName: targetWorkspace.name,
+        },
+      }),
+    );
+    const server = await buildProductionWebServer(buildConfig(), {
+      logger: false,
+      services: buildServices({
+        readSession: async () => principal,
+        readWorkspacePreference,
+        setDefaultWorkspace,
+      }),
+      staticDirectory: null,
+    });
+
+    try {
+      const cookies = { "__Host-citeloom_session": "private-session-token" };
+      const readResponse = await server.inject({
+        cookies,
+        method: "GET",
+        url: "/api/account/default-workspace",
+      });
+      const updateResponse = await server.inject({
+        cookies,
+        headers: { origin: "https://localhost:3443" },
+        method: "PUT",
+        payload: { workspaceId: targetWorkspace.id },
+        url: "/api/account/default-workspace",
+      });
+
+      expect(readResponse.statusCode).toBe(200);
+      expect(readResponse.json()).toEqual(preference);
+      expect(readWorkspacePreference).toHaveBeenCalledWith(principal);
+      expect(updateResponse.statusCode).toBe(200);
+      expect(updateResponse.json()).toEqual({
+        currentWorkspaceId: targetWorkspace.id,
+        defaultWorkspaceId: targetWorkspace.id,
+        workspace: targetWorkspace,
+      });
+      expect(setDefaultWorkspace).toHaveBeenCalledWith(
+        principal,
+        targetWorkspace.id,
       );
     } finally {
       await server.close();

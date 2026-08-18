@@ -1,11 +1,58 @@
 <section class="access-page access-hub" x-data="citeloomAccountPage" x-init="initialize()">
   <header class="access-header">
     <p class="section-kicker">Personal security</p>
-    <h1>My account</h1>
-    <p>Manage your sign-in password.</p>
+    <h1>My Account</h1>
   </header>
 
   <p class="field-error" role="alert" x-cloak x-show="!passwordFormOpen &amp;&amp; errorMessage !== ''" x-text="errorMessage"></p>
+
+  <section class="account-workspace-section" x-cloak x-show="workspaceLoading || workspaces.length &gt; 1 || workspaceErrorMessage !== ''">
+    <header class="account-workspace-heading">
+      <h2>Change your default workspace</h2>
+    </header>
+
+    <p class="access-user-loading" role="status" x-show="workspaceLoading">Loading workspaces…</p>
+    <div class="access-user-load-failed" x-show="!workspaceLoading &amp;&amp; workspaceErrorMessage !== ''">
+      <span role="alert" x-text="workspaceErrorMessage"></span>
+      <button class="button access-secondary-button" type="button" @click="loadWorkspacePreference()">Try again</button>
+    </div>
+
+    <div x-show="!workspaceLoading &amp;&amp; workspaceErrorMessage === '' &amp;&amp; workspaces.length &gt; 1">
+      <fieldset class="account-workspace-list">
+        <legend class="sr-only">Select your default workspace</legend>
+        <template x-for="workspace in workspaces" :key="workspace.id">
+          <label class="account-workspace-option" :class="{ selected: workspace.id === selectedWorkspaceId }">
+            <input :disabled="workspaceBusy" name="default-workspace" type="radio" :value="workspace.id" x-model="selectedWorkspaceId" />
+            <span class="account-workspace-icon">
+              <svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg>
+            </span>
+            <strong x-text="workspace.name"></strong>
+            <span class="account-workspace-badges">
+              <span class="account-workspace-badge" x-show="workspace.id === currentWorkspaceId">Current</span>
+              <span class="account-workspace-badge" x-show="workspace.id === defaultWorkspaceId">Default</span>
+            </span>
+          </label>
+        </template>
+      </fieldset>
+
+      <div class="account-workspace-transition" x-show="hasWorkspaceSelectionChange">
+        <div>
+          <span class="account-workspace-transition-icon"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg></span>
+          <span><strong x-text="currentWorkspace?.name"></strong><small x-text="currentWorkspaceId === defaultWorkspaceId ? 'Current and default' : 'Current workspace'"></small></span>
+        </div>
+        <svg aria-hidden="true" class="citeloom-icon account-workspace-arrow"><use href="./assets/images/citeloom-icons.svg#citeloom-arrow"></use></svg>
+        <div>
+          <span class="account-workspace-transition-icon selected"><svg aria-hidden="true" class="citeloom-icon"><use href="./assets/images/citeloom-icons.svg#citeloom-stack"></use></svg></span>
+          <span><strong x-text="selectedWorkspace?.name"></strong><small>New current and default</small></span>
+        </div>
+      </div>
+
+      <footer class="account-workspace-actions">
+        <button class="button access-primary-button" :disabled="workspaceBusy || !hasWorkspaceSelectionChange" type="button" @click="saveDefaultWorkspace()" x-text="workspaceBusy ? 'Saving…' : 'Save and switch'"></button>
+        <button class="button account-workspace-cancel" :disabled="workspaceBusy || !hasWorkspaceSelectionChange" type="button" @click="cancelWorkspaceSelection()">Cancel</button>
+      </footer>
+    </div>
+  </section>
 
   <section class="access-security-panel access-card">
     <div class="access-security-summary">
