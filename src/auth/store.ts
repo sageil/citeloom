@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, eq, gt, isNull, ne } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, ne, sql } from "drizzle-orm";
 
 import type {
   CiteLoomDatabase,
@@ -29,6 +29,8 @@ import {
   type StoredWorkspaceSettings,
 } from "../workspaces/settings-persistence.js";
 import type {
+  AccountWorkspacePreference,
+  AccountWorkspaceTransition,
   AuthenticatedPrincipal,
   AuthorizationPrincipal,
   AuthenticationSession,
@@ -256,8 +258,12 @@ export class AuthenticationStore {
       await transaction
         .delete(userSetupTokens)
         .where(eq(userSetupTokens.userId, row.userId));
+      const sessionWorkspace = await readPreferredWorkspace(
+        transaction,
+        row.userId,
+      );
       await transaction.insert(userSessions).values({
-        activeWorkspaceId: row.workspaceId,
+        activeWorkspaceId: sessionWorkspace.workspaceId,
         createdAt: now,
         expiresAt,
         idleTimeoutSeconds: sessionIdleLifetimeSeconds,
@@ -265,7 +271,7 @@ export class AuthenticationStore {
         tokenDigest: sessionTokenDigest,
         userId: row.userId,
       });
-      return buildPrincipal(row, sessionTokenDigest);
+      return buildPrincipal(sessionWorkspace, sessionTokenDigest);
     });
     return { expiresAt: expiresAt.toISOString(), principal, token: sessionToken };
   }
@@ -295,7 +301,11 @@ export class AuthenticationStore {
         eq(workspaceMemberships.access, "enabled"),
         eq(workspaces.state, "active"),
       ))
-      .orderBy(asc(workspaces.createdAt), asc(workspaces.id))
+      .orderBy(
+        sql`case when ${workspaces.id} = ${users.defaultWorkspaceId} then 0 else 1 end`,
+        asc(workspaces.createdAt),
+        asc(workspaces.id),
+      )
       .limit(1);
     const row = rows[0];
     const passwordHash = row?.passwordHash ?? await dummyPasswordHash;
@@ -570,6 +580,10 @@ export class AuthenticationStore {
         .delete(userSessions)
         .where(eq(userSessions.activeWorkspaceId, workspaceId));
       await transaction
+        .update(users)
+        .set({ defaultWorkspaceId: null, updatedAt: now })
+        .where(eq(users.defaultWorkspaceId, workspaceId));
+      await transaction
         .update(workspaces)
         .set({ state: "archived", updatedAt: now })
         .where(eq(workspaces.id, workspaceId));
@@ -631,6 +645,111 @@ export class AuthenticationStore {
       ...workspace,
       role: principal.globalRole === "global_admin" ? "admin" : principal.role,
     };
+  }
+
+  public async readWorkspacePreference(
+    principal: AuthorizationPrincipal,
+  ): Promise<AccountWorkspacePreference> {
+    const rows = await this.database
+      .select({
+        createdAt: workspaces.createdAt,
+        defaultWorkspaceId: users.defaultWorkspaceId,
+        id: workspaces.id,
+        name: workspaces.name,
+        role: workspaceMemberships.role,
+      })
+      .from(users)
+      .innerJoin(
+        workspaceMemberships,
+        eq(workspaceMemberships.userId, users.id),
+      )
+      .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
+      .where(and(
+        eq(users.id, principal.userId),
+        eq(users.state, "active"),
+        eq(workspaceMemberships.access, "enabled"),
+        eq(workspaces.state, "active"),
+      ))
+      .orderBy(asc(workspaces.createdAt), asc(workspaces.id));
+    const fallback = rows[0];
+    if (fallback === undefined) {
+      throw new WorkspaceUnavailableError();
+    }
+    const preferred = rows.find((row) => {
+      return row.id === row.defaultWorkspaceId;
+    }) ?? fallback;
+    const workspaceSummaries: WorkspaceSummary[] = [];
+    for (const row of rows) {
+      workspaceSummaries.push({ id: row.id, name: row.name, role: row.role });
+    }
+    workspaceSummaries.sort(compareWorkspaceSummaries);
+    return {
+      currentWorkspaceId: principal.workspaceId,
+      defaultWorkspaceId: preferred.id,
+      workspaces: workspaceSummaries,
+    };
+  }
+
+  public async setDefaultWorkspace(
+    principal: AuthorizationPrincipal,
+    workspaceId: string,
+  ): Promise<AccountWorkspaceTransition> {
+    const now = this.now();
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({
+          displayName: users.displayName,
+          globalRole: users.globalRole,
+          role: workspaceMemberships.role,
+          userId: users.id,
+          username: users.username,
+          workspaceId: workspaces.id,
+          workspaceName: workspaces.name,
+        })
+        .from(users)
+        .innerJoin(
+          workspaceMemberships,
+          eq(workspaceMemberships.userId, users.id),
+        )
+        .innerJoin(
+          workspaces,
+          eq(workspaces.id, workspaceMemberships.workspaceId),
+        )
+        .where(and(
+          eq(users.id, principal.userId),
+          eq(users.state, "active"),
+          eq(workspaceMemberships.access, "enabled"),
+          eq(workspaces.id, workspaceId),
+          eq(workspaces.state, "active"),
+        ))
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (row === undefined) {
+        throw new WorkspaceUnavailableError();
+      }
+      await transaction
+        .update(users)
+        .set({ defaultWorkspaceId: workspaceId, updatedAt: now })
+        .where(eq(users.id, principal.userId));
+      if (isAuthenticatedPrincipal(principal)) {
+        const updatedSessions = await transaction
+          .update(userSessions)
+          .set({ activeWorkspaceId: workspaceId, lastSeenAt: now })
+          .where(and(
+            eq(userSessions.tokenDigest, principal.sessionTokenDigest),
+            eq(userSessions.userId, principal.userId),
+          ))
+          .returning({ tokenDigest: userSessions.tokenDigest });
+        if (updatedSessions[0] === undefined) {
+          throw new WorkspaceUnavailableError();
+        }
+      }
+      return {
+        defaultWorkspaceId: workspaceId,
+        principal: buildSwitchedPrincipal(principal, row),
+      };
+    });
   }
 
   public async switchWorkspace(
@@ -832,6 +951,7 @@ export class AuthenticationStore {
     userId: string,
   ): Promise<void> {
     requireWorkspaceAdministrator(principal, workspaceId);
+    const now = this.now();
     await this.database.transaction(async (transaction) => {
       await requireActiveWorkspace(transaction, workspaceId);
       const membershipRows = await transaction
@@ -866,6 +986,13 @@ export class AuthenticationStore {
         eq(userSetupTokens.workspaceId, workspaceId),
         eq(userSetupTokens.userId, userId),
       ));
+      await transaction
+        .update(users)
+        .set({ defaultWorkspaceId: null, updatedAt: now })
+        .where(and(
+          eq(users.id, userId),
+          eq(users.defaultWorkspaceId, workspaceId),
+        ));
       await transaction.delete(workspaceMemberships).where(and(
         eq(workspaceMemberships.workspaceId, workspaceId),
         eq(workspaceMemberships.userId, userId),
@@ -880,6 +1007,7 @@ export class AuthenticationStore {
     role: WorkspaceRole,
   ): Promise<void> {
     requireWorkspaceAdministrator(principal, workspaceId);
+    const now = this.now();
     await this.database.transaction(async (transaction) => {
       await requireActiveWorkspace(transaction, workspaceId);
       const membershipRows = await transaction
@@ -912,7 +1040,7 @@ export class AuthenticationStore {
       }
       await transaction
         .update(workspaceMemberships)
-        .set({ role, updatedAt: this.now() })
+        .set({ role, updatedAt: now })
         .where(and(
           eq(workspaceMemberships.workspaceId, workspaceId),
           eq(workspaceMemberships.userId, userId),
@@ -930,6 +1058,7 @@ export class AuthenticationStore {
     if (userId === principal.userId && access === "disabled") {
       throw new WorkspaceMemberAccessConflictError();
     }
+    const now = this.now();
     await this.database.transaction(async (transaction) => {
       await requireActiveWorkspace(transaction, workspaceId);
       const membershipRows = await transaction
@@ -974,7 +1103,7 @@ export class AuthenticationStore {
       }
       await transaction
         .update(workspaceMemberships)
-        .set({ access, updatedAt: this.now() })
+        .set({ access, updatedAt: now })
         .where(and(
           eq(workspaceMemberships.workspaceId, workspaceId),
           eq(workspaceMemberships.userId, userId),
@@ -984,9 +1113,91 @@ export class AuthenticationStore {
           eq(userSessions.activeWorkspaceId, workspaceId),
           eq(userSessions.userId, userId),
         ));
+        await transaction
+          .update(users)
+          .set({ defaultWorkspaceId: null, updatedAt: now })
+          .where(and(
+            eq(users.id, userId),
+            eq(users.defaultWorkspaceId, workspaceId),
+          ));
       }
     });
   }
+}
+
+interface PrincipalWorkspaceRow {
+  displayName: string;
+  globalRole: AuthenticatedPrincipal["globalRole"];
+  role: WorkspaceRole;
+  userId: string;
+  username: string;
+  workspaceId: string;
+  workspaceName: string;
+}
+
+async function readPreferredWorkspace(
+  database: CiteLoomDatabaseExecutor,
+  userId: string,
+): Promise<PrincipalWorkspaceRow> {
+  const rows = await database
+    .select({
+      displayName: users.displayName,
+      globalRole: users.globalRole,
+      role: workspaceMemberships.role,
+      userId: users.id,
+      username: users.username,
+      workspaceId: workspaces.id,
+      workspaceName: workspaces.name,
+    })
+    .from(users)
+    .innerJoin(workspaceMemberships, eq(workspaceMemberships.userId, users.id))
+    .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
+    .where(and(
+      eq(users.id, userId),
+      eq(workspaceMemberships.access, "enabled"),
+      eq(workspaces.state, "active"),
+    ))
+    .orderBy(
+      sql`case when ${workspaces.id} = ${users.defaultWorkspaceId} then 0 else 1 end`,
+      asc(workspaces.createdAt),
+      asc(workspaces.id),
+    )
+    .limit(1);
+  const row = rows[0];
+  if (row === undefined) {
+    throw new WorkspaceUnavailableError();
+  }
+  return row;
+}
+
+function compareWorkspaceSummaries(
+  left: WorkspaceSummary,
+  right: WorkspaceSummary,
+): number {
+  const nameComparison = left.name.localeCompare(right.name);
+  if (nameComparison !== 0) {
+    return nameComparison;
+  }
+  return left.id.localeCompare(right.id);
+}
+
+function isAuthenticatedPrincipal(
+  principal: AuthorizationPrincipal,
+): principal is AuthenticatedPrincipal {
+  return "sessionTokenDigest" in principal
+    && typeof principal.sessionTokenDigest === "string";
+}
+
+function buildSwitchedPrincipal(
+  principal: AuthorizationPrincipal,
+  workspace: PrincipalWorkspaceRow,
+): AuthorizationPrincipal {
+  return {
+    ...principal,
+    role: workspace.role,
+    workspaceId: workspace.workspaceId,
+    workspaceName: workspace.workspaceName,
+  };
 }
 
 async function requireActiveWorkspace(

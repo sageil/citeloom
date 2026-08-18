@@ -33,6 +33,40 @@ function buildOAuthBootstrap() {
   };
 }
 
+function storeOAuthTokens(storage) {
+  storage.setItem("citeloom.oauth.tokens.v1", JSON.stringify({
+    accessToken: "access-token",
+    clientId: "browser-client",
+    expiresAt: Date.now() + 120_000,
+    idToken: null,
+    issuer: "https://identity.example/oidc",
+    refreshToken: null,
+    resource: "https://citeloom.example/api",
+  }));
+}
+
+function buildIdentityContext(defaultWorkspaceId) {
+  return {
+    defaultWorkspaceId,
+    displayName: "OAuth User",
+    globalRole: "standard",
+    userId: "00000000-0000-4000-8000-000000000001",
+    username: "oauth-user",
+    workspaces: [
+      {
+        id: "00000000-0000-4000-8000-000000000002",
+        name: "Local Workspace",
+        role: "member",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000003",
+        name: "Research Workspace",
+        role: "member",
+      },
+    ],
+  };
+}
+
 beforeEach(() => {
   vi.resetModules();
   const sessionStorage = createStorage();
@@ -78,6 +112,7 @@ describe("browser OAuth authentication", () => {
       }
       if (url.pathname === "/api/auth/context") {
         return jsonResponse({
+          defaultWorkspaceId: "00000000-0000-4000-8000-000000000002",
           displayName: "OAuth User",
           globalRole: "standard",
           userId: "00000000-0000-4000-8000-000000000001",
@@ -124,6 +159,63 @@ describe("browser OAuth authentication", () => {
       "00000000-0000-4000-8000-000000000002",
     );
     resource.revoke();
+  });
+
+  it("selects the server default workspace when the browser has no selection", async () => {
+    const module = await import(
+      "../web/assets/scripts/browser-authentication.js?default-workspace"
+    );
+    await module.browserAuthentication.ready();
+    const storage = createStorage();
+    storeOAuthTokens(storage);
+    const defaultWorkspaceId = "00000000-0000-4000-8000-000000000003";
+    const fetchImplementation = vi.fn(async (input) => {
+      const url = new URL(input, window.location.origin);
+      if (url.pathname === "/api/auth/bootstrap") {
+        return jsonResponse(buildOAuthBootstrap());
+      }
+      return jsonResponse(buildIdentityContext(defaultWorkspaceId));
+    });
+    const authentication = module.createBrowserAuthentication({
+      fetchImplementation,
+      sessionStorage: storage,
+    });
+
+    await expect(authentication.selectedWorkspaceId()).resolves.toBe(
+      defaultWorkspaceId,
+    );
+  });
+
+  it("recovers a committed default workspace transition after response loss", async () => {
+    const module = await import(
+      "../web/assets/scripts/browser-authentication.js?workspace-transition"
+    );
+    await module.browserAuthentication.ready();
+    const storage = createStorage();
+    storeOAuthTokens(storage);
+    const originalWorkspaceId = "00000000-0000-4000-8000-000000000002";
+    const defaultWorkspaceId = "00000000-0000-4000-8000-000000000003";
+    storage.setItem("citeloom.oauth.workspace.v1", originalWorkspaceId);
+    storage.setItem(
+      "citeloom.oauth.workspace-transition.v1",
+      defaultWorkspaceId,
+    );
+    const fetchImplementation = vi.fn(async (input) => {
+      const url = new URL(input, window.location.origin);
+      if (url.pathname === "/api/auth/bootstrap") {
+        return jsonResponse(buildOAuthBootstrap());
+      }
+      return jsonResponse(buildIdentityContext(defaultWorkspaceId));
+    });
+    const authentication = module.createBrowserAuthentication({
+      fetchImplementation,
+      sessionStorage: storage,
+    });
+
+    await expect(authentication.selectedWorkspaceId()).resolves.toBe(
+      defaultWorkspaceId,
+    );
+    expect(storage.getItem("citeloom.oauth.workspace-transition.v1")).toBeNull();
   });
 
   it("starts authorization code flow with PKCE and the configured resource", async () => {

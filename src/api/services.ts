@@ -107,6 +107,8 @@ import type {
 } from "../auth/boundary.js";
 import type { PasswordInput } from "../auth/password.js";
 import type {
+  AccountWorkspacePreference,
+  AccountWorkspaceTransition,
   AuthenticatedPrincipal,
   AuthorizationPrincipal,
   AuthenticationSession,
@@ -351,6 +353,9 @@ export interface WebServices {
   readOAuthIdentityContext: (
     token: VerifiedOAuthAccessToken,
   ) => Promise<OAuthIdentityContext>;
+  readWorkspacePreference: (
+    principal: AuthorizationPrincipal,
+  ) => Promise<AccountWorkspacePreference>;
   readRevisions: () => Promise<ApplicationStateRevisionSnapshot>;
   readSession: (sessionToken: string) => Promise<AuthenticatedPrincipal | null>;
   resolveOAuthPrincipal: (
@@ -403,6 +408,10 @@ export interface WebServices {
     principal: AuthenticatedPrincipal,
     workspaceId: string,
   ) => Promise<AuthenticatedPrincipal>;
+  setDefaultWorkspace: (
+    principal: AuthorizationPrincipal,
+    workspaceId: string,
+  ) => Promise<AccountWorkspaceTransition>;
   revokeSourceLibraryGrant: (
     principal: AuthorizationPrincipal,
     libraryId: string,
@@ -1206,6 +1215,12 @@ export function createWebServices(
         return principals.readContext(token);
       });
     },
+    readWorkspacePreference: async (principal) => {
+      return manager.withRuntime(async (runtime) => {
+        const authentication = new AuthenticationStore(runtime.database);
+        return authentication.readWorkspacePreference(principal);
+      });
+    },
     run: async (operation) => manager.withRuntime(async (runtime) => {
       return operation(createRuntimeWebServices(runtime));
     }),
@@ -1297,6 +1312,12 @@ export function createWebServices(
       return manager.withRuntime(async (runtime) => {
         const authentication = new AuthenticationStore(runtime.database);
         return authentication.switchWorkspace(principal, workspaceId);
+      });
+    },
+    setDefaultWorkspace: async (principal, workspaceId) => {
+      return manager.withRuntime(async (runtime) => {
+        const authentication = new AuthenticationStore(runtime.database);
+        return authentication.setDefaultWorkspace(principal, workspaceId);
       });
     },
     revokeMcpApiKey: async (principal, userId, apiKeyId) => {

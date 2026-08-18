@@ -40,6 +40,17 @@ export interface WorkspaceSummary {
   role: WorkspaceRole;
 }
 
+export interface AccountWorkspacePreference {
+  currentWorkspaceId: string;
+  defaultWorkspaceId: string;
+  workspaces: WorkspaceSummary[];
+}
+
+export interface AccountWorkspaceTransition {
+  defaultWorkspaceId: string;
+  principal: AuthorizationPrincipal;
+}
+
 export interface AuthenticationSession {
   expiresAt: string;
   principal: AuthenticatedPrincipal;

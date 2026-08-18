@@ -67,6 +67,7 @@ export type TestWebServiceOverrides = Partial<RuntimeWebServices>
     | "readAuthenticationBootstrap"
     | "readAuthenticationSettings"
     | "readOAuthIdentityContext"
+    | "readWorkspacePreference"
     | "readSession"
     | "readSourceLibraryAdministration"
     | "readSettings"
@@ -87,6 +88,7 @@ export type TestWebServiceOverrides = Partial<RuntimeWebServices>
     | "queueSourceContentMigration"
     | "subscribeRevisions"
     | "switchWorkspace"
+    | "setDefaultWorkspace"
     | "setSourceLibraryGrant"
     | "testSourceContentStorage"
     | "updateSettings"
@@ -284,6 +286,16 @@ export function buildServices(
       ?? (async () => {
         throw new Error("OAuth authentication is not configured in boundary tests.");
       }),
+    readWorkspacePreference: overrides.readWorkspacePreference
+      ?? (async (principal) => ({
+        currentWorkspaceId: principal.workspaceId,
+        defaultWorkspaceId: principal.workspaceId,
+        workspaces: [{
+          id: principal.workspaceId,
+          name: principal.workspaceName,
+          role: principal.role,
+        }],
+      })),
     readRevisions: effectiveRuntimeServices.readRevisions,
     readSettings: overrides.readSettings ?? (async () => buildEffectiveSettings()),
     readWorkspaceSettings: overrides.readWorkspaceSettings ?? (async () => ({
@@ -334,6 +346,11 @@ export function buildServices(
     revokeSourceLibraryGrant: overrides.revokeSourceLibraryGrant
       ?? (async () => undefined),
     switchWorkspace: overrides.switchWorkspace ?? (async (principal) => principal),
+    setDefaultWorkspace: overrides.setDefaultWorkspace
+      ?? (async (principal, workspaceId) => ({
+        defaultWorkspaceId: workspaceId,
+        principal: { ...principal, workspaceId },
+      })),
     setSourceLibraryGrant: overrides.setSourceLibraryGrant
       ?? (async () => undefined),
     stageOAuthApplicationConfiguration:

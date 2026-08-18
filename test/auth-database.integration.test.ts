@@ -1772,6 +1772,67 @@ describe("workspace provisioning and switching", () => {
     )).rejects.toBeInstanceOf(WorkspaceUnavailableError);
   });
 
+  it("uses the saved default workspace for sign-in and switches only the current session", async () => {
+    await applyDatabaseBootstrap(session.database, administratorEnvironment());
+    const store = new AuthenticationStore(session.database);
+    const currentSession = await authenticateAdministrator(store);
+    const otherSession = await authenticateAdministrator(store);
+    const originalWorkspaceId = currentSession.principal.workspaceId;
+    const targetWorkspace = await store.createWorkspace(
+      currentSession.principal,
+      {
+        configuration: { kind: "organization-defaults" },
+        name: "Default Research",
+      },
+    );
+
+    const transition = await store.setDefaultWorkspace(
+      currentSession.principal,
+      targetWorkspace.id,
+    );
+
+    expect(transition).toMatchObject({
+      defaultWorkspaceId: targetWorkspace.id,
+      principal: { workspaceId: targetWorkspace.id },
+    });
+    await expect(store.readSession(currentSession.token)).resolves.toMatchObject({
+      workspaceId: targetWorkspace.id,
+    });
+    await expect(store.readSession(otherSession.token)).resolves.toMatchObject({
+      workspaceId: originalWorkspaceId,
+    });
+    await expect(session.database
+      .select({ defaultWorkspaceId: users.defaultWorkspaceId })
+      .from(users)
+      .where(eq(users.id, currentSession.principal.userId)))
+      .resolves.toEqual([{ defaultWorkspaceId: targetWorkspace.id }]);
+
+    const nextSession = await authenticateAdministrator(store);
+    expect(nextSession.principal.workspaceId).toBe(targetWorkspace.id);
+    await store.switchWorkspace(nextSession.principal, originalWorkspaceId);
+    const afterManualSwitch = await authenticateAdministrator(store);
+    expect(afterManualSwitch.principal.workspaceId).toBe(targetWorkspace.id);
+
+    await expect(store.setDefaultWorkspace(
+      afterManualSwitch.principal,
+      randomUUID(),
+    )).rejects.toBeInstanceOf(WorkspaceUnavailableError);
+    await expect(session.database
+      .select({ defaultWorkspaceId: users.defaultWorkspaceId })
+      .from(users)
+      .where(eq(users.id, currentSession.principal.userId)))
+      .resolves.toEqual([{ defaultWorkspaceId: targetWorkspace.id }]);
+
+    await store.archiveWorkspace(otherSession.principal, targetWorkspace.id);
+    await expect(session.database
+      .select({ defaultWorkspaceId: users.defaultWorkspaceId })
+      .from(users)
+      .where(eq(users.id, currentSession.principal.userId)))
+      .resolves.toEqual([{ defaultWorkspaceId: null }]);
+    const fallbackSession = await authenticateAdministrator(store);
+    expect(fallbackSession.principal.workspaceId).toBe(originalWorkspaceId);
+  });
+
   it("keeps research threads inside their owning workspace", async () => {
     await applyDatabaseBootstrap(session.database, administratorEnvironment());
     const authentication = new AuthenticationStore(session.database);

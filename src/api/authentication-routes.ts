@@ -15,6 +15,7 @@ import {
 } from "../auth/boundary.js";
 import { canAdministerWorkspace } from "../auth/authorization.js";
 import type {
+  AccountWorkspaceTransition,
   AuthenticatedPrincipal,
   AuthorizationPrincipal,
 } from "../auth/model.js";
@@ -556,6 +557,39 @@ export function registerAuthenticationRoutes(
     }
   });
 
+  server.get("/api/account/default-workspace", async (request) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
+    try {
+      return await services.readWorkspacePreference(principal);
+    } catch (error: unknown) {
+      if (error instanceof WorkspaceUnavailableError) {
+        throw new WebRequestError(404, error.message);
+      }
+      throw error;
+    }
+  });
+
+  server.put("/api/account/default-workspace", async (request) => {
+    const principal = requireRequestPrincipal(requestPrincipals, request);
+    try {
+      const workspaceId = decodeWorkspaceId(request.body);
+      const transition = await services.setDefaultWorkspace(
+        principal,
+        workspaceId,
+      );
+      requestPrincipals.set(request, transition.principal);
+      return buildWorkspaceTransitionResponse(transition);
+    } catch (error: unknown) {
+      if (error instanceof ZodError) {
+        throw new WebRequestError(400, "The default workspace request is invalid.");
+      }
+      if (error instanceof WorkspaceUnavailableError) {
+        throw new WebRequestError(404, error.message);
+      }
+      throw error;
+    }
+  });
+
   server.put("/api/auth/session/workspace", async (request) => {
     const principal = requireLocalSessionPrincipal(requestPrincipals, request);
     const workspaceId = decodeWorkspaceId(request.body);
@@ -695,6 +729,24 @@ export function registerAuthenticationRoutes(
       }
     },
   );
+}
+
+function buildWorkspaceTransitionResponse(
+  transition: AccountWorkspaceTransition,
+): {
+  currentWorkspaceId: string;
+  defaultWorkspaceId: string;
+  workspace: { id: string; name: string; role: "admin" | "member" };
+} {
+  return {
+    currentWorkspaceId: transition.principal.workspaceId,
+    defaultWorkspaceId: transition.defaultWorkspaceId,
+    workspace: {
+      id: transition.principal.workspaceId,
+      name: transition.principal.workspaceName,
+      role: transition.principal.role,
+    },
+  };
 }
 
 export function requireRequestPrincipal<T extends object>(
