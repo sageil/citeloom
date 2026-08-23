@@ -3,7 +3,6 @@ import { hostname } from "node:os";
 import {
   createUIMessageStream,
   type InferUIMessageChunk,
-  type UIMessageStreamWriter,
 } from "ai";
 
 import {
@@ -13,6 +12,7 @@ import {
 import {
   createAnswerContentWriter,
   type CiteLoomUIMessage,
+  type CiteLoomUIMessageWriter,
   type StreamedAnswer,
 } from "../answers/stream.js";
 import {
@@ -833,7 +833,7 @@ export async function writeStreamedAnswer(
   threadId: string,
   reportProgress: (message: string) => void,
   abortSignal: AbortSignal,
-  writer: UIMessageStreamWriter<CiteLoomUIMessage>,
+  writer: CiteLoomUIMessageWriter,
   prepare: (runTelemetry: RunTelemetry) => Promise<PreparedRetrieval>,
   workspaceId: string | null = null,
 ): Promise<void> {

@@ -207,6 +207,11 @@ interface RetrievalCandidateRows {
   lexical: LexicalCandidate[];
 }
 
+export type RetrievalDocumentReader = Pick<
+  SourceDocumentStore,
+  "readManyForRetrievalFrom"
+>;
+
 export class RetrievalScopeChangedError extends Error {
   public constructor() {
     super("The resolved retrieval scope changed before retrieval began.");
@@ -223,7 +228,7 @@ export interface RetrievedElementsResult {
 export async function retrieveRelevantElements(
   database: CiteLoomDatabase,
   queryExecutor: SqlQueryExecutor,
-  documentStore: SourceDocumentStore,
+  documentStore: RetrievalDocumentReader,
   space: EmbeddingSpaceConfig,
   originalQuestion: string,
   queries: RetrievalQuery[],
@@ -256,7 +261,7 @@ export async function retrieveRelevantElements(
 export async function retrieveRelevantElementsWithScores(
   database: CiteLoomDatabase,
   queryExecutor: SqlQueryExecutor,
-  documentStore: SourceDocumentStore,
+  documentStore: RetrievalDocumentReader,
   space: EmbeddingSpaceConfig,
   originalQuestion: string,
   queries: RetrievalQuery[],
@@ -416,7 +421,7 @@ interface PreparedRetrievalSnapshot {
 async function prepareRetrievalSnapshot(
   database: CiteLoomDatabase,
   queryExecutor: SqlQueryExecutor,
-  documentStore: SourceDocumentStore,
+  documentStore: RetrievalDocumentReader,
   space: EmbeddingSpaceConfig,
   queries: RetrievalQuery[],
   config: RetrievalConfig,
@@ -935,7 +940,7 @@ export function selectPreparedRerankingCandidatesWithTrace(
 
 export async function loadRetrievalCandidates(
   database: CiteLoomDatabase,
-  documentStore: SourceDocumentStore,
+  documentStore: RetrievalDocumentReader,
   space: EmbeddingSpaceConfig,
   candidatesToLoad: FusedCandidate[],
   scopeTargets: ResolvedQueryScopeTarget[],
@@ -965,7 +970,7 @@ interface ActiveRetrievalCandidate {
 
 async function loadRetrievalCandidatesWithMetadata(
   database: CiteLoomDatabase,
-  documentStore: SourceDocumentStore,
+  documentStore: RetrievalDocumentReader,
   space: EmbeddingSpaceConfig,
   candidatesToLoad: FusedCandidate[],
   scopeTargets: ResolvedQueryScopeTarget[],

@@ -134,7 +134,7 @@ describe("CiteLoom error reports", () => {
     }
   });
 
-  it("places the error report link in the administrator menu", async () => {
+  it("declares the error report link in the administrator menu", async () => {
     const index = await readFile(
       new URL("../web/index.html", import.meta.url),
       "utf8",

@@ -9,6 +9,8 @@ import { readDocumentCatalog } from "../web/assets/scripts/document-catalog-boun
 import {
   findHtmlElementByAttribute,
   htmlElementHasClass,
+  readHtmlAttribute,
+  readHtmlDocumentText,
   readHtmlElements,
 } from "./html-test-helpers.js";
 
@@ -54,28 +56,39 @@ describe("CiteLoom document ingestion controls", () => {
     })).toBe(false);
   });
 
-  it("does not create indexing activity bindings for pre-indexing documents", async () => {
+  it("declares indexing progress only after indexing starts", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/documents.html", import.meta.url),
       "utf8",
     );
+    const elements = readHtmlElements(fragment);
+    const progressTemplate = findHtmlElementByAttribute(
+      elements,
+      "x-if",
+      "indexingProgressVisible(selectedDocument)",
+    );
+    const eagerProgressBinding = elements.find((element) => {
+      return readHtmlAttribute(element, "x-show")
+        === "indexingProgressVisible(selectedDocument)";
+    });
 
-    expect(fragment).toContain(
-      '<template x-if="indexingProgressVisible(selectedDocument)">',
-    );
-    expect(fragment).not.toContain(
-      'x-show="indexingProgressVisible(selectedDocument)"',
-    );
+    expect(progressTemplate.tagName).toBe("template");
+    expect(eagerProgressBinding).toBeUndefined();
   });
 
-  it("shows ingestion controls to library managers and to the uploader", async () => {
+  it("declares ingestion controls for library managers and the uploader", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/documents.html", import.meta.url),
       "utf8",
     );
+    const elements = readHtmlElements(fragment);
+    const controls = elements.find((element) => {
+      return htmlElementHasClass(element, "inspector-ingestion-controls");
+    });
 
-    expect(fragment).toContain(
-      "(canManageDocument(selectedDocument) || (currentUserId !== null &amp;&amp; selectedDocument.uploadedByUserId === currentUserId))",
+    expect(controls).toBeDefined();
+    expect(readHtmlAttribute(controls, "x-show")).toContain(
+      "(canManageDocument(selectedDocument) || (currentUserId !== null && selectedDocument.uploadedByUserId === currentUserId))",
     );
   });
 
@@ -90,7 +103,7 @@ describe("CiteLoom document ingestion controls", () => {
     );
   });
 
-  it("uses the document management action layout for ingestion controls", async () => {
+  it("declares the document management action layout for ingestion controls", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/documents.html", import.meta.url),
       "utf8",
@@ -115,9 +128,12 @@ describe("CiteLoom document ingestion controls", () => {
     expect(htmlElementHasClass(pauseButton, "secondary")).toBe(true);
     expect(cancelButton.tagName).toBe("button");
     expect(htmlElementHasClass(cancelButton, "danger")).toBe(true);
-    expect(fragment).toContain(
-      "This stops the reindex and keeps the current version available.",
+    const cancelDetail = findHtmlElementByAttribute(
+      elements,
+      "x-text",
+      "selectedDocument.activeDocumentId === null ? 'This removes the uploaded file and any partial index data.' : 'This stops the reindex and keeps the current version available.'",
     );
+    expect(cancelDetail.tagName).toBe("span");
   });
 
   it("loads and highlights the shared source selected by administration", async () => {
@@ -168,18 +184,24 @@ describe("CiteLoom document ingestion controls", () => {
     expect(catalogUrl.searchParams.get("sourceLibraryId")).toBe(libraryId);
   });
 
-  it("keeps shared sources separate from document collections", async () => {
+  it("declares shared sources separately from document collections", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/documents.html", import.meta.url),
       "utf8",
     );
+    const elements = readHtmlElements(fragment);
+    const visibleText = readHtmlDocumentText(elements);
+    const sharedSourceButton = findHtmlElementByAttribute(
+      elements,
+      "@click",
+      "selectSharedSource(library.id)",
+    );
 
-    expect(fragment).toContain(">Shared sources</p>");
-    expect(fragment).toContain("sharedSourceLibraries");
-    expect(fragment).toContain("selectSharedSource(library.id)");
-    expect(fragment).not.toContain("Add documents");
-    expect(fragment).not.toContain("Workspace access");
-    expect(fragment).not.toContain("Private collections");
+    expect(visibleText).toContain("Shared sources");
+    expect(visibleText).not.toContain("Add documents");
+    expect(visibleText).not.toContain("Workspace access");
+    expect(visibleText).not.toContain("Private collections");
+    expect(sharedSourceButton.tagName).toBe("button");
   });
 });
 

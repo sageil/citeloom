@@ -3,6 +3,13 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 import { registerPage } from "../web/assets/scripts/chat.js";
+import {
+  findHtmlElementByAttribute,
+  findHtmlElementByTagName,
+  htmlElementHasClass,
+  readHtmlAttribute,
+  readHtmlElements,
+} from "./html-test-helpers.js";
 
 describe("CiteLoom chat page", () => {
   it("offers speech controls for every completed assistant response", () => {
@@ -56,19 +63,30 @@ describe("CiteLoom chat page", () => {
     );
   });
 
-  it("places verification in the context bar and speech on each response", async () => {
+  it("declares verification and per-response speech controls in the template", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/chat.html", import.meta.url),
       "utf8",
     );
+    const elements = readHtmlElements(fragment);
+    const verification = elements.find((element) => {
+      return htmlElementHasClass(element, "chat-context-verification");
+    });
+    const speechButton = findHtmlElementByAttribute(
+      elements,
+      "@click",
+      "toggleMessageSpeech(message)",
+    );
 
-    expect(fragment).toContain("chat-context-verification");
-    expect(fragment).toContain("conversationVerificationState()");
-    expect(fragment).toContain("toggleMessageSpeech(message)");
-    expect(fragment).not.toContain("toggleChatSpeech()");
+    expect(verification).toBeDefined();
+    expect(readHtmlAttribute(verification, "aria-live")).toBe("polite");
+    expect(speechButton.tagName).toBe("button");
+    expect(readHtmlAttribute(speechButton, ":aria-label")).toBe(
+      "messageSpeechActionLabel(message)",
+    );
   });
 
-  it("uses the shared source navigator and movable evidence window", async () => {
+  it("declares the shared source navigator and evidence dialog", async () => {
     const [fragment, index] = await Promise.all([
       readFile(
         new URL("../web/fragments/chat.html", import.meta.url),
@@ -76,31 +94,66 @@ describe("CiteLoom chat page", () => {
       ),
       readFile(new URL("../web/index.html", import.meta.url), "utf8"),
     ]);
+    const fragmentElements = readHtmlElements(fragment);
+    const indexElements = readHtmlElements(index);
+    const sourceNavigator = fragmentElements.find((element) => {
+      return htmlElementHasClass(element, "chat-source-navigator");
+    });
+    const evidenceWindow = findHtmlElementByTagName(
+      fragmentElements,
+      "citeloom-evidence-window",
+    );
+    const evidenceTemplate = findHtmlElementByAttribute(
+      indexElements,
+      "id",
+      "citeloom-evidence-window-template",
+    );
+    const evidenceDialog = indexElements.find((element) => {
+      return element.tagName === "aside"
+        && htmlElementHasClass(element, "evidence-window");
+    });
+    const scoreScale = indexElements.find((element) => {
+      return htmlElementHasClass(element, "evidence-score-scale");
+    });
+    const citationTarget = findHtmlElementByAttribute(
+      fragmentElements,
+      ":data-evidence-citation-id",
+      "citationForKey(message, citationKey)?.id",
+    );
+    const sourceButton = findHtmlElementByAttribute(
+      fragmentElements,
+      "@click",
+      "openCitationFromNavigator(citation)",
+    );
+    const dragHandle = findHtmlElementByAttribute(
+      indexElements,
+      "@pointerdown",
+      "beginEvidencePanelDrag($event)",
+    );
+    const pinButton = findHtmlElementByAttribute(
+      indexElements,
+      "x-text",
+      "citationWindow.pinned ? 'Unpin' : 'Pin evidence'",
+    );
 
-    expect(fragment).toContain(
-      'class="source-navigator chat-source-navigator"',
+    expect(readHtmlAttribute(sourceNavigator, "aria-label")).toBe(
+      "Sources used in the active answer",
     );
-    expect(fragment).toContain(
-      "<citeloom-evidence-window></citeloom-evidence-window>",
-    );
-    expect(fragment).toContain(
-      ':data-evidence-citation-id="citationForKey(message, citationKey)?.id"',
-    );
-    expect(fragment).toContain("openCitationFromNavigator(citation)");
-    expect(index).toContain("beginEvidencePanelDrag($event)");
-    expect(index).toContain(
-      'x-text="citationWindow.pinned ? \'Unpin\' : \'Pin evidence\'"',
-    );
-    expect(index).toContain(
-      '<template id="citeloom-evidence-window-template">',
-    );
-    expect(index).toContain("HHEM");
-    expect(index).toContain('class="exact-evidence-text"');
-    expect(fragment).not.toContain('class="evidence-window"');
-    expect(fragment).not.toContain('class="chat-evidence-source"');
-    expect(fragment).not.toContain("Exact retained evidence");
-    expect(fragment).not.toContain("Current in library");
-    expect(fragment).not.toContain("toggleCitationExpanded()");
+    expect(evidenceWindow.tagName).toBe("citeloom-evidence-window");
+    expect(evidenceTemplate.tagName).toBe("template");
+    expect(readHtmlAttribute(evidenceDialog, "role")).toBe("dialog");
+    expect(readHtmlAttribute(evidenceDialog, "aria-modal")).toBe("false");
+    expect(readHtmlAttribute(scoreScale, "role")).toBe("img");
+    expect(citationTarget.tagName).toBe("button");
+    expect(sourceButton.tagName).toBe("button");
+    expect(dragHandle.tagName).toBe("header");
+    expect(pinButton.tagName).toBe("button");
+    expect(indexElements.some((element) => {
+      return htmlElementHasClass(element, "exact-evidence-text");
+    })).toBe(true);
+    expect(fragmentElements.some((element) => {
+      return htmlElementHasClass(element, "evidence-window");
+    })).toBe(false);
   });
 
   it("shows sources for the latest answer unless an older answer is active", () => {

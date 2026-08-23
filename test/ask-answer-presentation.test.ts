@@ -12,23 +12,58 @@ import {
   buildSourceLocation,
   buildTableStructure,
 } from "./source-element-fixture.js";
+import {
+  findHtmlElementByAttribute,
+  findHtmlElementByTagName,
+  htmlElementHasClass,
+  readHtmlAttribute,
+  readHtmlElements,
+} from "./html-test-helpers.js";
 
 describe("ask answer presentation", () => {
-  it("hides aggregate answer citations while retaining finding citations", async () => {
+  it("declares finding citations without aggregate answer citations", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/ask.html", import.meta.url),
       "utf8",
     );
+    const elements = readHtmlElements(fragment);
+    const answerSectionFilter = findHtmlElementByAttribute(
+      elements,
+      "x-if",
+      "section.key !== 'answer'",
+    );
+    const bulletBlock = findHtmlElementByAttribute(
+      elements,
+      "x-if",
+      "block.kind === 'bullets'",
+    );
+    const citationTemplate = findHtmlElementByAttribute(
+      elements,
+      ":key",
+      "citation.key",
+    );
+    const citationButton = findHtmlElementByAttribute(
+      elements,
+      ":disabled",
+      "citation.preview === true",
+    );
+    const findingCitations = findHtmlElementByAttribute(
+      elements,
+      "x-for",
+      "citation in block.statements[0].citations",
+    );
 
-    expect(fragment).toContain("section.key !== 'answer'");
-    expect(fragment).toContain("block.statements[0].citations");
-    expect(fragment).toContain("block.kind === 'bullets'");
-    expect(fragment).toContain(':key="citation.key"');
-    expect(fragment).toContain(':disabled="citation.preview === true"');
-    expect(fragment).not.toContain(':key="citation.id"');
+    expect(answerSectionFilter.tagName).toBe("template");
+    expect(bulletBlock.tagName).toBe("template");
+    expect(citationTemplate.tagName).toBe("template");
+    expect(citationButton.tagName).toBe("button");
+    expect(findingCitations.tagName).toBe("template");
+    expect(elements.some((element) => {
+      return readHtmlAttribute(element, ":key") === "citation.id";
+    })).toBe(false);
   });
 
-  it("uses the research notebook workspace for Ask", async () => {
+  it("declares the research notebook template for Ask", async () => {
     const [fragment, index, stylesheet] = await Promise.all([
       readFile(new URL("../web/fragments/ask.html", import.meta.url), "utf8"),
       readFile(new URL("../web/index.html", import.meta.url), "utf8"),
@@ -37,27 +72,67 @@ describe("ask answer presentation", () => {
         "utf8",
       ),
     ]);
+    const fragmentElements = readHtmlElements(fragment);
+    const indexElements = readHtmlElements(index);
+    const evidenceDialog = indexElements.find((element) => {
+      return htmlElementHasClass(element, "evidence-window");
+    });
+    const citationTarget = findHtmlElementByAttribute(
+      fragmentElements,
+      ":data-evidence-citation-id",
+      "citation.id",
+    );
+    const dragHandle = findHtmlElementByAttribute(
+      indexElements,
+      "@pointerdown",
+      "beginEvidencePanelDrag($event)",
+    );
+    const pinButton = findHtmlElementByAttribute(
+      indexElements,
+      "x-text",
+      "citationWindow.pinned ? 'Unpin' : 'Pin evidence'",
+    );
 
-    expect(fragment).toContain("class=\"ask-composer-scope-chip\"");
-    expect(fragment).toContain("class=\"answer-question-title\"");
-    expect(fragment).toContain("class=\"source-navigator\"");
-    expect(fragment).toContain(
-      "<citeloom-evidence-window></citeloom-evidence-window>",
-    );
-    expect(index).toContain('x-ref="evidencePanel"');
-    expect(index).toContain('x-text="citationWindow.pinned ? \'Unpin\' : \'Pin evidence\'"');
-    expect(index).toContain(":style=\"evidencePanelStyle()\"");
-    expect(index).toContain("beginEvidencePanelDrag($event)");
-    expect(index).toContain("HHEM");
-    expect(fragment).not.toContain('class="evidence-window"');
-    expect(fragment).toContain(':data-evidence-citation-id="citation.id"');
-    expect(fragment).toContain('@click="inspectCitationFromNavigator(source)"');
-    expect(fragment).toContain("class=\"research-thread-actions\"");
-    expect(fragment).not.toContain("class=\"research-context-menu\"");
-    expect(fragment).not.toContain("class=\"evidence-sources-pane\"");
-    expect(fragment).toContain(
-      'x-show="historicalAnswerVisible &amp;&amp; hasAnswerContent()"',
-    );
+    for (const className of [
+      "ask-composer-scope-chip",
+      "answer-question-title",
+      "source-navigator",
+      "research-thread-actions",
+    ]) {
+      expect(fragmentElements.some((element) => {
+        return htmlElementHasClass(element, className);
+      })).toBe(true);
+    }
+    expect(findHtmlElementByTagName(
+      fragmentElements,
+      "citeloom-evidence-window",
+    ).tagName).toBe("citeloom-evidence-window");
+    expect(findHtmlElementByAttribute(
+      indexElements,
+      "x-ref",
+      "evidencePanel",
+    )).toBe(evidenceDialog);
+    expect(readHtmlAttribute(evidenceDialog, "role")).toBe("dialog");
+    expect(citationTarget.tagName).toBe("button");
+    expect(dragHandle.tagName).toBe("header");
+    expect(pinButton.tagName).toBe("button");
+    expect(findHtmlElementByAttribute(
+      fragmentElements,
+      "@click",
+      "inspectCitationFromNavigator(source)",
+    ).tagName).toBe("button");
+    expect(findHtmlElementByAttribute(
+      fragmentElements,
+      "x-show",
+      "historicalAnswerVisible && hasAnswerContent()",
+    ).tagName).toBe("div");
+    expect(fragmentElements.some((element) => {
+      return htmlElementHasClass(element, "evidence-window");
+    })).toBe(false);
+    expect(fragmentElements.some((element) => {
+      return htmlElementHasClass(element, "research-context-menu")
+        || htmlElementHasClass(element, "evidence-sources-pane");
+    })).toBe(false);
     expect(stylesheet).toContain(
       "grid-template-columns: 220px minmax(0, 1fr) 290px;",
     );
@@ -98,18 +173,20 @@ describe("ask answer presentation", () => {
     expect(formatDocumentLocationLabel("source.pdf", [4])).toBe("Page 4");
   });
 
-  it("keeps finding verification labels accessible without repeating visible status text", async () => {
+  it("declares an accessible label for finding verification", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/ask.html", import.meta.url),
       "utf8",
     );
+    const elements = readHtmlElements(fragment);
+    const status = findHtmlElementByAttribute(
+      elements,
+      ":aria-label",
+      "answerStatementStatusLabel(statement)",
+    );
 
-    expect(fragment).toContain(
-      ':aria-label="answerStatementStatusLabel(statement)"',
-    );
-    expect(fragment).not.toContain(
-      '<span x-text="answerStatementStatusLabel(statement)"></span>',
-    );
+    expect(status.tagName).toBe("span");
+    expect(readHtmlAttribute(status, "x-text")).toBeNull();
   });
 
   it("keeps table presentation rows out of the canonical speech document", () => {

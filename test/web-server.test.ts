@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import type { ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -2141,10 +2140,7 @@ describe("web server boundary", () => {
       },
     });
     const response = new TestRevisionResponse();
-    const close = openApplicationStateRevisionEventStream(
-      response as unknown as ServerResponse,
-      services,
-    );
+    const close = openApplicationStateRevisionEventStream(response, services);
     try {
       await vi.waitFor(() => {
         expect(response.text).toContain("data: {\"catalog\":\"0\"");
@@ -5039,215 +5035,278 @@ describe("web server boundary", () => {
 });
 
 describe("chat API boundary", () => {
-  it("creates, lists, reopens, deletes, and streams chat conversations", async () => {
-    const conversationId = "00000000-0000-4000-8000-000000000301";
-    const requestId = "00000000-0000-4000-8000-000000000302";
-    const conversation = {
-      createdAt: "2026-07-15T12:00:00.000Z",
-      id: conversationId,
-      ownerUserId: "00000000-0000-4000-8000-000000000000",
-      runs: [],
-      scope: { kind: "all" as const },
-      title: "Evidence chat",
-      updatedAt: "2026-07-15T12:00:00.000Z",
-      workspaceId: "00000000-0000-4000-8000-000000000000",
-    };
-    const createChatConversation = vi.fn<
-      RuntimeChatServices["createChatConversation"]
-    >(async () => conversation);
-    const deleteChatConversation = vi.fn<
-      RuntimeChatServices["deleteChatConversation"]
-    >(async () => undefined);
-    const streamChatMessage = vi.fn<
-      RuntimeChatServices["streamChatMessage"]
-    >(() => createAnswerStream("The evidence is available."));
-    const server = await buildWebServer(buildConfig(), {
-      logger: false,
-      services: buildServices({
-        createChatConversation,
-        deleteChatConversation,
-        listChatConversations: async () => [{
-          createdAt: conversation.createdAt,
-          id: conversation.id,
-          messageCount: 0,
-          title: conversation.title,
-          updatedAt: conversation.updatedAt,
-        }],
-        readChatConversation: async () => conversation,
-        streamChatMessage,
-      }),
-      staticDirectory: null,
-    });
-
+  it("creates a chat conversation from normalized input", async () => {
+    const scenario = await buildChatBoundaryScenario();
     try {
-      const created = await server.inject({
+      const created = await scenario.server.inject({
         method: "POST",
         payload: { scope: { kind: "all" }, title: "  Evidence chat  " },
         url: "/api/chat/conversations",
       });
-      const listed = await server.inject({
-        method: "GET",
-        url: "/api/chat/conversations",
-      });
-      const reopened = await server.inject({
-        method: "GET",
-        url: `/api/chat/conversations/${conversationId}`,
-      });
-      const streamed = await server.inject({
-        method: "POST",
-        payload: { content: "  Summarize the evidence.  ", requestId },
-        url: `/api/chat/conversations/${conversationId}/messages`,
-      });
-      const deleted = await server.inject({
-        method: "DELETE",
-        url: `/api/chat/conversations/${conversationId}`,
-      });
 
       expect(created.statusCode).toBe(201);
-      expect(created.json()).toMatchObject({ id: conversationId });
-      expect(createChatConversation).toHaveBeenCalledWith(
+      expect(created.json()).toMatchObject({ id: scenario.conversation.id });
+      expect(scenario.createChatConversation).toHaveBeenCalledWith(
         expect.objectContaining({ username: "disabled-authentication" }),
         "Evidence chat",
         { kind: "all" },
       );
+    } finally {
+      await scenario.server.close();
+    }
+  });
+
+  it("lists chat conversation summaries", async () => {
+    const scenario = await buildChatBoundaryScenario();
+    try {
+      const listed = await scenario.server.inject({
+        method: "GET",
+        url: "/api/chat/conversations",
+      });
+
+      expect(listed.statusCode).toBe(200);
       expect(listed.json()).toEqual([
-        expect.objectContaining({ id: conversationId, messageCount: 0 }),
+        expect.objectContaining({
+          id: scenario.conversation.id,
+          messageCount: 0,
+        }),
       ]);
-      expect(reopened.json()).toMatchObject({ id: conversationId });
+    } finally {
+      await scenario.server.close();
+    }
+  });
+
+  it("reopens one chat conversation", async () => {
+    const scenario = await buildChatBoundaryScenario();
+    try {
+      const reopened = await scenario.server.inject({
+        method: "GET",
+        url: `/api/chat/conversations/${scenario.conversation.id}`,
+      });
+
+      expect(reopened.statusCode).toBe(200);
+      expect(reopened.json()).toEqual(scenario.conversation);
+    } finally {
+      await scenario.server.close();
+    }
+  });
+
+  it("streams a normalized message through the selected conversation", async () => {
+    const scenario = await buildChatBoundaryScenario();
+    const requestId = "00000000-0000-4000-8000-000000000302";
+    try {
+      const streamed = await scenario.server.inject({
+        method: "POST",
+        payload: { content: "  Summarize the evidence.  ", requestId },
+        url: `/api/chat/conversations/${scenario.conversation.id}/messages`,
+      });
+
       expect(streamed.statusCode).toBe(200);
       expect(streamed.headers["content-type"]).toContain("text/event-stream");
       expect(streamed.body).toContain("data-answer");
       expect(streamed.body).toContain("The evidence is available.");
-      expect(streamChatMessage).toHaveBeenCalledWith(
+      expect(scenario.streamChatMessage).toHaveBeenCalledWith(
         expect.objectContaining({ username: "disabled-authentication" }),
         {
           content: "Summarize the evidence.",
-          conversationId,
+          conversationId: scenario.conversation.id,
           requestId,
         },
         expect.any(AbortSignal),
       );
+    } finally {
+      await scenario.server.close();
+    }
+  });
+
+  it("deletes one chat conversation", async () => {
+    const scenario = await buildChatBoundaryScenario();
+    try {
+      const deleted = await scenario.server.inject({
+        method: "DELETE",
+        url: `/api/chat/conversations/${scenario.conversation.id}`,
+      });
+
       expect(deleted.statusCode).toBe(204);
-      expect(deleteChatConversation).toHaveBeenCalledWith(
+      expect(scenario.deleteChatConversation).toHaveBeenCalledWith(
         expect.objectContaining({ username: "disabled-authentication" }),
-        conversationId,
+        scenario.conversation.id,
       );
     } finally {
-      await server.close();
+      await scenario.server.close();
     }
   });
 });
 
-describe("research API boundary", () => {
-  it("creates and lists research threads", async () => {
-    const thread = {
-      createdAt: "2026-07-15T12:00:00.000Z",
-      id: "00000000-0000-4000-8000-000000000201",
-      title: "Quarterly evidence",
-      turns: [],
-      updatedAt: "2026-07-15T12:00:00.000Z",
-    };
-    const createResearchThread = vi.fn<
-      ResearchThreadRuntimeServices["createResearchThread"]
-    >(
-      async () => thread,
-    );
-    const listResearchThreads = vi.fn<
-      ResearchThreadRuntimeServices["listResearchThreads"]
-    >(
-      async () => [{
-        createdAt: thread.createdAt,
-        id: thread.id,
-        title: thread.title,
-        turnCount: 0,
-        updatedAt: thread.updatedAt,
+async function buildChatBoundaryScenario() {
+  const conversation = {
+    createdAt: "2026-07-15T12:00:00.000Z",
+    id: "00000000-0000-4000-8000-000000000301",
+    ownerUserId: "00000000-0000-4000-8000-000000000000",
+    runs: [],
+    scope: { kind: "all" as const },
+    title: "Evidence chat",
+    updatedAt: "2026-07-15T12:00:00.000Z",
+    workspaceId: "00000000-0000-4000-8000-000000000000",
+  };
+  const createChatConversation = vi.fn<
+    RuntimeChatServices["createChatConversation"]
+  >(async () => conversation);
+  const deleteChatConversation = vi.fn<
+    RuntimeChatServices["deleteChatConversation"]
+  >(async () => undefined);
+  const streamChatMessage = vi.fn<
+    RuntimeChatServices["streamChatMessage"]
+  >(() => createAnswerStream("The evidence is available."));
+  const server = await buildWebServer(buildConfig(), {
+    logger: false,
+    services: buildServices({
+      createChatConversation,
+      deleteChatConversation,
+      listChatConversations: async () => [{
+        createdAt: conversation.createdAt,
+        id: conversation.id,
+        messageCount: 0,
+        title: conversation.title,
+        updatedAt: conversation.updatedAt,
       }],
-    );
-    const server = await buildWebServer(buildConfig(), {
-      logger: false,
-      services: buildServices({
-        createResearchThread,
-        listResearchThreads,
-      }),
-      staticDirectory: null,
-    });
+      readChatConversation: async () => conversation,
+      streamChatMessage,
+    }),
+    staticDirectory: null,
+  });
+  return {
+    conversation,
+    createChatConversation,
+    deleteChatConversation,
+    server,
+    streamChatMessage,
+  };
+}
+
+async function buildResearchBoundaryScenario() {
+  const thread = {
+    createdAt: "2026-07-15T12:00:00.000Z",
+    id: "00000000-0000-4000-8000-000000000201",
+    title: "Quarterly evidence",
+    turns: [],
+    updatedAt: "2026-07-15T12:00:00.000Z",
+  };
+  const createResearchThread = vi.fn<
+    ResearchThreadRuntimeServices["createResearchThread"]
+  >(async () => thread);
+  const deleteResearchThread = vi.fn<
+    ResearchThreadRuntimeServices["deleteResearchThread"]
+  >(async () => undefined);
+  const exportResearchThread = vi.fn<
+    ResearchThreadRuntimeServices["exportResearchThread"]
+  >(async () => ({
+    content: "# Quarterly evidence\n",
+    filename: "thread.md",
+    mediaType: "text/markdown; charset=utf-8",
+  }));
+  const listResearchThreads = vi.fn<
+    ResearchThreadRuntimeServices["listResearchThreads"]
+  >(async () => [{
+    createdAt: thread.createdAt,
+    id: thread.id,
+    title: thread.title,
+    turnCount: 0,
+    updatedAt: thread.updatedAt,
+  }]);
+  const readResearchThread = vi.fn<
+    ResearchThreadRuntimeServices["readResearchThread"]
+  >(async () => thread);
+  const server = await buildWebServer(buildConfig(), {
+    logger: false,
+    services: buildServices({
+      createResearchThread,
+      deleteResearchThread,
+      exportResearchThread,
+      listResearchThreads,
+      readResearchThread,
+    }),
+    staticDirectory: null,
+  });
+  return {
+    createResearchThread,
+    deleteResearchThread,
+    exportResearchThread,
+    listResearchThreads,
+    readResearchThread,
+    server,
+    thread,
+  };
+}
+
+describe("research API boundary", () => {
+  it("creates a research thread from a normalized title", async () => {
+    const scenario = await buildResearchBoundaryScenario();
     try {
-      const created = await server.inject({
+      const created = await scenario.server.inject({
         method: "POST",
         payload: { title: "  Quarterly evidence  " },
         url: "/api/research/threads",
       });
-      const listed = await server.inject({
+
+      expect(created.statusCode).toBe(201);
+      expect(created.json()).toEqual(scenario.thread);
+      expect(scenario.createResearchThread).toHaveBeenCalledWith(
+        expect.objectContaining({ username: "disabled-authentication" }),
+        "Quarterly evidence",
+      );
+    } finally {
+      await scenario.server.close();
+    }
+  });
+
+  it("lists research thread summaries", async () => {
+    const scenario = await buildResearchBoundaryScenario();
+    try {
+      const listed = await scenario.server.inject({
         method: "GET",
         url: "/api/research/threads",
       });
 
-      expect(created.statusCode).toBe(201);
-      expect(created.json()).toEqual(thread);
-      expect(createResearchThread).toHaveBeenCalledWith(
-        expect.objectContaining({ username: "disabled-authentication" }),
-        "Quarterly evidence",
-      );
       expect(listed.statusCode).toBe(200);
-      expect(listed.json()).toEqual([expect.objectContaining({ id: thread.id })]);
-      expect(listResearchThreads).toHaveBeenCalledWith(
+      expect(listed.json()).toEqual([
+        expect.objectContaining({ id: scenario.thread.id }),
+      ]);
+      expect(scenario.listResearchThreads).toHaveBeenCalledWith(
         expect.objectContaining({ username: "disabled-authentication" }),
       );
     } finally {
-      await server.close();
+      await scenario.server.close();
     }
   });
 
-  it("reads, exports, and deletes a research thread", async () => {
-    const thread = {
-      createdAt: "2026-07-15T12:00:00.000Z",
-      id: "00000000-0000-4000-8000-000000000201",
-      title: "Quarterly evidence",
-      turns: [],
-      updatedAt: "2026-07-15T12:00:00.000Z",
-    };
-    const deleteResearchThread = vi.fn<
-      ResearchThreadRuntimeServices["deleteResearchThread"]
-    >(async () => undefined);
-    const exportResearchThread = vi.fn<
-      ResearchThreadRuntimeServices["exportResearchThread"]
-    >(async () => ({
-      content: "# Quarterly evidence\n",
-      filename: "thread.md",
-      mediaType: "text/markdown; charset=utf-8",
-    }));
-    const readResearchThread = vi.fn<
-      ResearchThreadRuntimeServices["readResearchThread"]
-    >(async () => thread);
-    const server = await buildWebServer(buildConfig(), {
-      logger: false,
-      services: buildServices({
-        deleteResearchThread,
-        exportResearchThread,
-        readResearchThread,
-      }),
-      staticDirectory: null,
-    });
+  it("reads one research thread", async () => {
+    const scenario = await buildResearchBoundaryScenario();
     try {
-      const reopened = await server.inject({
+      const reopened = await scenario.server.inject({
         method: "GET",
-        url: `/api/research/threads/${thread.id}`,
-      });
-      const exported = await server.inject({
-        method: "GET",
-        url: `/api/research/threads/${thread.id}/export?format=markdown`,
-      });
-      const deleted = await server.inject({
-        method: "DELETE",
-        url: `/api/research/threads/${thread.id}`,
+        url: `/api/research/threads/${scenario.thread.id}`,
       });
 
       expect(reopened.statusCode).toBe(200);
-      expect(reopened.json()).toEqual(thread);
-      expect(readResearchThread).toHaveBeenCalledWith(
+      expect(reopened.json()).toEqual(scenario.thread);
+      expect(scenario.readResearchThread).toHaveBeenCalledWith(
         expect.objectContaining({ username: "disabled-authentication" }),
-        thread.id,
+        scenario.thread.id,
       );
+    } finally {
+      await scenario.server.close();
+    }
+  });
+
+  it("exports one research thread with private download headers", async () => {
+    const scenario = await buildResearchBoundaryScenario();
+    try {
+      const exported = await scenario.server.inject({
+        method: "GET",
+        url: `/api/research/threads/${scenario.thread.id}/export?format=markdown`,
+      });
+
       expect(exported.statusCode).toBe(200);
       expect(exported.body).toBe("# Quarterly evidence\n");
       expect(exported.headers["cache-control"]).toBe("private, no-store");
@@ -5255,19 +5314,32 @@ describe("research API boundary", () => {
       expect(exported.headers["content-disposition"]).toBe(
         'attachment; filename="thread.md"',
       );
-      expect(exportResearchThread).toHaveBeenCalledWith(
+      expect(scenario.exportResearchThread).toHaveBeenCalledWith(
         expect.objectContaining({ username: "disabled-authentication" }),
-        thread.id,
+        scenario.thread.id,
         "markdown",
       );
+    } finally {
+      await scenario.server.close();
+    }
+  });
+
+  it("deletes one research thread", async () => {
+    const scenario = await buildResearchBoundaryScenario();
+    try {
+      const deleted = await scenario.server.inject({
+        method: "DELETE",
+        url: `/api/research/threads/${scenario.thread.id}`,
+      });
+
       expect(deleted.statusCode).toBe(204);
       expect(deleted.body).toBe("");
-      expect(deleteResearchThread).toHaveBeenCalledWith(
+      expect(scenario.deleteResearchThread).toHaveBeenCalledWith(
         expect.objectContaining({ username: "disabled-authentication" }),
-        thread.id,
+        scenario.thread.id,
       );
     } finally {
-      await server.close();
+      await scenario.server.close();
     }
   });
 

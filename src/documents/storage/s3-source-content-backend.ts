@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 
 import {
   DeleteObjectCommand,
@@ -38,7 +37,9 @@ export class S3SourceContentBackend implements SourceContentBackend {
 
   public constructor(
     private readonly config: S3SourceContentConfig,
-    private readonly client: S3Client = new S3Client(buildS3ClientConfig(config)),
+    private readonly client: Pick<S3Client, "send"> = new S3Client(
+      buildS3ClientConfig(config),
+    ),
   ) {
     this.keyPrefix = config.prefix.replace(/^\/+|\/+$/gu, "");
     this.identity = [
@@ -72,20 +73,32 @@ export class S3SourceContentBackend implements SourceContentBackend {
       return;
     }
     const probeKey = `${this.keyPrefix}/.probe/${randomUUID()}`;
+    const probeBody = Buffer.from("ready");
+    const probeChecksum = createHash(SOURCE_CONTENT_ALGORITHM)
+      .update(probeBody)
+      .digest("base64");
     let probePublished = false;
     try {
       await this.client.send(new PutObjectCommand({
-        Body: "ready",
+        Body: probeBody,
         Bucket: this.config.bucket,
-        ContentLength: 5,
+        ChecksumSHA256: probeChecksum,
+        ContentLength: probeBody.byteLength,
         IfNoneMatch: "*",
         Key: probeKey,
       }));
       probePublished = true;
-      await this.client.send(new HeadObjectCommand({
+      const output = await this.client.send(new HeadObjectCommand({
         Bucket: this.config.bucket,
+        ChecksumMode: "ENABLED",
         Key: probeKey,
       }));
+      if (
+        output.ChecksumSHA256 !== probeChecksum
+        || output.ContentLength !== probeBody.byteLength
+      ) {
+        throw new Error("S3 source-content backend does not support SHA-256 checksums.");
+      }
     } finally {
       if (probePublished) {
         await this.client.send(new DeleteObjectCommand({
@@ -111,17 +124,15 @@ export class S3SourceContentBackend implements SourceContentBackend {
     } else {
       body = await document.open(abortSignal);
     }
+    const checksum = encodeDocumentChecksum(document.documentId);
     try {
       await this.client.send(new PutObjectCommand({
         Body: body,
         Bucket: this.config.bucket,
+        ChecksumSHA256: checksum,
         ContentLength: document.byteLength,
         IfNoneMatch: "*",
         Key: this.contentKey(document.documentId),
-        Metadata: {
-          "citeloom-byte-length": String(document.byteLength),
-          "citeloom-sha256": document.documentId,
-        },
       }), abortSignal === undefined ? undefined : { abortSignal });
     } catch (error: unknown) {
       if (body instanceof Readable) {
@@ -139,6 +150,7 @@ export class S3SourceContentBackend implements SourceContentBackend {
     try {
       output = await this.client.send(new HeadObjectCommand({
         Bucket: this.config.bucket,
+        ChecksumMode: "ENABLED",
         Key: this.contentKey(document.documentId),
       }));
     } catch (error: unknown) {
@@ -147,12 +159,10 @@ export class S3SourceContentBackend implements SourceContentBackend {
       }
       throw new SourceContentMissingError(document.documentId);
     }
-    const storedByteLength = output.Metadata?.["citeloom-byte-length"];
-    const storedDocumentId = output.Metadata?.["citeloom-sha256"];
+    const checksum = encodeDocumentChecksum(document.documentId);
     if (
       output.ContentLength !== document.byteLength
-      || storedByteLength !== String(document.byteLength)
-      || storedDocumentId !== document.documentId
+      || output.ChecksumSHA256 !== checksum
     ) {
       throw new Error(
         `Published source content is missing or invalid: ${document.documentId}`,
@@ -201,15 +211,8 @@ export class S3SourceContentBackend implements SourceContentBackend {
     document: SourceContentMetadata,
     abortSignal?: AbortSignal,
   ): Promise<void> {
+    abortSignal?.throwIfAborted();
     await this.assertPresent(document);
-    const hash = createHash(SOURCE_CONTENT_ALGORITHM);
-    const stream = await this.openRead(document, abortSignal);
-    await pipeline(stream, hash);
-    if (hash.digest("hex") !== document.documentId) {
-      throw new Error(
-        `Published source content hash does not match: ${document.documentId}`,
-      );
-    }
   }
 
   public async remove(documentId: string): Promise<void> {
@@ -293,6 +296,10 @@ export class S3SourceContentBackend implements SourceContentBackend {
     }
     return { documentId, key, lastModified };
   }
+}
+
+function encodeDocumentChecksum(documentId: string): string {
+  return Buffer.from(documentId, "hex").toString("base64");
 }
 
 function buildS3ClientConfig(config: S3SourceContentConfig): S3ClientConfig {

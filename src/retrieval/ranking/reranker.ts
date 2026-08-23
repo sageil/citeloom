@@ -1,7 +1,8 @@
-import type {
-  RerankingModelV4,
-  RerankingModelV4CallOptions,
-  RerankingModelV4Result,
+import {
+  APICallError,
+  type RerankingModelV4,
+  type RerankingModelV4CallOptions,
+  type RerankingModelV4Result,
 } from "@ai-sdk/provider";
 import { rerank, type RerankResult } from "ai";
 import { z } from "zod";
@@ -438,15 +439,45 @@ async function rerankWithHttpProvider(
   if (options.abortSignal !== undefined) {
     requestInit.signal = options.abortSignal;
   }
-  const response = await fetch(`${config.baseUrl}/rerank`, requestInit);
+  const url = `${config.baseUrl}/rerank`;
+  const diagnosticRequest = {
+    documentCount: requestBody.documents.length,
+    model: requestBody.model,
+    topN: requestBody.top_n,
+  };
+  let response: Response;
+  try {
+    response = await fetch(url, requestInit);
+  } catch (error: unknown) {
+    if (options.abortSignal?.aborted === true) {
+      throw error;
+    }
+    const networkErrorCode = readNetworkErrorCode(error);
+    const failureDetail = networkErrorCode === null
+      ? ""
+      : ` (${networkErrorCode})`;
+    throw new APICallError({
+      cause: error,
+      isRetryable: true,
+      message:
+        `${config.runtimeName} request failed before receiving a response${failureDetail}.`,
+      requestBodyValues: diagnosticRequest,
+      url,
+    });
+  }
   if (!response.ok) {
     const detail = await readBoundedResponseText(
       response,
       MAX_RERANK_ERROR_BYTES,
     );
-    throw new Error(
-      `${config.runtimeName} returned HTTP ${response.status}: ${detail.slice(0, MAX_RERANK_ERROR_CHARACTERS)}`,
-    );
+    const responseBody = detail.slice(0, MAX_RERANK_ERROR_CHARACTERS);
+    throw new APICallError({
+      message: `${config.runtimeName} returned HTTP ${response.status}.`,
+      requestBodyValues: diagnosticRequest,
+      responseBody,
+      statusCode: response.status,
+      url,
+    });
   }
 
   let responseBody: unknown;
@@ -479,6 +510,22 @@ async function rerankWithHttpProvider(
       timestamp: requestedAt,
     },
   };
+}
+
+function readNetworkErrorCode(error: unknown): string | null {
+  const visited = new Set<Error>();
+  let current = error;
+  while (current instanceof Error && !visited.has(current)) {
+    visited.add(current);
+    if ("code" in current) {
+      const code = current.code;
+      if (typeof code === "string" && /^[A-Z][A-Z0-9_]{1,63}$/u.test(code)) {
+        return code;
+      }
+    }
+    current = current.cause;
+  }
+  return null;
 }
 
 function buildHeaders(

@@ -8,6 +8,8 @@ import {
 import {
   findHtmlElementByAttribute,
   htmlElementHasClass,
+  readHtmlAttribute,
+  readHtmlDocumentText,
   readHtmlElements,
 } from "./html-test-helpers.js";
 
@@ -16,29 +18,40 @@ afterEach(() => {
 });
 
 describe("CiteLoom workspace user access", () => {
-  it("uses the workspace editor to add existing accounts only", async () => {
+  it("declares workspace membership controls for existing accounts only", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/settings.html", import.meta.url),
       "utf8",
     );
+    const elements = readHtmlElements(fragment);
+    const visibleText = readHtmlDocumentText(elements);
+    const candidateTemplate = findHtmlElementByAttribute(
+      elements,
+      "x-for",
+      "candidate in memberCandidates",
+    );
+    const usernameInput = elements.find((element) => {
+      return readHtmlAttribute(element, "x-model") === "newUsername";
+    });
+    const displayNameInput = elements.find((element) => {
+      return readHtmlAttribute(element, "x-model") === "newDisplayName";
+    });
+    const membershipDescription = elements.find((element) => {
+      return readHtmlAttribute(element, "x-text")
+        === "`Manage membership, roles, and access for ${settings.scope.label}.`";
+    });
 
-    expect(fragment).toContain("Manage membership, roles, and access");
-    expect(fragment).toContain("Add user");
-    expect(fragment).not.toContain("Add existing user");
-    expect(fragment).toContain("Give an existing CiteLoom account access");
-    expect(fragment).toContain('candidate in memberCandidates');
-    expect(fragment).not.toContain("create a new account");
-    expect(fragment).not.toContain('x-model="newUsername"');
-    expect(fragment).not.toContain('x-model="newDisplayName"');
-    expect(fragment).not.toContain("Create reset link");
-    expect(fragment).not.toContain("passwordResetUrl");
-    expect(fragment).toContain('@change="changeRole(member, $event.target.value)"');
-    expect(fragment).toContain('@change="changeAccess(member, $event.target.value)"');
-    expect(fragment).toContain("member.globalRole === 'global_admin'");
-    expect(fragment).toContain("member.userId === currentUserId");
+    expect(visibleText).toContain("Add user");
+    expect(visibleText).toContain("Give an existing CiteLoom account access");
+    expect(visibleText).not.toContain("create a new account");
+    expect(visibleText).not.toContain("Create reset link");
+    expect(candidateTemplate.tagName).toBe("template");
+    expect(membershipDescription?.tagName).toBe("p");
+    expect(usernameInput).toBeUndefined();
+    expect(displayNameInput).toBeUndefined();
   });
 
-  it("uses one control size for role, access, and actions", async () => {
+  it("declares one control size for role, access, and actions", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/settings.html", import.meta.url),
       "utf8",

@@ -160,7 +160,7 @@ interface OAuthProviderFetchOptions {
 function createOAuthProviderFetch(
   options: OAuthProviderFetchOptions = {},
 ): typeof fetch {
-  return vi.fn(async (input: string | URL | Request) => {
+  const fetchProvider: typeof fetch = async (input) => {
     const url = input instanceof Request ? input.url : input.toString();
     if (url === discoveryUrl) {
       const override = options.onDiscovery?.();
@@ -176,7 +176,8 @@ function createOAuthProviderFetch(
       return Response.json({ keys: [publicJwk] });
     }
     return new Response(null, { status: 404 });
-  }) as unknown as typeof fetch;
+  };
+  return vi.fn(fetchProvider);
 }
 
 interface SignAccessTokenOptions {

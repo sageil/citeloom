@@ -17,7 +17,6 @@ import {
   type TelemetryRunStartRecord,
   type TelemetryStageRecord,
 } from "../src/observability/run.js";
-import type { SourceDocumentStore } from "../src/documents/storage/source-document-store.js";
 import { readEqualWeightTestConfig } from "./config-fixture.js";
 import {
   buildExactCandidateRepresentation,
@@ -88,13 +87,14 @@ describe("retrieval telemetry", () => {
     const documentStore = {
       readManyForRetrievalFrom: async () => [{
         content: "Relevant source content.",
+        detectedTypes: ["paragraph"],
         documentId,
         id: elementId,
         kind: "text" as const,
         ...buildSourceLocation(1),
         sourceFile: "/documents/source.pdf",
       }],
-    } as unknown as SourceDocumentStore;
+    };
     const aliasRows = [{
       documentId,
       documentVersionId: "00000000-0000-4000-8000-000000000001",

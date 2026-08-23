@@ -1,8 +1,10 @@
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { describe, expect, it, vi } from "vitest";
 
-import type { CiteLoomDatabase } from "../src/database/client.js";
-import { readDatabaseReadiness } from "../src/database/readiness.js";
+import {
+  type DatabaseReadinessReader,
+  readDatabaseReadiness,
+} from "../src/database/readiness.js";
 
 vi.mock("drizzle-orm/migrator", () => {
   return {
@@ -119,7 +121,7 @@ function mockPackagedMigrations(): void {
 
 function buildDatabase(
   results: Array<{ rows: unknown[] }>,
-): CiteLoomDatabase {
+): DatabaseReadinessReader {
   let resultIndex = 0;
   const database = {
     execute: vi.fn(async () => {
@@ -131,5 +133,5 @@ function buildDatabase(
       return result;
     }),
   };
-  return database as unknown as CiteLoomDatabase;
+  return database;
 }
