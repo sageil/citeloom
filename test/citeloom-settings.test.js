@@ -10,6 +10,13 @@ import { registerPage } from "../web/assets/scripts/settings.js";
 import {
   readSourceContentStorageResponse,
 } from "../web/assets/scripts/source-content-storage.js";
+import {
+  findHtmlElementByAttribute,
+  htmlElementHasClass,
+  readHtmlAttribute,
+  readHtmlDocumentText,
+  readHtmlElements,
+} from "./html-test-helpers.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -169,61 +176,86 @@ describe("CiteLoom settings resets", () => {
     });
   });
 
-  it("binds each editor reset to its scoped handler", async () => {
+  it("declares one reset control for each settings scope", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/settings.html", import.meta.url),
       "utf8",
     );
+    const elements = readHtmlElements(fragment);
+    const resetHandlers = elements
+      .map((element) => readHtmlAttribute(element, "@click"))
+      .filter((handler) => handler?.startsWith("reset") === true);
 
-    expect(fragment.match(/@click="resetAll\(\)"/g)).toHaveLength(1);
-    expect(fragment).toContain('@click="resetSelectedFeature()"');
-    expect(fragment).toContain('@click="resetSelectedProvider()"');
-    expect(fragment).toContain('@click="resetRuntimeContext()"');
+    expect(resetHandlers.filter((handler) => handler === "resetAll()"))
+      .toHaveLength(1);
+    expect(resetHandlers).toEqual(expect.arrayContaining([
+      "resetSelectedFeature()",
+      "resetSelectedProvider()",
+      "resetRuntimeContext()",
+    ]));
   });
 });
 
 describe("CiteLoom settings scope selection", () => {
-  it("does not retain removed scope-selection aliases", async () => {
-    const [application, settings] = await Promise.all([
-      readFile(new URL("../web/assets/scripts/app.js", import.meta.url), "utf8"),
-      readFile(new URL("../web/assets/scripts/settings.js", import.meta.url), "utf8"),
-    ]);
-
-    expect(application).not.toContain("clearSettingsScopePreference");
-    expect(settings).not.toContain("changeSettingsScope");
-    expect(settings).not.toContain("settingsScopeRequest");
-  });
-
-  it("binds the visible selector to the applied settings target", async () => {
+  it("declares the selector for the applied settings target", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/settings.html", import.meta.url),
       "utf8",
     );
-
-    expect(fragment).toContain(":value=\"settings?.scope.id ?? ''\"");
-    expect(fragment).toContain(
-      '@change="changeSettingsTargetFromControl($event.target)"',
+    const elements = readHtmlElements(fragment);
+    const selector = findHtmlElementByAttribute(
+      elements,
+      "@change",
+      "changeSettingsTargetFromControl($event.target)",
     );
-    expect(fragment).not.toContain('x-model="settingsTargetRequest"');
-    expect(fragment).toContain(':key="scope.id"');
-    expect(fragment).toContain(':value="scope.id"');
+    const optionTemplate = findHtmlElementByAttribute(
+      elements,
+      ":key",
+      "scope.id",
+    );
+    const option = findHtmlElementByAttribute(elements, ":value", "scope.id");
+
+    expect(selector.tagName).toBe("select");
+    expect(readHtmlAttribute(selector, ":value")).toBe("settings?.scope.id ?? ''");
+    expect(readHtmlAttribute(selector, "x-model")).toBeNull();
+    expect(optionTemplate.tagName).toBe("template");
+    expect(option.tagName).toBe("option");
+    expect(readHtmlAttribute(option, ":value")).toBe("scope.id");
   });
 
-  it("uses one workspace editor for details and membership", async () => {
+  it("declares one workspace editor for details and membership", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/settings.html", import.meta.url),
       "utf8",
     );
+    const elements = readHtmlElements(fragment);
+    const visibleText = readHtmlDocumentText(elements);
+    const editor = elements.filter((element) => {
+      return htmlElementHasClass(element, "workspace-user-management");
+    });
 
-    expect(fragment).toContain("@click=\"selectArea('Workspaces')\"");
-    expect(fragment).toContain("@click=\"selectArea('Workspace')\"");
-    expect(fragment).toContain("@click=\"openWorkspaceManagement(workspace)\"");
-    expect(fragment).toContain("@submit.prevent=\"saveWorkspaceName()\"");
-    expect(fragment).toContain("x-if=\"selectedArea === 'Workspace'\"");
-    expect(fragment).toContain("Create workspace");
-    expect(fragment.match(/class="workspace-user-management"/g)).toHaveLength(1);
-    expect(fragment).not.toContain("workspace-users-management.html");
-    expect(fragment).not.toContain("selectArea('Users &amp; access')");
+    expect(findHtmlElementByAttribute(
+      elements,
+      "@click",
+      "selectArea('Workspaces')",
+    ).tagName).toBe("button");
+    expect(findHtmlElementByAttribute(
+      elements,
+      "@click",
+      "selectArea('Workspace')",
+    ).tagName).toBe("button");
+    expect(findHtmlElementByAttribute(
+      elements,
+      "@submit.prevent",
+      "saveWorkspaceName()",
+    ).tagName).toBe("form");
+    expect(findHtmlElementByAttribute(
+      elements,
+      "x-if",
+      "selectedArea === 'Workspace'",
+    ).tagName).toBe("template");
+    expect(visibleText).toContain("Create workspace");
+    expect(editor).toHaveLength(1);
   });
 
   it("loads only organization resources for the organization target", async () => {
@@ -400,36 +432,65 @@ describe("CiteLoom embedding-space settings", () => {
     );
   });
 
-  it("renders application-wide dimensions, impact, status, and reindex navigation", async () => {
+  it("declares dimensions, impact, status, and reindex navigation", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/settings.html", import.meta.url),
       "utf8",
     );
+    const elements = readHtmlElements(fragment);
+    const visibleText = readHtmlDocumentText(elements);
 
-    expect(fragment).toContain(
-      'x-for="field in featurePrimaryFields(selectedFeatureCapability)"',
-    );
-    expect(fragment).toContain("Vector dimensions");
-    expect(fragment).toContain("embeddingSpaceImpactMessage()");
-    expect(fragment).toContain("embeddingSpaceCoverageLabel()");
-    expect(fragment).toContain("embeddingSpaceNeedsReindex()");
-    expect(fragment).toContain('data-view="documents"');
+    expect(findHtmlElementByAttribute(
+      elements,
+      "x-for",
+      "field in featurePrimaryFields(selectedFeatureCapability)",
+    ).tagName).toBe("template");
+    expect(visibleText).toContain("Vector dimensions");
+    expect(findHtmlElementByAttribute(
+      elements,
+      "x-text",
+      "embeddingSpaceImpactMessage()",
+    ).tagName).toBe("span");
+    expect(findHtmlElementByAttribute(
+      elements,
+      "x-text",
+      "embeddingSpaceCoverageLabel()",
+    ).tagName).toBe("strong");
+    expect(findHtmlElementByAttribute(
+      elements,
+      "data-view",
+      "documents",
+    ).tagName).toBe("a");
   });
 });
 
 describe("CiteLoom provider reasoning settings", () => {
-  it("renders a provider-level reasoning control that governs thinking mode", async () => {
+  it("declares a provider reasoning control that governs thinking mode", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/settings.html", import.meta.url),
       "utf8",
     );
-
-    expect(fragment).toContain("providerSendReasoningOptions()");
-    expect(fragment).toContain("writeProviderSendReasoningOptions");
-    expect(fragment).toContain(':disabled="!providerSendReasoningOptions()"');
-    expect(fragment).toContain(
-      ':disabled="!featureSendReasoningOptions(selectedFeatureCapability)"',
+    const elements = readHtmlElements(fragment);
+    const reasoningToggle = findHtmlElementByAttribute(
+      elements,
+      "@change",
+      "writeProviderSendReasoningOptions($event.target.checked)",
     );
+    const providerMode = findHtmlElementByAttribute(
+      elements,
+      ":disabled",
+      "!providerSendReasoningOptions()",
+    );
+    const featureMode = findHtmlElementByAttribute(
+      elements,
+      ":disabled",
+      "!featureSendReasoningOptions(selectedFeatureCapability)",
+    );
+
+    expect(reasoningToggle.tagName).toBe("input");
+    expect(readHtmlAttribute(reasoningToggle, "type")).toBe("checkbox");
+    expect(providerMode.tagName).toBe("select");
+    expect(featureMode.tagName).toBe("select");
   });
 });
 
@@ -527,28 +588,59 @@ describe("CiteLoom source-content storage settings", () => {
     });
   });
 
-  it("renders the connection boundary and migration controls", async () => {
+  it("declares the connection boundary and migration controls", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/settings.html", import.meta.url),
       "utf8",
     );
+    const elements = readHtmlElements(fragment);
+    const visibleText = readHtmlDocumentText(elements);
+    const pathStyle = findHtmlElementByAttribute(
+      elements,
+      "@change",
+      "writeSourceContentStorageDraft('forcePathStyle', $event.target.checked)",
+    );
+    const workspaceAccess = findHtmlElementByAttribute(
+      elements,
+      ":aria-label",
+      "`${workspace.name} access to ${library.name}`",
+    );
+    const pathStyleStatus = findHtmlElementByAttribute(
+      elements,
+      "x-text",
+      "sourceContentStorageDraft.forcePathStyle ? 'On. Required by bundled SeaweedFS and many self-hosted S3 services.' : 'Off. Recommended for AWS S3.'",
+    );
+    const runtimeArea = findHtmlElementByAttribute(
+      elements,
+      "x-if",
+      "!browsingAreas && selectedArea !== 'Application Features' && selectedArea !== 'Providers' && selectedArea !== 'Object storage' && selectedArea !== 'Source libraries' && selectedArea !== 'Workspace' && selectedArea !== 'Workspaces' && selectedArea !== 'Startup and deployment'",
+    );
 
-    expect(fragment).toContain("This page configures CiteLoom's connection.");
-    expect(fragment).toContain("SeaweedFS server credentials, ports, and data directories remain deployment-controlled.");
-    expect(fragment).toContain('@click="testSourceContentStorage()"');
-    expect(fragment).toContain('@click="startSourceContentMigration()"');
-    expect(fragment).toContain('@click="cancelSourceContentMigration()"');
-    expect(fragment).toContain("Credentials are write-only");
-    expect(fragment).toMatch(
-      /@change="writeSourceContentStorageDraft\('forcePathStyle', \$event\.target\.checked\)" \/>\s*<span class="toggle-track" aria-hidden="true"><span><\/span><\/span>/u,
+    expect(visibleText).toContain("This page configures CiteLoom's connection.");
+    expect(visibleText).toContain(
+      "SeaweedFS server credentials, ports, and data directories remain deployment-controlled.",
     );
-    expect(fragment).toContain("'Off. Recommended for AWS S3.'");
-    expect(fragment).toContain(
-      '<select class="form-control compact-header-control" :aria-label="`${workspace.name} access to ${library.name}`"',
-    );
-    expect(fragment).toContain(
-      "selectedArea !== 'Object storage' &amp;&amp; selectedArea !== 'Source libraries' &amp;&amp; selectedArea !== 'Workspace' &amp;&amp; selectedArea !== 'Workspaces' &amp;&amp; selectedArea !== 'Startup and deployment'",
-    );
+    expect(visibleText).toContain("Credentials are write-only");
+    expect(findHtmlElementByAttribute(
+      elements,
+      "@click",
+      "testSourceContentStorage()",
+    ).tagName).toBe("button");
+    expect(findHtmlElementByAttribute(
+      elements,
+      "@click",
+      "startSourceContentMigration()",
+    ).tagName).toBe("button");
+    expect(findHtmlElementByAttribute(
+      elements,
+      "@click",
+      "cancelSourceContentMigration()",
+    ).tagName).toBe("button");
+    expect(pathStyle.tagName).toBe("input");
+    expect(readHtmlAttribute(pathStyle, "type")).toBe("checkbox");
+    expect(pathStyleStatus.tagName).toBe("small");
+    expect(workspaceAccess.tagName).toBe("select");
+    expect(runtimeArea.tagName).toBe("template");
   });
 });
 

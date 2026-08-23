@@ -5,13 +5,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createOrganizationUserManagement,
 } from "../web/assets/scripts/organization-users.js";
+import {
+  readHtmlAttribute,
+  readHtmlDocumentText,
+  readHtmlElements,
+} from "./html-test-helpers.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("CiteLoom organization user accounts", () => {
-  it("keeps account creation and password links on Security", async () => {
+  it("declares account creation and password links on Security", async () => {
     const fragment = await readFile(
       new URL("../web/fragments/security.html", import.meta.url),
       "utf8",
@@ -20,19 +25,26 @@ describe("CiteLoom organization user accounts", () => {
       new URL("../web/fragments/help.html", import.meta.url),
       "utf8",
     );
+    const securityElements = readHtmlElements(fragment);
+    const helpElements = readHtmlElements(help);
+    const securityText = readHtmlDocumentText(securityElements);
+    const helpText = readHtmlDocumentText(helpElements);
+    const passwordLinkButton = securityElements.find((element) => {
+      return element.tagName === "button"
+        && (readHtmlAttribute(element, "@click") ?? "")
+          .includes("requestPasswordLink(user)");
+    });
 
-    expect(fragment).toContain("User accounts");
-    expect(fragment).toContain("Manage user access and user-bound MCP API keys");
-    expect(fragment).toContain("requestPasswordLink(user)");
-    expect(fragment).toContain("without assigning workspace access");
-    expect(fragment).toContain("Manage MCP API keys");
-    expect(fragment).toContain("Copy this key now");
-    expect(fragment).not.toContain('button secondary compact-header-control');
-    expect(fragment).not.toContain('button primary compact-header-control');
-    expect(fragment).not.toContain("Remove from workspace");
-    expect(help).toContain("Create and activate a user");
-    expect(help).toContain("Reset a user's password");
-    expect(help).toContain("removes only that membership");
+    expect(securityText).toContain("User accounts");
+    expect(securityText).toContain("Manage user access and user-bound MCP API keys");
+    expect(securityText).toContain("without assigning workspace access");
+    expect(securityText).toContain("Manage MCP API keys");
+    expect(securityText).toContain("Copy this key now");
+    expect(securityText).not.toContain("Remove from workspace");
+    expect(passwordLinkButton?.tagName).toBe("button");
+    expect(helpText).toContain("Create and activate a user");
+    expect(helpText).toContain("Reset a user's password");
+    expect(helpText).toContain("removes only that membership");
   });
 
   it("creates an organization account without workspace fields", async () => {

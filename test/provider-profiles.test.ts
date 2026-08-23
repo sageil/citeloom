@@ -444,12 +444,23 @@ describe("provider profiles", () => {
     });
   });
 
-  it("enforces adapter-specific text-to-speech speed ranges", () => {
-    expect(() => buildTextToSpeechConfig("groq", 0.25)).toThrow(
+  it("enforces global and adapter-specific speech speed ranges", () => {
+    expect(() => buildTextToSpeechConfig("groq", 0.49)).toThrow(
       "Groq speech speed must be from 0.5 to 5",
     );
+    expect(buildTextToSpeechConfig("groq", 0.5).textToSpeech?.speed).toBe(0.5);
     expect(buildTextToSpeechConfig("groq", 5).textToSpeech?.speed).toBe(5);
-    expect(() => buildTextToSpeechConfig("openai", 5)).toThrow(
+    expect(() => buildTextToSpeechConfig("groq", 5.01)).toThrow(
+      "ttsSpeed: Too big: expected number to be <=5",
+    );
+    expect(() => buildTextToSpeechConfig("openai", 0.24)).toThrow(
+      "ttsSpeed: Too small: expected number to be >=0.25",
+    );
+    expect(buildTextToSpeechConfig("openai", 0.25).textToSpeech?.speed).toBe(
+      0.25,
+    );
+    expect(buildTextToSpeechConfig("openai", 4).textToSpeech?.speed).toBe(4);
+    expect(() => buildTextToSpeechConfig("openai", 4.01)).toThrow(
       "OpenAI-compatible speech speed must be from 0.25 to 4",
     );
   });

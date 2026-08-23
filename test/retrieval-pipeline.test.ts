@@ -4,7 +4,6 @@ import type { LanguageModelV4, LanguageModelV4GenerateResult } from "@ai-sdk/pro
 import {
   APICallError,
   simulateStreamingMiddleware,
-  type UIMessageStreamWriter,
   wrapLanguageModel,
 } from "ai";
 import { MockEmbeddingModelV4, MockLanguageModelV4 } from "ai/test";
@@ -23,7 +22,7 @@ vi.mock("../src/research/store.js", async (importOriginal) => {
   };
 });
 
-import type { CiteLoomUIMessage } from "../src/answers/stream.js";
+import type { CiteLoomUIMessageWriter } from "../src/answers/stream.js";
 import type { AppConfig } from "../src/config/index.js";
 import { TaskLimiter } from "../src/shared/concurrency.js";
 import type { DatabaseSession } from "../src/database/client.js";
@@ -53,7 +52,7 @@ import {
 const threadId = "00000000-0000-4000-8000-000000000001";
 
 type WrittenChunk = Parameters<
-  UIMessageStreamWriter<CiteLoomUIMessage>["write"]
+  CiteLoomUIMessageWriter["write"]
 >[0];
 
 beforeEach(() => {
@@ -90,6 +89,12 @@ describe("atomic structured answer publication", () => {
       statusCode: 404,
       url: "https://openrouter.ai/api/v1/chat/completions",
     });
+    const unreachableProvider = new APICallError({
+      isRetryable: true,
+      message: "oMLX request failed before receiving a response (ECONNREFUSED).",
+      requestBodyValues: {},
+      url: "http://host.docker.internal:9000/v1/rerank",
+    });
 
     expect(readAnswerStreamError(unsupportedParameters)).toBe(
       "The selected model does not support the response format CiteLoom requires. Select a different model in Settings, then try again.",
@@ -97,9 +102,12 @@ describe("atomic structured answer publication", () => {
     expect(readAnswerStreamError(unknownModel)).toBe(
       "The AI provider could not find the configured model or endpoint. Check the provider URL and model ID in Settings.",
     );
+    expect(readAnswerStreamError(unreachableProvider)).toBe(
+      "CiteLoom could not reach the AI provider. Check the provider URL, network connection, and TLS configuration.",
+    );
   });
 
-  it("persists and publishes one answer with pending verification", async () => {
+  it("requests one saved answer before publishing pending verification", async () => {
     const events: string[] = [];
     const answerModel = buildAnswerModel(
       buildVerifiableAnsweredDraft(["EVID_A"]),
@@ -538,7 +546,7 @@ describe("atomic structured answer publication", () => {
 
 async function runStreamedAnswer(
   prepared: PreparedRetrieval,
-  writer: UIMessageStreamWriter<CiteLoomUIMessage>,
+  writer: CiteLoomUIMessageWriter,
   abortSignal: AbortSignal = new AbortController().signal,
 ): Promise<void> {
   await writeStreamedAnswer(
@@ -697,7 +705,7 @@ function buildWriter(
   onWrite: (chunk: WrittenChunk) => void = () => undefined,
 ): {
   chunks: WrittenChunk[];
-  writer: UIMessageStreamWriter<CiteLoomUIMessage>;
+  writer: CiteLoomUIMessageWriter;
 } {
   const chunks: WrittenChunk[] = [];
   const writer = {
@@ -705,7 +713,7 @@ function buildWriter(
       chunks.push(chunk);
       onWrite(chunk);
     },
-  } as unknown as UIMessageStreamWriter<CiteLoomUIMessage>;
+  };
   return { chunks, writer };
 }
 

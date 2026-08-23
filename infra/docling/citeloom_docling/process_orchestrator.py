@@ -109,7 +109,7 @@ class RangeConversionFailure(RuntimeError):
 
 
 @dataclass
-class _ProcessExecution:
+class ProcessExecution:
     process: BaseProcess
     result_path: Path
     error_path: Path
@@ -117,6 +117,9 @@ class _ProcessExecution:
     exit_code: int | None = None
     finished: asyncio.Event = field(default_factory=asyncio.Event)
     stop_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+
+ProcessExecutionStarter = Callable[[Task, Path], ProcessExecution]
 
 
 class CiteLoomProcessOrchestrator(LocalOrchestrator):
@@ -127,6 +130,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
         checkpoint_directory: Path,
         page_range_size: int,
         delete_task_content: Callable[[str], None] | None = None,
+        execution_starter: ProcessExecutionStarter | None = None,
     ) -> None:
         if page_range_size <= 0:
             raise ValueError("Docling page range size must be positive.")
@@ -139,8 +143,9 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
             checkpoint_directory
         )
         self._delete_task_content = delete_task_content
+        self._execution_starter = execution_starter
         self._page_range_size = page_range_size
-        self._active_executions: dict[str, _ProcessExecution] = {}
+        self._active_executions: dict[str, ProcessExecution] = {}
         self._execution_lock = asyncio.Lock()
         self._pause_requests: set[str] = set()
         self._process_context = multiprocessing.get_context("spawn")
@@ -238,7 +243,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
         self,
         task_id: str,
     ) -> Literal["paused", "terminated"]:
-        execution: _ProcessExecution | None
+        execution: ProcessExecution | None
         async with self._execution_lock:
             task = self.tasks.get(task_id)
             if (
@@ -283,7 +288,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
         return "paused"
 
     async def terminate_task(self, task_id: str) -> None:
-        execution: _ProcessExecution | None
+        execution: ProcessExecution | None
         notify_task = False
         async with self._execution_lock:
             self._termination_requests.add(task_id)
@@ -336,7 +341,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
             await self._process_resumable_pdf_task(worker_id, task_id)
             return
 
-        execution: _ProcessExecution | None = None
+        execution: ProcessExecution | None = None
         task: Task | None = None
         workdir = self.scratch_dir / task_id
         try:
@@ -351,7 +356,10 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
                     return
 
                 workdir.mkdir(parents=True, exist_ok=True)
-                execution = self._start_execution(task, workdir)
+                if self._execution_starter is None:
+                    execution = self._start_execution(task, workdir)
+                else:
+                    execution = self._execution_starter(task, workdir)
                 self._active_executions[task_id] = execution
                 task.set_status(TaskStatus.STARTED)
 
@@ -624,8 +632,8 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
     async def _start_managed_execution(
         self,
         task: Task,
-        start_execution: Callable[[], _ProcessExecution],
-    ) -> _ProcessExecution | None:
+        start_execution: Callable[[], ProcessExecution],
+    ) -> ProcessExecution | None:
         async with self._execution_lock:
             if task.task_id in self._termination_requests:
                 self._mark_task_terminated(task)
@@ -642,7 +650,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
         self,
         task_id: str,
         task: Task,
-        execution: _ProcessExecution,
+        execution: ProcessExecution,
     ) -> bool:
         timed_out = False
         try:
@@ -674,7 +682,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
         workdir: Path,
         start_page: int,
         end_page: int,
-    ) -> _ProcessExecution:
+    ) -> ProcessExecution:
         result_path = workdir / "range-result.json"
         error_path = workdir / "range-error.txt"
         result_path.unlink(missing_ok=True)
@@ -697,7 +705,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
             ),
         )
         process.start()
-        return _ProcessExecution(
+        return ProcessExecution(
             error_path=error_path,
             process=process,
             result_path=result_path,
@@ -708,7 +716,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
         task: Task,
         manifest: PageRangeManifest,
         workdir: Path,
-    ) -> _ProcessExecution:
+    ) -> ProcessExecution:
         result_path = workdir / "result.pickle"
         error_path = workdir / "assembly-error.txt"
         result_path.unlink(missing_ok=True)
@@ -729,7 +737,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
             name=f"docling-task-{task.task_id}-assembly",
         )
         process.start()
-        return _ProcessExecution(
+        return ProcessExecution(
             error_path=error_path,
             process=process,
             result_path=result_path,
@@ -827,7 +835,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
         self,
         task: Task,
         workdir: Path,
-    ) -> _ProcessExecution:
+    ) -> ProcessExecution:
         result_path = workdir / "result.pickle"
         error_path = workdir / "error.txt"
         process = self._process_context.Process(
@@ -844,7 +852,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
             name=f"docling-task-{task.task_id}",
         )
         process.start()
-        return _ProcessExecution(
+        return ProcessExecution(
             error_path=error_path,
             process=process,
             result_path=result_path,
@@ -852,7 +860,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
 
     async def _stop_execution(
         self,
-        execution: _ProcessExecution,
+        execution: ProcessExecution,
     ) -> None:
         async with execution.stop_lock:
             if execution.closed:
@@ -879,7 +887,7 @@ class CiteLoomProcessOrchestrator(LocalOrchestrator):
 
     async def _close_execution(
         self,
-        execution: _ProcessExecution,
+        execution: ProcessExecution,
     ) -> None:
         async with execution.stop_lock:
             if execution.closed:

@@ -1,20 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import type { UIMessageStreamWriter } from "ai";
-
 import {
   createAnswerContentWriter,
-  type CiteLoomUIMessage,
+  type CiteLoomUIMessageWriter,
 } from "../src/answers/stream.js";
 import type { AnswerContentSnapshot } from "../src/answers/content-snapshot.js";
 
 describe("answer content streaming", () => {
   it("publishes citation-only changes as metadata without replacing content", () => {
     const writes: unknown[] = [];
-    const writer = {
+    const writer: CiteLoomUIMessageWriter = {
       write: vi.fn((part: unknown) => {
         writes.push(part);
       }),
-    } as unknown as UIMessageStreamWriter<CiteLoomUIMessage>;
+    };
     const receiveFirstContent = vi.fn();
     const receive = createAnswerContentWriter(writer, receiveFirstContent);
     const initial = buildSnapshot([]);
@@ -67,11 +65,11 @@ describe("answer content streaming", () => {
 
   it("uses append updates only when presentation and section remain stable", () => {
     const writes: unknown[] = [];
-    const writer = {
+    const writer: CiteLoomUIMessageWriter = {
       write: (part: unknown) => {
         writes.push(part);
       },
-    } as unknown as UIMessageStreamWriter<CiteLoomUIMessage>;
+    };
     const receive = createAnswerContentWriter(writer);
 
     receive(buildSnapshot([], "Revenue"));
@@ -90,11 +88,11 @@ describe("answer content streaming", () => {
 
   it("publishes final citation numbers before verification completes", () => {
     const writes: unknown[] = [];
-    const writer = {
+    const writer: CiteLoomUIMessageWriter = {
       write: (part: unknown) => {
         writes.push(part);
       },
-    } as unknown as UIMessageStreamWriter<CiteLoomUIMessage>;
+    };
     const receive = createAnswerContentWriter(writer);
     const preview = buildSnapshot(["citation-1"]);
     preview.citations.push({

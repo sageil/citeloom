@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { APICallError } from "@ai-sdk/provider";
 import { MockRerankingModelV4 } from "ai/test";
 
 import { InferenceMetricsReporter } from "../src/inference/metrics.js";
@@ -55,6 +56,81 @@ describe("HTTP AI SDK reranker adapter", () => {
       "http://127.0.0.1:8012/v1/rerank",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("reports an unreachable provider as a retryable API failure", async () => {
+    const connectionFailure = Object.assign(
+      new Error("connect ECONNREFUSED 127.0.0.1:8012"),
+      { code: "ECONNREFUSED" },
+    );
+    const fetchFailure = new TypeError("fetch failed", {
+      cause: connectionFailure,
+    });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(fetchFailure));
+
+    const model = createHttpRerankingModel(config);
+    let capturedError: unknown;
+    try {
+      await model.doRerank({
+        documents: { type: "text", values: ["first"] },
+        query: "question",
+        topN: 1,
+      });
+    } catch (error: unknown) {
+      capturedError = error;
+    }
+
+    expect(APICallError.isInstance(capturedError)).toBe(true);
+    if (!APICallError.isInstance(capturedError)) {
+      throw new Error("Expected the reranker to throw an APICallError.");
+    }
+    expect(capturedError).toMatchObject({
+      cause: fetchFailure,
+      isRetryable: true,
+      message:
+        "test reranker request failed before receiving a response (ECONNREFUSED).",
+      requestBodyValues: {
+        documentCount: 1,
+        model: "bge-reranker-v2-m3",
+        topN: 1,
+      },
+      statusCode: undefined,
+      url: "http://127.0.0.1:8012/v1/rerank",
+    });
+  });
+
+  it("reports a provider outage with its HTTP status and bounded response", async () => {
+    const responseBody = JSON.stringify({
+      error: { message: "The reranking model is not available." },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      responseBody,
+      { status: 503 },
+    )));
+
+    const model = createHttpRerankingModel(config);
+    let capturedError: unknown;
+    try {
+      await model.doRerank({
+        documents: { type: "text", values: ["first"] },
+        query: "question",
+        topN: 1,
+      });
+    } catch (error: unknown) {
+      capturedError = error;
+    }
+
+    expect(APICallError.isInstance(capturedError)).toBe(true);
+    if (!APICallError.isInstance(capturedError)) {
+      throw new Error("Expected the reranker to throw an APICallError.");
+    }
+    expect(capturedError).toMatchObject({
+      isRetryable: true,
+      message: "test reranker returned HTTP 503.",
+      responseBody,
+      statusCode: 503,
+      url: "http://127.0.0.1:8012/v1/rerank",
+    });
   });
 
   it("does not infer a relevance cliff from only two scores", async () => {

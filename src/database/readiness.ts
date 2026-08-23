@@ -1,10 +1,8 @@
 import { fileURLToPath } from "node:url";
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { z } from "zod";
-
-import type { CiteLoomDatabase } from "./client.js";
 
 const migrationsFolder = fileURLToPath(
   new URL("../../drizzle", import.meta.url),
@@ -30,8 +28,12 @@ export interface DatabaseReadiness {
   requiredExtensions: readonly string[];
 }
 
+export interface DatabaseReadinessReader {
+  execute(query: SQL): PromiseLike<{ rows: unknown }>;
+}
+
 export async function readDatabaseReadiness(
-  database: CiteLoomDatabase,
+  database: DatabaseReadinessReader,
 ): Promise<DatabaseReadiness> {
   const packagedMigrations = readPackagedMigrationIdentities();
   const appliedMigrations = await readAppliedMigrationIdentities(database);
@@ -62,7 +64,7 @@ function readPackagedMigrationIdentities(): MigrationIdentity[] {
 }
 
 async function readAppliedMigrationIdentities(
-  database: CiteLoomDatabase,
+  database: DatabaseReadinessReader,
 ): Promise<MigrationIdentity[]> {
   const result = await database.execute(sql`
     SELECT
@@ -119,7 +121,7 @@ function assertCurrentMigrationHistory(
 }
 
 async function readInstalledExtensionNames(
-  database: CiteLoomDatabase,
+  database: DatabaseReadinessReader,
 ): Promise<Set<string>> {
   const result = await database.execute(sql`
     SELECT "extname" AS "name"

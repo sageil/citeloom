@@ -1,4 +1,5 @@
 import asyncio
+import multiprocessing
 import os
 from pathlib import Path
 import tempfile
@@ -12,6 +13,7 @@ from docling.datamodel.service.options import ConvertDocumentsOptions
 from docling.datamodel.service.sources import FileSource
 from docling.datamodel.service.targets import InBodyTarget
 from docling_jobkit.convert.manager import DoclingConverterManagerConfig
+from docling_jobkit.datamodel.task import Task
 from docling_jobkit.datamodel.task_meta import TaskStatus
 from docling_jobkit.orchestrators.local.orchestrator import (
     LocalOrchestratorConfig,
@@ -23,8 +25,8 @@ from citeloom_docling.pdf_pipeline import (
 )
 from citeloom_docling.process_orchestrator import (
     CiteLoomProcessOrchestrator,
+    ProcessExecution,
     TaskIdentityConflictError,
-    _ProcessExecution,
     _build_assembly_execution_failure,
     _build_range_public_failure,
 )
@@ -32,6 +34,7 @@ from citeloom_docling.range_checkpoint import (
     CheckpointedConversionError,
     PageRangeExecutionFailure,
     PageRangeManifest,
+    read_manifest,
 )
 
 
@@ -194,9 +197,13 @@ class CiteLoomProcessOrchestratorTest(
             "paused",
         )
         self.assertEqual(task.task_status, TaskStatus.PENDING)
-        manifest = self.orchestrator._checkpoint_store.read(task_id)
+        checkpoint_path = (
+            Path(self.checkpoint_directory.name)
+            / task_id
+            / "manifest.json"
+        )
+        manifest = read_manifest(checkpoint_path)
         self.assertEqual(manifest.state, "paused")
-        self.assertNotIn(task_id, self.orchestrator.queue_list)
 
         resumed = await self.orchestrator.enqueue_with_task_id(
             task_id=task_id,
@@ -215,16 +222,10 @@ class CiteLoomProcessOrchestratorTest(
         )
 
         self.assertIs(resumed, task)
-        self.assertEqual(
-            self.orchestrator._checkpoint_store.read(task_id).state,
-            "running",
-        )
-        self.assertIn(task_id, self.orchestrator.queue_list)
+        self.assertEqual(read_manifest(checkpoint_path).state, "running")
 
         await self.orchestrator.terminate_task(task_id)
-        self.assertFalse(
-            self.orchestrator._checkpoint_store.exists(task_id)
-        )
+        self.assertFalse(checkpoint_path.exists())
         self.assertEqual(self.deleted_task_content, [task_id])
 
     async def test_termination_before_submission_prevents_process_start(
@@ -240,63 +241,81 @@ class CiteLoomProcessOrchestratorTest(
             target=InBodyTarget(),
         )
 
-        with patch.object(
-            self.orchestrator,
-            "_start_execution",
-        ) as start_execution:
-            await self.orchestrator._process_task(0, task_id)
+        processor = asyncio.create_task(self.orchestrator.process_queue())
+        try:
+            await self.wait_for_task_status(task, TaskStatus.FAILURE)
+        finally:
+            processor.cancel()
+            await asyncio.gather(processor, return_exceptions=True)
 
-        start_execution.assert_not_called()
         self.assertEqual(task.task_status, TaskStatus.FAILURE)
         self.assertIn("terminated", task.error_message.lower())
 
     async def test_terminates_and_reaps_an_active_process(self) -> None:
-        task = await self.orchestrator.enqueue_with_task_id(
-            task_id="00000000-0000-4000-8000-000000000022",
-            request_fingerprint="request-a",
-            sources=[],
-            target=InBodyTarget(),
-        )
+        started = asyncio.Event()
+        process_id: int | None = None
 
         def start_execution(_task, workdir):
+            nonlocal process_id
             result_path = workdir / "result.pickle"
             error_path = workdir / "error.txt"
-            process = self.orchestrator._process_context.Process(
+            process = multiprocessing.get_context("spawn").Process(
                 target=run_isolated_sleep_process,
                 daemon=False,
             )
             process.start()
-            return _ProcessExecution(
+            process_id = process.pid
+            started.set()
+            return ProcessExecution(
                 error_path=error_path,
                 process=process,
                 result_path=result_path,
             )
 
-        with patch.object(
-            self.orchestrator,
-            "_start_execution",
-            side_effect=start_execution,
-        ):
-            worker = asyncio.create_task(
-                self.orchestrator._process_task(0, task.task_id)
-            )
-            process_id = await self.wait_for_process_id(task.task_id)
-            await self.orchestrator.terminate_task(task.task_id)
-            await worker
+        config = LocalOrchestratorConfig(
+            num_workers=1,
+            scratch_dir=Path(self.scratch_directory.name),
+            shared_models=True,
+        )
+        manager = CiteLoomConverterManager(
+            DoclingConverterManagerConfig()
+        )
+        orchestrator = CiteLoomProcessOrchestrator(
+            config,
+            manager,
+            Path(self.checkpoint_directory.name),
+            4,
+            self.deleted_task_content.append,
+            execution_starter=start_execution,
+        )
+        task = await orchestrator.enqueue_with_task_id(
+            task_id="00000000-0000-4000-8000-000000000022",
+            request_fingerprint="request-a",
+            sources=[],
+            target=InBodyTarget(),
+        )
+        processor = asyncio.create_task(orchestrator.process_queue())
+        try:
+            await asyncio.wait_for(started.wait(), timeout=1)
+            await orchestrator.terminate_task(task.task_id)
+        finally:
+            processor.cancel()
+            await asyncio.gather(processor, return_exceptions=True)
 
         self.assertEqual(task.task_status, TaskStatus.FAILURE)
         self.assertIn("terminated", task.error_message.lower())
-        self.assertNotIn(
-            task.task_id,
-            self.orchestrator._active_executions,
-        )
+        if process_id is None:
+            self.fail("Disposable process did not start.")
         with self.assertRaises(ProcessLookupError):
             os.kill(process_id, 0)
 
-    async def wait_for_process_id(self, task_id: str) -> int:
+    async def wait_for_task_status(
+        self,
+        task: Task,
+        expected_status: TaskStatus,
+    ) -> None:
         for _attempt in range(100):
-            execution = self.orchestrator._active_executions.get(task_id)
-            if execution is not None and execution.process.pid is not None:
-                return execution.process.pid
+            if task.task_status == expected_status:
+                return
             await asyncio.sleep(0.01)
-        self.fail("Disposable process did not start.")
+        self.fail(f"Task did not reach {expected_status}.")

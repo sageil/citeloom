@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
 
 import {
   DeleteObjectCommand,
@@ -28,6 +27,12 @@ const s3Config = {
   prefix: "sources",
   region: "us-east-1",
 };
+
+function buildS3Client(
+  send: (command: unknown) => Promise<unknown>,
+): Pick<S3Client, "send"> {
+  return { send };
+}
 
 describe("filesystem source-content backend", () => {
   it("opens an empty archive backend in read-only mode", async () => {
@@ -113,11 +118,23 @@ describe("S3 source-content backend", () => {
     const commands: unknown[] = [];
     const send = vi.fn(async (command: unknown) => {
       commands.push(command);
+      if (
+        command instanceof HeadObjectCommand
+        && command.input.Key?.includes("/.probe/") === true
+      ) {
+        const probeBody = Buffer.from("ready");
+        return {
+          ChecksumSHA256: createHash("sha256")
+            .update(probeBody)
+            .digest("base64"),
+          ContentLength: probeBody.byteLength,
+        };
+      }
       return {};
     });
     const backend = new S3SourceContentBackend(
       s3Config,
-      { send } as unknown as S3Client,
+      buildS3Client(send),
     );
 
     await backend.publish({
@@ -129,6 +146,20 @@ describe("S3 source-content backend", () => {
 
     expect(commands.some((command) => command instanceof HeadBucketCommand)).toBe(true);
     expect(commands.some((command) => command instanceof ListObjectsV2Command)).toBe(true);
+    const probePut = commands.find((command) => {
+      return command instanceof PutObjectCommand
+        && command.input.Key?.includes("/.probe/") === true;
+    });
+    expect(probePut).toBeInstanceOf(PutObjectCommand);
+    expect((probePut as PutObjectCommand).input.ChecksumSHA256).toBe(
+      createHash("sha256").update("ready").digest("base64"),
+    );
+    const probeHead = commands.find((command) => {
+      return command instanceof HeadObjectCommand
+        && command.input.Key?.includes("/.probe/") === true;
+    });
+    expect(probeHead).toBeInstanceOf(HeadObjectCommand);
+    expect((probeHead as HeadObjectCommand).input.ChecksumMode).toBe("ENABLED");
     const contentPut = commands.find((command) => {
       return command instanceof PutObjectCommand
         && command.input.Key?.includes("/sha256/") === true;
@@ -136,44 +167,113 @@ describe("S3 source-content backend", () => {
     expect(contentPut).toBeInstanceOf(PutObjectCommand);
     expect((contentPut as PutObjectCommand).input).toMatchObject({
       Bucket: "citeloom",
+      ChecksumSHA256: Buffer.from(documentId, "hex").toString("base64"),
       ContentLength: content.byteLength,
       IfNoneMatch: "*",
       Key: `sources/sha256/${documentId.slice(0, 2)}/${documentId}`,
-      Metadata: {
-        "citeloom-byte-length": String(content.byteLength),
-        "citeloom-sha256": documentId,
-      },
     });
+    expect((contentPut as PutObjectCommand).input.Metadata).toBeUndefined();
     expect(commands.some((command) => command instanceof DeleteObjectCommand)).toBe(true);
   });
 
-  it("verifies object metadata and streamed content", async () => {
+  it("rejects a backend that does not return the write-probe checksum", async () => {
+    const commands: unknown[] = [];
+    const send = vi.fn(async (command: unknown) => {
+      commands.push(command);
+      return {};
+    });
+    const backend = new S3SourceContentBackend(
+      s3Config,
+      buildS3Client(send),
+    );
+
+    await expect(backend.initialize()).rejects.toThrow(
+      "S3 source-content backend does not support SHA-256 checksums.",
+    );
+    expect(commands.some((command) => command instanceof DeleteObjectCommand)).toBe(true);
+  });
+
+  it("verifies the native object checksum without reading its content", async () => {
     const content = Buffer.from("verified SeaweedFS object");
     const documentId = createHash("sha256").update(content).digest("hex");
+    const checksum = Buffer.from(documentId, "hex").toString("base64");
+    const commands: unknown[] = [];
     const send = vi.fn(async (command: unknown) => {
+      commands.push(command);
       if (command instanceof HeadObjectCommand) {
         return {
+          ChecksumSHA256: checksum,
           ContentLength: content.byteLength,
-          Metadata: {
-            "citeloom-byte-length": String(content.byteLength),
-            "citeloom-sha256": documentId,
-          },
         };
-      }
-      if (command instanceof GetObjectCommand) {
-        return { Body: Readable.from([content]) };
       }
       throw new Error("Unexpected S3 command.");
     });
     const backend = new S3SourceContentBackend(
       s3Config,
-      { send } as unknown as S3Client,
+      buildS3Client(send),
     );
 
     await expect(backend.verify({
       byteLength: content.byteLength,
       documentId,
     })).resolves.toBeUndefined();
+    const head = commands.find((command) => command instanceof HeadObjectCommand);
+    expect(head).toBeInstanceOf(HeadObjectCommand);
+    expect((head as HeadObjectCommand).input.ChecksumMode).toBe("ENABLED");
+    expect(commands.some((command) => command instanceof GetObjectCommand)).toBe(false);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["incorrect", Buffer.alloc(32).toString("base64")],
+  ])("rejects a %s native object checksum", async (_case, storedChecksum) => {
+    const content = Buffer.from("invalid SeaweedFS checksum");
+    const documentId = createHash("sha256").update(content).digest("hex");
+    const send = vi.fn(async (command: unknown) => {
+      if (command instanceof HeadObjectCommand) {
+        return {
+          ChecksumSHA256: storedChecksum,
+          ContentLength: content.byteLength,
+        };
+      }
+      throw new Error("Unexpected S3 command.");
+    });
+    const backend = new S3SourceContentBackend(
+      s3Config,
+      buildS3Client(send),
+    );
+
+    await expect(backend.verify({
+      byteLength: content.byteLength,
+      documentId,
+    })).rejects.toThrow(
+      `Published source content is missing or invalid: ${documentId}`,
+    );
+  });
+
+  it("rejects an object with the correct checksum and wrong byte length", async () => {
+    const content = Buffer.from("invalid SeaweedFS byte length");
+    const documentId = createHash("sha256").update(content).digest("hex");
+    const send = vi.fn(async (command: unknown) => {
+      if (command instanceof HeadObjectCommand) {
+        return {
+          ChecksumSHA256: Buffer.from(documentId, "hex").toString("base64"),
+          ContentLength: content.byteLength + 1,
+        };
+      }
+      throw new Error("Unexpected S3 command.");
+    });
+    const backend = new S3SourceContentBackend(
+      s3Config,
+      buildS3Client(send),
+    );
+
+    await expect(backend.verify({
+      byteLength: content.byteLength,
+      documentId,
+    })).rejects.toThrow(
+      `Published source content is missing or invalid: ${documentId}`,
+    );
   });
 
   it("maps missing objects to the storage boundary error", async () => {
@@ -182,7 +282,7 @@ describe("S3 source-content backend", () => {
     });
     const backend = new S3SourceContentBackend(
       s3Config,
-      { send } as unknown as S3Client,
+      buildS3Client(send),
     );
 
     await expect(backend.assertPresent({
@@ -210,7 +310,7 @@ describe("S3 source-content backend", () => {
     });
     const backend = new S3SourceContentBackend(
       s3Config,
-      { send } as unknown as S3Client,
+      buildS3Client(send),
     );
 
     const reconciled = await backend.reconcileOrphans({
@@ -257,6 +357,34 @@ describe.runIf(process.env.CITELOOM_SEAWEEDFS_LIVE_TEST === "true")(
       await backend.remove(documentId);
       await expect(backend.assertPresent(metadata))
         .rejects.toBeInstanceOf(SourceContentMissingError);
+    });
+
+    it("rejects source content that does not match its document ID", async () => {
+      const content = Buffer.from("mismatched live SeaweedFS source content");
+      const documentId = createHash("sha256")
+        .update("different content")
+        .digest("hex");
+      const backend = new S3SourceContentBackend({
+        bucket: process.env.CITELOOM_SOURCE_CONTENT_S3_BUCKET ?? "citeloom",
+        credentials: { kind: "environment" },
+        endpointUrl: process.env.CITELOOM_SOURCE_CONTENT_S3_ENDPOINT
+          ?? "http://127.0.0.1:8333",
+        forcePathStyle: true,
+        kind: "s3",
+        prefix: `live-test/${randomUUID()}`,
+        region: "us-east-1",
+      });
+
+      try {
+        await expect(backend.publish({
+          byteLength: content.byteLength,
+          content,
+          documentId,
+          kind: "buffer",
+        })).rejects.toMatchObject({ name: "BadDigest" });
+      } finally {
+        await backend.remove(documentId);
+      }
     });
   },
 );

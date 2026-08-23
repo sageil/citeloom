@@ -101,6 +101,10 @@ export type CiteLoomAnswerDataParts = {
 };
 
 export type CiteLoomUIMessage = UIMessage<never, CiteLoomAnswerDataParts>;
+export type CiteLoomUIMessageWriter = Pick<
+  UIMessageStreamWriter<CiteLoomUIMessage>,
+  "write"
+>;
 
 export type AnswerDataPart = {
   data: StreamedAnswer;
@@ -144,7 +148,7 @@ export type ChatDataPart = {
 };
 
 export function createAnswerContentWriter(
-  writer: UIMessageStreamWriter<CiteLoomUIMessage>,
+  writer: CiteLoomUIMessageWriter,
   receiveFirstContent: () => void = () => undefined,
 ): (content: AnswerContentSnapshot) => void {
   let lastContent: AnswerContentSnapshot = { citations: [], statements: [] };

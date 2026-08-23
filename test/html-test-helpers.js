@@ -30,12 +30,32 @@ export function findHtmlElementByText(elements, tagName, text) {
   throw new Error(`Could not find a ${tagName} element containing "${text}".`);
 }
 
+export function findHtmlElementByTagName(elements, tagName) {
+  for (const element of elements) {
+    if (element.tagName === tagName) {
+      return element;
+    }
+  }
+  throw new Error(`Could not find a ${tagName} element.`);
+}
+
+export function readHtmlDocumentText(elements) {
+  const root = elements[0];
+  if (root === undefined) {
+    return "";
+  }
+  return readHtmlText(root);
+}
+
 export function htmlElementHasClass(element, className) {
   const classNames = readHtmlAttribute(element, "class")?.split(/\s+/u) ?? [];
   return classNames.includes(className);
 }
 
 export function readHtmlAttribute(element, attributeName) {
+  if (element === undefined) {
+    return null;
+  }
   for (const attribute of element.attrs) {
     if (attribute.name === attributeName) {
       return attribute.value;

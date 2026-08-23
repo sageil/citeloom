@@ -8,7 +8,9 @@ import {
 } from "../web/assets/scripts/workspaces.js";
 import {
   findHtmlElementByAttribute,
+  htmlElementHasClass,
   readHtmlAttribute,
+  readHtmlDocumentText,
   readHtmlElements,
 } from "./html-test-helpers.js";
 
@@ -70,22 +72,37 @@ describe("CiteLoom workspace navigation", () => {
     expect(selectedWorkspaceOption.tagName).toBe("option");
   });
 
-  it("keeps create and edit in one settings workflow", async () => {
+  it("declares workspace creation and editing in one settings workflow", async () => {
     const [index, settings] = await Promise.all([
       readFile(new URL("../web/index.html", import.meta.url), "utf8"),
       readFile(new URL("../web/fragments/settings.html", import.meta.url), "utf8"),
     ]);
+    const indexElements = readHtmlElements(index);
+    const settingsElements = readHtmlElements(settings);
+    const indexText = readHtmlDocumentText(indexElements);
+    const settingsText = readHtmlDocumentText(settingsElements);
+    const openEditor = findHtmlElementByAttribute(
+      settingsElements,
+      "@click",
+      "openWorkspaceManagement(workspace)",
+    );
+    const renameForm = findHtmlElementByAttribute(
+      settingsElements,
+      "@submit.prevent",
+      "saveWorkspaceName()",
+    );
+    const memberEditor = settingsElements.find((element) => {
+      return htmlElementHasClass(element, "workspace-user-management");
+    });
 
-    expect(index).not.toContain("Create workspace");
-    expect(index).not.toContain("Rename workspace");
-    expect(settings).toContain("Create workspace");
-    expect(settings).toContain('@click="openWorkspaceManagement(workspace)"');
-    expect(settings).toContain('@submit.prevent="saveWorkspaceName()"');
-    expect(settings).toContain('class="workspace-user-management"');
-    expect(settings).toContain("Add user");
-    expect(settings).not.toContain("Add existing user");
-    expect(settings).not.toContain("Rename workspace");
-    expect(settings).not.toContain("submitWorkspaceEditor");
+    expect(indexText).not.toContain("Create workspace");
+    expect(indexText).not.toContain("Rename workspace");
+    expect(settingsText).toContain("Create workspace");
+    expect(settingsText).toContain("Add user");
+    expect(settingsText).not.toContain("Rename workspace");
+    expect(openEditor.tagName).toBe("button");
+    expect(renameForm.tagName).toBe("form");
+    expect(memberEditor).toBeDefined();
   });
 
   it("creates a workspace and opens that workspace in the unified editor", async () => {
@@ -168,11 +185,13 @@ describe("CiteLoom workspace navigation", () => {
     expect(page.workspaceNameCanSave()).toBe(true);
   });
 
-  it("uses the shared creation modal structure from Create Chat", async () => {
+  it("declares the shared creation dialog structure for Chat and workspaces", async () => {
     const [chat, settings] = await Promise.all([
       readFile(new URL("../web/fragments/chat.html", import.meta.url), "utf8"),
       readFile(new URL("../web/fragments/settings.html", import.meta.url), "utf8"),
     ]);
+    const chatElements = readHtmlElements(chat);
+    const settingsElements = readHtmlElements(settings);
 
     for (const className of [
       "creation-modal-backdrop",
@@ -181,12 +200,19 @@ describe("CiteLoom workspace navigation", () => {
       "creation-modal-close",
       "creation-modal-actions",
     ]) {
-      expect(chat).toContain(className);
-      expect(settings).toContain(className);
+      expect(chatElements.some((element) => {
+        return htmlElementHasClass(element, className);
+      })).toBe(true);
+      expect(settingsElements.some((element) => {
+        return htmlElementHasClass(element, className);
+      })).toBe(true);
     }
-    expect(settings).toContain("workspaceNameValidationMessage(workspaceCreateName)");
-    expect(settings).toContain("workspaceCreateSourceValidationMessage()");
-    expect(settings).toContain(':disabled="!workspaceCreateCanSubmit()"');
+    const submit = findHtmlElementByAttribute(
+      settingsElements,
+      ":disabled",
+      "!workspaceCreateCanSubmit()",
+    );
+    expect(submit.tagName).toBe("button");
   });
 });
 

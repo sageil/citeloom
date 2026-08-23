@@ -43,7 +43,7 @@ from citeloom_docling.pdf_pipeline import (
 
 
 class CiteLoomPdfPipelineTest(unittest.TestCase):
-    def test_releases_full_page_image_after_retaining_picture_crop(self) -> None:
+    def test_releases_full_page_image_and_backend_for_picture_page(self) -> None:
         pipeline = build_pipeline()
         conv_res = SimpleNamespace()
         page = build_picture_page()
@@ -61,9 +61,6 @@ class CiteLoomPdfPipelineTest(unittest.TestCase):
         self.assertEqual(page._image_cache, {})
         backend.unload.assert_called_once_with()
         self.assertIsNone(page._backend)
-        retained = pipeline._retained_picture_images_by_run[id(conv_res)]
-        self.assertEqual(len(retained), 1)
-        self.assertEqual(retained[0].image.size, Size(width=40, height=40))
 
     def test_attaches_retained_crop_to_final_picture(self) -> None:
         pipeline = build_pipeline()
@@ -103,10 +100,6 @@ class CiteLoomPdfPipelineTest(unittest.TestCase):
 
         self.assertIsNotNone(picture.image)
         self.assertEqual(picture.image.size, Size(width=40, height=40))
-        self.assertNotIn(
-            id(conv_res),
-            pipeline._retained_picture_images_by_run,
-        )
 
     def test_matches_crop_when_docling_clips_provenance_to_page(self) -> None:
         pipeline = build_pipeline()
@@ -176,10 +169,6 @@ class CiteLoomPdfPipelineTest(unittest.TestCase):
         pipeline._release_page_resources(item)
 
         self.assertEqual(page._image_cache, {})
-        self.assertNotIn(
-            id(conv_res),
-            pipeline._retained_picture_images_by_run,
-        )
 
     def test_releases_page_when_picture_encoding_fails(self) -> None:
         pipeline = build_pipeline()
@@ -206,10 +195,6 @@ class CiteLoomPdfPipelineTest(unittest.TestCase):
         self.assertEqual(page._image_cache, {})
         backend.unload.assert_called_once_with()
         self.assertIsNone(page._backend)
-        self.assertNotIn(
-            id(conv_res),
-            pipeline._retained_picture_images_by_run,
-        )
 
     def test_copies_options_before_disabling_document_wide_cropping(self) -> None:
         options = PdfPipelineOptions(

@@ -1,5 +1,3 @@
-import type { ServerResponse } from "node:http";
-
 import type { FastifyInstance } from "fastify";
 
 import type {
@@ -125,7 +123,7 @@ export function formatApplicationStateRevisionEvent(
 }
 
 export function openApplicationStateRevisionEventStream(
-  response: ServerResponse,
+  response: RevisionStreamResponse,
   services: RevisionStreamServices,
 ): () => void {
   response.writeHead(200, {
@@ -183,4 +181,11 @@ export function openApplicationStateRevisionEventStream(
   response.once("close", close);
   publish();
   return close;
+}
+
+interface RevisionStreamResponse {
+  end(): void;
+  once(event: "close", listener: () => void): unknown;
+  write(value: string): unknown;
+  writeHead(statusCode: number, headers: Record<string, string>): unknown;
 }

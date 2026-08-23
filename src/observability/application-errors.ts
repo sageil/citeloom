@@ -112,7 +112,13 @@ export interface ReportApplicationErrorResult {
   persisted: boolean;
 }
 
-type ApplicationErrorWriter = Pick<CiteLoomDatabase, "insert">;
+export type ApplicationErrorWriter = Pick<CiteLoomDatabase, "insert">;
+
+export interface ApplicationErrorTransactionRunner {
+  transaction<Result>(
+    operation: (transaction: ApplicationErrorWriter) => Promise<Result>,
+  ): Promise<Result>;
+}
 
 const trackedErrorIds = new WeakMap<Error, string>();
 const processOccurrenceNamespace = randomUUID();
@@ -123,7 +129,7 @@ const uuidPattern =
 
 export class ApplicationErrorReporter {
   public constructor(
-    private readonly database: CiteLoomDatabase,
+    private readonly database: ApplicationErrorTransactionRunner,
     private readonly fallbackLogger: (message: string) => void = console.error,
   ) {}
 

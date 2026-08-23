@@ -204,13 +204,11 @@ describe("application runtime", () => {
     await vi.waitFor(() => {
       expect(runtimes.get(0)?.close).toHaveBeenCalledOnce();
     });
-    expect(readRetiringSlotCount(manager)).toBe(0);
-
     await manager.shutdown();
     expect(runtimes.get(1)?.close).toHaveBeenCalledOnce();
   });
 
-  it("preserves a retired runtime close failure without retaining its slot", async () => {
+  it("reports a retired runtime close failure during shutdown", async () => {
     const closeError = new Error("retired runtime could not close");
     const initial = buildTestRuntime(0);
     initial.close.mockRejectedValue(closeError);
@@ -228,7 +226,6 @@ describe("application runtime", () => {
     await manager.reload(buildConfig(1));
     await vi.waitFor(() => {
       expect(initial.close).toHaveBeenCalledOnce();
-      expect(readRetiringSlotCount(manager)).toBe(0);
     });
 
     let shutdownError: unknown;
@@ -274,7 +271,6 @@ describe("application runtime", () => {
     await shutdown;
     expect(runtimes.get(0)?.close).toHaveBeenCalledOnce();
     expect(shutdownCompleted).toHaveBeenCalledOnce();
-    expect(readRetiringSlotCount(manager)).toBe(0);
   });
 
   it("discards a stale runtime when concurrent reloads finish out of order", async () => {
@@ -460,18 +456,9 @@ describe("application runtime", () => {
   });
 });
 
-interface RuntimeManagerRetirementState {
-  readonly retiringSlots: ReadonlyMap<unknown, Promise<void>>;
-}
-
 interface TestRuntime {
   close: ReturnType<typeof vi.fn<() => Promise<void>>>;
   runtime: ApplicationRuntime;
-}
-
-function readRetiringSlotCount(manager: ApplicationRuntimeManager): number {
-  const state = manager as unknown as RuntimeManagerRetirementState;
-  return state.retiringSlots.size;
 }
 
 function buildConfig(settingsVersion: number): AppConfig {

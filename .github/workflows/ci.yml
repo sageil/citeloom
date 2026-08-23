@@ -41,3 +41,158 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  database-integration-tests:
+    name: Database integration and recovery tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+
+      - name: Set up pnpm
+        run: npm install --global pnpm@11
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start test database
+        run: pnpm services:test:up
+
+      - name: Run database integration tests
+        run: pnpm test:integration
+
+      - name: Stop test database
+        if: always()
+        run: pnpm services:test:stop
+
+      - name: Test backup and restore
+        run: pnpm test:backup-restore
+
+  hhem-service-tests:
+    name: HHEM service tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Build HHEM test image
+        run: docker build --file infra/hhem/Dockerfile --tag citeloom-hhem-test .
+
+      - name: Run HHEM behavior tests
+        run: >-
+          docker run --rm
+          --volume "${GITHUB_WORKSPACE}/services/hhem/test_hhem_service.py:/app/test_hhem_service.py:ro"
+          citeloom-hhem-test
+          python -m unittest test_hhem_service.py
+
+      - name: Run runtime bootstrap tests
+        run: >-
+          docker run --rm
+          --volume "${GITHUB_WORKSPACE}/services/test_runtime_settings_bootstrap.py:/app/test_runtime_settings_bootstrap.py:ro"
+          citeloom-hhem-test
+          python -m unittest test_runtime_settings_bootstrap.py
+
+  docling-service-tests:
+    name: Docling service tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Build Docling test image
+        run: docker build --file infra/docling/Dockerfile --tag citeloom-docling-test .
+
+      - name: Run Docling behavior tests
+        run: >-
+          docker run --rm
+          --volume "${GITHUB_WORKSPACE}/infra/docling:/tests:ro"
+          citeloom-docling-test
+          python -m unittest discover --start-directory /tests --pattern 'test_*.py'
+
+  browser-tests:
+    name: Browser behavior tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+
+      - name: Set up pnpm
+        run: npm install --global pnpm@11
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run browser behavior tests
+        run: pnpm test:browser
+
+  seaweedfs-integration-tests:
+    name: SeaweedFS integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AWS_ACCESS_KEY_ID: citeloom-test
+      AWS_SECRET_ACCESS_KEY: citeloom-test-secret
+      CITELOOM_S3_ACCESS_KEY_ID: citeloom-test
+      CITELOOM_S3_SECRET_ACCESS_KEY: citeloom-test-secret
+      CITELOOM_SEAWEEDFS_DATA_DIRECTORY: ${{ runner.temp }}/citeloom-seaweedfs
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 26
+
+      - name: Set up pnpm
+        run: npm install --global pnpm@11
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start test database
+        run: pnpm services:test:up
+
+      - name: Start SeaweedFS
+        run: >-
+          docker compose
+          --file compose.yml
+          --file compose.seaweedfs.yml
+          up --detach --wait seaweedfs
+
+      - name: Run live SeaweedFS tests
+        run: pnpm test:seaweedfs-live
+
+      - name: Stop SeaweedFS
+        if: always()
+        run: >-
+          docker compose
+          --file compose.yml
+          --file compose.seaweedfs.yml
+          stop seaweedfs
+
+      - name: Stop test database
+        if: always()
+        run: pnpm services:test:stop

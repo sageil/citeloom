@@ -1,13 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { CiteLoomDatabase } from "../src/database/client.js";
-import {
-  applicationErrorEvents,
-  doclingErrorDetails,
-} from "../src/database/schema.js";
 import {
   ApplicationErrorReporter,
-  persistApplicationErrorEvent,
+  type ApplicationErrorTransactionRunner,
   prepareApplicationErrorEvent,
   readApplicationErrorId,
   sanitizeDiagnosticMessage,
@@ -90,11 +85,7 @@ describe("application error reporting", () => {
     expect(sanitized).toContain("[REDACTED]");
   });
 
-  it("persists one parent and every normalized Docling child", async () => {
-    const writes: Array<{ rows: unknown; table: unknown }> = [];
-    const database = buildApplicationErrorDatabase(async (table, rows) => {
-      writes.push({ rows, table });
-    });
+  it("normalizes every Docling error detail before persistence", () => {
     const event = prepareApplicationErrorEvent(new Error("conversion failed"), {
       attemptNumber: 1,
       doclingErrors: [
@@ -124,12 +115,7 @@ describe("application error reporting", () => {
       sourceFile: "/documents/report.pdf",
     });
 
-    await persistApplicationErrorEvent(database, event);
-
-    expect(writes).toHaveLength(2);
-    expect(writes[0]?.table).toBe(applicationErrorEvents);
-    expect(writes[1]?.table).toBe(doclingErrorDetails);
-    expect(writes[1]?.rows).toEqual([
+    expect(event.doclingErrors).toEqual([
       expect.objectContaining({
         pageNumber: 17,
         pageRangeEnd: null,
@@ -150,9 +136,9 @@ describe("application error reporting", () => {
 
   it("logs one sanitized database fallback without recursing", async () => {
     const messages: string[] = [];
-    const database = buildApplicationErrorDatabase(async () => {
-      throw new Error("password=database-secret");
-    });
+    const database = buildFailingApplicationErrorDatabase(
+      new Error("password=database-secret"),
+    );
     const reporter = new ApplicationErrorReporter(
       database,
       (message) => messages.push(message),
@@ -176,23 +162,12 @@ describe("application error reporting", () => {
   });
 });
 
-type ApplicationErrorInsertHandler = (
-  table: unknown,
-  rows: unknown,
-) => Promise<void>;
-
-function buildApplicationErrorDatabase(
-  handleInsert: ApplicationErrorInsertHandler,
-): CiteLoomDatabase {
-  const database = {
-    insert: (table: unknown) => ({
-      values: (rows: unknown) => ({
-        onConflictDoNothing: async () => handleInsert(table, rows),
-      }),
-    }),
-    transaction: async (
-      operation: (transaction: CiteLoomDatabase) => Promise<unknown>,
-    ) => operation(database as unknown as CiteLoomDatabase),
+function buildFailingApplicationErrorDatabase(
+  error: Error,
+): ApplicationErrorTransactionRunner {
+  return {
+    transaction: async <Result>(): Promise<Result> => {
+      throw error;
+    },
   };
-  return database as unknown as CiteLoomDatabase;
 }
