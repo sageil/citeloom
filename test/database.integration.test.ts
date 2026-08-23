@@ -4260,6 +4260,80 @@ describe("PostgreSQL document catalog", () => {
         return document.sourceFile;
       })).toEqual([secondSourceFile, sharedSourceFile]);
 
+      await ensureEmbeddingSpace(session.database, space768);
+      const indexedFixtures = [
+        {
+          documentId: originalDocumentId,
+          sourceFile: originalSourceFile,
+          sourceLibraryId: original.libraryId,
+        },
+        {
+          documentId: secondDocumentId,
+          sourceFile: secondSourceFile,
+          sourceLibraryId: secondLibraryId,
+        },
+        {
+          documentId: sharedDocumentId,
+          sourceFile: sharedSourceFile,
+          sourceLibraryId: sharedLibraryId,
+        },
+      ];
+      for (const fixture of indexedFixtures) {
+        const elementSetId = await writeTestElementSet(
+          fixture.documentId,
+          fixture.sourceFile,
+        );
+        const generationId = randomUUID();
+        const versionId = randomUUID();
+        await session.database.insert(documentVersions).values({
+          ...buildTestDocumentFormatRow(fixture.sourceFile),
+          documentId: fixture.documentId,
+          elementSetId,
+          generationId,
+          id: versionId,
+          images: 0,
+          pageCount: 1,
+          sourceFile: fixture.sourceFile,
+          tables: 0,
+          textChunks: 1,
+          totalElements: 1,
+          version: 1,
+        });
+        await session.database.insert(indexedDocuments).values({
+          documentId: fixture.documentId,
+          elementSetId,
+          generationId,
+          images: 0,
+          pageCount: 1,
+          sourceFile: fixture.sourceFile,
+          sourceLibraryId: fixture.sourceLibraryId,
+          tables: 0,
+          tags: [],
+          textChunks: 1,
+          totalElements: 1,
+          versionId,
+        });
+        await session.database.insert(indexedDocumentSpaces).values({
+          documentId: fixture.documentId,
+          embeddingSpaceId: space768.id,
+          generationId,
+          representationCount: 1,
+          sourceFile: fixture.sourceFile,
+        });
+      }
+
+      const originalIndexedCatalog = new DocumentCatalog(session.database, {
+        workspaceIds: [original.workspaceId],
+      });
+      const originalIndexedDocuments = await originalIndexedCatalog
+        .listAvailableDocuments(space768.id);
+      expect(originalIndexedDocuments.map((document) => {
+        return document.sourceFile;
+      }).sort()).toEqual([
+        originalSourceFile,
+        sharedSourceFile,
+      ].sort());
+
       const combinedCatalog = new DocumentCatalog(session.database, {
         workspaceIds: [original.workspaceId, secondWorkspaceId],
       });
@@ -4338,6 +4412,41 @@ describe("PostgreSQL document catalog", () => {
           originalSourceFile,
           secondSourceFile,
           sharedSourceFile,
+        ]));
+      await session.database
+        .delete(indexedDocumentSpaces)
+        .where(inArray(indexedDocumentSpaces.sourceFile, [
+          originalSourceFile,
+          secondSourceFile,
+          sharedSourceFile,
+        ]));
+      await session.database
+        .delete(indexedDocuments)
+        .where(inArray(indexedDocuments.sourceFile, [
+          originalSourceFile,
+          secondSourceFile,
+          sharedSourceFile,
+        ]));
+      await session.database
+        .delete(documentVersions)
+        .where(inArray(documentVersions.sourceFile, [
+          originalSourceFile,
+          secondSourceFile,
+          sharedSourceFile,
+        ]));
+      await session.database
+        .delete(documentElementSets)
+        .where(inArray(documentElementSets.documentId, [
+          originalDocumentId,
+          secondDocumentId,
+          sharedDocumentId,
+        ]));
+      await session.database
+        .delete(sourceElements)
+        .where(inArray(sourceElements.documentId, [
+          originalDocumentId,
+          secondDocumentId,
+          sharedDocumentId,
         ]));
       await session.database
         .delete(sourceDocuments)
