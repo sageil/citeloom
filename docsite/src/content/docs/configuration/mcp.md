@@ -20,12 +20,12 @@ The MCP client does not select a workspace.
 It does not send a workspace name, workspace header, or workspace tool argument.
 
 CiteLoom combines the documents available through these workspaces into one authorized document set.
-This set includes private libraries owned by an available workspace.
-It also includes shared libraries granted to at least one available workspace.
+This set includes private libraries owned by an accessible workspace.
+It also includes shared libraries granted to at least one accessible workspace.
 CiteLoom includes each library one time.
 
-Each Search call performs one search over this combined document set.
-Each Ask task performs one retrieval and creates one answer over this combined document set.
+Each search call searches this combined document set once.
+Each Ask task retrieves from this document set once and creates one answer.
 
 ## Capabilities
 
@@ -33,22 +33,22 @@ The MCP host receives only the capabilities allowed by the OAuth token or API ke
 
 | Scope | Name | Type | Behavior |
 | --- | --- | --- | --- |
-| Any authenticated request | `citeloom://workspace/context` | Resource | Returns the authenticated user and all available workspaces. |
+| Any authenticated request | `citeloom://workspace/context` | Resource | Returns the authenticated user and all accessible workspaces. |
 | `citeloom.search` | `citeloom.search_sources` | Tool | Performs one search over the combined authorized document set. |
 | `citeloom.search` | `citeloom.search_workspace` | Prompt | Tells the model to search the combined authorized document set and keep the evidence metadata. |
 | `citeloom.answer` | `citeloom.ask_documents` | Tool | Starts one durable answer task over the combined authorized document set. |
 | `citeloom.answer` | `citeloom.get_answer` | Tool | Returns the task state and the single combined answer. |
 | `citeloom.answer` | `citeloom.cancel_answer` | Tool | Requests cancellation of an answer task. |
 | `citeloom.answer` | `citeloom.answer_with_citations` | Prompt | Tells the model to request and present the cited answer. |
-| `citeloom.answer` | `citeloom://workspaces/{workspaceId}/research/threads/{threadId}` | Resource template | Returns a saved research thread from an available workspace. |
-| `citeloom.answer` | `citeloom://workspaces/{workspaceId}/research/citations/{citationId}` | Resource template | Returns citation evidence from an available workspace. |
+| `citeloom.answer` | `citeloom://workspaces/{workspaceId}/research/threads/{threadId}` | Resource template | Returns a saved research thread from an accessible workspace. |
+| `citeloom.answer` | `citeloom://workspaces/{workspaceId}/research/citations/{citationId}` | Resource template | Returns citation evidence from an accessible workspace. |
 
 ## Search available documents
 
 Call `citeloom.search_sources` once.
 CiteLoom resolves the combined authorized document set before retrieval.
 CiteLoom returns one search result.
-The MCP host gives that result to the model.
+The MCP host can give that result to its model.
 
 ## Ask available documents
 
@@ -253,7 +253,7 @@ The complete scope set shows these tools:
 
 ### Use an MCP API key
 
-Use these steps instead of the OAuth connection steps when you want to test an API key:
+To test an API key, use these steps instead of the OAuth connection steps:
 
 1. Stop an Inspector session that used OAuth for the same CiteLoom URL.
 2. Create an owner-only temporary configuration outside the repository:
@@ -294,7 +294,8 @@ MCP_STORAGE_DIR=/tmp/citeloom-mcp-inspector-api-key \
 7. Turn on the `citeloom-api-key` connection switch.
 8. Confirm that the connection state is **Connected**.
 
-Inspector `2.2.0` does not provide a header editor for a server loaded with `--config` because that session is read-only.
+Inspector `2.2.0` treats a server loaded with `--config` as read-only.
+The Inspector does not provide a header editor for that server.
 
 :::danger[Keep the temporary API key private]
 The temporary file keeps the cleartext key out of the repository, shell history, and process arguments.
@@ -320,8 +321,8 @@ Open **Resources** to see the workspace-context URI and the research-thread and 
 ![MCP Inspector lists the CiteLoom workspace-context URI and two saved-research resource templates.](/citeloom/images/mcp-inspector-resources.png)
 
 Select **CiteLoom workspace access** to read `citeloom://workspace/context`.
-Confirm that the result identifies the expected user and all available workspaces.
-The research templates can read an existing workspace-scoped research record when you already have its workspace and record identifiers.
+Confirm that the result identifies the expected user and all accessible workspaces.
+The research templates can return an existing workspace-scoped research record when you have its workspace and record identifiers.
 
 ### 6. Test Search
 
@@ -381,7 +382,8 @@ When the status is `completed`, confirm these fields:
 
 :::caution[Do not create a research-thread URI for a combined answer]
 The combined multi-workspace MCP answer flow returns an empty `resources` list.
-Do not combine one returned `workspaceId` with `answer.turn.threadId` in the research-thread template because the combined thread is not owned by one workspace.
+The combined thread is not owned by one workspace.
+Do not combine a returned `workspaceId` with `answer.turn.threadId` in the research-thread template.
 :::
 
 ### 8. Stop the Inspector
@@ -397,7 +399,7 @@ rm -f /tmp/citeloom-inspector-api-key.json
 
 ## Connect with an MCP API key
 
-Use an MCP API key for automation or when the MCP host accepts a fixed bearer secret.
+Use an MCP API key for automation or for an MCP host that accepts a fixed bearer secret.
 An API key works while CiteLoom browser authentication is in local or OAuth mode.
 
 ### Create the key
@@ -424,7 +426,7 @@ Authorization: Bearer <CiteLoom MCP API key>
 ```
 
 Do not configure an OAuth client, OAuth resource, or callback for an API key.
-The key uses all active workspaces where its owner has an enabled membership.
+The key provides access to all active workspaces where its owner has an enabled membership.
 
 For every request, CiteLoom checks the key digest, expiry, revocation state, owner state, workspace states, memberships, and scope.
 

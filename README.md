@@ -1,6 +1,6 @@
 # CiteLoom
 
-> Private documents, woven into cited answers.
+> Self-hosted document research with citations you can inspect.
 
 [![GitHub Release](https://img.shields.io/github/v/release/sageil/citeloom?sort=semver)](https://github.com/sageil/citeloom/releases/latest)
 ![Node.js](https://img.shields.io/badge/node-26.5.0-339933)
@@ -14,9 +14,12 @@
 
 ▶ [Watch the CiteLoom demo on YouTube](https://youtu.be/DsbCPF8GD4I)
 
-CiteLoom is a Retrieval-Augmented Generation (RAG) system that lets you ask questions and chat with your documents.
-Its findings link back to the original evidence.
-It can use local or remote model providers, and it keeps saved answers tied to the exact document versions used at the time.
+CiteLoom is a self-hosted research application for private document collections.
+Use it to search source material, ask questions, and continue document-grounded chats.
+Every published citation links to the original evidence, and saved answers stay tied to the document versions used for that answer.
+
+CiteLoom supports local, remote, or mixed model routes.
+You decide which providers handle document processing, embeddings, ranking, answer generation, and speech.
 
 ## What you can do
 
@@ -33,29 +36,28 @@ It can use local or remote model providers, and it keeps saved answers tied to t
 
 The [feature guide](docs/features.md) lists the supported formats, user features, administrator controls, and important limits.
 
-## Install CiteLoom
+## Start with Docker Compose
 
 The Docker Compose deployment includes the web application, worker, PostgreSQL, Docling document conversion, HHEM citation-support checks, and local HTTPS through Caddy.
 Model providers run separately and are selected in Settings after installation.
 
-Follow [Deployment](docs/deployment.md) to install published images or build the stack from source.
-The guide includes prerequisites, persistent storage, administrator bootstrap, HTTPS, and a verification checklist.
+Follow the [minimum installation guide](https://sammyageil.com/citeloom/installation/docker-compose/) to start the published container images.
+Use the [complete deployment reference](docs/deployment.md) for source builds, storage choices, scaling, production proxy settings, and recovery behavior.
 
-## Understand the answer
+## Check the evidence
 
 CiteLoom searches only the ready documents in the selected scope.
-It may use generated descriptions to improve discovery, but published citations always point to original document evidence.
+CiteLoom may use generated descriptions to improve discovery, but published citations always point to original document evidence.
 The server validates every citation before publication.
 
 HHEM support scores are advisory review signals, not guarantees of correctness.
 They never add, remove, or rewrite answer content or citations.
 Always inspect the linked evidence before relying on an important answer.
 
-## Documentation
+## Choose a guide
 
-Read the published [CiteLoom installation and configuration guides](https://sammyageil.com/citeloom/) or choose a repository guide below.
-
-Choose the guide that matches the work you need to do.
+The [CiteLoom documentation site](https://sammyageil.com/citeloom/) provides task guides for installation, Ask, Chat, Find, configuration, and operations.
+The repository references below provide complete technical detail.
 
 | Goal | Guide |
 | --- | --- |

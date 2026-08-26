@@ -1,6 +1,6 @@
 ---
 title: Local, remote, or hybrid models
-description: Route each CiteLoom capability to a local model, a remote provider, or a deliberate mix.
+description: Route each CiteLoom capability to a local model, a remote provider, or both.
 ---
 
 One provider does not have to handle every model capability.
@@ -22,7 +22,8 @@ Connections define endpoints and credentials, while feature routes decide which 
 ## All-local deployment
 
 Route Ask, Chat, indexing, and embeddings to endpoints on infrastructure you control.
-This is the clearest option when content must remain on a private network or the installation needs to operate without an external inference service.
+An all-local deployment keeps content on a private network.
+It also lets the installation operate without an external inference service.
 
 The application containers reach a host model service through `host.docker.internal` in the included Compose configuration.
 Verify the exact endpoint and model identifiers from inside the containers with `pnpm run doctor:docker`.
@@ -33,7 +34,8 @@ CiteLoom does not silently reduce configured retrieval limits when a model canno
 ## Remote-provider deployment
 
 Route selected features to managed providers when you need elastic capacity, a broader model catalog, or capabilities unavailable locally.
-Store provider credentials through Settings; CiteLoom keeps them in PostgreSQL.
+Store provider credentials through Settings.
+CiteLoom keeps them in PostgreSQL.
 Protect database backups as credentials-bearing assets.
 
 Document text or audio sent to a remote provider leaves the CiteLoom host.
@@ -48,7 +50,7 @@ Choose the boundary per feature:
 
 1. Create and verify each provider connection.
 2. Assign the core features to compatible connections.
-3. Set a feature-specific model only when it should differ from the connection default.
+3. Set a feature-specific model only when it differs from the connection default.
 4. Save the routes.
 5. Reindex when the embedding model, dimensions, document section method, or search text format changed.
 6. Test representative documents and questions instead of assuming model-family compatibility.

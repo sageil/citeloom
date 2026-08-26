@@ -12,7 +12,7 @@ export default defineConfig({
     }),
     starlight({
       title: "CiteLoom",
-      description: "Install, configure, integrate, and operate CiteLoom.",
+      description: "Use, install, configure, and operate CiteLoom.",
       components: {
         Head: "./src/components/Head.astro",
         SocialIcons: "./src/components/SocialIcons.astro",
@@ -44,7 +44,7 @@ export default defineConfig({
           ],
         },
         {
-          label: "Features",
+          label: "Use CiteLoom",
           items: [
             { label: "Ask", slug: "features/ask" },
             { label: "Chat", slug: "features/chat" },
@@ -54,7 +54,7 @@ export default defineConfig({
         {
           label: "Install",
           items: [
-            { label: "Minimum Installation", slug: "installation/docker-compose" },
+            { label: "Minimum installation", slug: "installation/docker-compose" },
             { label: "Use object storage", slug: "installation/seaweedfs" },
             { label: "Use OAuth", slug: "installation/oauth" },
           ],
@@ -70,7 +70,15 @@ export default defineConfig({
           ],
         },
         {
-          label: "Complete reference",
+          label: "Run and maintain",
+          items: [
+            { label: "Operations", slug: "reference/operations" },
+            { label: "pnpm commands", slug: "reference/commands" },
+            { label: "Release notes", slug: "reference/releases" },
+          ],
+        },
+        {
+          label: "Reference",
           collapsed: true,
           items: [
             { label: "Architecture", slug: "reference/architecture" },
@@ -79,9 +87,6 @@ export default defineConfig({
             { label: "Configuration", slug: "reference/configuration" },
             { label: "Deployment", slug: "reference/deployment" },
             { label: "Evaluation", slug: "reference/evaluation" },
-            { label: "Operations", slug: "reference/operations" },
-            { label: "pnpm commands", slug: "reference/commands" },
-            { label: "Release notes", slug: "reference/releases" },
           ],
         },
       ],

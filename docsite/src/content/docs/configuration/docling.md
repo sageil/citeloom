@@ -4,9 +4,12 @@ description: Configure document conversion, PDF processing, capacity, additional
 ---
 
 Docling converts source files into structured content that CiteLoom can index and cite.
-The included Docling service stages recoverable PDF checkpoints in its own persistent directory; it does not mount CiteLoom's active source-content store.
+The included Docling service stages recoverable PDF checkpoints in its own persistent directory.
+It does not mount CiteLoom's active source-content store.
 
-## Configure in Settings > Docling
+## Configure Docling
+
+Open **Settings > Docling**.
 
 | Panel | Controls |
 | --- | --- |
@@ -15,7 +18,7 @@ The included Docling service stages recoverable PDF checkpoints in its own persi
 | Performance and limits | Conversion time allowances and request limits. |
 | Diagnostics | Conversion metrics and retention. |
 
-The same page owns the process settings for additional service instances, pipeline profiling, thread count, page batch size, queue size, local engine workers, and model sharing.
+This page also contains the process settings for additional services, pipeline profiling, thread count, page batches, queue size, local engine workers, and model sharing.
 Restart each Docling service after changing those process settings.
 
 ## Standard and VLM modes

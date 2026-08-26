@@ -49,6 +49,6 @@ Each response can show:
 
 Select a citation or a source number to inspect its evidence.
 
-## Next action
+## Verify the evidence
 
 Open the source evidence for each important response before you use it.

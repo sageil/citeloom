@@ -1,6 +1,7 @@
 # pnpm commands
 
-This page describes every pnpm script declared in [`package.json`](../package.json).
+This reference is for contributors and operators who work from a source checkout.
+It lists the pnpm scripts declared in [`package.json`](../package.json).
 Run a script with `pnpm <script>`, followed by any arguments the command accepts.
 
 ## Application scripts

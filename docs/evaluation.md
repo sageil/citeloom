@@ -1,5 +1,8 @@
 # Evaluation
 
+This guide is for maintainers who evaluate retrieval and citation support.
+It is not required to install or operate CiteLoom.
+
 CiteLoom measures retrieval quality and claim verification against data reviewed by people.
 Generated questions and model judgments are never treated as trusted benchmark answers until a reviewer accepts them.
 The [corpus guide](../corpora/README.md) explains where sources come from, which licenses apply, and how to select the proof corpus.
@@ -49,7 +52,7 @@ A dataset cannot run in a benchmark until a reviewer accepts every judgment.
 
 Dataset generation records two statistical assumptions:
 
-- The smallest paired normalized discounted cumulative gain (NDCG) change the evaluation should detect.
+- The smallest paired normalized discounted cumulative gain (NDCG) change that the evaluation is designed to detect.
 - The expected standard deviation of the score difference for each paired case.
 
 If you omit the case count, CiteLoom calculates it with 80 percent statistical power, a two-sided alpha of 0.05, and a normal approximation.
@@ -66,7 +69,7 @@ pnpm evaluate:generate \
   --enrich
 ```
 
-Add `--enrich` to gather candidate passages from keyword, meaning-based, combined, and configured reranked retrieval.
+Add `--enrich` to gather candidate passages from Keyword, Semantic, Hybrid, and configured reranked retrieval.
 
 ## Preparation and offline scoring
 
@@ -98,7 +101,7 @@ Each comparison uses the same Query Expansion, retrieval, source loading, and re
 The saved preparation records the strongest scores, document scopes, telemetry, corpus and model identities, retrieval settings, and code revision for both cases.
 
 Prepare each development domain separately.
-This prevents an interrupted model or database operation from leaving a partial file that looks complete.
+Separate preparation prevents an interrupted model or database operation from leaving a partial file that looks complete.
 
 ```bash
 pnpm evaluate \
@@ -122,7 +125,8 @@ pnpm evaluate \
   --output results/veterinary-regression.answer-threshold.json
 ```
 
-Selection chooses the threshold that accepts the most answerable cases while staying within the maximum measured false-acceptance rate, both overall and in each included domain.
+Selection chooses the threshold that accepts the most answerable cases.
+The measured false-acceptance rate must remain within the maximum, both overall and in each included domain.
 If several thresholds produce the same measured result, CiteLoom chooses the midpoint between the positive and negative score boundaries.
 
 The report shows answerable pass rates, false-acceptance rates, results for each domain, Wilson 95 percent confidence intervals, and accepted cases that retrieval missed.
@@ -149,7 +153,7 @@ The report uses them only to show answerable pass rates, false-acceptance rates,
 
 Threshold reports can still help compare historical reranker scores, but CiteLoom does not use a raw reranker score to decide whether to generate an answer.
 Create new preparations after changing any part of search or scoring.
-This includes the reranker, provider scoring, embedding space, Query Expansion, candidate count, result fusion, HNSW settings, corpus, or relevant code.
+Search or scoring changes include the reranker, provider scoring, embedding space, Query Expansion, candidate count, result fusion, HNSW settings, corpus, and relevant code.
 This calibration measures accepted positive cases against negatives from another domain.
 It does not establish performance for arbitrary real-world questions or difficult negatives from the same domain.
 
@@ -173,7 +177,7 @@ pnpm evaluate \
   --freeze-output results/retrieval-tuning.freeze.json
 ```
 
-If no candidate meets the goal and every domain and latency limit, the command does not select a winner.
+If no candidate meets the goal, every domain limit, and every latency limit, the command does not select a winner.
 A successful result lists every candidate, explains each rejection, identifies the winner, shows the effect of removing individual changes, and saves the winning configuration.
 
 ## Frozen configuration and sealed holdouts

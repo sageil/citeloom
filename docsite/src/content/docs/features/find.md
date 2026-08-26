@@ -33,6 +33,6 @@ Each document row can show:
 Select the check box for each useful document.
 Then select **Add to question** to use those documents in Ask.
 
-## Next action
+## Inspect a result
 
 Expand the best result and read the matching excerpt before you add the document to a question.

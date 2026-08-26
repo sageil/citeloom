@@ -13,8 +13,8 @@ Start with the base stack and verify it before you add another service.
 | --- | --- | --- |
 | Published images | You want the supported installation path without compiling locally. | `compose.dockerhub.yml` |
 | Source build | You are developing CiteLoom or validating local code changes. | `compose.yml` |
-| SeaweedFS | Source documents should live in S3-compatible object storage instead of the local filesystem. | Base Compose file plus `compose.seaweedfs.yml` |
-| Authorization server | Browser and MCP users should authenticate through OAuth. | Operated separately; the Logto example uses `compose.logto.yml` |
+| SeaweedFS | You want to store source documents in S3-compatible object storage instead of the local filesystem. | Base Compose file plus `compose.seaweedfs.yml` |
+| Authorization server | You want browser and MCP users to authenticate through OAuth. | Operated separately through the Logto example in `compose.logto.yml`. |
 
 The base stack includes PostgreSQL, migrations, the web application, the background worker, Docling, HHEM, and a local Caddy HTTPS proxy.
 Model providers run separately and are configured from CiteLoom Settings after installation.
