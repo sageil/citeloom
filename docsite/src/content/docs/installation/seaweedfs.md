@@ -22,7 +22,7 @@ The included Compose overlay uses SeaweedFS.
 One CiteLoom environment includes the web and worker containers that use the same PostgreSQL database.
 All containers in that environment use the same S3 endpoint, bucket, and key prefix.
 
-If production and test use the same S3 service, give them different buckets or different key prefixes.
+If production and test environments use the same S3 service, give them different buckets or key prefixes.
 
 For example:
 
@@ -81,7 +81,7 @@ docker compose --env-file .env \
   -f compose.seaweedfs.yml up -d --wait
 ```
 
-A new CiteLoom environment that starts with this overlay stores source documents in SeaweedFS.
+A new CiteLoom environment stores source documents in SeaweedFS when it starts with this overlay.
 
 ### 3. Verify the active storage
 
@@ -274,7 +274,8 @@ Confirm that AWS S3 contains objects below the configured prefix.
 Keep the SeaweedFS service, its credentials, and its data directory for the recovery period that your policy defines.
 New writes and deletions are not copied back to SeaweedFS after cutover.
 
-To roll back during that period, configure SeaweedFS as the migration target with its original values, enable path-style URLs, test the connection, and complete the reverse migration.
+To roll back during that period, configure SeaweedFS as the migration target with its original values.
+Enable path-style URLs, test the connection, and complete the reverse migration.
 After the recovery period, remove the SeaweedFS overlay from the deployment and recreate the application services with all other required overlays.
 
 ## Use another S3-compatible service

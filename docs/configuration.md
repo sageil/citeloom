@@ -1,22 +1,23 @@
 # Configuration
 
-CiteLoom has two configuration layers:
+CiteLoom has two configuration layers.
+Application Settings store normal runtime configuration.
+Environment variables provide deployment bootstrap and process-level values that application Settings cannot own.
 
-- Use the Settings page for providers, models, search, answers, document conversion, and the active source-content backend.
-- Use environment variables for database access, fresh-database storage defaults, web listeners, release information, and service processes.
+- **Application Settings:** providers, models, search, answers, document conversion, and the active source-content backend.
+- **Environment variables:** database access, fresh-database storage defaults, web listeners, release information, and service processes.
 
 Settings are stored in PostgreSQL.
 Each ingestion, Ask, or Chat run keeps the settings snapshot it started with.
 
-## Configure providers
+## Provider configuration
 
-Open Settings after CiteLoom starts, then configure providers in this order:
+Provider configuration has two parts: connections and feature routes.
+A connection defines an endpoint, credential, default models, and shared request limit.
+A feature route assigns an application feature to a compatible connection and can override its model, input capacity, thinking mode, or voice.
 
-1. Open a provider connection and enter its endpoint, credential, default models, and shared request limit.
-2. Save the connection.
-3. Assign each application feature to a compatible provider.
-4. Add a feature-specific model, input-capacity, thinking, or voice override only when that feature needs one.
-5. Save the feature routes.
+Connections must be saved before their feature routes.
+The [model-routing guide](https://sammyageil.com/citeloom/configuration/providers/) provides the configuration procedure.
 
 Ask, Chat, the Indexing model, and the Embedding model require a route.
 Query Expansion needs a route only when its expansion count is greater than `0`.
@@ -25,18 +26,19 @@ Search ranking, Speech input, and Spoken answers are optional.
 Fresh installations route the required features to Ollama and leave the optional features unassigned.
 The [provider reference](#provider-reference) shows compatible routes and endpoint formats.
 
-Verify the saved connections from the environment where CiteLoom runs.
+`pnpm run doctor:docker` checks saved connections from the Docker environment.
 
 ```bash
 pnpm run doctor:docker
 ```
 
-Use `pnpm run doctor:source` for a host-run application.
+`pnpm run doctor:source` performs the same check for a host-run application.
 
 ## Environment and storage
 
-Use [`.env.example`](../.env.example) as the environment-variable reference.
-Copy it to `.env.development` for source development or `.env` for Docker Compose and production builds.
+The [`.env.example`](../.env.example) file is the environment-variable reference.
+Source development uses `.env.development`.
+Docker Compose and production builds use `.env`.
 Values set directly in the process environment take precedence.
 The [standalone frontend guide](../web/README.md) documents its additional variables.
 
@@ -61,7 +63,7 @@ The [standalone frontend guide](../web/README.md) documents its additional varia
 | `CITELOOM_SEAWEEDFS_DATA_DIRECTORY` | Host directory containing optional SeaweedFS data |
 | `CITELOOM_UPLOAD_DIRECTORY` | Web staging directory for in-progress uploads |
 | `CITELOOM_WEB_HOST` | Listener address for a host-run web process |
-| `CITELOOM_WEB_PORT` | Listener port for a host-run web process; Docker replicas use internal port 3000 |
+| `CITELOOM_WEB_PORT` | Listener port for a host-run web process, with Docker replicas fixed to internal port 3000 |
 | `CITELOOM_ADMIN_USERNAME` | Required migration input used to create the first administrator in a new database |
 | `CITELOOM_ADMIN_PASSWORD` | Required migration input used to create the first administrator password in a new database |
 
@@ -88,11 +90,13 @@ It defaults `CITELOOM_SOURCE_CONTENT_HOST_DIRECTORY` to `./documents/blobs`.
 
 The database `sourceContent` setting selects either a filesystem directory or an S3-compatible bucket, endpoint, region, and key prefix.
 The web application, worker, and ordinary command-line tools use this stored configuration.
-An administrator can open Settings, choose Object storage, test a filesystem or S3-compatible target, and start a verified background migration.
+An administrator can open **Settings > Object storage**, test a filesystem or S3-compatible target, and start a verified background migration.
 The environment source stores only the credential-source choice and reads `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in each application process.
 Static credentials entered in Settings are stored in PostgreSQL, are write-only through the API, and are therefore included in database backups.
-Source-content environment settings seed a new database and select the target for the offline `source-content migrate --apply` command, but they do not replace the active backend of an existing database during ordinary schema migration.
-The host-run development benchmark remains the exception and reads the source-content environment variables because Compose paths and service hostnames may not be reachable from the host.
+Source-content environment settings seed a new database and select the target for the offline `source-content migrate --apply` command.
+An ordinary schema migration does not use them to replace the active backend of an existing database.
+The host-run development benchmark is an exception.
+It reads the source-content environment variables because the host might not reach Compose paths and service hostnames.
 
 Follow [Choose storage paths](deployment.md#choose-storage-paths) to select or move the persistent stores safely.
 
@@ -118,7 +122,7 @@ Each feature can use a different provider, so the service that writes answers do
 | Jina | - | - | - | - | Yes | Yes | - | - |
 | Custom | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 
-Assign models that support their selected capabilities.
+Each assigned model must support its selected capability.
 The Custom profile lets administrators choose the adapter used for each capability.
 
 Docling VLM processing does not add another capability route to this table.
@@ -151,12 +155,18 @@ A source-run process normally uses the equivalent `127.0.0.1` or network address
 | Custom | None | Administrator-selected adapters, base URLs, models, and credentials |
 
 Base URLs, model IDs, context capacities, and maximum parallel requests are editable in Settings.
-Use the exact model identifier exposed by the configured endpoint.
+The model identifier must match the identifier exposed by the configured endpoint.
 Provider APIs and model catalogs change independently of CiteLoom.
-Confirm current details in the official documentation for [oMLX](https://github.com/jundot/omlx), [Ollama](https://docs.ollama.com/api/introduction), [LM Studio](https://lmstudio.ai/docs/developer/core/server), [OpenAI](https://platform.openai.com/docs/api-reference), [OpenRouter](https://openrouter.ai/docs/quickstart), [DeepSeek](https://api-docs.deepseek.com/), [Groq](https://console.groq.com/docs/openai), [Mistral AI](https://docs.mistral.ai/developers), [Together AI](https://docs.together.ai/docs/inference/openai-compatibility), [Cohere](https://docs.cohere.com/v2), and [Jina](https://jina.ai/en-US/reranker/).
+The official provider documentation contains current details for [oMLX](https://github.com/jundot/omlx), [Ollama](https://docs.ollama.com/api/introduction), [LM Studio](https://lmstudio.ai/docs/developer/core/server), [OpenAI](https://platform.openai.com/docs/api-reference), [OpenRouter](https://openrouter.ai/docs/quickstart), [DeepSeek](https://api-docs.deepseek.com/), [Groq](https://console.groq.com/docs/openai), [Mistral AI](https://docs.mistral.ai/developers), [Together AI](https://docs.together.ai/docs/inference/openai-compatibility), [Cohere](https://docs.cohere.com/v2), and [Jina](https://jina.ai/en-US/reranker/).
 
-The bootstrap OpenRouter profile uses `openrouter/free` for language features, `nvidia/nemotron-3-embed-1b:free` for embeddings, `nvidia/llama-nemotron-rerank-vl-1b-v2:free` for search ranking, `openai/gpt-4o-mini-transcribe` for speech input, and `fish-audio/s2.1-pro-free:free` with voice `alloy` for spoken answers.
-CiteLoom validates every embedding response against the application-wide Vector dimensions setting in Settings → Application Features → Embedding space.
+The bootstrap OpenRouter profile uses these models:
+
+- Language features: `openrouter/free`.
+- Embeddings: `nvidia/nemotron-3-embed-1b:free`.
+- Search ranking: `nvidia/llama-nemotron-rerank-vl-1b-v2:free`.
+- Speech input: `openai/gpt-4o-mini-transcribe`.
+- Spoken answers: `fish-audio/s2.1-pro-free:free` with voice `alloy`.
+CiteLoom validates every embedding response against **Vector dimensions** under **Settings > Application Features > Embedding space**.
 The bootstrap OpenRouter embedding model returns 2048-dimensional vectors, so select `2048` before routing Embedding to OpenRouter.
 The selected model must return the configured 384, 768, 1024, 1536, or 2048 output dimensions without CiteLoom padding, truncating, or otherwise reshaping the vector.
 Changing Vector dimensions creates a new embedding space and requires reindexing.
@@ -166,7 +176,7 @@ Review the current provider policy before sending confidential or regulated docu
 
 ### Fresh-install routes and models
 
-Fresh installs use Ollama for Ask, Chat, Query Expansion, Indexing model, and Embedding model.
+Fresh installations use Ollama for Ask, Chat, Query Expansion, Indexing model, and Embedding model.
 Search ranking and both speech features start unassigned.
 The saved oMLX models and OpenRouter's free reranker are ready to use if an administrator selects those providers for one of their capabilities.
 The saved oMLX URL uses port 9000 and can be changed in Settings.
@@ -190,13 +200,13 @@ Automatic context size lets CiteLoom request enough Ollama context for each nati
 It is enabled on fresh installations and applies only to Ask, Chat, Query Expansion, and the Indexing model.
 It does not affect embeddings, MLX models, or other providers.
 
-Before enabling it, set both of these concurrency limits to `1`:
+Automatic context size requires both of these concurrency limits to be `1`:
 
 - Maximum parallel requests on the Ollama provider in CiteLoom Settings.
 - Ollama's `OLLAMA_NUM_PARALLEL` setting.
 
-Use a dedicated Ollama endpoint when possible.
-Another client that loads the same model can change its resident runner and invalidate CiteLoom's assumption about the active context size.
+A dedicated Ollama endpoint prevents other clients from changing the resident runner.
+Another client that loads the same model can invalidate CiteLoom's assumption about the active context size.
 Settings keeps CiteLoom's provider limit at `1` while the feature is enabled.
 
 For a native GGUF model, CiteLoom reads the model format, digest, and maximum context from Ollama on first use.
@@ -225,7 +235,8 @@ Existing explicit opt-outs remain off during upgrades, and configurations with h
 ## Search text formats
 
 Search text formats control how CiteLoom presents documents and searches to the selected embedding model.
-CiteLoom does not choose a format from the model name, so select the format required by the model.
+CiteLoom does not choose a format from the model name.
+The selected format must match the embedding model.
 
 A fresh database includes these formats:
 
@@ -238,9 +249,10 @@ A fresh database includes these formats:
 Custom templates must contain exactly one `{{text}}` placeholder.
 The document template is applied to each searchable document section during indexing.
 The query template is applied to each question or semantic search.
-Use the prefixes required by the embedding model, and use Copy when a built-in format is a useful starting point.
-Use format version 1 for a new format and increase it only when saving a changed version of an existing format.
-Use Settings to select, create, copy, revise, or retire formats.
+Templates must use the prefixes required by the embedding model.
+New formats start at version 1.
+Saving a changed version of an existing format increases its version.
+Settings can select, create, copy, revise, or retire formats.
 Revising a format creates a new format, and only unused formats can be retired.
 Changing the selected format requires reindexing.
 
@@ -251,7 +263,7 @@ CiteLoom handles reasoning output through its provider adapters, so no runtime-s
 
 | Setting | Behavior |
 | --- | --- |
-| Disabled | Default. Requests the adapter's non-thinking or lowest-reasoning behavior. |
+| Disabled | Requests the adapter's non-thinking or lowest-reasoning behavior by default. |
 | Enabled | Requests the adapter's high-reasoning behavior. |
 | Provider default | Sends no CiteLoom thinking override and lets the provider or model decide. |
 
@@ -262,7 +274,8 @@ The Ollama and Cohere adapters receive the AI SDK reasoning setting.
 OpenAI Codex always uses a reasoning-capable request, so Disabled selects `low`, Enabled selects `high`, and Provider default omits the effort override.
 
 Model support still varies within each provider.
-Use Provider default if an endpoint rejects explicit thinking controls, and confirm behavior with the exact configured model rather than relying on model-family assumptions.
+If an endpoint rejects explicit thinking controls, select **Provider default**.
+Check the behavior of the exact configured model instead of relying on model-family assumptions.
 
 ## Search and answers
 
@@ -290,10 +303,11 @@ CiteLoom does not silently lower either configured value.
 CiteLoom can still use fewer sections when fewer useful matches exist or the selected model cannot accept all of them.
 Higher values take longer and use more memory and model input space.
 
-Documents shown in Find Sources (`findSourcesResults`) controls both document lists on the Find Sources screen.
+**Documents shown in Find Sources** (`findSourcesResults`) controls both document lists on the **Find Sources** screen.
 The Keyword matches list shows this many documents on each page, with remaining documents available on later pages.
-The Semantic matches list shows up to this many documents after CiteLoom orders the configured number of search results and removes matches below the configured minimum score.
-Excerpts shown per document controls how many matching excerpts appear inside each document result.
+The Semantic matches list shows up to this many documents.
+CiteLoom first orders the configured search results and removes matches below the minimum score.
+**Excerpts shown per document** controls how many matching excerpts appear inside each document result.
 These two display settings do not change how many document sections CiteLoom searches.
 
 ### Optional search ranking
@@ -302,9 +316,9 @@ When search ranking is enabled, CiteLoom uses the configured ranking model to or
 Ask and Chat then use up to Sections used in answers (`topK`) of the strongest matching sections.
 A remote search ranking service adds network time and provider usage.
 
-Minimum score for Find Sources (`rerankDiscoveryMinimumScore`) defaults to `0.9`.
-Find Sources does not show semantic matches scored below this value.
-Check actual Find Sources results when changing it because different search ranking models use different score scales.
+**Minimum score for Find Sources** (`rerankDiscoveryMinimumScore`) defaults to `0.9`.
+**Find Sources** does not show semantic matches scored below this value.
+Check actual **Find Sources** results when changing it because different search ranking models use different score scales.
 The value is not a percentage or confidence probability.
 It affects Find Sources filtering but does not remove evidence from Ask.
 Answer publication continues through structured generation and citation validation.
@@ -317,7 +331,8 @@ Use the [evaluation workflow](evaluation.md) to calibrate discovery thresholds a
 
 Query Expansion is disabled by default with `queryExpansions` set to `0`.
 At `0`, CiteLoom searches only the original wording and does not ask a model to create more searches.
-Values from `1` through `4` allow additional search wording and should be enabled only after a controlled comparison shows better search and answer quality on the intended documents.
+Values from `1` through `4` enable additional search wording.
+Enable them only after a controlled comparison shows better search and answer quality on the intended documents.
 Query Expansion, Ask, and Chat each use their own temperature setting.
 `queryExpansionTemperature`, `answerTemperature`, and `chatTemperature` default to `0` for the most repeatable provider behavior.
 When search ranking scores are equal, CiteLoom keeps a consistent order.
@@ -351,10 +366,11 @@ Spoken answers appear in Ask and Chat, and supported text evidence can also be r
 The selected feature route can override the provider's default model and voice.
 Speech speed and Speech generation timeout apply to each generated answer audio request.
 
-When Preload answer audio is off, CiteLoom waits for the user to choose the speaker control before requesting audio.
+When **Preload answer audio** is off, CiteLoom waits for the user to choose the speaker control before requesting audio.
 When it is on, Ask and Chat request audio asynchronously after a completed answer is published or loaded.
 Chat preloads only the latest completed assistant answer.
-Preloading does not persist an audio file in CiteLoom; the browser holds a temporary object URL and releases it when the answer, research thread, or conversation changes.
+Preloading does not persist an audio file in CiteLoom.
+The browser holds a temporary object URL and releases it when the answer, research thread, or conversation changes.
 Because preloading calls the selected provider even when the user never presses play, it can increase provider use.
 
 ## Time limits and cancellation
@@ -421,11 +437,12 @@ Fresh installations save these VLM values while leaving Standard selected:
 | VLM provider | Ollama | Docling sends visual page requests to the saved Ollama connection when VLM is selected. |
 | VLM model override | `frob/unlimited-ocr:q8_0` | VLM conversion uses this model instead of the Ollama answer model. |
 | VLM instructions | `document parsing.` | The same task instruction is sent with each PDF page. |
-| VLM output limit | `32768` tokens | This is the requested maximum output for one page; the provider or model may enforce a smaller limit. |
+| VLM output limit | `32768` tokens | Requested maximum output for one page, subject to a smaller provider or model limit. |
 
 Changing the processing mode or its options affects new conversion attempts.
 Reindex an existing document when it must be converted with the new mode.
-Conversion time varies with page count, page complexity, model speed, endpoint load, and output length, so validate Standard and VLM performance with representative documents before choosing deployment limits.
+Conversion time varies with page count, page complexity, model speed, endpoint load, and output length.
+Test Standard and VLM with representative documents before you choose deployment limits.
 
 VLM page content and the configured provider credential pass from the Docling container to the selected endpoint.
 Document processing remains local only when that endpoint is local and trusted.
@@ -453,10 +470,12 @@ Docling verifies and atomically stages those bytes in its checkpoint directory, 
 Give every Docling instance a stable URL that recovery can reach.
 The supplied topology uses named services instead of `docker compose --scale docling=N` or round-robin balancing behind one URL.
 
-Maximum parallel conversions (`doclingDefaultServiceCapacity`) in the application Settings page limits the default service, and each additional service declares its own independent capacity.
+**Maximum parallel conversions** (`doclingDefaultServiceCapacity`) limits the default Docling service.
+Each additional service declares its own independent capacity.
 The optional `docling-scale` Compose profile provides one named replica for local multi-instance operation.
 
-Add each replica to the Additional Docling services field on the Docling Settings page using a unique ID, a URL reachable by the application processes, and its capacity.
+Add each replica to **Additional Docling services** under **Settings > Docling**.
+Enter a unique ID, a URL that the application processes can reach, and the replica capacity.
 
 ```bash
 docker compose --profile docling-scale up -d --wait docling-replica

@@ -3,13 +3,13 @@ title: Configure HHEM
 description: Configure advisory claim-support scoring and its process limits.
 ---
 
-CiteLoom uses the Hughes Hallucination Evaluation Model to score how strongly cited evidence supports claims in a completed answer.
+CiteLoom uses the Hughes Hallucination Evaluation Model (HHEM) to score how strongly cited evidence supports claims in a completed answer.
 These scores are advisory review signals.
 They do not add, remove, rewrite, or guarantee answer content or citations.
 
 ## Process settings
 
-Open Settings > Hughes Hallucination Evaluation Model to configure:
+Open **Settings > Hughes Hallucination Evaluation Model** to configure:
 
 - Maximum padded tokens.
 - Maximum attention cells.

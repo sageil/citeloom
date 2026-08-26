@@ -81,10 +81,10 @@ The [Security reference](../../reference/oauth/) describes the exact token check
 
 ## Logto example
 
-The remaining steps show one working self-hosted configuration with Logto.
+The procedure below shows one self-hosted configuration with Logto.
 Other compatible authorization servers use different names and administration screens for resources, scopes, public clients, and user grants.
 
-The screen captures use a working test installation.
+The screen captures use an example installation.
 Replace its domain names, application IDs, user IDs, and callback URIs with values from your installation and MCP hosts.
 
 This example uses these additional values:
@@ -189,7 +189,7 @@ Use these permission descriptions:
 - `citeloom.search`: Search indexed documents.
 - `citeloom.answer`: Ask questions and read saved answer evidence.
 
-Do not make one resource a substitute for the other resource.
+Do not reuse one resource for both audiences.
 CiteLoom checks the exact token audience for each endpoint.
 
 Logto calls an OAuth scope a permission in parts of the admin console.
@@ -209,7 +209,7 @@ Assign these permissions to the role:
 ![The Logto citeloom user role has the browser, search, and answer permissions.](/citeloom/images/oauth-logto-role.png)
 
 Open each Logto user who can use CiteLoom and assign this role.
-An application permission list does not replace the user role.
+Assigning a permission to the application does not grant that permission to the user.
 The access token contains only the permissions that Logto grants to the user.
 
 ### 4. Create the CiteLoom browser application
@@ -330,7 +330,7 @@ For this guide, the value is:
 
 CiteLoom derives the API resource, MCP resource, callback URI, and post-logout URI from the first origin.
 CiteLoom accepts state-changing browser requests from every origin in the list.
-When OAuth is active, CiteLoom moves browser sessions from another listed origin to the first origin before sign-in.
+When OAuth is active, CiteLoom redirects browsers from another listed origin to the first origin before sign-in.
 You do not enter those four derived values in the OAuth form.
 
 ### 7. Stage OAuth in CiteLoom
@@ -459,8 +459,6 @@ Complete these checks in order:
 11. Call `citeloom.ask_documents` and save its returned `taskId`.
 12. Call `citeloom.get_answer` after `pollIntervalMs` until the task reaches a final state.
 13. Confirm that the result contains one cited answer over the combined authorized document set.
-
-The answer workflow uses standard MCP tool calls.
 
 ## Correct common errors
 

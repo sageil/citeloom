@@ -34,6 +34,6 @@ Select a numbered citation to inspect its source evidence.
 Select a source number in the right panel to open the same evidence.
 Select **Find sources for this query** if you want search results without another answer.
 
-## Next action
+## Verify the evidence
 
 Open each citation that supports an important statement before you use the answer.

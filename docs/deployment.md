@@ -3,6 +3,9 @@
 CiteLoom is designed to run on a private local network.
 The supplied stack includes workspace sign-in, administrator roles, and local HTTPS through Caddy.
 
+For the shortest supported installation path, use the [minimum installation guide](https://sammyageil.com/citeloom/installation/docker-compose/).
+This complete guide also covers source builds, storage migration, scaling, production proxy settings, image publication, and the deployment checklist.
+
 ## Install from Docker Hub
 
 Use `compose.dockerhub.yml` to run the published images.
@@ -59,11 +62,13 @@ The default Compose deployment mounts the source directory at `/app/documents/bl
 Application processes stream verified source bytes to Docling, so Docling does not mount this directory.
 Migration saves the filesystem configuration in PostgreSQL for application processes to use.
 
-To move an existing source store to a different process-visible path, mount the new directory in the web and worker containers and use Settings > Object storage to test it and start the migration.
+To move an existing source store, mount the new directory in the web and worker containers.
+Then use **Settings > Object storage** to test the directory and start the migration.
 The background worker copies and hash-verifies every recorded source before changing the stored path.
 It keeps the previous setting and content tree when validation fails.
 
-The `source-content migrate --apply` command remains available for planned offline migration, but ordinary administrator changes should use the durable Settings workflow.
+The `source-content migrate --apply` command remains available for planned offline migration.
+Use the durable Settings workflow for ordinary administrator changes.
 
 ### Opt in to SeaweedFS
 
@@ -71,7 +76,8 @@ The optional `compose.seaweedfs.yml` overlay runs a pinned single-node SeaweedFS
 Set strong credentials in `.env` before the first start.
 If independent CiteLoom environments use the same S3 service, give each environment a different bucket or key prefix.
 All web and worker containers in one environment use the same storage location.
-During orphan cleanup, one environment can delete an object that only the other environment has in its database when both environments use the same bucket and prefix.
+Do not give two environments the same bucket and prefix.
+During orphan cleanup, one environment can delete an object that only the other environment has in its database.
 
 For a fixed single-host example with two stateless S3 gateways behind Caddy, follow [Self-hosted SeaweedFS with Caddy](../deployments/examples/seaweedfs-caddy/README.md).
 That example runs exactly three SeaweedFS containers and preserves the same internal S3 endpoint and data directory as this overlay.
@@ -107,8 +113,8 @@ The administrator starts the separate content migration from Settings after the 
 1. Follow [Backup and restore](operations.md#backup-and-restore) to stop writers and create a backup containing PostgreSQL and the existing source files.
 2. Set the SeaweedFS credentials and persistent data directory in `.env` as shown above.
 3. Start the updated deployment with both its existing Compose file and `compose.seaweedfs.yml`, using the applicable command above.
-4. Sign in as an administrator and open Settings > Object storage.
-5. Confirm that Active storage still reports Local filesystem.
+4. Sign in as an administrator and open **Settings > Object storage**.
+5. Confirm that **Active storage** still reports **Local filesystem**.
 6. Select S3-compatible object storage and enter the bundled SeaweedFS connection values below.
 
 | Setting | Value |
@@ -120,9 +126,9 @@ The administrator starts the separate content migration from Settings after the 
 | Credential source | Deployment environment |
 | Use path-style URLs | Enabled |
 
-7. Select Test connection and wait for confirmation that the target accepted a write and delete probe.
-8. Select Start migration and confirm the requested migration.
-9. Monitor the migration on the same page until its status is Completed and Active storage reports S3-compatible storage.
+7. Select **Test connection** and wait for confirmation that the target accepted a write and delete probe.
+8. Select **Start migration** and confirm the requested migration.
+9. Monitor the migration until its status is **Completed** and **Active storage** reports **S3-compatible storage**.
 
 The base Compose service definitions keep the original filesystem mounted in the migration, web, and worker containers while the SeaweedFS overlay makes the target available.
 The filesystem remains active for reads and writes while the worker copies and hash-verifies every registered source object.
@@ -143,11 +149,11 @@ Keep SeaweedFS running and keep the S3 environment values available until the re
 The previous filesystem does not contain documents that CiteLoom added after the S3 cutover.
 
 1. Confirm that the web and worker services still mount the local source directory at `/app/documents/blobs`.
-2. Sign in as an administrator and open Settings > Object storage.
-3. Select Local filesystem and set Directory to `/app/documents/blobs`.
-4. Select Test connection and wait for the successful write and delete probe.
-5. Select Start migration and confirm the request.
-6. Wait until the migration status is Completed and Active storage reports Local filesystem.
+2. Sign in as an administrator and open **Settings > Object storage**.
+3. Select **Local filesystem** and set **Directory** to `/app/documents/blobs`.
+4. Select **Test connection** and wait for the successful write and delete probe.
+5. Select **Start migration** and confirm the request.
+6. Wait until the migration status is **Completed** and **Active storage** reports **Local filesystem**.
 7. Open a representative source document and confirm that its content is unchanged.
 
 After this verification, stop the stack that includes `compose.seaweedfs.yml` and start the base stack without that overlay.
@@ -228,7 +234,8 @@ Before the first publication:
 - Commit the complete release source to the default branch.
 
 Run the workflow with `dry_run` enabled first.
-The dry run validates the source branch, synchronized semantic version, unused Git tag, and Dockerfile paths without logging into Docker Hub, building images, or publishing tags.
+The dry run validates the source branch, synchronized semantic version, unused Git tag, and Dockerfile paths.
+It does not log in to Docker Hub, build images, or publish tags.
 
 For publication, disable `dry_run`.
 The workflow confirms that the requested semantic-version tags are unpublished, then builds and pushes each exact version tag for `linux/amd64` and `linux/arm64`.
@@ -238,16 +245,20 @@ Publication completes only after every `latest` tag resolves to the same image d
 
 Releases use exact semantic-version tags, with the same `CITELOOM_IMAGE_TAG` applied to all four images.
 The workflow treats those version tags as immutable and prevents them from being overwritten.
-The `latest` tags are mutable pointers for users who want the newest verified release, while the supplied Compose configuration remains pinned to an exact version by default.
-If a run stops after publishing only some version tags, fix the cause and use GitHub's **Re-run failed jobs** action on the original run so every retried build uses the original commit.
+The `latest` tags point to the newest verified release and can change.
+The supplied Compose configuration remains pinned to an exact version by default.
+If a run publishes only some version tags, fix the cause.
+Then use GitHub's **Re-run failed jobs** action on the original run so each retried build uses the original commit.
 If a run stops while updating `latest`, use the same action to safely finish pointing all four repositories to the verified release.
-If the release job stops after creating its Git tag or GitHub Release, use the same action to verify and finish the release from the original commit.
+If the release job stops after it creates the Git tag or GitHub Release, use the same action.
+The action verifies and finishes the release from the original commit.
 The release job accepts an existing release only when its tag points to that commit.
 Existing exact-version deployments remain unchanged during a partial publication.
 
 ## Configure a production proxy
 
-Set Public origins, Secure session cookie, and Trust reverse proxy on the Web server Settings page for the deployed origins and proxy path.
+Set **Public origins**, **Secure session cookie**, and **Trust reverse proxy** on the Web server Settings page.
+Use values that match the deployed origins and proxy path.
 Put the canonical public origin first in the list.
 Restart the web service after saving these values.
 Keep secure cookies enabled outside isolated automated tests.
@@ -268,9 +279,9 @@ Authentication stores session data in PostgreSQL and uses a host-only cookie wit
 Regular sessions expire after 2 hours of inactivity or 12 hours in total.
 Remembered sessions expire after 7 days of inactivity or 30 days in total.
 Administrator-created setup and password-reset links expire after 24 hours and are consumed when the user sets a password.
-The database-owned Public origins list contains the origins that can make state-changing browser requests.
+The database-owned **Public origins** list contains the origins that can make state-changing browser requests.
 The first entry is the canonical origin for OAuth and MCP URLs.
-When OAuth is active, the browser moves from another listed origin to the canonical origin before sign-in.
+When OAuth is active, CiteLoom redirects the browser from another listed origin to the canonical origin before sign-in.
 
 Workspace members can use document, ingestion, reindexing, search, and research APIs.
 Workspace administrators can also manage membership, settings, and diagnostics.

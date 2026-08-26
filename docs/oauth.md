@@ -1,8 +1,11 @@
-# Security
+# Security and OAuth
 
 CiteLoom uses one browser authentication mode at a time: `local` or `oauth`.
 Only a global administrator can configure OAuth or manage OAuth user links.
 User-bound MCP API keys are available in both modes.
+
+This reference describes security behavior and exact configuration rules.
+The [OAuth installation guide](https://sammyageil.com/citeloom/installation/oauth/) provides the complete setup procedure.
 
 ## Authentication modes
 
@@ -11,7 +14,7 @@ User-bound MCP API keys are available in both modes.
 | `local` | Local session cookie | User-bound MCP API key | Used normally |
 | `oauth` | API-audience bearer token | MCP-audience bearer token or user-bound MCP API key | Ignored and removed when present |
 
-### Change the authentication mode
+### Authentication mode transition
 
 1. A global administrator stages the OAuth configuration.
 2. CiteLoom keeps local cookie authentication active during staging.
@@ -44,7 +47,7 @@ It does not read this configuration from process environment variables.
 
 ### Values that CiteLoom derives
 
-CiteLoom derives these values from the first entry in its configured Public origins list:
+CiteLoom derives these values from the first entry in its configured **Public origins** list:
 
 | Purpose | Value |
 | --- | --- |
@@ -58,7 +61,7 @@ Register the exact resource identifiers and redirect URIs in the authorization s
 
 ### Checks before staging and activation
 
-CiteLoom does these checks:
+CiteLoom checks these conditions:
 
 - The first public origin uses HTTPS.
 - The issuer has a valid OpenID Connect discovery document.
@@ -235,82 +238,23 @@ CiteLoom does not return a completed combined answer after the user loses access
 
 ## Host recovery
 
-An OAuth-authenticated global administrator can change the application back to local mode from the Security page.
+An OAuth-authenticated global administrator can return CiteLoom to local mode from the Security page.
 If the authorization server is unavailable, a host operator can use the recovery command.
 
-### Inspect the recovery state
-
-```sh
-pnpm dev auth recover-local
-```
-
-This command reads only the database connection from the existing startup configuration.
-It does not change data, load application settings, or contact the authorization server or an inference provider.
-
-### Apply recovery
-
-```sh
-pnpm dev auth recover-local --apply
-```
-
 Recovery is available only when a global administrator enabled **Host recovery** before OAuth activation.
-The apply operation does these actions in one database transaction:
-
-- Locks the versioned authentication settings.
-- Changes the authentication mode to `local`.
-- Keeps the previous OAuth configuration as staged.
-- Increments the settings version.
-- Deletes all local sessions.
-- Writes a `recovered` audit event.
+The operation changes the authentication mode, stages the previous OAuth configuration, increments the settings version, deletes local sessions, and writes an audit event.
+These changes occur in one database transaction.
 
 Recovery does not change usernames, passwords, memberships, or OAuth identity links.
-Users sign in with their existing CiteLoom username and password and get a new bounded session.
-A second apply command is a no-op after a successful recovery.
+A second apply command makes no changes after a successful recovery.
 
-For the container deployment, use the host-side commands in [Operations](operations.md#recover-local-authentication).
+The [local-authentication recovery procedure](operations.md#recover-local-authentication) provides the source and container commands.
 
-## Logto example
+## Logto compatibility
 
 The optional [`compose.logto.yml`](../compose.logto.yml) file starts a separate Logto service and database.
 Logto is one compatible authorization-server example and is not a CiteLoom dependency.
 The Compose file uses the deployment-specific `LOGTO_*` values in [`.env.example`](../.env.example).
 These values do not configure CiteLoom OAuth.
 
-The Compose stack does not terminate TLS.
-Put the Logto service behind a trusted HTTPS reverse proxy before you use it as the CiteLoom issuer.
-
-Start Logto separately from CiteLoom:
-
-```sh
-docker compose --env-file .env -f compose.logto.yml up -d --wait
-```
-
-When an existing Logto database moves to a newer Logto image, apply the database alterations before you start the new application version.
-The alteration target must match `LOGTO_IMAGE`.
-
-For Logto `1.42.0`:
-
-```sh
-docker compose --env-file .env -f compose.logto.yml pull logto
-docker compose --env-file .env -f compose.logto.yml up -d --wait logto-postgres
-docker compose --env-file .env -f compose.logto.yml run --rm --no-deps \
-  -e CI=true --entrypoint sh logto \
-  -c 'npm run alteration deploy 1.42.0'
-docker compose --env-file .env -f compose.logto.yml up -d --wait
-```
-
-Run the alteration job once.
-If it fails, correct the reported problem and run the same command again.
-Logto runs each alteration script in a database transaction.
-See the [Logto database-alteration guide](https://docs.logto.io/logto-oss/using-cli/database-alteration) before you upgrade across more than one release.
-
-Then configure Logto:
-
-1. Create separate Browser API and MCP resources.
-2. Use the exact resource identifiers that CiteLoom derives.
-3. Create a public browser client with the exact callback and post-logout redirect URIs.
-4. Create one shared Native application for compatible MCP hosts.
-5. Add the exact callback URI for each MCP host to the shared Native application.
-6. Configure each MCP host with the shared application ID.
-7. Create the CiteLoom users and workspace memberships.
-8. Link each immutable Logto subject to the applicable CiteLoom user.
+The [OAuth installation guide](https://sammyageil.com/citeloom/installation/oauth/) provides the complete Logto setup and upgrade procedure.

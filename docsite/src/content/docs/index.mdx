@@ -1,23 +1,26 @@
 ---
 title: CiteLoom
-description: Domain-agnostic retrieval-augmented generation with evidence you can inspect.
+description: Self-hosted document research with citations you can inspect.
 ---
 
 import { Icon } from '@astrojs/starlight/components';
 import '../../styles/homepage-panels.css';
 
-CiteLoom turns mixed document collections into searchable evidence and cited answers.
-Workspaces, shared source libraries, retrieval settings, and model routes let one installation serve different knowledge domains while keeping authorization.
+CiteLoom is a self-hosted research workspace for private document collections.
+Use it to find source material, ask questions, and continue document-grounded chats.
+Every published citation links to the original evidence.
 
-![A CiteLoom feature map shows the document library, Ask, Chat, Search, MCP, indexing, storage, access, and speech features.](/citeloom/images/citeloom-feature-map-v2.png)
+[![A CiteLoom feature map shows the document library, Ask, Chat, Search, MCP, indexing, storage, access, and speech features.](/citeloom/images/citeloom-feature-map-v2.png)](/citeloom/images/citeloom-feature-map-v2.png)
 
-## Put each model where it belongs
+Select the feature map to open the full-size image.
+
+## Choose where each model runs
 
 <div class="home-comparison home-comparison--models">
   <article class="home-comparison__item home-comparison__item--local">
     <div class="home-comparison__topline">
       <span class="home-comparison__icon"><Icon name="padlock" /></span>
-      <span class="home-comparison__label">Maximum control</span>
+      <span class="home-comparison__label">Local control</span>
     </div>
     <h3>Local models</h3>
     <p>Keep inference on infrastructure you control when document privacy, predictable data residency, or offline operation matters most.</p>
@@ -26,7 +29,7 @@ Workspaces, shared source libraries, retrieval settings, and model routes let on
   <article class="home-comparison__item home-comparison__item--remote">
     <div class="home-comparison__topline">
       <span class="home-comparison__icon"><Icon name="cloud-download" /></span>
-      <span class="home-comparison__label">Maximum capacity</span>
+      <span class="home-comparison__label">Managed capacity</span>
     </div>
     <h3>Remote providers</h3>
     <p>Use managed models when you need broader model choice, elastic capacity, or a capability your local hardware does not provide.</p>
@@ -35,9 +38,9 @@ Workspaces, shared source libraries, retrieval settings, and model routes let on
   <article class="home-comparison__item home-comparison__item--mix">
     <div class="home-comparison__topline">
       <span class="home-comparison__icon"><Icon name="setting" /></span>
-      <span class="home-comparison__label">Balanced control</span>
+      <span class="home-comparison__label">Per-feature routing</span>
     </div>
-    <h3>A deliberate mix</h3>
+    <h3>Mix local and remote</h3>
     <p>Keep embeddings and document processing local while routing answer generation, ranking, speech, or visual document work to selected remote providers.</p>
     <p>Each feature has its own route, model, limits, and credentials.</p>
   </article>
@@ -60,7 +63,7 @@ Workspaces, shared source libraries, retrieval settings, and model routes let on
       <span class="home-comparison__icon"><Icon name="magnifier" /></span>
       <span class="home-comparison__label">Direct retrieval</span>
     </div>
-    <h3>Search is useful without generation</h3>
+    <h3>Find sources without generating an answer</h3>
     <p>Find exact keyword matches or related material without asking a language model to write an answer.</p>
     <p>Retrieval can be keyword, semantic, or hybrid.</p>
   </article>
@@ -69,7 +72,7 @@ Workspaces, shared source libraries, retrieval settings, and model routes let on
       <span class="home-comparison__icon"><Icon name="setting" /></span>
       <span class="home-comparison__label">Optional services</span>
     </div>
-    <h3>Infrastructure is composable</h3>
+    <h3>Add services only when needed</h3>
     <p>The base Compose stack works on its own.</p>
     <p>Add S3-compatible object storage or a compatible authorization server only when the deployment needs them.</p>
   </article>
@@ -78,14 +81,16 @@ Workspaces, shared source libraries, retrieval settings, and model routes let on
       <span class="home-comparison__icon"><Icon name="puzzle" /></span>
       <span class="home-comparison__label">Tool access</span>
     </div>
-    <h3>MCP is built in</h3>
-    <p>Connect interactive clients through OAuth or unattended clients through a revocable, user-bound API key with explicit workspace selection.</p>
-    <p>Both methods use the same CiteLoom authorization and retrieval services.</p>
+    <h3>Connect MCP clients</h3>
+    <p>Connect interactive clients through OAuth or unattended clients through a revocable, user-bound API key.</p>
+    <p>Both methods provide access to the user's authorized workspaces.</p>
   </article>
 </div>
 
 ## Choose a path
 
 - Start with the [minimum installation](/citeloom/installation/docker-compose/).
+- Learn to use [Ask](/citeloom/features/ask/), [Chat](/citeloom/features/chat/), or [Find](/citeloom/features/find/).
 - Configure [local, remote, or hybrid model routes](/citeloom/configuration/providers/) after the first sign-in.
 - Follow the [MCP client guide](/citeloom/configuration/mcp/) for complete OAuth and API-key examples.
+- Use the [operations guide](/citeloom/reference/operations/) for backups, recovery, reindexing, and routine checks.

@@ -1,5 +1,8 @@
 # Architecture
 
+This reference describes component ownership, runtime boundaries, and the main ingestion, retrieval, Ask, and Chat paths.
+[Deployment](deployment.md) provides installation procedures.
+
 CiteLoom uses the same application core for its web interface, command-line interface, and background worker.
 PostgreSQL stores document metadata, processing state, search indexes, settings, and shared limits for model requests.
 A separate content store keeps each original source file unchanged and identifies it by its SHA-256 hash.
@@ -94,7 +97,8 @@ Cloud providers use the configured HTTPS endpoint.
 
 Provider connections, capability routes, model overrides, credentials, and concurrency limits are stored in PostgreSQL.
 The application builds one typed runtime configuration and then applies the selected adapter for each capability.
-Docling VLM processing is configured separately from the capability routes, but it reuses the selected provider connection's answer endpoint, credential, and model unless an administrator enters a VLM model override.
+Docling VLM processing is configured separately from the capability routes.
+It uses the selected provider connection's answer endpoint, credential, and model unless an administrator sets a VLM model override.
 
 ```mermaid
 flowchart LR
@@ -130,7 +134,8 @@ See [Provider reference](configuration.md#provider-reference) for the complete c
 
 An ingestion job discovers document structure, divides content into searchable sections, creates retrieval descriptions and embeddings, and publishes the finished index.
 Section paths remain part of each passage's embedding text.
-CiteLoom embeds the document filename once and blends that vector into each passage and media-description vector with a 0.1 filename weight and a 0.9 content weight.
+CiteLoom embeds the document filename once.
+It blends that vector into each passage and media-description vector with a 0.1 filename weight and a 0.9 content weight.
 Document titles and section outlines are not independent retrieval candidates and cannot consume the candidate budget.
 The current document remains searchable until its replacement is complete.
 
@@ -144,7 +149,7 @@ sequenceDiagram
     participant Store as Active source storage<br/>Filesystem or optional SeaweedFS
     participant DB as PostgreSQL
     participant Parser as Docling
-    participant AI as Inference providers
+    participant Providers as Inference providers
 
     Client->>Intake: Stream documents and options
     Intake->>Intake: Enforce limits, count, and hash
@@ -163,7 +168,7 @@ sequenceDiagram
             Store-->>Runner: Source byte stream
             Runner->>Parser: Submit metadata and stream source bytes
             Parser->>Parser: Verify byte length and SHA-256
-            Runner->>AI: Describe or embed when required
+            Runner->>Providers: Describe or embed when required
             Runner->>DB: Store output and advance checkpoint
         end
         Runner->>DB: Promote index atomically
@@ -178,21 +183,24 @@ If the original Docling instance no longer recognizes a saved task, the worker c
 Completed checkpoints remain available when the worker schedules a retry.
 
 Standard is the default conversion pipeline.
-For eligible Standard PDFs, Docling service converts bounded page ranges, saves each completed range, and assembles the final document only after all ranges succeed.
-This lets a replacement Docling process continue from the next incomplete range.
+For eligible Standard PDFs, the Docling service converts bounded page ranges, saves each completed range, and assembles the final document only after all ranges succeed.
+Page-range checkpoints let a replacement Docling process continue from the next incomplete range.
 
-VLM processing (disabled by default) renders each PDF page as an in-memory PNG inside Docling and sends that page with the configured prompt to the selected provider's image-capable chat endpoint.
+VLM processing is disabled by default.
+Docling renders each PDF page as an in-memory PNG and sends it with the configured prompt to the selected image-capable chat endpoint.
 The page image is not persisted as a separate source file.
 VLM conversion retains CiteLoom's remote task-ID recovery, but it does not use the Standard pipeline's page-range checkpoints or partial-document assembly.
 If Docling no longer recognizes a VLM task, the unchanged source is submitted as a new task.
 
-When document TOC routing is enabled, the indexing phase builds a bounded navigation map from Docling section paths and maps every retained entry to exact retrieval-window IDs.
+When document TOC routing is enabled, the indexing phase builds a bounded navigation map from Docling section paths.
+Each retained entry maps to exact retrieval-window IDs.
 The map is staged under the same generation as the vectors and lexical rows, validated before atomic publication, and removed with obsolete retrieval generations.
 
 Document deletion is recorded in the database before the source object is removed from the active backend.
 The worker retries pending deletions after a restart, and the same per-hash database lock serializes publication with deletion.
 Newly stored content has a one-hour grace period.
-This prevents cleanup from removing a file while its job is being created and limits how long files from a failed intake remain unused.
+The database lock prevents cleanup from removing a file while its job is being created.
+The grace period limits how long files from a failed intake remain unused.
 
 ## Question answering
 
@@ -203,7 +211,8 @@ Semantic and Hybrid retrieval embed the original document query and every config
 When Query Expansion is greater than `0`, CiteLoom also searches the generated query variations through the selected retrieval method.
 At `0`, it searches only the original question and does not call the Query Expansion model.
 CiteLoom then ranks the active results and can optionally rerank the best candidates.
-When a published TOC map is available and the selected method includes vector retrieval, CiteLoom may select relevant branches from the strongest normally retrieved document and merge their mapped passages into the candidate ranking before reranking.
+When a published TOC map is available, vector retrieval can select relevant branches from the strongest document in the initial results.
+CiteLoom merges the mapped passages into the candidate ranking before reranking.
 TOC entries remain unavailable to answer generation and citation publication.
 Reranking (disabled by default) can improve answer and citation accuracy by using a specialized relevance model to reorder candidates before CiteLoom selects the answer context.
 
@@ -216,7 +225,7 @@ sequenceDiagram
     participant Entry as API or CLI handler
     participant Query as Retrieval pipeline
     participant DB as PostgreSQL
-    participant AI as Provider adapters
+    participant Providers as Provider adapters
     participant Ranker as Optional reranker
     participant Validate as Citation compiler
     participant HHEM as Advisory claim verifier
@@ -226,15 +235,15 @@ sequenceDiagram
     Entry->>Query: Start answer request
     Query->>DB: Resolve active documents and scope
     opt Query Expansion enabled
-        Query->>AI: Run Query Expansion
+        Query->>Providers: Run Query Expansion
     end
     alt Keyword search
         Query->>DB: BM25 search
     else Semantic search
-        Query->>AI: Embed document queries
+        Query->>Providers: Embed document queries
         Query->>DB: pgvector cosine search
     else Hybrid search
-        Query->>AI: Embed document queries
+        Query->>Providers: Embed document queries
         par Dense retrieval
             Query->>DB: pgvector cosine search
         and Lexical retrieval
@@ -247,8 +256,8 @@ sequenceDiagram
         Ranker-->>Query: Reranked candidates
     end
     Query->>DB: Load original source elements
-    Query->>AI: Generate structured answer draft
-    AI-->>Validate: Direct answer, findings, and request-local evidence references
+    Query->>Providers: Generate structured answer draft
+    Providers-->>Validate: Direct answer, findings, and request-local evidence references
     Validate->>Validate: Separate the direct answer from citation-linked findings and compile server-owned evidence records
     Validate->>HHEM: Score selected findings and topics against cited evidence
     HHEM-->>Validate: Advisory support scores
@@ -286,7 +295,7 @@ The server resolves those references to stored source elements, validates them, 
 Chat stores the resulting checks as advisory metadata.
 
 Chat run leases are renewable and retry attempts are fenced by an attempt number.
-This prevents an expired worker from publishing after a newer attempt has taken ownership.
+The attempt number prevents an expired worker from publishing after a newer attempt has taken ownership.
 Assistant publication is atomic, so a completed run cannot expose a response without its embeddings, citation evidence, traces, and configuration.
 
 Deleting a library document does not alter any chat, even when that document was the only source used by a response.

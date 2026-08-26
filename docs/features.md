@@ -1,10 +1,11 @@
 # Features
 
-This guide explains what CiteLoom can do, who can use each feature, and where its important limits are.
-Workspace members should use the in-app Help page for step-by-step instructions.
-Administrators should use [Configuration](configuration.md) for exact settings and [Operations](operations.md) for maintenance and recovery.
+This reference describes CiteLoom features, access, and important limits.
+The in-app Help page provides step-by-step instructions for workspace members.
+[Configuration](configuration.md) lists exact settings, and [Operations](operations.md) covers maintenance and recovery.
+For public step-by-step use, see the [Ask](https://sammyageil.com/citeloom/features/ask/), [Chat](https://sammyageil.com/citeloom/features/chat/), and [Find](https://sammyageil.com/citeloom/features/find/) guides.
 
-## How CiteLoom uses AI
+## How CiteLoom creates answers
 
 CiteLoom answers from the ready documents in the scope you choose.
 It does not treat the language model's general knowledge or earlier chat messages as source evidence.
@@ -15,7 +16,8 @@ The answer has two layers:
 - Supporting findings or topics link to the original evidence with citations such as `[1]`.
 
 The server validates citation references before publishing an answer.
-An advisory Hughes Hallucination Evaluation Model (HHEM) score can help you review whether a cited passage supports a finding, but it is not a correctness guarantee.
+An advisory Hughes Hallucination Evaluation Model (HHEM) score shows whether a cited passage supports a finding.
+The score does not guarantee that the finding is correct.
 Always inspect the cited evidence before relying on an important result.
 
 ## Accounts and access
@@ -72,7 +74,8 @@ A saved turn keeps its answer, citations, exact evidence, settings snapshot, and
 Opening it later reads the stored result without running retrieval or generation again.
 A new submission creates a new run that can reflect changed documents, settings, models, or provider behavior.
 
-Members can create or delete threads, export a thread as Markdown or JSON, and rate source relevance, answer usefulness, and citation correctness where those controls appear.
+Members can create or delete threads and export a thread as Markdown or JSON.
+They can rate source relevance, answer usefulness, and citation correctness when those controls are available.
 
 ## Find source material without an answer
 
@@ -160,7 +163,8 @@ Visual language model (VLM) processing sends each rendered PDF page to an image-
 It does not persist a separate PNG copy of every page, and it does not use Standard PDF page-range checkpoints.
 After a worker interruption, CiteLoom polls an existing VLM task without submitting it again.
 A retry after a failed, missing, or terminated VLM task starts a new conversion attempt.
-Document pages and provider credentials leave the Docling container for the configured endpoint, so VLM processing stays local only when that endpoint is local and trusted.
+Docling sends document pages and provider credentials to the configured endpoint.
+VLM processing stays local only when that endpoint is local and trusted.
 
 ## Administer and recover the workspace
 

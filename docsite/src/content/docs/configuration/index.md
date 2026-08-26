@@ -3,8 +3,7 @@ title: Configuration overview
 description: Know which values belong in CiteLoom Settings and which remain deployment bootstrap configuration.
 ---
 
-
-## Configure in the application
+## Settings pages
 
 | Settings page | Examples |
 | --- | --- |
@@ -17,6 +16,5 @@ description: Know which values belong in CiteLoom Settings and which remain depl
 | Usage diagnostics | Application-error row and age limits. |
 | Object storage | Active filesystem or S3-compatible source-content backend and durable migrations. |
 | Security | Users, workspaces, OAuth, identity links, and MCP API keys. |
-
 
 The [complete configuration reference](../reference/configuration/) documents every provider profile, route, setting, default, and reindex boundary.
