@@ -87,7 +87,7 @@
     "argon2": "0.45.1",
     "dompurify": "3.4.13",
     "drizzle-orm": "0.45.2",
-    "fastify": "5.11.2",
+    "fastify": "5.12.1",
     "html-encoding-sniffer": "6.0.0",
     "htmx.org": "2.0.10",
     "jose": "6.2.8",
