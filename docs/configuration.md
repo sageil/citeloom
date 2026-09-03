@@ -188,7 +188,7 @@ The saved oMLX URL uses port 9000 and can be changed in Settings.
 | Query Expansion | Ollama | `qwen3.5:9b-mlx` |
 | Indexing model | Ollama | `qwen3.5:9b` |
 | Embedding model | Ollama | `snowflake-arctic-embed:137m` |
-| Search ranking | Not selected | oMLX default `gte-reranker-modernbert-base` and OpenRouter default `nvidia/llama-nemotron-rerank-vl-1b-v2:free` are available |
+| Search ranking | Not selected | oMLX default `gte-reranker-modernbert-base` (`Alibaba-NLP/gte-reranker-modernbert-base` upstream) and OpenRouter default `nvidia/llama-nemotron-rerank-vl-1b-v2:free` are available |
 | Speech input | Not selected | oMLX default `Qwen3-ASR-1.7B-8bit` is available |
 | Spoken answers | Not selected | oMLX default `Kokoro-82M-bf16`, voice `af_heart`, is available |
 
