@@ -13,7 +13,7 @@ services:
       - ${CITELOOM_SEAWEEDFS_DATA_DIRECTORY:-./data/seaweedfs}:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --output-document=/dev/null http://127.0.0.1:9333/cluster/status"]
+      test: ["CMD-SHELL", "wget --quiet --output-document=/dev/null http://127.0.0.1:8888/buckets/$${S3_BUCKET} && wget --server-response --spider http://127.0.0.1:8333/ 2>&1 | grep -q 'HTTP/'"]
       interval: 10s
       timeout: 5s
       retries: 30
