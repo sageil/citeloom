@@ -1,6 +1,6 @@
 {
   "name": "citeloom-docsite",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,10 +11,10 @@
   },
   "dependencies": {
     "@astrojs/starlight": "0.41.7",
-    "astro": "7.2.2",
+    "astro": "7.2.8",
     "astro-mermaid": "2.1.0",
     "mermaid": "11.16.1",
-    "sharp": "0.35.3",
+    "sharp": "0.35.4",
     "svg-pan-zoom": "3.6.2"
   },
   "devDependencies": {
