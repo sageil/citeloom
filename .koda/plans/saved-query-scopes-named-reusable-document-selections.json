@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "title": "Saved query scopes: named, reusable document selections",
+  "summary": "Saved scopes are named, reusable document selections that a member creates from the Documents catalog and reuses as the scope when asking questions or starting chats. This plan adds a `query_scopes` table scoped to workspace + owner, a workspace store modeled on SourceLibraryStore, a five-endpoint JSON API, and picker/save wiring in the vanilla-JS Ask, Chat, and Documents pages. Per your choices: scopes are private to their creator, they reach Ask, Chat, and the Documents save flow, and a saved list with a since-deleted document fails the run through the existing strict scope-resolution error, with the UI prompting an edit. No new scope kinds and no changes to the answer or chat pipelines — a saved scope expands into the exact same QueryScope payload the client sends today.",
+  "context": [
+    "src/domain/query-scope.ts:5-9 — QueryScope is a discriminated union of all | documentIds | sourceFiles | tags; saved scopes reuse these kinds, no new scope kinds.",
+    "src/domain/query-scope.ts:63-96 — queryScopeSchema validates and is already the boundary validator used by chat/store.ts:301, request-boundary.ts:129, and the MCP model.",
+    "src/api/request-boundary.ts:507-513 — decodeQuestionRequest shows the existing zod-based request decode style to mirror.",
+    "src/api/research-thread-routes.ts:54-118 — the route module pattern (services.run, requireRequestPrincipal, WebRequestError mapping) that query-scope-routes.ts should copy.",
+    "src/api/services.ts:1056-1061 and 994-999 — how listSourceLibraries/createSharedSourceLibrary wire a store through manager.withRuntime; saved-scope services follow this.",
+    "src/workspaces/source-library-store.ts:31-44 — error class convention (SourceLibraryUnavailableError) to reuse for a QueryScopeNotFoundError/QueryScopeConflictError pair.",
+    "src/chat/store.ts:295-301 — createConversation already parses scope with queryScopeSchema, so a client that posts a saved scope's definition needs no chat-side change.",
+    "src/documents/catalog/query-scope.ts:23-45 — documentIds resolution is strict (QueryScopeNotResolvedError for missing ids), which gives the agreed 'error and prompt to edit' behavior for free.",
+    "web/assets/scripts/ask-boundary.js:281-315 — web boundary readers for scope kinds; the picker reuses readStringArray and scopeKinds.",
+    "web/assets/scripts/ask.js:696-705 — changeScope(value) gates on \"all\"/\"tag\" today; extend it with the saved-scope branch.",
+    "docs/features.md — the user-facing feature reference that needs a short new subsection.",
+    "latest drizzle migration is 0020_polite_tombstone.sql, so the new one is 0021."
+  ],
+  "steps": [
+    {
+      "id": "schema",
+      "what": "Add the query_scopes table and its drizzle schema + migration",
+      "why": "Every other persisted user artifact (threads, conversations, libraries) lives in drizzle-managed tables with the same workspace/user FK pattern; saved scopes need the same durability and the same cascade behavior on user or workspace deletion.",
+      "files": [
+        "src/database/schema.ts",
+        "drizzle/0021_query_scopes.sql"
+      ],
+      "status": "done",
+      "detail": "New table `query_scopes` in src/database/schema.ts and a checked-in migration file drizzle/0021_query_scopes.sql:\n\n| column | type | notes |\n| --- | --- | --- |\n| id | uuid | pk |\n| workspace_id | uuid | not null, FK workspaces(id) on delete cascade |\n| owner_user_id | uuid | not null, FK users(id) on delete cascade |\n| name | text | not null |\n| scope | jsonb | not null, stores the existing QueryScope union |\n| created_at / updated_at | timestamptz | not null, default now |\n\nIndexes: unique on (workspace_id, owner_user_id, sql`lower(trim(name))`), index on (owner_user_id, workspace_id).\n"
+    },
+    {
+      "id": "store",
+      "what": "Create QueryScopeStore in src/workspaces/query-scope-store.ts with listForPrincipal, readForPrincipal, createForPrincipal, updateForPrincipal, deleteForPrincipal",
+      "why": "Mirrors the existing SourceLibraryStore placement and conventions; all queries filter on workspace_id AND owner_user_id = principal.userId so cross-owner access is impossible by construction. create validates name (nonempty, <=200 chars) and the payload with queryScopeSchema; update raises a conflict error when the name collides with a different scope in the same workspace+owner; missing rows raise the store's own error type mapped to 404 at the route layer.",
+      "files": [
+        "src/workspaces/query-scope-store.ts"
+      ],
+      "status": "done",
+      "detail": null
+    },
+    {
+      "id": "boundary-routes",
+      "what": "Add request decoders, the /api/query-scopes route module, and WebServices entries",
+      "why": "Decoders live in src/api/request-boundary.ts next to decodeQuestionRequest and decodeCreateResearchThreadRequest; routes follow the research-thread-routes.ts shape exactly (services.run + requireRequestPrincipal); services.ts gains listQueryScopes/createQueryScope/readQueryScope/updateQueryScope/deleteQueryScope constructed from the store inside manager.withRuntime. Route registration is added in server.ts buildWebServer alongside the other modules.",
+      "files": [
+        "src/api/request-boundary.ts",
+        "src/api/query-scope-routes.ts",
+        "src/api/services.ts"
+      ],
+      "status": "done",
+      "detail": null
+    },
+    {
+      "id": "web-boundary",
+      "what": "Add web/assets/scripts/query-scopes.js (+ .d.ts) with boundary readers and picker-state helpers, imported by app.js",
+      "why": "Boundary readers follow the readNonEmptyString/readPlainObject discipline of boundary-readers.js; helpers fetch the summary list, load one scope's full definition, and compute the picker options. Adding .d.ts matches document-notifications.d.ts.",
+      "files": [
+        "web/assets/scripts/query-scopes.js",
+        "web/assets/scripts/query-scopes.d.ts",
+        "web/assets/scripts/app.js"
+      ],
+      "status": "done",
+      "detail": null
+    },
+    {
+      "id": "ask-chat-picker",
+      "what": "Add a \"Saved scopes\" section to the Ask and Chat scope pickers",
+      "why": "On pick, the client loads the scope definition (GET /api/query-scopes/:id), then carries it as the ordinary scope payload — the strict resolution of documentIds in src/documents/catalog/query-scope.ts:27 gives the agreed error-and-prompt behavior without server changes. On scope-resolution failure, the UI offers 'Edit saved scope' when the failing scope came from the picker. Ask's changeScope (ask.js:696-705) gains the saved-scope branch; Chat's new-conversation form gains the same options.",
+      "files": [
+        "web/assets/scripts/ask.js",
+        "web/assets/scripts/chat.js"
+      ],
+      "status": "done",
+      "detail": null
+    },
+    {
+      "id": "documents-save",
+      "what": "Add a \"Save selection as scope\" action on the Documents multi-select with a small name modal",
+      "why": "The hand-off to Ask/Chat already carries the current selection; the same state is what the save action posts. After saving, the page confirms and links to Ask. Documents with no selection keep the action disabled.",
+      "files": [
+        "web/assets/scripts/documents.js",
+        "web/assets/scripts/app.js"
+      ],
+      "status": "done",
+      "detail": null
+    },
+    {
+      "id": "tests",
+      "what": "Add test/query-scope-store.test.ts (CRUD, owner isolation, name validation/conflict, zod scope validation), test/query-scope-boundary.test.ts (decoders + web readers), and route-level cases in test/web-server.test.ts",
+      "why": "Matches the existing split between store tests, boundary tests, and web-server route tests; owner-isolation is the security-critical property and gets direct coverage.",
+      "files": [
+        "test/query-scope-store.test.ts",
+        "test/query-scope-boundary.test.ts",
+        "test/web-server.test.ts"
+      ],
+      "status": "done",
+      "detail": null
+    },
+    {
+      "id": "docs",
+      "what": "Document saved scopes in docs/features.md under the Ask/Chat sections",
+      "why": "features.md is the feature reference the Help page links to; a short subsection covering private visibility, strict resolution on deleted documents, and the Save-selection flow keeps the docs honest.",
+      "files": [
+        "docs/features.md"
+      ],
+      "status": "done",
+      "detail": null
+    }
+  ],
+  "assumptions": [
+    "No migration tooling beyond the existing `pnpm db:generate` flow is needed; the new table is added as a checked-in drizzle migration 0021.",
+    "The Ask/Chat pages submit a saved scope by expanding it client-side into the existing QueryScope payload; the server question and conversation endpoints themselves stay unchanged.",
+    "Saved-scope names are unique per owner and workspace; renaming is a PATCH on the scope row."
+  ],
+  "verification": "1. `pnpm exec vitest run test/query-scope-store.test.ts test/query-scope-boundary.test.ts` — new unit tests pass.\\n2. `pnpm test:integration` (with `pnpm services:test:up`) — store CRUD and migration apply against a real PostgreSQL; `test/web-server.test.ts` cases cover route behavior.\\n3. `pnpm typecheck && pnpm lint` — boundary `.d.ts` and new modules are clean.\\n4. `pnpm db:migrate` — migration 0021 applies to the development database.\\n5. For the user: run `pnpm dev:web` and `pnpm worker`, select documents in Documents → \"Save selection as scope\" → pick the saved scope in Ask and in a new Chat conversation; delete a saved-scope document and re-ask to confirm the resolution error appears with the \"Edit saved scope\" prompt.\\n\\nThe project has a `.claims/` setup with no claims yet; after implementation each touched store/route behavior that carries a guarantee (owner isolation, 404-not-leak, name validation) gets a `// claim(...)` line proposed with a break, per the claims-writing skill, and `claims impact` runs before finishing."
+}

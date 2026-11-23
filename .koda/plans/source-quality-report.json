@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "title": "Source quality report",
+  "summary": "Add a workspace-administrator \"source quality\" report that rolls up, per source document, how citations from research threads behave: citation totals and stale-version counts (reusing the staleness comparison readCitation already does), claim-verification status counts (research_claim_checks joined through research_statement_citations → citation_records), and citation-correctness feedback tallies (research_feedback). The data is exposed as a new admin-only GET /api/research/source-quality endpoint and an Administration page in the browser, with a reindex action linking each flagged source to the existing reindex endpoint. Research-store tables only; chat answers are out of scope (the user chose this) because chat verification results live in JSONB inside chat_messages. No database migration is needed: every column read already exists. The project has a .claims directory with no claims yet; the new store aggregation and the browser boundary reader get claims with tests as checks.",
+  "context": [
+    "src/research/store.ts:391 — ResearchStore(database, config, workspaceId) is the workspace-scoped aggregate root; every existing method filters turns through threadWorkspaceCondition() (src/research/store.ts:1617), which is undefined (all workspaces) when workspaceId is null",
+    "src/research/store.ts:1450 — readCurrentVersionIds(sourceFiles) already returns the current version per sourceFile from indexed_documents; readCitation (src/research/store.ts:864-869) computes stale as currentVersionId !== citation.documentVersionId",
+    "src/database/schema.ts:2461 — citation_records carries sourceFile, documentVersionId, turnId (FK cascade to research_turns); research_feedback (schema.ts:2668) is per userId+dimension+targetId with nullable citationId; research_claim_checks (schema.ts:2577) has status + statementId; research_statement_citations (schema.ts:2543) links statements to citations by (turnId, statementId, citationId)",
+    "src/api/observability-routes.ts:38-46 — the admin-route pattern: requireRequestPrincipal then requireWorkspaceAdministratorPrincipal(requestPrincipals, request, principal.workspaceId); the guard lives in src/api/authentication-routes.ts:763",
+    "src/api/server.ts:344-348 — route registration block where the new route file gets wired (registerChatRoutes, registerResearchThreadRoutes, ... registerResearchFeedbackRoutes)",
+    "src/api/runtime-web-services.ts:129 — RuntimeResearchServices interface; implementations live in createRuntimeWebServices (src/api/services.ts:1440) where researchFor(principal) builds a workspace-scoped ResearchStore",
+    "src/api/ingestion-routes.ts:263 — POST /api/documents/:documentId/reindex already exists and queues a reindex; the report supplies documentId for its action link",
+    "src/research/store.ts:1292 — exportThread shows the store returns plain data objects; buildCitationReport (2424) and buildStoredCitations (2238) show the table/style conventions to match",
+    "web/assets/scripts/page-routing.js:4 — routes registry; each view = fragment + pageScript + pageStyles + title; pathViews at line 98 maps /paths to views",
+    "web/index.html:274-305 — Administration nav block with x-show=\"canAdministerCurrentWorkspace\" links (errors, security, settings); the new link goes here",
+    "test/web-server.test.ts:5187 — buildResearchBoundaryScenario() builds the server with mocked RuntimeWebServices; new boundary tests for the report route extend this pattern",
+    "test/citeloom-errors.test.js:137 — the browser test that asserts an admin nav link exists in index.html/fragment HTML; the new page gets the same treatment",
+    "test/database.integration.test.ts — existing integration tests cover ResearchStore; the new store method's tests go here and need the test database (pnpm services:test:up + the docker-network workaround in project memory: run vitest in a container attached to citeloom_default with CITELOOM_TEST_DATABASE_URL)"
+  ],
+  "steps": [
+    {
+      "id": "store-aggregation",
+      "what": "Add the report data model and readWorkspaceSourceQuality() to ResearchStore.",
+      "why": "The store owns all workspace-scoped research tables and already holds the staleness logic, so the aggregation lives where its peers live. Four narrow selects joined in JS keep the SQL drizzle-shaped and unit-checkable.",
+      "files": [
+        "src/research/types.ts",
+        "src/research/store.ts"
+      ],
+      "status": "done",
+      "detail": "In src/research/types.ts add:\n\n```ts\nexport interface WorkspaceSourceClaimCounts {\n  partiallySupported: number;\n  supported: number;\n  unsupported: number;\n  unverified: number;\n}\nexport interface WorkspaceSourceQuality {\n  claimCounts: WorkspaceSourceClaimCounts;\n  citationCount: number;\n  currentVersionId: string | null;\n  documentId: string | null;\n  feedbackNegative: number; // citation-correctness, rating -1\n  feedbackPositive: number; // citation-correctness, rating +1\n  staleCitationCount: number;\n  sourceFile: string;\n}\nexport interface WorkspaceSourceQualityReport {\n  generatedAt: string;\n  sources: WorkspaceSourceQuality[]; // sorted by sourceFile ascending\n}\n```\n\nIn src/research/store.ts add `public async readWorkspaceSourceQuality(): Promise<WorkspaceSourceQualityReport>`. Four aggregate selects, joined in JS (matches store style; claimable and testable):\n1. Citations: citationRecords ⋈ researchTurns ⋈ researchThreads with threadWorkspaceCondition(), leftJoin indexedDocuments on (sourceFile, versionId = documentVersionId); group by citationRecords.sourceFile → citationCount = count(*), staleCitationCount = count(indexedDocuments.versionId null) — same stale semantics as readCitation (src/research/store.ts:864).\n2. Claim statuses: researchClaimChecks ⋈ researchStatementCitations (turnId, statementId) ⋈ citationRecords (turnId, citationId) ⋈ researchTurns ⋈ researchThreads with threadWorkspaceCondition(); group by sourceFile + status.\n3. Feedback: researchFeedback (citationId not null, dimension = 'citation-correctness') ⋈ citationRecords ⋈ researchTurns ⋈ researchThreads with threadWorkspaceCondition(); group by sourceFile + rating sign → positive/negative counts. Turn-level dimensions never cite a document and are deliberately excluded.\n4. Current state: readCurrentVersionIds(sourceFiles) for currentVersionId, plus documentId from indexedDocuments for those sourceFiles."
+    },
+    {
+      "id": "service-wiring",
+      "what": "Expose readWorkspaceSourceQuality(principal) through the service layer.",
+      "why": "All report data is workspace-scoped through readWorkspaceScope(principal), so authorization piggybacks on the existing principal → ResearchStore pattern; administrators and dataScope=\"all\" principals see their scope only.",
+      "files": [
+        "src/api/runtime-web-services.ts",
+        "src/api/services.ts"
+      ],
+      "status": "done",
+      "detail": "Add the method to RuntimeResearchServices in src/api/runtime-web-services.ts (signature: (principal: AuthorizationPrincipal) => Promise<WorkspaceSourceQualityReport>) and implement it in createRuntimeWebServices (src/api/services.ts:1440) as `researchFor(principal).readWorkspaceSourceQuality()`."
+    },
+    {
+      "id": "admin-route",
+      "what": "Add the admin-only GET /api/research/source-quality route and register it.",
+      "why": "Feedback and claim data cut across every user's threads in the workspace, so reading it is an administrator operation; the guard pattern already exists and is tested.",
+      "files": [
+        "src/api/source-quality-routes.ts",
+        "src/api/server.ts"
+      ],
+      "status": "done",
+      "detail": "New src/api/source-quality-routes.ts following the route-file pattern (ResearchThreadRouteOptions-style: RequestPrincipals WeakMap + services.run). Handler: requireRequestPrincipal, then requireWorkspaceAdministratorPrincipal(requestPrincipals, request, principal.workspaceId) exactly like /api/errors (src/api/observability-routes.ts:38-46), then services.run → readWorkspaceSourceQuality(principal). Register in buildWebServer next to registerResearchFeedbackRoutes (src/api/server.ts:348)."
+    },
+    {
+      "id": "browser-page",
+      "what": "Add the Source quality administration page in the browser.",
+      "why": "The report is only useful surfaced; the errors/security pages are the established pattern for admin fragments, scripts, boundary readers and tests.",
+      "files": [
+        "web/fragments/source-quality.html",
+        "web/assets/scripts/source-quality.js",
+        "web/assets/scripts/source-quality-boundary.js",
+        "web/index.html",
+        "web/assets/scripts/page-routing.js",
+        "web/assets/styles/citeloom-source-quality.css"
+      ],
+      "status": "done",
+      "detail": "- source-quality-boundary.js: readSourceQualityReport(value, label) built from boundary-readers.js primitives (readPlainObject, readArray, readEnum, readNonNegativeInteger), decoding WorkspaceSourceQualityReport symmetric with the server type; throws on malformed data like readApplicationErrorPage does.\n- source-quality.js: alpine.data(\"citeloomSourceQualityPage\") following errors.js: fetch /api/research/source-quality, hold rows, expose reindexSourceQualitySource(row) that POSTs /api/documents/{row.documentId}/reindex and reloads on 202; disabled when row.documentId is null.\n- source-quality.html: fragment with a per-source table (file, citations, stale, claim statuses, feedback +/-, reindex button) and an empty state; modelled on errors.html.\n- page-routing.js: routes.source-quality entry + \"/source-quality\" in pathViews.\n- index.html: nav link in the Administration block (web/index.html:274-305) with x-show=\"canAdministerCurrentWorkspace\", data-view=\"source-quality\".\n- New styles file citeloom-source-quality.css; keep it minimal by reusing existing table/error-report styles where they fit."
+    },
+    {
+      "id": "tests",
+      "what": "Add tests for the store aggregation, the route guard and the browser boundary.",
+      "why": "The three layers have three existing test homes with fixtures to imitate; each is independently verifiable.",
+      "files": [
+        "test/database.integration.test.ts",
+        "test/web-server.test.ts",
+        "test/citeloom-source-quality.test.js"
+      ],
+      "status": "in_progress",
+      "detail": "- test/database.integration.test.ts: seed two workspaces (turns via saveTurn with claims + citation feedback as existing tests do); assert readWorkspaceSourceQuality returns per-source counts (citationCount, staleCitationCount, claimCounts, feedback +/-), is scoped to the constructing workspace, sorts by sourceFile, and returns empty sources with no citations. Also assert currentVersionId/documentId are null for a source with no indexed row.\n- test/web-server.test.ts: extend buildResearchBoundaryScenario with the mocked readWorkspaceSourceQuality; assert GET /api/research/source-quality returns the payload for an administrator and 403 for a member principal.\n- test/citeloom-source-quality.test.js (vitest, jsdom-free like citeloom-errors.test.js): decode a well-formed report, throw on malformed rows (bad counts, unknown claim status), and assert the admin nav link in index.html points at ./fragments/source-quality.html with the administrator x-show guard."
+    },
+    {
+      "id": "claims",
+      "what": "Add claims with test checks for the new guarantees.",
+      "why": "The project keeps claims (.claims/ exists, none yet) and both promises are one-line testable facts about the new code; the boundary one is exactly the class of promise the errors-boundary tests already enforce.",
+      "files": [
+        ".claims/config.toml",
+        "src/research/store.ts",
+        "web/assets/scripts/source-quality-boundary.js"
+      ],
+      "status": "pending",
+      "detail": "Follow the claims-writing skill:\n- claim source_quality_workspace_scoped on readWorkspaceSourceQuality — e.g. \"aggregates only citations whose research thread belongs to the store's workspace\" — checked by the new integration test (method = \"test\", runner vitest, naming the exact test; if the engine's vitest fullName matching fails, use method = \"command\" with `pnpm exec vitest run` args per the project memory).\n- claim source_quality_report_boundary_rejects_malformed on readSourceQualityReport — \"throws for a source row with a negative count or an unknown claim status\" — checked by the new boundary test.\nPropose each with `claims propose` (break included), add the line, declare the checks in .claims/config.toml, then run `claims check` for each id and `claims impact` before finishing."
+    }
+  ],
+  "assumptions": [],
+  "verification": "- `pnpm exec vitest run test/citeloom-source-quality.test.js` — new boundary + nav tests pass.\\n- `pnpm exec vitest run test/web-server.test.ts` — route tests (existing + new source-quality cases) pass.\\n- `pnpm typecheck && pnpm lint` — clean.\\n- `pnpm test` — full unit suite stays green.\\n- Integration tests need the Postgres test service: `pnpm services:test:up`, then run vitest inside the docker-network test container per the stored project workflow (the session container cannot reach postgres-test directly: run a node container on citeloom_default with the project copied in and CITELOOM_TEST_DATABASE_URL set, re-run migrations first after container restarts). Select the new cases with `-t 'source quality'` style patterns.\\n- `claims check` for each new claim id, then `claims status`.\\n\\nFor the user: sign in as a workspace administrator, open the account menu → Administration → Source quality, confirm the table renders the per-source rollups and the reindex button queues a reindex for a flagged document.\""
+}

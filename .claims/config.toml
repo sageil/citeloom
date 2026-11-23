@@ -1,0 +1,35 @@
+# How each claim is checked (schemas/config.v2.schema.json in the claims repository).
+# A claim with no [check.<claim_id>] table here is not checked. A test or command check holds only when
+# it fails with each of its breaks applied: the smallest change that makes the claim's promise false.
+schema_version = 2
+
+[check.share_token_roundtrip_exact]
+method = "command"
+build = ["pnpm", "install", "--frozen-lockfile", "--prefer-offline"]
+argv = ["pnpm", "exec", "vitest", "run", "test/share-token.test.ts"]
+
+[[check.share_token_roundtrip_exact.break]]
+file = "src/shared/share-token.ts"
+symbol = "verifyShareToken"
+find = "decoded.expiresAt <= now"
+replace = "decoded.expiresAt < now"
+why = "a token is accepted at its expiry instant and after, breaking the future-expiry bound"
+
+# [defaults]
+# timeout_seconds = 600
+#
+# [check.commit_is_durable]
+# method = "test"
+# runner = "cargo"
+# args = ["-p", "store", "--lib"]
+# tests = ["wal::tests::commit_is_durable"]
+#
+# [[check.commit_is_durable.break]]
+# file = "src/wal.rs"
+# symbol = "Wal::commit"
+# find = "self.file.sync_all()?;"
+# replace = ""
+# why = "the commit is reported durable without its frame being written to disk"
+#
+# [check.sync_waits_for_fsync]
+# method = "review"
